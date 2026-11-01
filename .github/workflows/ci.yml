@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app || true
+          NEWEST=$(ls -d /Applications/Xcode_*.app | sed -E 's/.*Xcode_([0-9.]+)\.app/\1 &/' | sort -V | tail -1 | cut -d' ' -f2)
+          echo "Using $NEWEST"
+          sudo xcode-select -s "$NEWEST"
+          xcodebuild -version
+          swift --version
+          xcrun simctl list runtimes | grep -i ios || true
+          MAJOR=$(xcodebuild -version | head -1 | awk '{print $2}' | cut -d. -f1)
+          MINOR=$(xcodebuild -version | head -1 | awk '{print $2}' | cut -d. -f2)
+          # The app target needs the iPhone Duo APIs (iOS 27.1 SDK).
+          if [ "$MAJOR" -gt 27 ] || { [ "$MAJOR" -eq 27 ] && [ "${MINOR:-0}" -ge 1 ]; }; then
+            echo "HAS_DUO_SDK=1" >> "$GITHUB_ENV"
+          else
+            echo "::notice::Xcode $MAJOR.$MINOR has no iOS 27.1 SDK; skipping the app build, testing BrowserKit only."
+          fi
+
+      - name: Test BrowserKit (Suggest + cross-platform BrowserCore)
+        working-directory: Packages/BrowserKit
+        run: swift test
+
+      - name: Build BrowserKit for iOS Simulator (WebKit/UIKit code)
+        working-directory: Packages/BrowserKit
+        run: |
+          xcodebuild build -scheme BrowserKit-Package -destination 'generic/platform=iOS Simulator' -quiet
+
+      - name: Build app for iOS Simulator
+        if: env.HAS_DUO_SDK == '1'
+        run: |
+          brew install xcodegen
+          xcodegen
+          xcodebuild build -project DuoBrowser.xcodeproj -scheme DuoBrowser \
+            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO -quiet

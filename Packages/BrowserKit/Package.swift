@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "BrowserKit",
-    platforms: [.iOS("27.0"), .macOS("26.0")],
+    platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
         .library(name: "BrowserCore", targets: ["BrowserCore"]),
         .library(name: "Suggest", targets: ["Suggest"]),
