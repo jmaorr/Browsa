@@ -24,6 +24,11 @@ public final class BrowserState {
     /// Direction of the last swipe between tabs, for push transitions (nil = not a swipe).
     public var lastTabSwipeForward: Bool?
     public var isArchivePresented = false
+    public var isDownloadsPresented = false
+    /// Tabs closed this session, newest last, for Cmd-Shift-T. In memory only, never private tabs.
+    public private(set) var recentlyClosed: [BrowserTab] = []
+    /// Live downloads and finished files, newest first.
+    public let downloads = DownloadManager()
 
     public var settings = BrowserSettings() {
         didSet {
@@ -157,6 +162,16 @@ public final class BrowserState {
         if currentSpace.today.count > 1 {
             out.append(BrowserCommand(id: "close-others", title: "Close Other Tabs", keywords: ["tabs", "clean"]))
         }
+        if let last = recentlyClosed.last {
+            out.append(BrowserCommand(id: "reopen", title: "Reopen Closed Tab", subtitle: last.displayTitle, keywords: ["undo", "restore"]))
+        }
+        if currentTab?.url != nil {
+            out.append(BrowserCommand(id: "find", title: "Find on Page", keywords: ["search", "text"]))
+            out.append(BrowserCommand(id: "reload", title: "Reload Page", keywords: ["refresh"]))
+        }
+        if !downloads.items.isEmpty {
+            out.append(BrowserCommand(id: "downloads", title: "Show Downloads", subtitle: "\(downloads.items.count) files", keywords: ["files"]))
+        }
         out.append(BrowserCommand(id: "private", title: "New Private Tab", keywords: ["incognito"]))
         for s in spaces where s.id != selectedSpaceID {
             out.append(BrowserCommand(id: "space:" + s.id.uuidString, title: "Switch to \(s.name)", subtitle: "Space", keywords: ["space"]))
@@ -179,6 +194,12 @@ public final class BrowserState {
         case "private":
             newTab(url: nil, isPrivate: true)
             presentAddressEditor()
+        case "reopen": reopenClosedTab()
+        case "find":
+            // Wait for the sheet to finish dismissing so the find bar can take first responder.
+            Task { try? await Task.sleep(for: .milliseconds(350)); findInPage() }
+        case "reload": reload()
+        case "downloads": isDownloadsPresented = true
         case "settings": isSettingsPresented = true
         case "archive": isArchivePresented = true
         default:
@@ -213,6 +234,11 @@ public final class BrowserState {
     // MARK: Tab management
 
     public func close(_ tab: BrowserTab) {
+        if !tab.isPrivate, !tab.isPinned, tab.url != nil {
+            pool.existingSession(for: tab.id)?.freeze()
+            recentlyClosed.append(tab)
+            if recentlyClosed.count > 25 { recentlyClosed.removeFirst() }
+        }
         for space in spaces {
             if let i = space.today.firstIndex(where: { $0.id == tab.id }) {
                 space.today.remove(at: i)
@@ -227,6 +253,55 @@ public final class BrowserState {
         }
         pool.remove(tab.id)
         scheduleSave()
+    }
+
+    /// Cmd-Shift-T: bring back the last closed tab, with its back/forward history.
+    public func reopenClosedTab() {
+        guard let tab = recentlyClosed.popLast() else { return }
+        tab.lastActive = .now
+        currentSpace.today.insert(tab, at: 0)
+        select(tab)
+    }
+
+    /// Pinned then today, the order the sidebar and the tab strip show.
+    public var orderedTabs: [BrowserTab] { currentSpace.pinned + currentSpace.today }
+
+    /// Cmd-1...8 pick that tab; Cmd-9 always picks the last one (as in Safari).
+    public func selectTab(number n: Int) {
+        let tabs = orderedTabs
+        guard !tabs.isEmpty else { return }
+        let i = n >= 9 ? tabs.count - 1 : n - 1
+        guard tabs.indices.contains(i) else { return }
+        select(tabs[i])
+    }
+
+    /// Ctrl-Tab / Ctrl-Shift-Tab. Wraps around.
+    public func selectAdjacentTab(_ delta: Int) {
+        let tabs = orderedTabs
+        guard tabs.count > 1, let cur = currentTab, let i = tabs.firstIndex(where: { $0.id == cur.id }) else { return }
+        lastTabSwipeForward = delta > 0
+        select(tabs[(i + delta + tabs.count) % tabs.count])
+    }
+
+    // MARK: Current page actions
+
+    public func goBack() { currentTab.map { session(for: $0).webView.goBack() } }
+    public func goForward() { currentTab.map { session(for: $0).webView.goForward() } }
+    public func reload() { currentTab.map { session(for: $0).webView.reload() } }
+    public func stopLoading() { currentTab.map { session(for: $0).webView.stopLoading() } }
+
+    /// Cmd-F: the system find bar (same one Safari uses), which sits above the keyboard.
+    public func findInPage() {
+        guard let tab = currentTab, tab.url != nil else { return }
+        session(for: tab).webView.findInteraction?.presentFindNavigator(showingReplace: false)
+    }
+
+    /// Cmd-D: toggles the current page in favourites.
+    public func toggleFavoriteForCurrentTab() {
+        guard let tab = currentTab, let url = tab.url else { return }
+        let key = URLNormalizer.key(for: url)
+        if let f = favorites.first(where: { URLNormalizer.key(for: $0.url) == key }) { removeFavorite(f) }
+        else { addFavorite(url: url, title: tab.displayTitle) }
     }
 
     public func togglePinned(_ tab: BrowserTab) {

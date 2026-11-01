@@ -31,6 +31,11 @@ struct RootView: View {
         .sheet(isPresented: $browser.isArchivePresented) {
             ArchiveView()
         }
+        .sheet(isPresented: $browser.isDownloadsPresented) {
+            DownloadsView()
+        }
+        // A light tap when a download lands, like Safari's downloads button bounce.
+        .sensoryFeedback(.success, trigger: browser.downloads.lastFinished)
         // Tab icon strip, shared by both postures.
         .overlay(alignment: .leading) { TabRailView() }
         .coordinateSpace(.named("browserRoot"))

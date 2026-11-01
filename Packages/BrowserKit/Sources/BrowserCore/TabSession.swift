@@ -31,6 +31,12 @@ public final class TabSession: NSObject {
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.scrollView.contentInsetAdjustmentBehavior = .automatic
+        // Cmd-F and the command bar's "Find on Page" use the system find bar (as Safari does).
+        webView.isFindInteractionEnabled = true
+        // Pull to refresh, with the system control.
+        let refresh = UIRefreshControl()
+        refresh.addTarget(self, action: #selector(pulledToRefresh(_:)), for: .valueChanged)
+        webView.scrollView.refreshControl = refresh
 
         observe()
 
@@ -80,6 +86,17 @@ public final class TabSession: NSObject {
         if changed { tab.isChromeCompact = chromeTracker.isCompact }
     }
 
+    @objc private func pulledToRefresh(_ sender: UIRefreshControl) {
+        if webView.url == nil { sender.endRefreshing(); return }
+        webView.reload()
+    }
+
+    private func endRefreshing() {
+        if webView.scrollView.refreshControl?.isRefreshing == true {
+            webView.scrollView.refreshControl?.endRefreshing()
+        }
+    }
+
     /// Tapping the compact pill brings the full bar back.
     public func expandChrome() {
         chromeTracker.expand()
@@ -103,6 +120,7 @@ extension TabSession: WKNavigationDelegate {
     }
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        endRefreshing()
         guard let url = webView.url, !tab.isPrivate else { return }
         let source = pendingVisitSource ?? .link
         pendingVisitSource = nil
@@ -112,17 +130,44 @@ extension TabSession: WKNavigationDelegate {
         }
     }
 
+    public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
+        endRefreshing()
+    }
+
+    public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
+        endRefreshing()
+    }
+
     public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         // iOS kills background web content under memory pressure. Reload quietly.
         webView.reload()
     }
 
     public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
+        if navigationAction.shouldPerformDownload { return .download }
         guard let url = navigationAction.request.url, let scheme = url.scheme?.lowercased() else { return .allow }
         if ["http", "https", "about", "blob", "data", "file"].contains(scheme) { return .allow }
         // tel:, mailto:, App Store links, universal app schemes -> hand to the system.
         _ = await UIApplication.shared.open(url)
         return .cancel
+    }
+
+    /// Anything WebKit can't render inline (zips, dmgs, Content-Disposition: attachment) becomes a download.
+    public func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
+        if let http = navigationResponse.response as? HTTPURLResponse,
+           let disposition = http.value(forHTTPHeaderField: "Content-Disposition"),
+           disposition.lowercased().hasPrefix("attachment") {
+            return .download
+        }
+        return navigationResponse.canShowMIMEType ? .allow : .download
+    }
+
+    public func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        browser?.downloads.adopt(download)
+    }
+
+    public func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        browser?.downloads.adopt(download)
     }
 }
 

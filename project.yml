@@ -32,6 +32,9 @@ targets:
       properties:
         CFBundleDisplayName: Duo
         UILaunchScreen: {}
+        # Downloads land in Documents/Downloads and show up in the Files app.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         UIApplicationSupportsMultipleScenes: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

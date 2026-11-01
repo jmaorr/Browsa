@@ -19,23 +19,35 @@ struct NewTabSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    FavoritesGrid(favorites: browser.favorites.sorted { $0.order < $1.order },
-                                  compact: model.isTyping,
-                                  onOpen: { browser.perform(.open($0.url), source: .bookmark) },
-                                  onRename: { renameText = $0.displayName; editingFavorite = $0 },
-                                  onRemove: { browser.removeFavorite($0) })
-                    if model.isTyping {
-                        SuggestionList(results: model.results) { browser.perform($0) }
-                    } else if let zero = model.zero {
-                        ZeroStateSections(zero: zero) { browser.perform($0) }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        FavoritesGrid(favorites: browser.favorites.sorted { $0.order < $1.order },
+                                      compact: model.isTyping,
+                                      onOpen: { browser.perform(.open($0.url), source: .bookmark) },
+                                      onRename: { renameText = $0.displayName; editingFavorite = $0 },
+                                      onRemove: { browser.removeFavorite($0) })
+                        if model.isTyping {
+                            SuggestionList(results: model.results, highlightedID: model.highlightedSuggestion?.id) {
+                                browser.perform($0)
+                            }
+                        } else if let zero = model.zero {
+                            ZeroStateSections(zero: zero, highlightedID: model.highlightedSuggestion?.id) {
+                                browser.perform($0)
+                            }
+                        }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .animation(Motion.snappy, value: model.isTyping)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .scrollDismissesKeyboard(.interactively)
+                // Keep the arrow-key highlight on screen without jumping when it already is.
+                .onChange(of: model.highlightedSuggestion?.id) { _, id in
+                    guard let id else { return }
+                    withAnimation(Motion.snappy) { proxy.scrollTo(id) }
+                }
             }
-            .scrollDismissesKeyboard(.interactively)
         }
         .task { await model.loadZeroState() }
         .presentationDetents([.large])
@@ -56,6 +68,12 @@ struct NewTabSheet: View {
                          onTextChange: { model.textChanged($0, lastEditWasInsertion: $1) },
                          onSubmit: { text in
                              if let action = model.submitAction(fieldText: text) { browser.perform(action) }
+                         },
+                         onMoveHighlight: { model.moveHighlight($0) },
+                         onEscape: {
+                             // First Esc leaves the list, second closes the sheet (like Spotlight).
+                             if model.highlighted != nil { model.clearHighlight() }
+                             else { browser.isNewTabSheetPresented = false }
                          })
                 .frame(height: 44)
             Button("Cancel") { browser.isNewTabSheetPresented = false }
@@ -122,20 +140,21 @@ struct FavoritesGrid: View {
 
 struct ZeroStateSections: View {
     let zero: ZeroState
+    var highlightedID: String? = nil
     var onAction: (SuggestionAction) -> Void
 
     var body: some View {
         if !zero.topSites.isEmpty {
             section("Frequently visited") {
-                ForEach(zero.topSites) { s in SuggestionRow(suggestion: s) { onAction(s.action) } }
+                ForEach(zero.topSites) { s in
+                    SuggestionRow(suggestion: s, highlighted: s.id == highlightedID) { onAction(s.action) }
+                }
             }
         }
         if !zero.recentTabs.isEmpty {
             section("Recent tabs") {
-                ForEach(zero.recentTabs, id: \.id) { t in
-                    let s = Suggestion(kind: .openTab, title: t.title, subtitle: URLNormalizer.displayHost(t.url),
-                                       action: .switchToTab(id: t.id, url: t.url), score: 0)
-                    SuggestionRow(suggestion: s) { onAction(s.action) }
+                ForEach(zero.recentTabs.map(NewTabModel.row(for:))) { s in
+                    SuggestionRow(suggestion: s, highlighted: s.id == highlightedID) { onAction(s.action) }
                 }
             }
         }
@@ -153,23 +172,29 @@ struct ZeroStateSections: View {
 
 struct SuggestionList: View {
     let results: SuggestResults?
+    var highlightedID: String? = nil
     var onAction: (SuggestionAction) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
             if let results {
-                ForEach(results.local) { s in SuggestionRow(suggestion: s) { onAction(s.action) } }
-                if let p = results.primary { SuggestionRow(suggestion: p) { onAction(p.action) } }
-                ForEach(results.remote) { s in SuggestionRow(suggestion: s) { onAction(s.action) } }
+                ForEach(results.local) { row($0) }
+                if let p = results.primary { row(p) }
+                ForEach(results.remote) { row($0) }
             }
         }
         // Remote rows append below; animate only insertions so nothing on screen jumps.
         .animation(.snappy(duration: 0.15), value: results?.remote.count)
     }
+
+    private func row(_ s: Suggestion) -> some View {
+        SuggestionRow(suggestion: s, highlighted: s.id == highlightedID) { onAction(s.action) }
+    }
 }
 
 struct SuggestionRow: View {
     let suggestion: Suggestion
+    var highlighted = false
     var action: () -> Void
 
     var body: some View {
@@ -188,9 +213,35 @@ struct SuggestionRow: View {
                 }
             }
             .padding(.vertical, 8)
-            .contentShape(.rect)
+            .padding(.horizontal, 8)
+            .background {
+                // Arrow-key highlight: a tinted rounded rect, like Spotlight.
+                if highlighted {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(.tint.opacity(0.16))
+                }
+            }
+            .contentShape(.rect(cornerRadius: 10))
+            .padding(.horizontal, -8)
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)   // trackpad / pointer
+        .id(suggestion.id)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityAddTraits(highlighted ? .isSelected : [])
+    }
+
+    private var accessibilityText: String {
+        let what: String
+        switch suggestion.kind {
+        case .openTab: what = "Switch to tab"
+        case .command: what = "Command"
+        case .archived: what = "Archived tab"
+        case .favorite: what = "Favourite"
+        case .searchSuggestion, .searchQuery: what = suggestion.url == nil ? "Search" : "Open"
+        default: what = "Open"
+        }
+        return [what, suggestion.title, suggestion.subtitle].compactMap { $0 }.joined(separator: ", ")
     }
 
     @ViewBuilder private var icon: some View {

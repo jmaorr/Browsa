@@ -10,11 +10,21 @@ struct AddressField: UIViewRepresentable {
     var placeholder: String
     var onTextChange: (_ typed: String, _ lastEditWasInsertion: Bool) -> Void
     var onSubmit: (_ fieldText: String) -> Void
+    /// Hardware keyboard: Up/Down move through the suggestions (-1 / +1).
+    var onMoveHighlight: (_ delta: Int) -> Void = { _ in }
+    /// Hardware keyboard: Esc.
+    var onEscape: () -> Void = {}
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIView(context: Context) -> UITextField {
-        let f = UITextField()
+        let f = KeyCommandField()
+        f.onArrow = { context.coordinator.parent.onMoveHighlight($0) }
+        f.onEscape = { context.coordinator.parent.onEscape() }
+        f.onTab = { [weak f] in
+            guard let f else { return }
+            context.coordinator.acceptCompletion(in: f)
+        }
         f.text = initialText
         f.placeholder = placeholder
         f.font = .preferredFont(forTextStyle: .body)
@@ -63,6 +73,16 @@ struct AddressField: UIViewRepresentable {
             }
         }
 
+        /// Tab (or Right Arrow, which UIKit already handles) accepts the selected completion tail.
+        func acceptCompletion(in field: UITextField) {
+            guard let range = field.selectedTextRange, !range.isEmpty,
+                  field.offset(from: range.end, to: field.endOfDocument) == 0 else { return }
+            field.selectedTextRange = field.textRange(from: field.endOfDocument, to: field.endOfDocument)
+            appliedCompletion = nil
+            // Not an insertion, so the engine doesn't stack a second completion on top.
+            parent.onTextChange(field.text ?? "", false)
+        }
+
         func textField(_ textField: UITextField, shouldChangeCharactersIn range: NSRange,
                        replacementString string: String) -> Bool {
             lastEditWasInsertion = !string.isEmpty
@@ -87,4 +107,30 @@ struct AddressField: UIViewRepresentable {
             return true
         }
     }
+}
+
+/// A text field that claims Up, Down, Tab and Esc from a hardware keyboard before UIKit's defaults
+/// (which would jump the caret to the ends of the line, or move focus).
+final class KeyCommandField: UITextField {
+    var onArrow: (Int) -> Void = { _ in }
+    var onEscape: () -> Void = {}
+    var onTab: () -> Void = {}
+
+    private lazy var commands: [UIKeyCommand] = {
+        let list = [
+            UIKeyCommand(input: UIKeyCommand.inputUpArrow, modifierFlags: [], action: #selector(up)),
+            UIKeyCommand(input: UIKeyCommand.inputDownArrow, modifierFlags: [], action: #selector(down)),
+            UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(escape)),
+            UIKeyCommand(input: "\t", modifierFlags: [], action: #selector(tab)),
+        ]
+        list.forEach { $0.wantsPriorityOverSystemBehavior = true }
+        return list
+    }()
+
+    override var keyCommands: [UIKeyCommand]? { commands + (super.keyCommands ?? []) }
+
+    @objc private func up() { onArrow(-1) }
+    @objc private func down() { onArrow(1) }
+    @objc private func escape() { onEscape() }
+    @objc private func tab() { onTab() }
 }
