@@ -25,6 +25,15 @@ public final class BrowserState {
     public var lastTabSwipeForward: Bool?
     public var isArchivePresented = false
     public var isDownloadsPresented = false
+    /// The dialog, permission or login request on screen now (one at a time).
+    public internal(set) var activePrompt: WebPrompt?
+    /// Short confirmation shown at the top of the screen ("Opened in background").
+    public var toast: String?
+    /// Set by the app from the hinge. Drives desktop vs mobile sites.
+    public var isUnfolded = false
+    @ObservationIgnored var promptQueue: [(WebPrompt, CheckedContinuation<WebPromptResponse, Never>)] = []
+    @ObservationIgnored var promptLog: [UUID: [Date]] = [:]
+    @ObservationIgnored private var toastTask: Task<Void, Never>?
     /// Tabs closed this session, newest last, for Cmd-Shift-T. In memory only, never private tabs.
     public private(set) var recentlyClosed: [BrowserTab] = []
     /// Live downloads and finished files, newest first.
@@ -165,7 +174,9 @@ public final class BrowserState {
         if let last = recentlyClosed.last {
             out.append(BrowserCommand(id: "reopen", title: "Reopen Closed Tab", subtitle: last.displayTitle, keywords: ["undo", "restore"]))
         }
-        if currentTab?.url != nil {
+        if let tab = currentTab, tab.url != nil {
+            out.append(BrowserCommand(id: "desktop", title: tab.isDesktopSite ? "Request Mobile Site" : "Request Desktop Site",
+                                      keywords: ["desktop", "mobile", "user agent"]))
             out.append(BrowserCommand(id: "find", title: "Find on Page", keywords: ["search", "text"]))
             out.append(BrowserCommand(id: "reload", title: "Reload Page", keywords: ["refresh"]))
         }
@@ -199,6 +210,7 @@ public final class BrowserState {
             // Wait for the sheet to finish dismissing so the find bar can take first responder.
             Task { try? await Task.sleep(for: .milliseconds(350)); findInPage() }
         case "reload": reload()
+        case "desktop": toggleDesktopSite()
         case "downloads": isDownloadsPresented = true
         case "settings": isSettingsPresented = true
         case "archive": isArchivePresented = true
@@ -234,6 +246,7 @@ public final class BrowserState {
     // MARK: Tab management
 
     public func close(_ tab: BrowserTab) {
+        cancelPrompts(for: tab.id)
         if !tab.isPrivate, !tab.isPinned, tab.url != nil {
             pool.existingSession(for: tab.id)?.freeze()
             recentlyClosed.append(tab)
@@ -281,6 +294,51 @@ public final class BrowserState {
         guard tabs.count > 1, let cur = currentTab, let i = tabs.firstIndex(where: { $0.id == cur.id }) else { return }
         lastTabSwipeForward = delta > 0
         select(tabs[(i + delta + tabs.count) % tabs.count])
+    }
+
+    // MARK: Links
+
+    /// Long-press > Open in Background: a new today tab right after the opener, loading quietly.
+    public func openInBackground(_ url: URL, from opener: BrowserTab?) {
+        let space = opener.flatMap { o in spaces.first { $0.allTabs.contains { $0.id == o.id } } } ?? currentSpace
+        let tab = BrowserTab(url: url, isPrivate: opener?.isPrivate ?? false)
+        let after = opener.flatMap { o in space.today.firstIndex { $0.id == o.id } }.map { $0 + 1 } ?? 0
+        space.today.insert(tab, at: after)
+        session(for: tab).load(url, source: .link)
+        // Loading made it most-recently-used in the pool; the visible tab must stay ahead of it.
+        if let current = currentTab { _ = session(for: current) }
+        showToast("Opened in background")
+        scheduleSave()
+    }
+
+    public func showToast(_ text: String) {
+        toastTask?.cancel()
+        toast = text
+        toastTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.6))
+            guard !Task.isCancelled else { return }
+            self?.toast = nil
+        }
+    }
+
+    // MARK: Desktop / mobile sites
+
+    /// Desktop on the inner display, mobile on the outer, unless the site has an override.
+    func prefersDesktop(for url: URL?) -> Bool {
+        if let host = url.map(URLNormalizer.displayHost), let o = settings.siteDesktopOverrides[host] { return o }
+        return isUnfolded && settings.desktopSitesWhenUnfolded
+    }
+
+    /// "Request Desktop Site" / "Request Mobile Site": remembered for the site, page reloads.
+    public func toggleDesktopSite() {
+        guard let tab = currentTab, let url = tab.url else { return }
+        let host = URLNormalizer.displayHost(url)
+        let wantDesktop = !tab.isDesktopSite
+        // Store an override only when it differs from what the posture would pick anyway.
+        let natural = isUnfolded && settings.desktopSitesWhenUnfolded
+        settings.siteDesktopOverrides[host] = wantDesktop == natural ? nil : wantDesktop
+        // reloadFromOrigin re-runs the navigation policy, so the new content mode applies.
+        session(for: tab).webView.reloadFromOrigin()
     }
 
     // MARK: Current page actions

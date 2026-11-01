@@ -32,6 +32,15 @@ struct SettingsView: View {
                     Text("Search suggestions send what you type to \(SuggestEngine.defaultSources(for: browser.settings.searchEngine).map(\.displayName).formatted(.list(type: .and))). Favourites, history, open tabs and the built-in list of popular sites are always matched on the device.")
                 }
 
+                Section {
+                    Toggle("Desktop sites when unfolded", isOn: $browser.settings.desktopSitesWhenUnfolded)
+                    NavigationLink("Website settings") { WebsiteSettingsView() }
+                } header: {
+                    Text("Websites")
+                } footer: {
+                    Text("On the inner display, pages ask for the desktop version like iPad Safari. Folded, they get the mobile version. Changes apply to pages you open next.")
+                }
+
                 Section("Tabs") {
                     Picker("Archive today tabs after", selection: $browser.settings.archiveAfterHours) {
                         Text("6 hours").tag(6.0)
@@ -132,5 +141,55 @@ private struct SpaceEditorRow: View {
                 Button("Delete", role: .destructive) { browser.deleteSpace(space) }
             }
         }
+    }
+}
+
+/// Every site with a remembered permission or a desktop/mobile choice. Swipe to forget.
+struct WebsiteSettingsView: View {
+    @Environment(BrowserState.self) private var browser
+
+    private var hosts: [String] {
+        Set(browser.settings.sitePermissions.keys).union(browser.settings.siteDesktopOverrides.keys).sorted()
+    }
+
+    var body: some View {
+        List {
+            if hosts.isEmpty {
+                ContentUnavailableView("No website settings", systemImage: "globe",
+                                       description: Text("Permissions you grant and sites you switch to desktop or mobile show up here."))
+            }
+            ForEach(hosts, id: \.self) { host in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(host).font(.body.weight(.medium))
+                    Text(summary(for: host)).font(.caption).foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+            }
+            .onDelete { idx in
+                for host in idx.map({ hosts[$0] }) {
+                    browser.forgetPermissions(for: host)
+                    browser.settings.siteDesktopOverrides[host] = nil
+                }
+            }
+        }
+        .navigationTitle("Website Settings")
+        .toolbar { EditButton() }
+    }
+
+    private func summary(for host: String) -> String {
+        var parts: [String] = []
+        if let d = browser.settings.siteDesktopOverrides[host] { parts.append(d ? "Desktop site" : "Mobile site") }
+        for (perm, allowed) in (browser.settings.sitePermissions[host] ?? [:]).sorted(by: { $0.key < $1.key }) {
+            let name = SitePermission(rawValue: perm).map { p in
+                switch p {
+                case .camera: "Camera"
+                case .microphone: "Microphone"
+                case .cameraAndMicrophone: "Camera and microphone"
+                case .motion: "Motion"
+                }
+            } ?? perm
+            parts.append("\(name): \(allowed ? "Allow" : "Deny")")
+        }
+        return parts.joined(separator: " · ")
     }
 }

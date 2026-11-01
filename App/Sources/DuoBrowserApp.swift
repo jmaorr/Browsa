@@ -1,10 +1,17 @@
 import SwiftUI
+import AVFoundation
 import BrowserCore
 
 @main
 struct DuoBrowserApp: App {
     @State private var browser = BrowserState()
     @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        // Playback (not the default ambient) so web audio ignores the silent switch, like Safari,
+        // and keeps playing in the background. WebKit activates the session when media starts.
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, policy: .longFormAudio)
+    }
 
     var body: some Scene {
         WindowGroup {

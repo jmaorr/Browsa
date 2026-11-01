@@ -115,8 +115,14 @@ public final class TabSession: NSObject {
 }
 
 extension TabSession: WKNavigationDelegate {
+    public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        tab.loadError = nil
+    }
+
     public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         expandChrome()   // new page: show the full bar
+        tab.loadError = nil
+        browser?.cancelPrompts(for: tab.id)   // dialogs from the previous page are moot
     }
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -134,8 +140,29 @@ extension TabSession: WKNavigationDelegate {
         endRefreshing()
     }
 
+    /// The page never arrived: show our error page instead of a blank screen.
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
         endRefreshing()
+        let ns = error as NSError
+        guard !LoadError.isIgnorable(ns) else { return }
+        let failed = (ns.userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? webView.url
+        tab.loadError = LoadError(url: failed, error: ns)
+        expandChrome()
+    }
+
+    /// Password-protected pages (HTTP Basic/Digest/NTLM). Certificates use the system's checks.
+    public func webView(_ webView: WKWebView, respondTo challenge: URLAuthenticationChallenge) async
+        -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        let method = challenge.protectionSpace.authenticationMethod
+        guard [NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest, NSURLAuthenticationMethodNTLM].contains(method),
+              let browser else { return (.performDefaultHandling, nil) }
+        // Three wrong tries in a row: stop asking and let the server's error page show.
+        guard challenge.previousFailureCount < 3 else { return (.cancelAuthenticationChallenge, nil) }
+        let host = challenge.protectionSpace.host
+        let answer = await browser.ask(.credentials(realm: challenge.protectionSpace.realm), host: host,
+                                       message: "Sign in to \(host)", from: tab)
+        guard case .credentials(let user, let password) = answer else { return (.cancelAuthenticationChallenge, nil) }
+        return (.useCredential, URLCredential(user: user, password: password, persistence: .forSession))
     }
 
     public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -143,13 +170,22 @@ extension TabSession: WKNavigationDelegate {
         webView.reload()
     }
 
-    public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
-        if navigationAction.shouldPerformDownload { return .download }
-        guard let url = navigationAction.request.url, let scheme = url.scheme?.lowercased() else { return .allow }
-        if ["http", "https", "about", "blob", "data", "file"].contains(scheme) { return .allow }
+    public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                        preferences: WKWebpagePreferences) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
+        if navigationAction.shouldPerformDownload { return (.download, preferences) }
+        guard let url = navigationAction.request.url, let scheme = url.scheme?.lowercased() else { return (.allow, preferences) }
+        if ["http", "https", "about", "blob", "data", "file"].contains(scheme) {
+            // Desktop site on the inner display, mobile on the outer (per-site overrides win).
+            if navigationAction.targetFrame?.isMainFrame ?? true, let browser {
+                let desktop = browser.prefersDesktop(for: url)
+                preferences.preferredContentMode = desktop ? .desktop : .mobile
+                tab.isDesktopSite = desktop
+            }
+            return (.allow, preferences)
+        }
         // tel:, mailto:, App Store links, universal app schemes -> hand to the system.
         _ = await UIApplication.shared.open(url)
-        return .cancel
+        return (.cancel, preferences)
     }
 
     /// Anything WebKit can't render inline (zips, dmgs, Content-Disposition: attachment) becomes a download.
@@ -182,6 +218,105 @@ extension TabSession: WKUIDelegate {
 
     public func webViewDidClose(_ webView: WKWebView) {
         browser?.close(tab)
+    }
+
+    // MARK: JavaScript dialogs
+
+    private func host(of frame: WKFrameInfo) -> String {
+        frame.securityOrigin.host.isEmpty ? (webView.url.map(URLNormalizer.displayHost) ?? "This page") : frame.securityOrigin.host
+    }
+
+    public func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                        initiatedByFrame frame: WKFrameInfo) async {
+        _ = await browser?.ask(.alert, host: host(of: frame), message: message, from: tab)
+    }
+
+    public func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                        initiatedByFrame frame: WKFrameInfo) async -> Bool {
+        await browser?.ask(.confirm, host: host(of: frame), message: message, from: tab) == .ok
+    }
+
+    public func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,
+                        defaultText: String?, initiatedByFrame frame: WKFrameInfo) async -> String? {
+        let answer = await browser?.ask(.textInput(defaultText: defaultText ?? ""), host: host(of: frame), message: prompt, from: tab)
+        if case .text(let t) = answer { return t }
+        return nil
+    }
+
+    // MARK: Permissions
+
+    public func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                        initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType) async -> WKPermissionDecision {
+        guard let browser else { return .deny }
+        let kind: SitePermission = switch type {
+        case .camera: .camera
+        case .microphone: .microphone
+        default: .cameraAndMicrophone
+        }
+        return await browser.decide(kind, host: origin.host, tab: tab)
+    }
+
+    public func webView(_ webView: WKWebView, requestDeviceOrientationAndMotionPermissionFor origin: WKSecurityOrigin,
+                        initiatedByFrame frame: WKFrameInfo) async -> WKPermissionDecision {
+        guard let browser else { return .deny }
+        return await browser.decide(.motion, host: origin.host, tab: tab)
+    }
+
+    // MARK: Long-press on links
+
+    public func webView(_ webView: WKWebView, contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo) async
+        -> UIContextMenuConfiguration? {
+        guard let url = elementInfo.linkURL else {
+            // Images and other elements keep WebKit's own menu.
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { UIMenu(children: $0) }
+        }
+        guard let browser else { return nil }
+        // Everything the menu needs is read here, on the main actor, so the menu closures only
+        // hop back to it to act (UIKit may call them from a nonisolated context).
+        let tab = self.tab
+        let isFavorite = browser.isFavorite(url)
+        let act: @Sendable (@escaping @MainActor (BrowserState, TabSession?) -> Void) -> UIActionHandler = { body in
+            { [weak browser, weak self] _ in Task { @MainActor in if let browser { body(browser, self) } } }
+        }
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { suggested in
+            let open = UIMenu(options: .displayInline, children: [
+                UIAction(title: "Open in New Tab", image: UIImage(systemName: "plus.square.on.square"),
+                         handler: act { b, _ in b.newTab(url: url, source: .link) }),
+                UIAction(title: "Open in Background", image: UIImage(systemName: "square.stack"),
+                         handler: act { b, _ in b.openInBackground(url, from: tab) }),
+            ])
+            var more: [UIMenuElement] = [
+                UIAction(title: "Copy Link", image: UIImage(systemName: "link"), handler: act { b, _ in b.copyToPasteboard(url) }),
+                UIAction(title: "Share…", image: UIImage(systemName: "square.and.arrow.up"), handler: act { _, s in s?.share(url) }),
+            ]
+            if !isFavorite {
+                more.append(UIAction(title: "Add to Favourites", image: UIImage(systemName: "star"), handler: act { b, _ in
+                    b.addFavorite(url: url, title: URLNormalizer.displayHost(url))
+                    b.showToast("Added to Favourites")
+                }))
+            }
+            // Keep WebKit's extras (e.g. Download Linked File, image actions), minus duplicates.
+            let ours: Set<String> = ["Open", "Open Link", "Open in New Tab", "Copy Link", "Share…", "Share", "Add to Reading List"]
+            let extras = suggested.filter { !ours.contains(($0 as? UIAction)?.title ?? ($0 as? UIMenu)?.title ?? "") }
+            return UIMenu(children: [open, UIMenu(options: .displayInline, children: more)]
+                          + (extras.isEmpty ? [] : [UIMenu(options: .displayInline, children: extras)]))
+        }
+    }
+
+    /// Tapping the link preview opens it in this tab, like Safari.
+    public func webView(_ webView: WKWebView, contextMenuForElement elementInfo: WKContextMenuElementInfo,
+                        willCommitWithAnimator animator: any UIContextMenuInteractionCommitAnimating) {
+        guard let url = elementInfo.linkURL else { return }
+        animator.addCompletion { [weak self] in self?.load(url, source: .link) }
+    }
+
+    private func share(_ url: URL) {
+        let vc = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        vc.popoverPresentationController?.sourceView = webView
+        vc.popoverPresentationController?.sourceRect = CGRect(x: webView.bounds.midX, y: webView.bounds.midY, width: 1, height: 1)
+        var top = webView.window?.rootViewController
+        while let next = top?.presentedViewController { top = next }
+        top?.present(vc, animated: true)
     }
 }
 #endif

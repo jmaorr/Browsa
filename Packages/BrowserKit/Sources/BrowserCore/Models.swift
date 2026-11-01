@@ -20,6 +20,10 @@ public final class BrowserTab: Identifiable {
     public var canGoForward = false
     /// Bottom bar collapsed to a small pill because the page is being scrolled down.
     public var isChromeCompact = false
+    /// Set when the last load failed; the page area shows an error page with Retry.
+    public var loadError: LoadError?
+    /// Whether the current page was requested as the desktop site.
+    public var isDesktopSite = false
 
     public init(id: UUID = UUID(), url: URL?, title: String = "", isPinned: Bool = false,
                 lastActive: Date = .now, interactionState: Data? = nil, isPrivate: Bool = false) {
@@ -83,8 +87,86 @@ public struct BrowserSettings: Codable, Equatable, Sendable {
     public var blockContent = true
     /// Where links from other apps open.
     public var externalLinksSpaceID: UUID?
+    /// Ask for desktop sites on the inner display (like iPad Safari) and mobile sites when folded.
+    public var desktopSitesWhenUnfolded = true
+    /// Per-site "Request Desktop/Mobile Site" choices, keyed by host. true = desktop.
+    public var siteDesktopOverrides: [String: Bool] = [:]
+    /// Remembered camera/microphone/motion answers, keyed by host then permission.
+    public var sitePermissions: [String: [String: Bool]] = [:]
 
     public init() {}
+
+    public init(from decoder: any Decoder) throws {
+        // Decode field by field so settings saved by older builds still load.
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        searchEngine = try c.decodeIfPresent(SearchEngine.self, forKey: .searchEngine) ?? .google
+        remoteSuggestions = try c.decodeIfPresent(Bool.self, forKey: .remoteSuggestions) ?? true
+        archiveAfterHours = try c.decodeIfPresent(Double.self, forKey: .archiveAfterHours) ?? 12
+        blockContent = try c.decodeIfPresent(Bool.self, forKey: .blockContent) ?? true
+        externalLinksSpaceID = try c.decodeIfPresent(UUID.self, forKey: .externalLinksSpaceID)
+        desktopSitesWhenUnfolded = try c.decodeIfPresent(Bool.self, forKey: .desktopSitesWhenUnfolded) ?? true
+        siteDesktopOverrides = try c.decodeIfPresent([String: Bool].self, forKey: .siteDesktopOverrides) ?? [:]
+        sitePermissions = try c.decodeIfPresent([String: [String: Bool]].self, forKey: .sitePermissions) ?? [:]
+    }
+}
+
+/// Why a page couldn't load, shown in place of the page.
+public struct LoadError: Equatable, Sendable {
+    public enum Kind: Sendable { case offline, notFound, timedOut, insecure, other }
+    public let url: URL?
+    public let kind: Kind
+    public let detail: String
+
+    public var title: String {
+        switch kind {
+        case .offline: "You're offline"
+        case .notFound: "Can't find this site"
+        case .timedOut: "The site took too long to respond"
+        case .insecure: "This connection isn't private"
+        case .other: "Couldn't open this page"
+        }
+    }
+
+    public var symbol: String {
+        switch kind {
+        case .offline: "wifi.slash"
+        case .notFound: "questionmark.app.dashed"
+        case .timedOut: "clock.badge.exclamationmark"
+        case .insecure: "lock.slash"
+        case .other: "exclamationmark.triangle"
+        }
+    }
+
+    /// Certificate problems get "Go Back", never a "Visit anyway".
+    public var canRetry: Bool { kind != .insecure }
+
+    public init(url: URL?, error: NSError) {
+        self.url = url
+        switch (error.domain, error.code) {
+        case (NSURLErrorDomain, NSURLErrorNotConnectedToInternet), (NSURLErrorDomain, NSURLErrorNetworkConnectionLost),
+             (NSURLErrorDomain, NSURLErrorDataNotAllowed), (NSURLErrorDomain, NSURLErrorInternationalRoamingOff):
+            kind = .offline
+        case (NSURLErrorDomain, NSURLErrorCannotFindHost), (NSURLErrorDomain, NSURLErrorDNSLookupFailed),
+             (NSURLErrorDomain, NSURLErrorCannotConnectToHost):
+            kind = .notFound
+        case (NSURLErrorDomain, NSURLErrorTimedOut):
+            kind = .timedOut
+        case (NSURLErrorDomain, NSURLErrorSecureConnectionFailed), (NSURLErrorDomain, NSURLErrorServerCertificateHasBadDate),
+             (NSURLErrorDomain, NSURLErrorServerCertificateUntrusted), (NSURLErrorDomain, NSURLErrorServerCertificateHasUnknownRoot),
+             (NSURLErrorDomain, NSURLErrorServerCertificateNotYetValid), (NSURLErrorDomain, NSURLErrorClientCertificateRejected),
+             (NSURLErrorDomain, NSURLErrorClientCertificateRequired):
+            kind = .insecure
+        default:
+            kind = .other
+        }
+        detail = error.localizedDescription
+    }
+
+    /// Cancellations and "frame load interrupted" (a download took over) aren't failures.
+    public static func isIgnorable(_ error: NSError) -> Bool {
+        (error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled)
+            || (error.domain == "WebKitErrorDomain" && [102, 204].contains(error.code))
+    }
 }
 
 // MARK: - Codable snapshot for persistence

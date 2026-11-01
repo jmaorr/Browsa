@@ -10,10 +10,14 @@ struct RootView: View {
     var body: some View {
         @Bindable var browser = browser
         PostureReader { posture in
-            switch posture {
-            case .unfolded: UnfoldedLayout()
-            case .folded: FoldedLayout()
+            Group {
+                switch posture {
+                case .unfolded: UnfoldedLayout()
+                case .folded: FoldedLayout()
+                }
             }
+            // New pages ask for the desktop site on the inner display, mobile on the outer.
+            .onChange(of: posture, initial: true) { _, p in browser.isUnfolded = (p == .unfolded) }
         }
         // One sheet for both layouts, so an open sheet (and its typed text) survives a fold.
         .sheet(isPresented: $browser.isNewTabSheetPresented) {
@@ -36,6 +40,9 @@ struct RootView: View {
         }
         // A light tap when a download lands, like Safari's downloads button bounce.
         .sensoryFeedback(.success, trigger: browser.downloads.lastFinished)
+        // Page dialogs, permission requests and logins, one at a time.
+        .modifier(WebPromptAlert())
+        .overlay { ToastOverlay() }
         // Tab icon strip, shared by both postures.
         .overlay(alignment: .leading) { TabRailView() }
         .coordinateSpace(.named("browserRoot"))
@@ -59,6 +66,12 @@ struct WebContentView: View {
                 .id(tab.id)
                 // Swipe between tabs on the bottom pill slides the pages too.
                 .transition(Motion.tabPush(forward: browser.lastTabSwipeForward))
+                .overlay {
+                    if let error = tab.loadError {
+                        ErrorPage(tab: tab, error: error).transition(.opacity)
+                    }
+                }
+                .animation(Motion.snappy, value: tab.loadError)
                 .overlay(alignment: .top) {
                     if tab.isLoading {
                         ProgressView(value: tab.estimatedProgress)

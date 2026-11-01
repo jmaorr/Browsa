@@ -33,6 +33,11 @@ targets:
         CFBundleDisplayName: Duo
         UILaunchScreen: {}
         # Downloads land in Documents/Downloads and show up in the Files app.
+        # Audio and picture-in-picture keep going when you leave the app, like Safari.
+        UIBackgroundModes: [audio]
+        NSCameraUsageDescription: Websites you allow can use the camera, for example for video calls.
+        NSMicrophoneUsageDescription: Websites you allow can use the microphone, for example for video calls.
+        NSLocationWhenInUseUsageDescription: Websites you allow can see your location, for example to show nearby places.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         UIApplicationSupportsMultipleScenes: true

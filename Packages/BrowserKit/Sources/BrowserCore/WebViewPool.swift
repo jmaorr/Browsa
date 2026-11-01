@@ -27,6 +27,9 @@ final class WebViewPool {
         c.upgradeKnownHostsToHTTPS = true
         c.defaultWebpagePreferences.preferredContentMode = .mobile
         c.preferences.isElementFullscreenEnabled = true
+        // Videos can float in picture-in-picture when you leave the page or the app.
+        c.allowsPictureInPictureMediaPlayback = true
+        c.allowsAirPlayForMediaPlayback = true
         return c
     }
 
