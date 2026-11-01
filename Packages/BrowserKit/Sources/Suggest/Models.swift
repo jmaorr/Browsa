@@ -5,10 +5,13 @@ public enum SuggestionAction: Hashable, Sendable {
     case open(URL)
     case switchToTab(id: UUID, url: URL)
     case search(String)
+    /// A browser action from the command bar ("Close other tabs", "Switch to Work"...).
+    /// The id is interpreted by the app; the engine only matches and ranks it.
+    case command(id: String)
 }
 
 public enum SuggestionKind: String, Hashable, Sendable, Comparable {
-    case favorite, openTab, history, bookmark, seed, searchSuggestion, searchQuery
+    case favorite, openTab, history, bookmark, seed, searchSuggestion, searchQuery, command, archived
 
     /// Display grouping order when scores tie.
     var order: Int {
@@ -20,6 +23,8 @@ public enum SuggestionKind: String, Hashable, Sendable, Comparable {
         case .seed: 4
         case .searchQuery: 5
         case .searchSuggestion: 6
+        case .command: 7
+        case .archived: 8
         }
     }
 
@@ -49,13 +54,15 @@ public struct Suggestion: Identifiable, Hashable, Sendable {
             self.dedupeKey = dedupeKey ?? URLNormalizer.key(for: url)
         case .search(let q):
             self.dedupeKey = dedupeKey ?? "search:" + q.lowercased()
+        case .command(let id):
+            self.dedupeKey = dedupeKey ?? "cmd:" + id
         }
     }
 
     public var url: URL? {
         switch action {
         case .open(let u), .switchToTab(_, let u): u
-        case .search: nil
+        case .search, .command: nil
         }
     }
 }

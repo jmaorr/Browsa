@@ -28,6 +28,9 @@ struct RootView: View {
         .sheet(isPresented: $browser.isSettingsPresented) {
             SettingsView()
         }
+        .sheet(isPresented: $browser.isArchivePresented) {
+            ArchiveView()
+        }
         // Tab icon strip, shared by both postures.
         .overlay(alignment: .leading) { TabRailView() }
         .coordinateSpace(.named("browserRoot"))

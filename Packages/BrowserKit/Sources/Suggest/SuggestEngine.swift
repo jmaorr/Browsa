@@ -50,6 +50,7 @@ public final class SuggestEngine: Sendable {
                 seeds: SeedProvider = .bundled(),
                 searchEngine: SearchEngine = .google,
                 remoteSuggestionsEnabled: Bool = true,
+                extraProviders: [any SuggestionProvider] = [],
                 config: Config = Config()) {
         self.history = history
         self.favorites = favorites
@@ -61,7 +62,7 @@ public final class SuggestEngine: Sendable {
             OpenTabsProvider(tabs: openTabs),
             HistoryProvider(index: history),
             seeds,
-        ]
+        ] + extraProviders
         self.remote = remoteSuggestionsEnabled ? SearchSuggestProvider(engine: searchEngine) : nil
     }
 

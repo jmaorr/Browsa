@@ -55,6 +55,19 @@ public enum Matcher {
         return t
     }
 
+    /// For things with no URL (commands): prefix of the title, any word, or any keyword.
+    public static func titleQuality(query: String, title: String, keywords: [String] = []) -> MatchQuality {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return .none }
+        let t = title.lowercased()
+        if t.hasPrefix(q) { return .hostPrefix }
+        let words = (t + " " + keywords.joined(separator: " ").lowercased())
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        let tokens = q.split(separator: " ")
+        if tokens.allSatisfy({ tok in words.contains(where: { $0.hasPrefix(tok) }) }) { return .wordPrefix }
+        return .none
+    }
+
     public static func quality(query: String, url: URL, title: String) -> MatchQuality {
         let q = stripForMatching(query.trimmingCharacters(in: .whitespaces))
         guard !q.isEmpty else { return .none }

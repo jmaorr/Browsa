@@ -27,6 +27,8 @@ struct DuoBrowserApp: App {
                     .keyboardShortcut("t", modifiers: .command)
                 Button("Open Location") { browser.presentAddressEditor() }
                     .keyboardShortcut("l", modifiers: .command)
+                Button("Command Bar") { browser.presentNewTab() }
+                    .keyboardShortcut("k", modifiers: .command)
                 Button("Close Tab") { if let t = browser.currentTab { browser.close(t) } }
                     .keyboardShortcut("w", modifiers: .command)
             }

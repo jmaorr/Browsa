@@ -23,7 +23,7 @@ public final class BrowserState {
     public var newTabSourceID = "plus.bottomBar"
     /// Direction of the last swipe between tabs, for push transitions (nil = not a swipe).
     public var lastTabSwipeForward: Bool?
-    public var isCommandBarPresented = false
+    public var isArchivePresented = false
 
     public var settings = BrowserSettings() {
         didSet {
@@ -133,6 +133,62 @@ public final class BrowserState {
             navigate(to: url, reuseCurrent: reuseCurrent, source: source)
         case .search(let q):
             navigate(to: searchEngine.searchURL(for: q), reuseCurrent: reuseCurrent, source: source)
+        case .command(let id):
+            run(command: id)
+        }
+    }
+
+    // MARK: Command bar
+
+    /// Commands that make sense right now, for the command bar.
+    public func availableCommands() -> [BrowserCommand] {
+        var out: [BrowserCommand] = []
+        if let tab = currentTab {
+            out.append(BrowserCommand(id: "pin", title: tab.isPinned ? "Unpin Tab" : "Pin Tab", keywords: ["tab"]))
+            if let url = tab.url, !isFavorite(url) {
+                out.append(BrowserCommand(id: "favourite", title: "Add to Favourites", subtitle: tab.displayTitle,
+                                          keywords: ["favorite", "star", "bookmark"]))
+            }
+            out.append(BrowserCommand(id: "close", title: "Close Tab", keywords: ["tab"]))
+            if let url = tab.url {
+                out.append(BrowserCommand(id: "copy-link", title: "Copy Link", subtitle: url.absoluteString, keywords: ["url", "share"]))
+            }
+        }
+        if currentSpace.today.count > 1 {
+            out.append(BrowserCommand(id: "close-others", title: "Close Other Tabs", keywords: ["tabs", "clean"]))
+        }
+        out.append(BrowserCommand(id: "private", title: "New Private Tab", keywords: ["incognito"]))
+        for s in spaces where s.id != selectedSpaceID {
+            out.append(BrowserCommand(id: "space:" + s.id.uuidString, title: "Switch to \(s.name)", subtitle: "Space", keywords: ["space"]))
+        }
+        out.append(BrowserCommand(id: "settings", title: "Settings", keywords: ["preferences", "search engine"]))
+        out.append(BrowserCommand(id: "archive", title: "Show Archive", subtitle: "\(archive.count) archived tabs", keywords: ["history", "closed"]))
+        return out
+    }
+
+    public func run(command id: String) {
+        isNewTabSheetPresented = false
+        switch id {
+        case "pin": if let t = currentTab { togglePinned(t) }
+        case "favourite": if let t = currentTab, let url = t.url { addFavorite(url: url, title: t.displayTitle) }
+        case "close": if let t = currentTab { close(t) }
+        case "copy-link": if let url = currentTab?.url { copyToPasteboard(url) }
+        case "close-others":
+            let keep = currentTab?.id
+            for t in currentSpace.today where t.id != keep { close(t) }
+        case "private":
+            newTab(url: nil, isPrivate: true)
+            presentAddressEditor()
+        case "settings": isSettingsPresented = true
+        case "archive": isArchivePresented = true
+        default:
+            if id.hasPrefix("space:"), let uuid = UUID(uuidString: String(id.dropFirst(6))),
+               let s = spaces.first(where: { $0.id == uuid }) {
+                selectSpace(s)
+            } else if id.hasPrefix("restore:"), let uuid = UUID(uuidString: String(id.dropFirst(8))),
+                      let t = archive.first(where: { $0.id == uuid }) {
+                restoreFromArchive(t)
+            }
         }
     }
 
@@ -292,7 +348,19 @@ public final class BrowserState {
                 }
             },
             searchEngine: settings.searchEngine,
-            remoteSuggestionsEnabled: settings.remoteSuggestions)
+            remoteSuggestionsEnabled: settings.remoteSuggestions,
+            extraProviders: [
+                CommandProvider(commands: { [weak self] in
+                    await MainActor.run { self?.availableCommands() ?? [] }
+                }),
+                ArchivedTabsProvider(tabs: { [weak self] in
+                    await MainActor.run {
+                        (self?.archive ?? []).compactMap { t in
+                            t.url.map { OpenTabSnapshot(id: t.id, url: $0, title: t.title) }
+                        }
+                    }
+                }),
+            ])
     }
 
     // MARK: Persistence

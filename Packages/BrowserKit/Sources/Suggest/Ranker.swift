@@ -23,6 +23,8 @@ public enum Ranker {
         case .history: 1.0
         case .seed: 1.0
         case .searchQuery, .searchSuggestion: 1.0
+        case .command: 1.1
+        case .archived: 0.8
         }
     }
 

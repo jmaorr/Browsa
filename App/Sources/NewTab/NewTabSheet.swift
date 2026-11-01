@@ -52,7 +52,7 @@ struct NewTabSheet: View {
         HStack(spacing: 12) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
             AddressField(initialText: initialText, inline: model.inline,
-                         placeholder: "Search or enter address",
+                         placeholder: "Search, address or command",
                          onTextChange: { model.textChanged($0, lastEditWasInsertion: $1) },
                          onSubmit: { text in
                              if let action = model.submitAction(fieldText: text) { browser.perform(action) }
@@ -199,6 +199,10 @@ struct SuggestionRow: View {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
         case .openTab:
             Image(systemName: "square.on.square").foregroundStyle(.secondary)
+        case .command:
+            Image(systemName: "command").foregroundStyle(.tint)
+        case .archived:
+            Image(systemName: "archivebox").foregroundStyle(.secondary)
         default:
             if let url = suggestion.url { FaviconView(url: url, size: 24) }
             else { Image(systemName: "globe").foregroundStyle(.secondary) }

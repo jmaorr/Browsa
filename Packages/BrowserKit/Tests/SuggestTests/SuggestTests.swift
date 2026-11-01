@@ -142,3 +142,33 @@ private func engine(history: [HistoryEntry] = [],
         #expect(SearchEngine.brave(apiKey: "x").parseSuggestions(data) == ["swift", "swiftui"])
     }
 }
+
+@Suite struct CommandTests {
+    let commands = [
+        BrowserCommand(id: "close-others", title: "Close Other Tabs", keywords: ["tabs"]),
+        BrowserCommand(id: "settings", title: "Settings", keywords: ["preferences"]),
+    ]
+
+    @Test func matchesTitleWordsAndKeywords() async {
+        let cmds = commands
+        let p = CommandProvider(commands: { cmds })
+        #expect(await p.suggestions(for: "close", limit: 5).first?.action == .command(id: "close-others"))
+        #expect(await p.suggestions(for: "other tab", limit: 5).first?.action == .command(id: "close-others"))
+        #expect(await p.suggestions(for: "pref", limit: 5).first?.action == .command(id: "settings"))
+    }
+
+    @Test func singleLetterNeverMatchesCommands() async {
+        let cmds = commands
+        let p = CommandProvider(commands: { cmds })
+        #expect(await p.suggestions(for: "s", limit: 5).isEmpty)
+    }
+
+    @Test func hostPrefixStillBeatsCommand() async {
+        let cmds = [BrowserCommand(id: "settings", title: "Settings")]
+        let index = InMemoryHistoryIndex([HistoryEntry(url: URL(string: "https://setlist.fm")!, title: "setlist.fm", frecency: 1)])
+        let e = SuggestEngine(localProviders: [HistoryProvider(index: index), CommandProvider(commands: { cmds })],
+                              remote: nil, history: index, favorites: { [] }, openTabs: { [] })
+        let r = await e.localResults(for: "set", lastEditWasInsertion: true)
+        #expect(r.local.first?.kind == .history)
+    }
+}
