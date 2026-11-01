@@ -30,7 +30,7 @@ struct BottomBar: View {
 
             addressPill
 
-            Button { browser.presentNewTab() } label: {
+            Button { browser.presentNewTab(from: NewTabSource.bottomBar.rawValue) } label: {
                 Image(systemName: "plus")
                     .font(.title3.weight(.semibold))
                     .frame(width: 48, height: 48)
@@ -38,6 +38,7 @@ struct BottomBar: View {
             .buttonStyle(.glassProminent)
             .buttonBorderShape(.circle)
             .accessibilityLabel("New Tab")
+            .newTabZoomSource(.bottomBar)
             .contextMenu {
                 Button("New Private Tab", systemImage: "eye.slash") {
                     browser.newTab(url: nil, isPrivate: true)
@@ -63,18 +64,25 @@ struct BottomBar: View {
             if let url = tab?.url {
                 FaviconView(url: url, size: 18)
                 Text(URLNormalizer.displayHost(url)).lineLimit(1)
+                    .contentTransition(.interpolate)
             } else {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 Text("Search or enter address").foregroundStyle(.secondary).lineLimit(1)
             }
         }
+        // Swiping to the next tab pushes the old label out and the new one in, from the swipe side.
+        .id(tab?.id)
+        .transition(.push(from: browser.lastTabSwipeForward == false ? .leading : .trailing))
+        .clipped()
+        .animation(Motion.snappy, value: tab?.url)
         .font(.callout)
         .frame(maxWidth: .infinity, minHeight: 48)
         .padding(.horizontal, 14)
         .glassEffect(.regular.interactive(), in: .capsule)
         .offset(x: dragX * 0.3)
         .contentShape(.capsule)
-        .onTapGesture { browser.presentAddressEditor() }
+        .newTabZoomSource(.addressPill)
+        .onTapGesture { browser.presentAddressEditor(from: NewTabSource.addressPill.rawValue) }
         .gesture(
             DragGesture(minimumDistance: 12)
                 .onChanged { v in if abs(v.translation.width) > abs(v.translation.height) { dragX = v.translation.width } }
@@ -97,8 +105,15 @@ struct BottomBar: View {
         let tabs = browser.currentSpace.allTabs
         guard let current = browser.currentTab, let i = tabs.firstIndex(where: { $0.id == current.id }) else { return }
         let j = i + delta
-        guard tabs.indices.contains(j) else { return }
-        withAnimation(.smooth) { browser.select(tabs[j]) }
+        guard tabs.indices.contains(j) else {
+            // End of the list: a little rubber-band nudge instead of nothing.
+            withAnimation(Motion.bouncy) { dragX = delta > 0 ? -18 : 18 }
+            withAnimation(Motion.bouncy.delay(0.12)) { dragX = 0 }
+            return
+        }
+        browser.lastTabSwipeForward = delta > 0
+        withAnimation(Motion.snappy) { browser.select(tabs[j]) }
+        Task { try? await Task.sleep(for: .milliseconds(400)); browser.lastTabSwipeForward = nil }
     }
 }
 

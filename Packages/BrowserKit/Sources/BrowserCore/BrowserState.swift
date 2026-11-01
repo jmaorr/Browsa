@@ -19,6 +19,10 @@ public final class BrowserState {
     public var newTabSheetEditsCurrentTab = false
     public var isTabSwitcherPresented = false
     public var isSettingsPresented = false
+    /// Which on-screen control opened the new-tab sheet, so it can zoom out of (and back into) it.
+    public var newTabSourceID = "plus.bottomBar"
+    /// Direction of the last swipe between tabs, for push transitions (nil = not a swipe).
+    public var lastTabSwipeForward: Bool?
     public var isCommandBarPresented = false
 
     public var settings = BrowserSettings() {
@@ -94,13 +98,15 @@ public final class BrowserState {
     // MARK: New tab / navigation
 
     /// One tap on any plus button.
-    public func presentNewTab() {
+    public func presentNewTab(from sourceID: String? = nil) {
+        if let sourceID { newTabSourceID = sourceID }
         newTabSheetEditsCurrentTab = false
         isNewTabSheetPresented = true
     }
 
     /// Tap on the address pill / field.
-    public func presentAddressEditor() {
+    public func presentAddressEditor(from sourceID: String? = nil) {
+        if let sourceID { newTabSourceID = sourceID }
         newTabSheetEditsCurrentTab = currentTab != nil
         isNewTabSheetPresented = true
     }

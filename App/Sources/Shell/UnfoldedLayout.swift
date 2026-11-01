@@ -12,22 +12,23 @@ struct UnfoldedLayout: View {
     /// Put the sidebar on the edge opposite the system vertical bar so they never stack.
     private var sidebarEdge: HorizontalEdge { verticalBarEdge == .leading ? .trailing : .leading }
 
+    @State private var isPeeking = false
+
     var body: some View {
         let space = browser.currentSpace
         NavigationStack {
-            HStack(spacing: 0) {
-                if sidebarEdge == .leading, space.isSidebarOpen { sidebar(edge: .leading) }
+            SidebarContainer(mode: sidebarMode, edge: sidebarEdge,
+                             tint: SpacePalette.color(space.colorIndex)) {
+                SidebarView()
+            } content: {
                 WebContentView()
-                    .clipShape(.rect(cornerRadius: space.isSidebarOpen ? 12 : 0, style: .continuous))
-                    .padding(space.isSidebarOpen ? 6 : 0)
-                if sidebarEdge == .trailing, space.isSidebarOpen { sidebar(edge: .trailing) }
             }
-            .background(SpacePalette.color(space.colorIndex).opacity(0.12))
-            .animation(.smooth(duration: 0.3), value: space.isSidebarOpen)
             .toolbar { toolbar }
             .toolbarTitleDisplayMode(.inline)
             .navigationTitle(browser.currentTab?.displayTitle ?? "")
             .duoVerticalBarPrefersOurItems()
+            // Picking a tab from a peeking sidebar puts it away, like Arc.
+            .onChange(of: browser.currentTab?.id) { if isPeeking { withAnimation(.smooth) { isPeeking = false } } }
         }
         .background {
             // Hardware keyboard: Cmd-S toggles the sidebar, like Arc.
@@ -35,14 +36,30 @@ struct UnfoldedLayout: View {
         }
     }
 
-    private func sidebar(edge: Edge) -> some View {
-        SidebarView()
-            .frame(width: 280)
-            .transition(.move(edge: edge).combined(with: .opacity))
+    private var sidebarMode: Binding<SidebarContainer<SidebarView, WebContentView>.Mode> {
+        Binding {
+            let space = browser.currentSpace
+            return space.isSidebarOpen ? .docked : (isPeeking ? .peek : .hidden)
+        } set: { mode in
+            let space = browser.currentSpace
+            isPeeking = mode == .peek
+            if space.isSidebarOpen != (mode == .docked) {
+                space.isSidebarOpen = mode == .docked
+                browser.scheduleSave()
+            }
+        }
     }
 
     private func toggleSidebar() {
-        browser.currentSpace.isSidebarOpen.toggle()
+        let space = browser.currentSpace
+        withAnimation(.interpolatingSpring(mass: 1, stiffness: 320, damping: 30)) {
+            if isPeeking {
+                isPeeking = false
+                space.isSidebarOpen = true      // pin the peeking sidebar
+            } else {
+                space.isSidebarOpen.toggle()
+            }
+        }
         browser.scheduleSave()
     }
 
@@ -54,7 +71,8 @@ struct UnfoldedLayout: View {
         .duoPinnedToVerticalBar()
 
         ToolbarItem(placement: .topBarLeading) {
-            Button("New Tab", systemImage: "plus") { browser.presentNewTab() }
+            Button("New Tab", systemImage: "plus") { browser.presentNewTab(from: NewTabSource.verticalBar.rawValue) }
+                .newTabZoomSource(.verticalBar)
         }
         .duoPinnedToVerticalBar()
 

@@ -21,9 +21,10 @@ struct SidebarView: View {
 
             Divider()
 
-            Button { browser.presentNewTab() } label: {
+            Button { browser.presentNewTab(from: NewTabSource.sidebar.rawValue) } label: {
                 Label("New Tab", systemImage: "plus").frame(maxWidth: .infinity, alignment: .leading)
             }
+            .newTabZoomSource(.sidebar)
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 10)
@@ -47,7 +48,7 @@ struct SidebarView: View {
     }
 
     private var addressButton: some View {
-        Button { browser.presentAddressEditor() } label: {
+        Button { browser.presentAddressEditor(from: NewTabSource.sidebarAddress.rawValue) } label: {
             HStack {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 Text(browser.currentTab?.url.map(URLNormalizer.displayHost) ?? "Search or enter address")
@@ -59,6 +60,7 @@ struct SidebarView: View {
             .glassEffect(.regular, in: .rect(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
+        .newTabZoomSource(.sidebarAddress)
     }
 
     private func pinnedTile(_ tab: Tab, selected: Bool) -> some View {

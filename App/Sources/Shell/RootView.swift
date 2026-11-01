@@ -4,6 +4,7 @@ import Suggest
 
 struct RootView: View {
     @Environment(BrowserState.self) private var browser
+    @Namespace private var newTabNS
 
     var body: some View {
         @Bindable var browser = browser
@@ -17,6 +18,8 @@ struct RootView: View {
         .sheet(isPresented: $browser.isNewTabSheetPresented) {
             NewTabSheet(engine: browser.suggest,
                         initialText: browser.newTabSheetEditsCurrentTab ? (browser.currentTab?.url?.absoluteString ?? "") : "")
+                // The sheet grows out of whichever plus button (or address pill) was tapped.
+                .navigationTransition(.zoom(sourceID: browser.newTabSourceID, in: newTabNS))
         }
         .sheet(isPresented: $browser.isTabSwitcherPresented) {
             TabSwitcherSheet()
@@ -25,6 +28,7 @@ struct RootView: View {
             SettingsView()
         }
         .tint(SpacePalette.color(browser.currentSpace.colorIndex))
+        .environment(\.newTabNamespace, newTabNS)
     }
 }
 
@@ -36,6 +40,10 @@ struct WebContentView: View {
         if let tab = browser.currentTab {
             WebViewHost(session: browser.session(for: tab))
                 .id(tab.id)
+                // Swipe between tabs on the bottom pill slides the pages too.
+                .transition(browser.lastTabSwipeForward.map { fwd in
+                    AnyTransition.push(from: fwd ? .trailing : .leading)
+                } ?? .opacity)
                 .overlay(alignment: .top) {
                     if tab.isLoading {
                         ProgressView(value: tab.estimatedProgress)
@@ -60,12 +68,13 @@ struct StartPage: View {
                           onOpen: { browser.perform(.open($0.url), source: .bookmark) },
                           onRename: { _ in }, onRemove: { browser.removeFavorite($0) })
                 .frame(maxWidth: 420)
-            Button { browser.presentNewTab() } label: {
+            Button { browser.presentNewTab(from: NewTabSource.startPage.rawValue) } label: {
                 Label("New Tab", systemImage: "plus")
                     .font(.headline)
                     .padding(.horizontal, 20).padding(.vertical, 12)
             }
             .buttonStyle(.glass)
+            .newTabZoomSource(.startPage)
             Spacer()
         }
         .padding(16)
