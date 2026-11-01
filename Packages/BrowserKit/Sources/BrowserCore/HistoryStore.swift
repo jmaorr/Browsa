@@ -114,7 +114,7 @@ public actor HistoryStore: HistoryIndex {
         saveTask = Task {
             try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
-            await self.saveNow()
+            self.saveNow()
         }
     }
 

@@ -44,41 +44,76 @@ struct PostureReader<Content: View>: View {
         content(posture)
             .environment(\.posture, posture)
             .animation(.smooth(duration: 0.35), value: posture)
-            .onHingeChange { _, new in
-                guard let hinge = new.hinge else { hingeOpen = nil; return }
-                switch hinge.status {
-                case .closed: hingeOpen = false
-                case .partiallyOpen, .fullyOpen: hingeOpen = true
-                @unknown default: hingeOpen = nil
-                }
+            .duoOnHingeChange { hingeOpen = $0 }
+    }
+}
+
+extension View {
+    /// Calls `action` with true (open), false (closed) or nil (not a Duo) when the hinge moves.
+    func duoOnHingeChange(_ action: @escaping (Bool?) -> Void) -> some View {
+        #if NO_DUO_SDK
+        self
+        #else
+        onHingeChange { _, new in
+            guard let hinge = new.hinge else { action(nil); return }
+            switch hinge.status {
+            case .closed: action(false)
+            case .partiallyOpen, .fullyOpen: action(true)
+            @unknown default: action(nil)
             }
+        }
+        #endif
     }
 }
 
 // MARK: - Vertical bar ("gutter toolbar") helpers
 
+//
+// NO_DUO_SDK: CI's Xcode doesn't have the iOS 27.1 SDK yet, so it builds the app with this flag and
+// these no-op stand-ins. Everything else in the app still gets compiled and type-checked.
+
 extension View {
     /// Unfolded layout: keep the sidebar toggle + plus in the system vertical bar, never in overflow.
     func duoVerticalBarPrefersOurItems() -> some View {
+        #if NO_DUO_SDK
+        self
+        #else
         toolbarVerticalCompressionBehavior(.prefersToolbarItems)
+        #endif
     }
 
     /// Folded layout: we draw our own Arc-style bottom bar, so switch the system vertical bar off.
     func duoDisableVerticalBar() -> some View {
+        #if NO_DUO_SDK
+        self
+        #else
         toolbarVerticalBehavior(.disabled)
+        #endif
     }
 }
 
 extension ToolbarContent {
     /// Pin an item to the vertical bar and keep it out of the overflow menu.
     func duoPinnedToVerticalBar() -> some ToolbarContent {
+        #if NO_DUO_SDK
+        self
+        #else
         self.axisBehavior(.verticalPreferred).visibilityPriority(.high)
+        #endif
     }
 }
 
-/// Which edge the system put its vertical bar on (nil when there isn't one).
-struct VerticalBarEdgeReader<Content: View>: View {
-    @Environment(\.toolbarVerticalEdge) private var edge
-    @ViewBuilder var content: (HorizontalEdge?) -> Content
-    var body: some View { content(edge) }
+#if NO_DUO_SDK
+private struct VerticalEdgeStandIn: EnvironmentKey { static let defaultValue: HorizontalEdge? = nil }
+#endif
+
+extension EnvironmentValues {
+    /// Which edge the system put its vertical bar on (nil when there isn't one).
+    var duoToolbarVerticalEdge: HorizontalEdge? {
+        #if NO_DUO_SDK
+        self[VerticalEdgeStandIn.self]
+        #else
+        toolbarVerticalEdge
+        #endif
+    }
 }

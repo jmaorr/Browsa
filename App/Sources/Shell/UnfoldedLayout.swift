@@ -7,7 +7,7 @@ import Suggest
 /// leading edge of the top toolbar (portrait, where the system uses horizontal bars).
 struct UnfoldedLayout: View {
     @Environment(BrowserState.self) private var browser
-    @Environment(\.toolbarVerticalEdge) private var verticalBarEdge
+    @Environment(\.duoToolbarVerticalEdge) private var verticalBarEdge
 
     /// Put the sidebar on the edge opposite the system vertical bar so they never stack.
     private var sidebarEdge: HorizontalEdge { verticalBarEdge == .leading ? .trailing : .leading }
