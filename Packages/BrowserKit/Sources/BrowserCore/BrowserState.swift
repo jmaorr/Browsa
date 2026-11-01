@@ -36,6 +36,9 @@ public final class BrowserState {
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     /// Tabs closed this session, newest last, for Cmd-Shift-T. In memory only, never private tabs.
     public private(set) var recentlyClosed: [BrowserTab] = []
+    /// Small pictures of each tab's page for the tab grid, taken as you leave a tab.
+    /// In memory only; a tab without one shows its icon.
+    public var thumbnails: [UUID: UIImage] = [:]
     /// Live downloads and finished files, newest first.
     public let downloads = DownloadManager()
 
@@ -96,6 +99,8 @@ public final class BrowserState {
     }
 
     public func select(_ tab: BrowserTab) {
+        // Picture the page we're leaving while it's still on screen.
+        if let leaving = currentTab, leaving.id != tab.id { captureThumbnail(of: leaving) }
         if let space = spaces.first(where: { $0.allTabs.contains { $0.id == tab.id } }) {
             selectedSpaceID = space.id
             space.selectedTabID = tab.id
@@ -265,7 +270,24 @@ public final class BrowserState {
             }
         }
         pool.remove(tab.id)
+        thumbnails[tab.id] = nil
         scheduleSave()
+    }
+
+    /// Moves a tab within Today, for drag-to-reorder in the tab grid.
+    public func moveTab(_ tab: BrowserTab, before target: BrowserTab) {
+        let space = currentSpace
+        guard tab.id != target.id, let from = space.today.firstIndex(where: { $0.id == tab.id }),
+              let to = space.today.firstIndex(where: { $0.id == target.id }) else { return }
+        space.today.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to)
+        scheduleSave()
+    }
+
+    /// Snapshots a tab's page if its web view is on screen. Synchronous, so it can run just
+    /// before the view is swapped out.
+    public func captureThumbnail(of tab: BrowserTab) {
+        guard tab.url != nil, let image = pool.existingSession(for: tab.id)?.renderThumbnail() else { return }
+        thumbnails[tab.id] = image
     }
 
     /// Cmd-Shift-T: bring back the last closed tab, with its back/forward history.

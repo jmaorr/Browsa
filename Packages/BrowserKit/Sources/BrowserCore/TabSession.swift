@@ -319,4 +319,18 @@ extension TabSession: WKUIDelegate {
         top?.present(vc, animated: true)
     }
 }
+extension TabSession {
+    /// The visible page, drawn at a reduced scale. Returns nil when the web view isn't in a window.
+    func renderThumbnail(maxWidth: CGFloat = 420) -> UIImage? {
+        guard webView.window != nil, webView.bounds.width > 0 else { return nil }
+        let bounds = webView.bounds
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = min(webView.window?.screen.scale ?? 2, maxWidth / bounds.width * 2)
+        format.opaque = true
+        return UIGraphicsImageRenderer(bounds: bounds, format: format).image { _ in
+            webView.drawHierarchy(in: bounds, afterScreenUpdates: false)
+        }
+    }
+}
+
 #endif

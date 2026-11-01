@@ -3,8 +3,9 @@ import BrowserCore
 import Suggest
 
 /// Inner display: Arc-style collapsible sidebar + full-bleed web content.
-/// Sidebar toggle and the one-tap plus live in the Duo's system vertical bar (landscape), or at the
-/// leading edge of the top toolbar (portrait, where the system uses horizontal bars).
+/// The Duo's system vertical bar carries the same two groups as on the outer display (sidebar,
+/// back, forward and page menu up top; new tab and tabs at the bottom). Where the system uses a
+/// horizontal bar instead, the same items sit at the trailing end of the top toolbar.
 struct UnfoldedLayout: View {
     @Environment(BrowserState.self) private var browser
     @Environment(TabRailController.self) private var rail
@@ -68,30 +69,24 @@ struct UnfoldedLayout: View {
         browser.scheduleSave()
     }
 
+    /// Same vertical bar as the outer display, so the controls don't move when you fold:
+    /// sidebar, back, forward and the page menu at the top; new tab and tabs at the bottom.
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
+        ToolbarItem(placement: .topBarTrailing) {
             Button("Toggle Sidebar", systemImage: "sidebar.leading") { toggleSidebar() }
                 .sensoryFeedback(.selection, trigger: browser.currentSpace.isSidebarOpen)
         }
         .duoPinnedToVerticalBar()
-
-        ToolbarItem(placement: .topBarLeading) {
+        ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: false) }.duoPinnedToVerticalBar()
+        ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: true) }.duoPinnedToVerticalBar()
+        ToolbarItem(placement: .topBarTrailing) { PageMenu() }.duoPinnedToVerticalBar()
+        ToolbarSpacer(.flexible, placement: .topBarTrailing)
+        ToolbarItem(placement: .topBarTrailing) {
             Button("New Tab", systemImage: "plus") { browser.presentNewTab(from: NewTabSource.verticalBar.rawValue) }
                 .newTabZoomSource(.verticalBar)
         }
         .duoPinnedToVerticalBar()
-
-        ToolbarItemGroup(placement: .topBarTrailing) {
-            if let tab = browser.currentTab {
-                HistoryButton(forward: false)
-                HistoryButton(forward: true)
-                if let url = tab.url {
-                    FavoriteToggle(url: url, title: tab.displayTitle)
-                    ShareLink(item: url)
-                }
-            }
-            PageMenu()
-        }
+        ToolbarItem(placement: .topBarTrailing) { TabsButton() }.duoPinnedToVerticalBar()
     }
 }
 

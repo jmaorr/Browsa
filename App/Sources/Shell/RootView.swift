@@ -27,9 +27,6 @@ struct RootView: View {
                 // The sheet grows out of whichever plus button (or address pill) was tapped.
                 .navigationTransition(.zoom(sourceID: browser.newTabSourceID, in: newTabNS))
         }
-        .sheet(isPresented: $browser.isTabSwitcherPresented) {
-            TabSwitcherSheet()
-        }
         .sheet(isPresented: $browser.isSettingsPresented) {
             SettingsView()
         }
@@ -43,6 +40,8 @@ struct RootView: View {
         .sensoryFeedback(.success, trigger: browser.downloads.lastFinished)
         // Page dialogs, permission requests and logins, one at a time.
         .modifier(WebPromptAlert())
+        // Tab grid, both postures. Above the layout so the page can grow out of its card.
+        .overlay { TabGridOverlay() }
         .overlay { ToastOverlay() }
         // Tab icon strip, shared by both postures.
         .overlay(alignment: .leading) { TabRailView() }
