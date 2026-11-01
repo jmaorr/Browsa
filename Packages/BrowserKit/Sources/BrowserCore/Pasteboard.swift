@@ -2,7 +2,7 @@
 import UIKit
 
 extension BrowserState {
-    func copyToPasteboard(_ url: URL) {
+    public func copyToPasteboard(_ url: URL) {
         UIPasteboard.general.url = url
     }
 }

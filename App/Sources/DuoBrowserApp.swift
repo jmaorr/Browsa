@@ -59,7 +59,7 @@ struct DuoBrowserApp: App {
                     browser.toggleFavoriteForCurrentTab()
                 }
                 .keyboardShortcut("d", modifiers: .command)
-                Button("Copy Link") { if let u = browser.currentTab?.url { copyToPasteboard(u) } }
+                Button("Copy Link") { if let u = browser.currentTab?.url { browser.copyToPasteboard(u) } }
                     .keyboardShortcut("c", modifiers: [.command, .shift])
             }
             CommandMenu("Tabs") {
