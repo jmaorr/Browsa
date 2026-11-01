@@ -2,21 +2,39 @@ import SwiftUI
 import BrowserCore
 import Suggest
 
-/// Outer display: one-handed phone layout. System vertical bar off; our own Arc-style bottom bar
-/// with the address pill and a plus button on the right, in thumb reach.
+/// Outer display: one-handed phone layout.
+///
+/// - The Duo's system vertical bar (the gutter beside the outer screen) carries the page controls:
+///   tabs, back and forward (hold for history), copy link and the page menu.
+/// - An Arc-style bottom bar keeps just the address pill and the plus button, in thumb reach.
+///
+/// On a phone without the vertical bar the same items fall back to the top toolbar.
 struct FoldedLayout: View {
     @Environment(BrowserState.self) private var browser
     @Environment(TabRailController.self) private var rail
 
     var body: some View {
-        // The bar floats over the page (it doesn't resize it), so collapsing it never reflows the page.
-        WebContentView(bottomObscuredInset: 64)
-            .ignoresSafeArea(.container, edges: .bottom)
-            .overlay(alignment: .bottom) { BottomBar() }
-            // Leading-edge swipe scrubs through tabs (WebKit's swipe-back is turned off).
-            .overlay(alignment: .leading) { TabRailEdge().padding(.bottom, 96) }
-            .onAppear { rail.sidebarShowsTabs = false }
-            .duoDisableVerticalBar()
+        NavigationStack {
+            // The bar floats over the page (it doesn't resize it), so collapsing it never reflows the page.
+            WebContentView(bottomObscuredInset: 64)
+                .ignoresSafeArea(.container, edges: .bottom)
+                .overlay(alignment: .bottom) { BottomBar() }
+                // Leading-edge swipe scrubs through tabs (WebKit's swipe-back is turned off).
+                .overlay(alignment: .leading) { TabRailEdge().padding(.bottom, 96) }
+                .toolbar { gutter }
+                .toolbarTitleDisplayMode(.inline)
+                .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
+                .duoVerticalBarPrefersOurItems()
+        }
+        .onAppear { rail.sidebarShowsTabs = false }
+    }
+
+    @ToolbarContentBuilder private var gutter: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) { TabsButton() }.duoPinnedToVerticalBar()
+        ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: false) }.duoPinnedToVerticalBar()
+        ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: true) }.duoPinnedToVerticalBar()
+        ToolbarItem(placement: .topBarTrailing) { CopyLinkButton() }.duoPinnedToVerticalBar()
+        ToolbarItem(placement: .topBarTrailing) { PageMenu() }.duoPinnedToVerticalBar()
     }
 }
 
@@ -28,16 +46,10 @@ struct BottomBar: View {
     private var compact: Bool { browser.currentTab?.isChromeCompact ?? false }
     private static let sideControl = AnyTransition.scale(scale: 0.4).combined(with: .opacity)
 
+    @State private var copies = 0
+
     var body: some View {
         HStack(spacing: 10) {
-            if !compact, let tab = browser.currentTab {
-                Button("Back", systemImage: "chevron.backward") { browser.session(for: tab).webView.goBack() }
-                    .labelStyle(.iconOnly)
-                    .disabled(!tab.canGoBack)
-                    .frame(width: 44, height: 44)
-                    .transition(Self.sideControl)
-            }
-
             addressPill
 
             if !compact { plusButton.transition(Self.sideControl) }
@@ -47,6 +59,7 @@ struct BottomBar: View {
         .frame(maxWidth: .infinity)
         .animation(Motion.collapse, value: compact)
         .sensoryFeedback(.selection, trigger: browser.currentTab?.id)
+        .sensoryFeedback(.success, trigger: copies)
     }
 
     private var plusButton: some View {
@@ -99,6 +112,13 @@ struct BottomBar: View {
         .offset(x: dragX * 0.3)
         .contentShape(.capsule)
         .newTabZoomSource(.addressPill)
+        // Press and hold the pill to copy the address straight away.
+        .onLongPressGesture(minimumDuration: 0.45) {
+            guard let url = browser.currentTab?.url else { return }
+            browser.copyToPasteboard(url)
+            browser.showToast("Link copied")
+            copies += 1
+        }
         .onTapGesture {
             if compact, let tab = browser.currentTab {
                 withAnimation(Motion.collapse) { browser.session(for: tab).expandChrome() }
@@ -127,6 +147,9 @@ struct BottomBar: View {
         .accessibilityAction(named: "Previous Tab") { switchTab(by: -1) }
         .accessibilityAction(named: "Show All Tabs") { browser.isTabSwitcherPresented = true }
         .accessibilityAction(named: "New Tab") { browser.presentNewTab() }
+        .accessibilityAction(named: "Copy Link") {
+            if let url = browser.currentTab?.url { browser.copyToPasteboard(url); browser.showToast("Link copied") }
+        }
     }
 
     private func switchTab(by delta: Int) {

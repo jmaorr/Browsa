@@ -83,15 +83,14 @@ struct UnfoldedLayout: View {
 
         ToolbarItemGroup(placement: .topBarTrailing) {
             if let tab = browser.currentTab {
-                Button("Back", systemImage: "chevron.backward") { browser.session(for: tab).webView.goBack() }
-                    .disabled(!tab.canGoBack)
-                Button("Forward", systemImage: "chevron.forward") { browser.session(for: tab).webView.goForward() }
-                    .disabled(!tab.canGoForward)
+                HistoryButton(forward: false)
+                HistoryButton(forward: true)
                 if let url = tab.url {
                     FavoriteToggle(url: url, title: tab.displayTitle)
                     ShareLink(item: url)
                 }
             }
+            PageMenu()
         }
     }
 }
