@@ -3,7 +3,8 @@ import UniformTypeIdentifiers
 import BrowserCore
 import Suggest
 
-/// Safari-style tab overview, used in both postures.
+/// Safari-style tab overview, for when there's no room for the sidebar (the outer display).
+/// Unfolded, the sidebar is the tab list and the same vertical-bar slot toggles it instead.
 ///
 /// - Opening it shrinks the current page into its card; picking a card grows that page back to
 ///   full screen. Both are one `matchedGeometryEffect` between a full-screen "hero" picture and
@@ -38,6 +39,8 @@ struct TabGridOverlay: View {
             }
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+        // Unfolding with the grid up: the sidebar takes over, so just get out of the way.
+        .onChange(of: browser.isUnfolded) { _, unfolded in if unfolded && shown { finish() } }
         .onChange(of: browser.isTabSwitcherPresented) { _, wanted in
             if wanted { open() } else if shown { close(into: browser.currentTab) }
         }
@@ -46,7 +49,8 @@ struct TabGridOverlay: View {
     // MARK: Open and close
 
     private func open() {
-        guard !shown else { return }
+        // Unfolded, the request goes to the sidebar instead (UnfoldedLayout handles it).
+        guard !shown, !browser.isUnfolded else { return }
         if let tab = browser.currentTab { browser.captureThumbnail(of: tab) }
         heroID = browser.currentTab?.id
         var t = Transaction(); t.disablesAnimations = true
