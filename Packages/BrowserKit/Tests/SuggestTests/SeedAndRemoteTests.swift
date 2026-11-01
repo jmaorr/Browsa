@@ -39,6 +39,17 @@ import Testing
         #expect(r.defaultAction == .open(URL(string: "https://youtube.com")!))
     }
 
+    @Test func aliasTopRowSuppressesInlineCompletionFromLowerRows() async {
+        let index = InMemoryHistoryIndex([])
+        let list = [SeedSite(d: "github.com", n: "GitHub", w: 1.0, a: ["gh"]), SeedSite(d: "ghanaweb.com", w: 0.5)]
+        let e = SuggestEngine(localProviders: [SeedProvider(sites: list, region: nil)], remote: nil, history: index,
+                              favorites: { [] }, openTabs: { [] })
+        let r = await e.localResults(for: "gh", lastEditWasInsertion: true)
+        #expect(r.local.first?.subtitle == "github.com")
+        #expect(r.inline == nil)
+        #expect(r.defaultAction == .open(URL(string: "https://github.com")!))
+    }
+
     @Test func bundledListIsLargeCleanAndStartsWithTheBigNames() async throws {
         let url = try #require(Bundle.module.url(forResource: "seed-sites", withExtension: "json"))
         let list = try JSONDecoder().decode([SeedSite].self, from: Data(contentsOf: url))

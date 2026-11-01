@@ -25,17 +25,16 @@ public enum InlineAutocomplete {
         let needle = Matcher.stripForMatching(typed)
         guard !needle.isEmpty else { return nil }
 
-        for s in top.prefix(3) {
-            guard s.kind != .searchSuggestion, s.kind != .searchQuery, let url = s.url else { continue }
-            // Only complete host + first path segment, never a full URL with a query.
-            let key = URLNormalizer.key(for: url)
-            let candidates = completionTargets(for: key)
-            for target in candidates where target.hasPrefix(needle.lowercased()) && target.count > needle.count {
-                let tail = String(target.dropFirst(needle.count))
-                let dest = URL(string: "https://" + target) ?? url
-                // `typed` keeps the user's own casing and any scheme/www they typed.
-                return InlineCompletion(typed: typed, completion: tail, url: dest)
-            }
+        // Only the top row may complete (as in Safari): completing from a lower row would make the
+        // field disagree with the first suggestion, e.g. "gh" showing GitHub but filling ghanaweb.com.
+        guard let s = top.first, s.kind != .searchSuggestion, s.kind != .searchQuery, let url = s.url else { return nil }
+        // Only complete host + first path segment, never a full URL with a query.
+        let key = URLNormalizer.key(for: url)
+        for target in completionTargets(for: key) where target.hasPrefix(needle.lowercased()) && target.count > needle.count {
+            let tail = String(target.dropFirst(needle.count))
+            let dest = URL(string: "https://" + target) ?? url
+            // `typed` keeps the user's own casing and any scheme/www they typed.
+            return InlineCompletion(typed: typed, completion: tail, url: dest)
         }
         return nil
     }
