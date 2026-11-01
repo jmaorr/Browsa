@@ -40,13 +40,40 @@ Packages/BrowserKit/
   Sources/Suggest/         pure Swift: providers, ranking, frecency, inline completion, seed list
   Sources/BrowserCore/     WKWebView sessions + pool, tabs/spaces model, history store, persistence
   Tests/SuggestTests/      Swift Testing suite for the suggest engine
-tools/build_seed.py        expands the seed list to the Tranco top N domains
+tools/build_seed.py        rebuilds the seed list from Chrome UX Report top lists (see below)
+tools/seed_curated.json    brand names, typed aliases (yt, gh, gmail), allow and deny lists
 ```
+
+## Suggestions
+
+Local rows come first and never move once shown: favourites, open tabs, history (frecency), the
+command bar, archived tabs, and a bundled list of about 7,300 popular sites. Remote rows arrive once,
+below them.
+
+- **Seed list.** `tools/build_seed.py` ranks sites by real Chrome page loads across about 50
+  countries (CrUX top lists, cached at github.com/zakird/crux-top-lists), drops adult, gambling,
+  piracy and spam domains, and tags regional favourites, so someone in Australia typing "ama" gets
+  amazon.com.au. Rerun it monthly: `python3 tools/build_seed.py --month 202610`.
+- **Aliases.** An exact alias such as `yt`, `gh` or `gmail` puts the site on top, and Return opens it.
+- **Blended remote suggestions.** The chosen engine, plus DuckDuckGo when the engine is Google, plus
+  Wikipedia in the device language, all asked in parallel with a 900 ms deadline. Rows that several
+  services agree on rank higher. Google site links show as a site row. Answers are cached for 10 minutes.
+  Picking DuckDuckGo or Brave never sends keystrokes to Google.
+- **Inline completion** only comes from the top row, and never after Backspace.
+
+## Keyboard
+
+Hardware shortcuts (hold ⌘ to see them): ⌘T new tab, ⌘K command bar, ⌘L address, ⌘W close,
+⇧⌘T reopen closed tab, ⌘[ and ⌘] back and forward, ⌘R reload, ⌘F find, ⌘D favourite,
+⌘1 to ⌘9 pick a tab, ⌃⇥ and ⌃⇧⇥ next and previous tab, ⌘S sidebar, ⌥⌘J downloads, ⌘, settings.
+In the new-tab sheet, ↑ and ↓ move through rows, Return opens, Tab accepts the completion, and Esc
+leaves the list and then closes the sheet.
 
 ## Not built yet
 
-- Making the bottom bar shrink to a URL pill on scroll (needs a scroll-view delegate on the web view)
-- Swiping in from the sidebar edge to peek at it, and resizing the sidebar by dragging
-- Command bar, the archive browser UI, and the content blocker (`WKContentRuleListStore`)
+- Resizing the sidebar by dragging its edge
+- Reader mode (WebKit has no public API for it, so it needs a Readability.js port)
+- Drag and drop of links and favourites between the sidebar and other apps
+- A downloads button in the chrome (downloads live in the command bar, ⌥⌘J and the Files app for now)
 - CloudKit sync and a separate login profile for each space
 - Storing history in SQLite with full-text search (GRDB + FTS5) instead of JSON, once history gets big
