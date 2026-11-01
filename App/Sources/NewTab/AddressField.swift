@@ -41,11 +41,10 @@ struct AddressField: UIViewRepresentable {
         f.delegate = context.coordinator
         f.addTarget(context.coordinator, action: #selector(Coordinator.editingChanged(_:)), for: .editingChanged)
         f.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        // Raise the keyboard as soon as the sheet appears.
-        DispatchQueue.main.async {
-            f.becomeFirstResponder()
-            if !initialText.isEmpty { f.selectAll(nil) }
-        }
+        // Raise the keyboard the moment the field is in a window, which is the start of the
+        // sheet's presentation. UIKit then runs the keyboard animation alongside the zoom, so
+        // the two arrive together (as in Safari), instead of the keyboard following it.
+        f.focusOnFirstWindow = true
         return f
     }
 
@@ -112,6 +111,17 @@ struct AddressField: UIViewRepresentable {
 /// A text field that claims Up, Down, Tab and Esc from a hardware keyboard before UIKit's defaults
 /// (which would jump the caret to the ends of the line, or move focus).
 final class KeyCommandField: UITextField {
+    /// One-shot: take focus (and select any existing text) as soon as we join a window.
+    var focusOnFirstWindow = false
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard focusOnFirstWindow, window != nil else { return }
+        focusOnFirstWindow = false
+        becomeFirstResponder()
+        if !(text ?? "").isEmpty { selectAll(nil) }
+    }
+
     var onArrow: (Int) -> Void = { _ in }
     var onEscape: () -> Void = {}
     var onTab: () -> Void = {}

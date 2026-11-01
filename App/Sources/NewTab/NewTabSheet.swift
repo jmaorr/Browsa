@@ -10,10 +10,16 @@ struct NewTabSheet: View {
     @State private var editingFavorite: Favorite?
     @State private var renameText = ""
     private let initialText: String
+    /// When editing the current page: the URL whose short host label (as shown in the pill)
+    /// slides over into the field and becomes the full, selected address.
+    private let morphFrom: URL?
+    @State private var morphed = false
 
-    init(engine: SuggestEngine, initialText: String) {
+    init(engine: SuggestEngine, initialText: String, morphFrom: URL? = nil) {
         _model = State(initialValue: NewTabModel(engine: engine))
         self.initialText = initialText
+        self.morphFrom = morphFrom
+        _morphed = State(initialValue: morphFrom == nil)
     }
 
     var body: some View {
@@ -50,6 +56,12 @@ struct NewTabSheet: View {
             }
         }
         .task { await model.loadZeroState() }
+        .task {
+            guard !morphed else { return }
+            // Let the zoom get underway first, so the slide reads as part of it.
+            if !Motion.reduced { try? await Task.sleep(for: .milliseconds(160)) }
+            withAnimation(Motion.spring) { morphed = true }
+        }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .alert("Rename favourite", isPresented: .init(get: { editingFavorite != nil },
@@ -63,6 +75,8 @@ struct NewTabSheet: View {
     private var header: some View {
         HStack(spacing: 12) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                .opacity(morphed ? 1 : 0)
+                .scaleEffect(morphed || Motion.reduced ? 1 : 0.6)
             AddressField(initialText: initialText, inline: model.inline,
                          placeholder: "Search, address or command",
                          onTextChange: { model.textChanged($0, lastEditWasInsertion: $1) },
@@ -76,6 +90,22 @@ struct NewTabSheet: View {
                              else { browser.isNewTabSheetPresented = false }
                          })
                 .frame(height: 44)
+                // The field fades in under the host label as it slides left.
+                .opacity(morphed ? 1 : 0)
+                .overlay {
+                    if let url = morphFrom {
+                        HStack(spacing: 8) {
+                            FaviconView(url: url, size: 18)
+                            Text(URLNormalizer.displayHost(url)).font(.callout).lineLimit(1)
+                        }
+                        // Starts centred like the pill it zoomed out of, then glides to the
+                        // field's leading edge while the full URL takes its place.
+                        .frame(maxWidth: .infinity, alignment: morphed ? .leading : .center)
+                        .opacity(morphed ? 0 : 1)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                    }
+                }
             Button("Cancel") { browser.isNewTabSheetPresented = false }
                 .fontWeight(.medium)
         }
@@ -97,6 +127,8 @@ struct FavoritesGrid: View {
     var onRemove: (Favorite) -> Void
 
     private let columns = [GridItem(.adaptive(minimum: 64, maximum: 88), spacing: 12)]
+    /// Tiles pop in one after another the first time the sheet opens.
+    @State private var appeared = false
 
     var body: some View {
         if favorites.isEmpty {
@@ -110,10 +142,17 @@ struct FavoritesGrid: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Favourites").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
                 LazyVGrid(columns: columns, spacing: 16) {
-                    ForEach(favorites.prefix(12)) { tile($0, size: 52) }
+                    ForEach(Array(favorites.prefix(12).enumerated()), id: \.element.id) { i, fav in
+                        tile(fav, size: 52)
+                            .scaleEffect(appeared || Motion.reduced ? 1 : 0.82)
+                            .opacity(appeared ? 1 : 0)
+                            // ~25 ms apart: reads as a ripple, done before the keyboard lands.
+                            .animation(Motion.bouncy.delay(Double(i) * 0.025), value: appeared)
+                    }
                 }
             }
             .transition(.opacity)
+            .onAppear { appeared = true }
         }
     }
 
