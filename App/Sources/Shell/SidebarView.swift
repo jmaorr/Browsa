@@ -87,6 +87,9 @@ struct SidebarView: View {
                 .accessibilityLabel(s.name)
             }
             Spacer()
+            Button("Settings", systemImage: "gearshape") { browser.isSettingsPresented = true }
+                .labelStyle(.iconOnly)
+                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 6)
     }

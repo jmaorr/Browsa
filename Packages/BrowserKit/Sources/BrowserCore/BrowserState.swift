@@ -18,10 +18,20 @@ public final class BrowserState {
     /// When the sheet is opened from the address pill to edit the current URL rather than for a new tab.
     public var newTabSheetEditsCurrentTab = false
     public var isTabSwitcherPresented = false
+    public var isSettingsPresented = false
+    public var isCommandBarPresented = false
 
-    public private(set) var searchEngine: SearchEngine = .google
-    /// Today tabs untouched for this long are moved to the archive.
-    public var archiveAfter: TimeInterval = 12 * 3600
+    public var settings = BrowserSettings() {
+        didSet {
+            guard settings != oldValue else { return }
+            if settings.searchEngine != oldValue.searchEngine || settings.remoteSuggestions != oldValue.remoteSuggestions {
+                suggest = makeSuggestEngine()
+            }
+            if settings.blockContent != oldValue.blockContent { applyContentBlocking() }
+            scheduleSave()
+        }
+    }
+    public var searchEngine: SearchEngine { settings.searchEngine }
 
     public let history: HistoryStore
     @ObservationIgnored let pool = WebViewPool()
@@ -39,6 +49,7 @@ public final class BrowserState {
             selectedSpaceID = snap.selectedSpaceID ?? snap.spaces[0].id
             favorites = snap.favorites
             archive = snap.archive.map(Tab.init)
+            if let s = snap.settings { settings = s }
         } else {
             let personal = Space(name: "Personal", symbol: "house.fill", colorIndex: 0)
             spaces = [personal, Space(name: "Work", symbol: "briefcase.fill", colorIndex: 1)]
@@ -46,12 +57,9 @@ public final class BrowserState {
             favorites = []
         }
         suggest = makeSuggestEngine()
+        applyContentBlocking()
     }
 
-    public func setSearchEngine(_ engine: SearchEngine) {
-        searchEngine = engine
-        suggest = makeSuggestEngine()
-    }
 
     public static func defaultSnapshotURL() -> URL {
         URL.applicationSupportDirectory.appending(path: "Browser/state.json")
@@ -175,13 +183,53 @@ public final class BrowserState {
     /// Call on launch and when returning to the foreground.
     public func archiveStaleTabs(now: Date = .now) {
         for space in spaces {
-            let stale = space.today.filter { $0.id != space.selectedTabID && now.timeIntervalSince($0.lastActive) > archiveAfter }
+            let stale = space.today.filter { $0.id != space.selectedTabID && now.timeIntervalSince($0.lastActive) > settings.archiveAfterHours * 3600 }
             guard !stale.isEmpty else { continue }
             space.today.removeAll { t in stale.contains { $0.id == t.id } }
             stale.forEach { pool.existingSession(for: $0.id)?.freeze(); pool.remove($0.id) }
             archive.insert(contentsOf: stale.filter { !$0.isPrivate }, at: 0)
         }
         archive = Array(archive.prefix(500))
+        scheduleSave()
+    }
+
+    // MARK: Spaces
+
+    public func addSpace() {
+        let used = Set(spaces.map(\.colorIndex))
+        let color = (0..<6).first { !used.contains($0) } ?? spaces.count
+        let space = Space(name: "Space \(spaces.count + 1)", symbol: "circle.fill", colorIndex: color)
+        spaces.append(space)
+        scheduleSave()
+    }
+
+    public func deleteSpace(_ space: Space) {
+        guard spaces.count > 1, let i = spaces.firstIndex(where: { $0.id == space.id }) else { return }
+        space.allTabs.forEach { pool.remove($0.id) }
+        spaces.remove(at: i)
+        if selectedSpaceID == space.id { selectedSpaceID = spaces[0].id }
+        if settings.externalLinksSpaceID == space.id { settings.externalLinksSpaceID = nil }
+        scheduleSave()
+    }
+
+    /// A link opened from another app (once this is the default browser).
+    public func openExternal(_ url: URL) {
+        let target = spaces.first { $0.id == settings.externalLinksSpaceID } ?? currentSpace
+        isNewTabSheetPresented = false
+        newTab(url: url, in: target, source: .link)
+    }
+
+    // MARK: Archive
+
+    public func restoreFromArchive(_ tab: Tab) {
+        archive.removeAll { $0.id == tab.id }
+        tab.lastActive = .now
+        currentSpace.today.insert(tab, at: 0)
+        select(tab)
+    }
+
+    public func clearArchive() {
+        archive.removeAll()
         scheduleSave()
     }
 
@@ -237,7 +285,8 @@ public final class BrowserState {
                         .map { OpenTabSnapshot(id: $0.id, url: $0.url!, title: $0.title) }
                 }
             },
-            searchEngine: searchEngine)
+            searchEngine: settings.searchEngine,
+            remoteSuggestionsEnabled: settings.remoteSuggestions)
     }
 
     // MARK: Persistence
@@ -256,7 +305,7 @@ public final class BrowserState {
         guard let snapshotURL else { return }
         pool.freezeAll()
         let snap = BrowserSnapshot(spaces: spaces.map(\.record), selectedSpaceID: selectedSpaceID,
-                                   favorites: favorites, archive: archive.map(\.record))
+                                   favorites: favorites, archive: archive.map(\.record), settings: settings)
         guard let data = try? JSONEncoder().encode(snap) else { return }
         try? FileManager.default.createDirectory(at: snapshotURL.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)

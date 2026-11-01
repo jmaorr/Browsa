@@ -17,6 +17,10 @@ let package = Package(
         .testTarget(name: "SuggestTests", dependencies: ["Suggest"]),
 
         // WebKit + models. Depends on Suggest for the history/favourites stores it feeds.
-        .target(name: "BrowserCore", dependencies: ["Suggest"]),
+        .target(
+            name: "BrowserCore",
+            dependencies: ["Suggest"],
+            resources: [.copy("Resources/blocklist.json")]
+        ),
     ]
 )

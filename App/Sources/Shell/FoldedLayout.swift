@@ -131,6 +131,12 @@ struct TabSwitcherSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { browser.isTabSwitcherPresented = false }
                 }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Settings", systemImage: "gearshape") {
+                        browser.isTabSwitcherPresented = false
+                        browser.isSettingsPresented = true
+                    }
+                }
                 ToolbarItem(placement: .bottomBar) {
                     Button("New Tab", systemImage: "plus") {
                         browser.isTabSwitcherPresented = false

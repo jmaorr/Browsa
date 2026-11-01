@@ -69,6 +69,22 @@ public final class Space: Identifiable {
     }
 }
 
+// MARK: - Settings
+
+public struct BrowserSettings: Codable, Equatable, Sendable {
+    public var searchEngine: SearchEngine = .google
+    /// Send typed text to the search engine for suggestions. Off = local suggestions only.
+    public var remoteSuggestions = true
+    /// Today tabs untouched for this many hours move to the archive.
+    public var archiveAfterHours: Double = 12
+    /// Block ads and trackers with the built-in content rule list.
+    public var blockContent = true
+    /// Where links from other apps open.
+    public var externalLinksSpaceID: UUID?
+
+    public init() {}
+}
+
 // MARK: - Codable snapshot for persistence
 
 struct TabRecord: Codable {
@@ -85,6 +101,7 @@ struct BrowserSnapshot: Codable {
     var selectedSpaceID: UUID?
     var favorites: [Favorite]
     var archive: [TabRecord]
+    var settings: BrowserSettings?
 }
 
 extension Tab {

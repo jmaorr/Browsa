@@ -21,6 +21,9 @@ struct RootView: View {
         .sheet(isPresented: $browser.isTabSwitcherPresented) {
             TabSwitcherSheet()
         }
+        .sheet(isPresented: $browser.isSettingsPresented) {
+            SettingsView()
+        }
         .tint(SpacePalette.color(browser.currentSpace.colorIndex))
     }
 }

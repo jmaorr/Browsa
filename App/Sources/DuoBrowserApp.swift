@@ -12,7 +12,7 @@ struct DuoBrowserApp: App {
                 .environment(browser)
                 .onAppear { browser.archiveStaleTabs() }
                 // Links opened from other apps once this is the default browser.
-                .onOpenURL { url in browser.newTab(url: url, source: .link) }
+                .onOpenURL { url in browser.openExternal(url) }
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
