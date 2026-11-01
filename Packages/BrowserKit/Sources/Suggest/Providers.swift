@@ -84,43 +84,120 @@ public struct HistoryProvider: SuggestionProvider {
 // MARK: - Bundled seed sites
 
 public struct SeedSite: Codable, Hashable, Sendable {
-    /// Domain, e.g. "github.com"
+    /// Domain, e.g. "github.com" or "docs.google.com"
     public let d: String
-    /// Display name, e.g. "GitHub"
-    public let n: String
-    /// Popularity 0...1 (1 = most popular)
+    /// Curated display name. When absent, `displayName` derives one from the domain.
+    public let n: String?
+    /// Popularity 0...1 (1 = most popular), from Chrome UX Report data across ~50 countries.
     public let w: Double
+    /// Regions (ISO 3166 alpha-2, lowercase) where this is a local favourite.
+    public let r: [String]?
+    /// Typed shortcuts that should go straight to this site ("yt", "gh").
+    public let a: [String]?
+
+    public init(d: String, n: String? = nil, w: Double, r: [String]? = nil, a: [String]? = nil) {
+        self.d = d; self.n = n; self.w = w; self.r = r; self.a = a
+    }
+
+    /// "github.com" -> "Github", "bbc.co.uk" -> "BBC", "docs.google.com" -> "Docs Google".
+    public var displayName: String {
+        if let n { return n }
+        let labels = d.split(separator: ".")
+        let first = String(labels.first ?? "")
+        func pretty(_ l: String) -> String {
+            l.count <= 3 ? l.uppercased()
+                : l.split(separator: "-").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+        }
+        return pretty(first)
+    }
 }
 
+/// The bundled first-run list: ~7,000 sites people actually visit, so "ne" completes to
+/// netflix.com before there is any history. Matching is prefix-only (domain, alias or a word of
+/// the name) through a first-character index, so a keystroke touches a few hundred entries.
 public struct SeedProvider: SuggestionProvider {
-    let sites: [SeedSite]
+    struct Entry: Sendable {
+        let site: SeedSite
+        let url: URL
+        let nameWords: [String]
+        /// Popularity with the regional boost already applied.
+        let weight: Double
+    }
 
-    public init(sites: [SeedSite]) { self.sites = sites }
+    let entries: [Entry]
+    /// First character of domain / alias / name word -> entry indices (deduplicated, in popularity order).
+    let index: [Character: [Int]]
+
+    /// Sites tagged with the user's region get this much extra popularity, so an Australian
+    /// typing "ama" lands on amazon.com.au, not amazon.com.
+    static let regionalBoost = 0.3
+
+    public init(sites: [SeedSite], region: String? = Locale.current.region?.identifier.lowercased()) {
+        var entries: [Entry] = []
+        entries.reserveCapacity(sites.count)
+        for site in sites {
+            guard let url = URL(string: "https://" + site.d) else { continue }
+            let words = site.displayName.lowercased()
+                .split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+            let local = region.map { site.r?.contains($0) ?? false } ?? false
+            entries.append(Entry(site: site, url: url, nameWords: words,
+                                 weight: site.w + (local ? Self.regionalBoost : 0)))
+        }
+        entries.sort { $0.weight > $1.weight }
+        var index: [Character: [Int]] = [:]
+        for (i, e) in entries.enumerated() {
+            var keys = Set<Character>()
+            if let c = e.site.d.first { keys.insert(c) }
+            for a in e.site.a ?? [] { if let c = a.first { keys.insert(c) } }
+            for w in e.nameWords { if let c = w.first { keys.insert(c) } }
+            for k in keys { index[k, default: []].append(i) }
+        }
+        self.entries = entries
+        self.index = index
+    }
 
     /// Loads the seed list bundled with this package.
-    public static func bundled() -> SeedProvider {
+    public static func bundled(region: String? = Locale.current.region?.identifier.lowercased()) -> SeedProvider {
         guard let url = Bundle.module.url(forResource: "seed-sites", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let sites = try? JSONDecoder().decode([SeedSite].self, from: data)
         else { return SeedProvider(sites: []) }
-        return SeedProvider(sites: sites)
+        return SeedProvider(sites: sites, region: region)
+    }
+
+    /// An exact alias ("yt") names a site outright, so Return should open it.
+    public func aliasMatch(for query: String) -> Suggestion? {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard let c = q.first, !q.contains(" ") else { return nil }
+        for i in index[c] ?? [] where entries[i].site.a?.contains(q) == true {
+            let e = entries[i]
+            return Suggestion(kind: .seed, title: e.site.displayName, subtitle: e.site.d, action: .open(e.url),
+                              score: MatchQuality.hostPrefix.rawValue * 1.25 * Ranker.seedFactor(e.weight))
+        }
+        return nil
     }
 
     public func suggestions(for query: String, limit: Int) async -> [Suggestion] {
         let q = Matcher.stripForMatching(query.trimmingCharacters(in: .whitespaces))
-        guard !q.isEmpty else { return [] }
-        // Seeds only ever match on domain prefix or name prefix: they exist to make
-        // "git" -> github.com work on day one, not to do fuzzy search.
+        guard let c = q.first else { return [] }
+        let tokens = q.split(separator: " ").map(String.init)
         var out: [Suggestion] = []
-        for site in sites {
-            let nameMatch = site.n.lowercased().hasPrefix(q)
-            guard site.d.hasPrefix(q) || nameMatch,
-                  let url = URL(string: "https://" + site.d) else { continue }
-            let quality: MatchQuality = site.d.hasPrefix(q) ? .hostPrefix : .wordPrefix
-            out.append(Suggestion(kind: .seed, title: site.n, subtitle: site.d,
-                                  action: .open(url),
-                                  score: quality.rawValue * Ranker.seedFactor(site.w)))
-            if out.count >= limit * 3 { break }
+        // Candidates are in popularity order, so we can stop once we have plenty of strong hits.
+        for i in index[c] ?? [] {
+            let e = entries[i]
+            let quality: Double
+            if e.site.d.hasPrefix(q) {
+                quality = MatchQuality.hostPrefix.rawValue
+            } else if e.site.a?.contains(q) == true {
+                quality = MatchQuality.hostPrefix.rawValue * 1.25
+            } else if tokens.allSatisfy({ t in e.nameWords.contains { $0.hasPrefix(t) } }) {
+                quality = MatchQuality.wordPrefix.rawValue
+            } else {
+                continue
+            }
+            out.append(Suggestion(kind: .seed, title: e.site.displayName, subtitle: e.site.d,
+                                  action: .open(e.url), score: quality * Ranker.seedFactor(e.weight)))
+            if out.count >= limit * 4 { break }
         }
         return out.sorted { $0.score > $1.score }.prefix(limit).map { $0 }
     }

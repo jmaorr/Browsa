@@ -10,7 +10,7 @@ public enum Ranker {
     /// Seeds are capped below a site with ~2 typed visits (factor ≈ 2.6), so real history
     /// overtakes the bundled list quickly.
     public static func seedFactor(_ popularity: Double) -> Double {
-        1.0 + min(max(popularity, 0), 1) * 1.2
+        1.0 + min(max(popularity, 0), 1.3) * 1.2
     }
 
     static func kindBoost(_ kind: SuggestionKind) -> Double {
@@ -25,6 +25,7 @@ public enum Ranker {
         case .searchQuery, .searchSuggestion: 1.0
         case .command: 1.1
         case .archived: 0.8
+        case .remoteSite, .entity: 1.0
         }
     }
 

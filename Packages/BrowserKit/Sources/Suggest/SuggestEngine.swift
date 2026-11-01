@@ -21,6 +21,9 @@ public struct SuggestResults: Sendable, Equatable {
     public var inline: InlineCompletion?
     /// False while a remote request is still in flight.
     public var isComplete: Bool
+    /// What Return opens when the user hasn't picked a row and there's no inline completion:
+    /// an exact alias ("yt" -> youtube.com). nil means "search for the text" (or open it if it's a URL).
+    public var defaultAction: SuggestionAction? = nil
 
     public var all: [Suggestion] { local + (primary.map { [$0] } ?? []) + remote }
 }
@@ -28,7 +31,7 @@ public struct SuggestResults: Sendable, Equatable {
 public final class SuggestEngine: Sendable {
     public struct Config: Sendable {
         public var localLimit = 5
-        public var remoteLimit = 4
+        public var remoteLimit = 5
         public var topSitesLimit = 8
         public var recentTabsLimit = 4
         /// Wait this long after a keystroke before hitting the network.
@@ -37,6 +40,7 @@ public final class SuggestEngine: Sendable {
     }
 
     let local: [any SuggestionProvider]
+    let seeds: SeedProvider?
     let remote: (any SuggestionProvider)?
     let history: any HistoryIndex
     let favorites: @Sendable () async -> [Favorite]
@@ -50,6 +54,7 @@ public final class SuggestEngine: Sendable {
                 seeds: SeedProvider = .bundled(),
                 searchEngine: SearchEngine = .google,
                 remoteSuggestionsEnabled: Bool = true,
+                remoteSources: [RemoteSource]? = nil,
                 extraProviders: [any SuggestionProvider] = [],
                 config: Config = Config()) {
         self.history = history
@@ -63,7 +68,20 @@ public final class SuggestEngine: Sendable {
             HistoryProvider(index: history),
             seeds,
         ] + extraProviders
-        self.remote = remoteSuggestionsEnabled ? SearchSuggestProvider(engine: searchEngine) : nil
+        self.seeds = seeds
+        let sources = remoteSources ?? Self.defaultSources(for: searchEngine)
+        self.remote = remoteSuggestionsEnabled && !sources.isEmpty ? RemoteSuggestAggregator(sources: sources) : nil
+    }
+
+    /// The chosen engine first, blended with DuckDuckGo when the engine is Google (a second
+    /// opinion that improves ordering and covers Google rate-limiting), plus Wikipedia in the
+    /// user's language. Choosing DuckDuckGo or Brave never sends keystrokes to Google.
+    public static func defaultSources(for engine: SearchEngine,
+                                      language: String = Locale.current.language.languageCode?.identifier ?? "en") -> [RemoteSource] {
+        var out: [RemoteSource] = [.engine(engine)]
+        if engine == .google { out.append(.engine(.duckDuckGo)) }
+        out.append(.wikipedia(language: language))
+        return out
     }
 
     /// Test/advanced initialiser with explicit providers.
@@ -73,6 +91,7 @@ public final class SuggestEngine: Sendable {
                 openTabs: @escaping @Sendable () async -> [OpenTabSnapshot],
                 searchEngine: SearchEngine = .google, config: Config = Config()) {
         self.local = localProviders
+        self.seeds = localProviders.lazy.compactMap { $0 as? SeedProvider }.first
         self.remote = remote
         self.history = history
         self.favorites = favorites
@@ -113,8 +132,17 @@ public final class SuggestEngine: Sendable {
             for await batch in group { all += batch }
             return all
         }
-        let ranked = Ranker.rankLocal(gathered, limit: config.localLimit)
-        return SuggestResults(
+        var ranked = Ranker.rankLocal(gathered, limit: config.localLimit)
+        // An exact alias ("gh") goes to the top unless a favourite or the user's own history
+        // already put something stronger there.
+        let alias = seeds?.aliasMatch(for: trimmed)
+        if let alias, !ranked.contains(where: { $0.dedupeKey == alias.dedupeKey && $0.score >= alias.score }) {
+            ranked.removeAll { $0.dedupeKey == alias.dedupeKey }
+            let firstIsStronger = ranked.first.map { $0.kind == .favorite || $0.score > alias.score } ?? false
+            ranked.insert(alias, at: firstIsStronger ? 1 : 0)
+            ranked = Array(ranked.prefix(config.localLimit))
+        }
+        var results = SuggestResults(
             query: query,
             local: ranked,
             primary: primaryRow(for: trimmed),
@@ -122,6 +150,8 @@ public final class SuggestEngine: Sendable {
             inline: InlineAutocomplete.completion(for: query, lastEditWasInsertion: lastEditWasInsertion, top: ranked),
             isComplete: remote == nil || trimmed.isEmpty
         )
+        if let alias, ranked.first?.dedupeKey == alias.dedupeKey { results.defaultAction = alias.action }
+        return results
     }
 
     /// Streams local results immediately, then the same list with remote rows appended.

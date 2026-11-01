@@ -80,6 +80,8 @@ final class NewTabModel {
     func submitAction(fieldText: String) -> SuggestionAction? {
         if let s = highlightedSuggestion { return s.action }
         if let inline, inline.fullText == fieldText { return .open(inline.url) }
+        // "yt" + Return goes to YouTube, like a keyword in Chrome.
+        if let d = results?.defaultAction, fieldText == typed { return d }
         let t = fieldText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return nil }
         if let url = URLNormalizer.urlIfNavigable(t) { return .open(url) }

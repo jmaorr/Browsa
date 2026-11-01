@@ -12,6 +12,10 @@ public enum SuggestionAction: Hashable, Sendable {
 
 public enum SuggestionKind: String, Hashable, Sendable, Comparable {
     case favorite, openTab, history, bookmark, seed, searchSuggestion, searchQuery, command, archived
+    /// A site the search engine itself suggests for the query (Google "navigation" results).
+    case remoteSite
+    /// A Wikipedia article whose title matches what was typed.
+    case entity
 
     /// Display grouping order when scores tie.
     var order: Int {
@@ -25,6 +29,8 @@ public enum SuggestionKind: String, Hashable, Sendable, Comparable {
         case .searchSuggestion: 6
         case .command: 7
         case .archived: 8
+        case .remoteSite: 9
+        case .entity: 10
         }
     }
 

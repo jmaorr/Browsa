@@ -29,9 +29,10 @@ public enum SearchEngine: Hashable, Sendable, Codable {
         var c: URLComponents
         switch self {
         case .google:
-            // Unofficial endpoint used by most third-party browsers. Returns ["q", ["s1", "s2", ...]].
+            // Unofficial endpoint used by most third-party browsers. The "chrome" client adds
+            // suggestion types (QUERY / NAVIGATION) and relevance scores to ["q", [s...]].
             c = URLComponents(string: "https://suggestqueries.google.com/complete/search")!
-            c.queryItems = [.init(name: "client", value: "firefox"), .init(name: "q", value: query)]
+            c.queryItems = [.init(name: "client", value: "chrome"), .init(name: "q", value: query)]
         case .duckDuckGo:
             // Unofficial. With type=list returns ["q", ["s1", ...]].
             c = URLComponents(string: "https://duckduckgo.com/ac/")!
@@ -50,7 +51,36 @@ public enum SearchEngine: Hashable, Sendable, Codable {
 
     /// Parses a suggest response body into plain query strings.
     public func parseSuggestions(_ data: Data) -> [String] {
+        parseHits(data).filter { $0.url == nil }.map(\.text)
+    }
+
+    /// Parses a suggest response into queries and, where the engine offers them, site links.
+    public func parseHits(_ data: Data) -> [RemoteHit] {
         guard let json = try? JSONSerialization.jsonObject(with: data) else { return [] }
+        switch self {
+        case .google:
+            guard let arr = json as? [Any], arr.count >= 2, let list = arr[1] as? [Any] else { return [] }
+            let texts = list.compactMap { $0 as? String }
+            let meta = arr.count >= 5 ? arr[4] as? [String: Any] : nil
+            let types = meta?["google:suggesttype"] as? [String] ?? []
+            let rel = (meta?["google:suggestrelevance"] as? [Any] ?? []).map { ($0 as? NSNumber)?.doubleValue }
+            return texts.enumerated().compactMap { i, text in
+                let type = i < types.count ? types[i] : "QUERY"
+                let relevance = i < rel.count ? rel[i] : nil
+                if type == "NAVIGATION" {
+                    guard let url = URL(string: text), url.scheme?.hasPrefix("http") == true else { return nil }
+                    return RemoteHit(text: URLNormalizer.displayHost(url), url: url, relevance: relevance)
+                }
+                // Skip calculator/entity/personal rows we can't render faithfully.
+                guard type == "QUERY" || type.isEmpty else { return nil }
+                return RemoteHit(text: text, url: nil, relevance: relevance)
+            }
+        default:
+            return legacyParse(json).map { RemoteHit(text: $0, url: nil, relevance: nil) }
+        }
+    }
+
+    private func legacyParse(_ json: Any) -> [String] {
         switch self {
         case .google, .duckDuckGo:
             guard let arr = json as? [Any], arr.count >= 2, let list = arr[1] as? [Any] else { return [] }
@@ -63,31 +93,9 @@ public enum SearchEngine: Hashable, Sendable, Codable {
     }
 }
 
-/// Remote search suggestions. Cancellation-aware: the engine cancels the task when the
-/// user types again, and URLSession honours task cancellation.
-public struct SearchSuggestProvider: SuggestionProvider {
-    public let engine: SearchEngine
-    let session: URLSession
-
-    public var isRemote: Bool { true }
-
-    public init(engine: SearchEngine, session: URLSession = .shared) {
-        self.engine = engine
-        self.session = session
-    }
-
-    public func suggestions(for query: String, limit: Int) async -> [Suggestion] {
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return [] }
-        guard let (data, response) = try? await session.data(for: engine.suggestRequest(for: trimmed)),
-              (response as? HTTPURLResponse)?.statusCode == 200 else { return [] }
-        return engine.parseSuggestions(data)
-            .filter { $0.lowercased() != trimmed.lowercased() }
-            .prefix(limit)
-            .enumerated()
-            .map { i, text in
-                Suggestion(kind: .searchSuggestion, title: text, action: .search(text),
-                           score: 1.0 - Double(i) * 0.01)
-            }
-    }
+public struct RemoteHit: Hashable, Sendable {
+    public let text: String
+    public let url: URL?
+    /// Engine-provided relevance (Google: roughly 0...1500), if any.
+    public let relevance: Double?
 }
