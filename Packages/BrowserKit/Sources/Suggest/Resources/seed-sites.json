@@ -1,0 +1,637 @@
+[
+{
+"d": "google.com",
+"n": "Google",
+"w": 1.0
+},
+{
+"d": "youtube.com",
+"n": "YouTube",
+"w": 0.994
+},
+{
+"d": "facebook.com",
+"n": "Facebook",
+"w": 0.987
+},
+{
+"d": "instagram.com",
+"n": "Instagram",
+"w": 0.981
+},
+{
+"d": "wikipedia.org",
+"n": "Wikipedia",
+"w": 0.975
+},
+{
+"d": "x.com",
+"n": "X",
+"w": 0.969
+},
+{
+"d": "reddit.com",
+"n": "Reddit",
+"w": 0.962
+},
+{
+"d": "amazon.com",
+"n": "Amazon",
+"w": 0.956
+},
+{
+"d": "whatsapp.com",
+"n": "WhatsApp",
+"w": 0.95
+},
+{
+"d": "tiktok.com",
+"n": "TikTok",
+"w": 0.943
+},
+{
+"d": "linkedin.com",
+"n": "LinkedIn",
+"w": 0.937
+},
+{
+"d": "yahoo.com",
+"n": "Yahoo",
+"w": 0.931
+},
+{
+"d": "netflix.com",
+"n": "Netflix",
+"w": 0.924
+},
+{
+"d": "bing.com",
+"n": "Bing",
+"w": 0.918
+},
+{
+"d": "live.com",
+"n": "Outlook",
+"w": 0.912
+},
+{
+"d": "microsoft.com",
+"n": "Microsoft",
+"w": 0.906
+},
+{
+"d": "openai.com",
+"n": "OpenAI",
+"w": 0.899
+},
+{
+"d": "chatgpt.com",
+"n": "ChatGPT",
+"w": 0.893
+},
+{
+"d": "claude.ai",
+"n": "Claude",
+"w": 0.887
+},
+{
+"d": "anthropic.com",
+"n": "Anthropic",
+"w": 0.88
+},
+{
+"d": "apple.com",
+"n": "Apple",
+"w": 0.874
+},
+{
+"d": "icloud.com",
+"n": "iCloud",
+"w": 0.868
+},
+{
+"d": "github.com",
+"n": "GitHub",
+"w": 0.861
+},
+{
+"d": "stackoverflow.com",
+"n": "Stack Overflow",
+"w": 0.855
+},
+{
+"d": "twitch.tv",
+"n": "Twitch",
+"w": 0.849
+},
+{
+"d": "pinterest.com",
+"n": "Pinterest",
+"w": 0.843
+},
+{
+"d": "ebay.com",
+"n": "eBay",
+"w": 0.836
+},
+{
+"d": "duckduckgo.com",
+"n": "DuckDuckGo",
+"w": 0.83
+},
+{
+"d": "spotify.com",
+"n": "Spotify",
+"w": 0.824
+},
+{
+"d": "discord.com",
+"n": "Discord",
+"w": 0.817
+},
+{
+"d": "zoom.us",
+"n": "Zoom",
+"w": 0.811
+},
+{
+"d": "office.com",
+"n": "Microsoft 365",
+"w": 0.805
+},
+{
+"d": "dropbox.com",
+"n": "Dropbox",
+"w": 0.798
+},
+{
+"d": "notion.so",
+"n": "Notion",
+"w": 0.792
+},
+{
+"d": "figma.com",
+"n": "Figma",
+"w": 0.786
+},
+{
+"d": "canva.com",
+"n": "Canva",
+"w": 0.78
+},
+{
+"d": "paypal.com",
+"n": "PayPal",
+"w": 0.773
+},
+{
+"d": "imdb.com",
+"n": "IMDb",
+"w": 0.767
+},
+{
+"d": "weather.com",
+"n": "The Weather Channel",
+"w": 0.761
+},
+{
+"d": "cnn.com",
+"n": "CNN",
+"w": 0.754
+},
+{
+"d": "bbc.com",
+"n": "BBC",
+"w": 0.748
+},
+{
+"d": "bbc.co.uk",
+"n": "BBC UK",
+"w": 0.742
+},
+{
+"d": "nytimes.com",
+"n": "The New York Times",
+"w": 0.735
+},
+{
+"d": "theguardian.com",
+"n": "The Guardian",
+"w": 0.729
+},
+{
+"d": "espn.com",
+"n": "ESPN",
+"w": 0.723
+},
+{
+"d": "medium.com",
+"n": "Medium",
+"w": 0.717
+},
+{
+"d": "quora.com",
+"n": "Quora",
+"w": 0.71
+},
+{
+"d": "tumblr.com",
+"n": "Tumblr",
+"w": 0.704
+},
+{
+"d": "etsy.com",
+"n": "Etsy",
+"w": 0.698
+},
+{
+"d": "walmart.com",
+"n": "Walmart",
+"w": 0.691
+},
+{
+"d": "target.com",
+"n": "Target",
+"w": 0.685
+},
+{
+"d": "bestbuy.com",
+"n": "Best Buy",
+"w": 0.679
+},
+{
+"d": "aliexpress.com",
+"n": "AliExpress",
+"w": 0.672
+},
+{
+"d": "booking.com",
+"n": "Booking.com",
+"w": 0.666
+},
+{
+"d": "airbnb.com",
+"n": "Airbnb",
+"w": 0.66
+},
+{
+"d": "tripadvisor.com",
+"n": "Tripadvisor",
+"w": 0.654
+},
+{
+"d": "uber.com",
+"n": "Uber",
+"w": 0.647
+},
+{
+"d": "maps.google.com",
+"n": "Google Maps",
+"w": 0.641
+},
+{
+"d": "mail.google.com",
+"n": "Gmail",
+"w": 0.635
+},
+{
+"d": "drive.google.com",
+"n": "Google Drive",
+"w": 0.628
+},
+{
+"d": "docs.google.com",
+"n": "Google Docs",
+"w": 0.622
+},
+{
+"d": "calendar.google.com",
+"n": "Google Calendar",
+"w": 0.616
+},
+{
+"d": "news.google.com",
+"n": "Google News",
+"w": 0.609
+},
+{
+"d": "translate.google.com",
+"n": "Google Translate",
+"w": 0.603
+},
+{
+"d": "photos.google.com",
+"n": "Google Photos",
+"w": 0.597
+},
+{
+"d": "gemini.google.com",
+"n": "Gemini",
+"w": 0.591
+},
+{
+"d": "youtube.com/feed/subscriptions",
+"n": "YouTube Subscriptions",
+"w": 0.584
+},
+{
+"d": "music.youtube.com",
+"n": "YouTube Music",
+"w": 0.578
+},
+{
+"d": "music.apple.com",
+"n": "Apple Music",
+"w": 0.572
+},
+{
+"d": "tv.apple.com",
+"n": "Apple TV",
+"w": 0.565
+},
+{
+"d": "developer.apple.com",
+"n": "Apple Developer",
+"w": 0.559
+},
+{
+"d": "appstoreconnect.apple.com",
+"n": "App Store Connect",
+"w": 0.553
+},
+{
+"d": "news.ycombinator.com",
+"n": "Hacker News",
+"w": 0.546
+},
+{
+"d": "producthunt.com",
+"n": "Product Hunt",
+"w": 0.54
+},
+{
+"d": "theverge.com",
+"n": "The Verge",
+"w": 0.534
+},
+{
+"d": "techcrunch.com",
+"n": "TechCrunch",
+"w": 0.528
+},
+{
+"d": "arstechnica.com",
+"n": "Ars Technica",
+"w": 0.521
+},
+{
+"d": "macrumors.com",
+"n": "MacRumors",
+"w": 0.515
+},
+{
+"d": "9to5mac.com",
+"n": "9to5Mac",
+"w": 0.509
+},
+{
+"d": "wired.com",
+"n": "Wired",
+"w": 0.502
+},
+{
+"d": "vercel.com",
+"n": "Vercel",
+"w": 0.496
+},
+{
+"d": "cloudflare.com",
+"n": "Cloudflare",
+"w": 0.49
+},
+{
+"d": "aws.amazon.com",
+"n": "AWS",
+"w": 0.483
+},
+{
+"d": "console.cloud.google.com",
+"n": "Google Cloud Console",
+"w": 0.477
+},
+{
+"d": "gitlab.com",
+"n": "GitLab",
+"w": 0.471
+},
+{
+"d": "npmjs.com",
+"n": "npm",
+"w": 0.465
+},
+{
+"d": "developer.mozilla.org",
+"n": "MDN Web Docs",
+"w": 0.458
+},
+{
+"d": "w3schools.com",
+"n": "W3Schools",
+"w": 0.452
+},
+{
+"d": "slack.com",
+"n": "Slack",
+"w": 0.446
+},
+{
+"d": "trello.com",
+"n": "Trello",
+"w": 0.439
+},
+{
+"d": "asana.com",
+"n": "Asana",
+"w": 0.433
+},
+{
+"d": "atlassian.com",
+"n": "Atlassian",
+"w": 0.427
+},
+{
+"d": "linear.app",
+"n": "Linear",
+"w": 0.42
+},
+{
+"d": "substack.com",
+"n": "Substack",
+"w": 0.414
+},
+{
+"d": "patreon.com",
+"n": "Patreon",
+"w": 0.408
+},
+{
+"d": "kickstarter.com",
+"n": "Kickstarter",
+"w": 0.402
+},
+{
+"d": "coinbase.com",
+"n": "Coinbase",
+"w": 0.395
+},
+{
+"d": "robinhood.com",
+"n": "Robinhood",
+"w": 0.389
+},
+{
+"d": "bloomberg.com",
+"n": "Bloomberg",
+"w": 0.383
+},
+{
+"d": "reuters.com",
+"n": "Reuters",
+"w": 0.376
+},
+{
+"d": "wsj.com",
+"n": "The Wall Street Journal",
+"w": 0.37
+},
+{
+"d": "ft.com",
+"n": "Financial Times",
+"w": 0.364
+},
+{
+"d": "forbes.com",
+"n": "Forbes",
+"w": 0.357
+},
+{
+"d": "craigslist.org",
+"n": "Craigslist",
+"w": 0.351
+},
+{
+"d": "indeed.com",
+"n": "Indeed",
+"w": 0.345
+},
+{
+"d": "glassdoor.com",
+"n": "Glassdoor",
+"w": 0.339
+},
+{
+"d": "yelp.com",
+"n": "Yelp",
+"w": 0.332
+},
+{
+"d": "doordash.com",
+"n": "DoorDash",
+"w": 0.326
+},
+{
+"d": "ubereats.com",
+"n": "Uber Eats",
+"w": 0.32
+},
+{
+"d": "hulu.com",
+"n": "Hulu",
+"w": 0.313
+},
+{
+"d": "disneyplus.com",
+"n": "Disney+",
+"w": 0.307
+},
+{
+"d": "max.com",
+"n": "Max",
+"w": 0.301
+},
+{
+"d": "primevideo.com",
+"n": "Prime Video",
+"w": 0.294
+},
+{
+"d": "soundcloud.com",
+"n": "SoundCloud",
+"w": 0.288
+},
+{
+"d": "bandcamp.com",
+"n": "Bandcamp",
+"w": 0.282
+},
+{
+"d": "goodreads.com",
+"n": "Goodreads",
+"w": 0.276
+},
+{
+"d": "archive.org",
+"n": "Internet Archive",
+"w": 0.269
+},
+{
+"d": "wikihow.com",
+"n": "wikiHow",
+"w": 0.263
+},
+{
+"d": "khanacademy.org",
+"n": "Khan Academy",
+"w": 0.257
+},
+{
+"d": "coursera.org",
+"n": "Coursera",
+"w": 0.25
+},
+{
+"d": "duolingo.com",
+"n": "Duolingo",
+"w": 0.244
+},
+{
+"d": "arc.net",
+"n": "Arc",
+"w": 0.238
+},
+{
+"d": "bsky.app",
+"n": "Bluesky",
+"w": 0.231
+},
+{
+"d": "threads.net",
+"n": "Threads",
+"w": 0.225
+},
+{
+"d": "mastodon.social",
+"n": "Mastodon",
+"w": 0.219
+},
+{
+"d": "telegram.org",
+"n": "Telegram",
+"w": 0.213
+},
+{
+"d": "signal.org",
+"n": "Signal",
+"w": 0.206
+}
+]

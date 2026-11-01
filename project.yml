@@ -1,0 +1,52 @@
+# Generate the Xcode project with XcodeGen:  brew install xcodegen && xcodegen
+# The .xcodeproj is git-ignored; this file is the source of truth.
+name: DuoBrowser
+options:
+  bundleIdPrefix: com.jmaorr
+  deploymentTarget:
+    iOS: "27.0"
+  xcodeVersion: "27.2"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: ""   # set your team ID here or in Xcode
+packages:
+  BrowserKit:
+    path: Packages/BrowserKit
+targets:
+  DuoBrowser:
+    type: application
+    platform: iOS
+    sources:
+      - App/Sources
+      - App/Resources
+    dependencies:
+      - package: BrowserKit
+        product: BrowserCore
+      - package: BrowserKit
+        product: Suggest
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Duo
+        UILaunchScreen: {}
+        UIApplicationSupportsMultipleScenes: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # Lets the app appear in Settings > Default Browser App once Apple grants the
+        # com.apple.developer.web-browser entitlement (request it when you're ready to ship).
+        CFBundleURLTypes:
+          - CFBundleURLName: Web
+            CFBundleURLSchemes: [http, https]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jmaorr.duobrowser
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    scheme:
+      testTargets:
+        - package: BrowserKit/SuggestTests
