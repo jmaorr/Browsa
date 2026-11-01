@@ -4,8 +4,8 @@ import WebKit
 
 /// Something a page is asking the user: a JavaScript dialog, a permission, or a login.
 /// WebKit's delegate awaits the answer; the app shows one at a time as a native alert.
-public struct WebPrompt: Identifiable {
-    public enum Kind: Equatable {
+public struct WebPrompt: Identifiable, Sendable {
+    public enum Kind: Equatable, Sendable {
         case alert
         case confirm
         case textInput(defaultText: String)
@@ -21,7 +21,7 @@ public struct WebPrompt: Identifiable {
     let tabID: UUID
 }
 
-public enum WebPromptResponse: Equatable {
+public enum WebPromptResponse: Equatable, Sendable {
     case ok
     case cancel
     case text(String)
