@@ -7,7 +7,9 @@ public enum RemoteSource: Hashable, Sendable {
     /// The top Wikipedia article whose title starts with the query, for "who/what is" lookups.
     case wikipedia(language: String)
 
-    var name: String {
+    var name: String { displayName }
+
+    public var displayName: String {
         switch self {
         case .engine(let e): e.name
         case .wikipedia: "Wikipedia"

@@ -147,7 +147,7 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
     private func set(_ new: Mode, velocity: CGFloat = 0) {
         // Convert the finger's px/s into the spring's unit-per-second for a seamless hand-off.
         let initial = Double(abs(velocity) / max(width, 1))
-        withAnimation(.interpolatingSpring(mass: 1, stiffness: 320, damping: 30, initialVelocity: initial)) {
+        withAnimation(Motion.spring(initialVelocity: initial)) {
             mode = new
             drag = 0
         }

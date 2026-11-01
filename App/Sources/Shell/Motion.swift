@@ -1,13 +1,35 @@
 import SwiftUI
+import UIKit
 
 /// Shared motion vocabulary so every surface moves the same way.
+///
+/// With Reduce Motion on, every spring becomes a short cross-fade-friendly ease and slides
+/// become fades, the way system apps behave. Values are computed so toggling the setting
+/// applies immediately.
 enum Motion {
+    static var reduced: Bool { UIAccessibility.isReduceMotionEnabled }
+    private static let calm = Animation.easeInOut(duration: 0.2)
+
     /// Default for state changes (sidebar dock/hide, sheet content changes).
-    static let spring = Animation.interpolatingSpring(mass: 1, stiffness: 320, damping: 30)
+    static var spring: Animation { reduced ? calm : .interpolatingSpring(mass: 1, stiffness: 320, damping: 30) }
+    /// Spring that starts at the finger's speed (velocity in units per second).
+    static func spring(initialVelocity v: Double) -> Animation {
+        reduced ? calm : .interpolatingSpring(mass: 1, stiffness: 320, damping: 30, initialVelocity: v)
+    }
     /// Tab switches and pill swaps: quicker, no overshoot.
-    static let snappy = Animation.snappy(duration: 0.28)
+    static var snappy: Animation { reduced ? calm : .snappy(duration: 0.28) }
     /// Small UI feedback (favourite star, chips).
-    static let bouncy = Animation.bouncy(duration: 0.35, extraBounce: 0.08)
+    static var bouncy: Animation { reduced ? calm : .bouncy(duration: 0.35, extraBounce: 0.08) }
+    /// Tab strip sliding in and out.
+    static var rail: Animation { reduced ? calm : .interpolatingSpring(mass: 1, stiffness: 380, damping: 32) }
+    /// Bottom bar collapsing to the small pill on scroll.
+    static var collapse: Animation { reduced ? calm : .interpolatingSpring(mass: 1, stiffness: 300, damping: 26) }
+
+    /// Page/label slide when swiping between tabs; a fade with Reduce Motion.
+    static func tabPush(forward: Bool?) -> AnyTransition {
+        guard let forward, !reduced else { return .opacity }
+        return .push(from: forward ? .trailing : .leading)
+    }
 }
 
 // MARK: - Plus button -> new-tab sheet zoom

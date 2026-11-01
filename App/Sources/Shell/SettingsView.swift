@@ -29,7 +29,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Search")
                 } footer: {
-                    Text("Search suggestions send what you type to \(browser.settings.searchEngine.name). Favourites, history and open tabs are always suggested on the device.")
+                    Text("Search suggestions send what you type to \(SuggestEngine.defaultSources(for: browser.settings.searchEngine).map(\.displayName).formatted(.list(type: .and))). Favourites, history, open tabs and the built-in list of popular sites are always matched on the device.")
                 }
 
                 Section("Tabs") {

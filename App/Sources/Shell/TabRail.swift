@@ -93,12 +93,12 @@ final class TabRailController {
     // MARK: Visibility
 
     private func show() {
-        withAnimation(.interpolatingSpring(mass: 1, stiffness: 380, damping: 32)) { isShown = true }
+        withAnimation(Motion.rail) { isShown = true }
     }
 
     private func hide() {
         hideTask?.cancel()
-        withAnimation(.interpolatingSpring(mass: 1, stiffness: 380, damping: 32)) { isShown = false }
+        withAnimation(Motion.rail) { isShown = false }
     }
 
     private func scheduleHide(after delay: Duration) {
@@ -127,7 +127,7 @@ struct TabRailView: View {
         .padding(.vertical, TabRailController.padding)
         .frame(width: 54)
         .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
-        .offset(x: rail.isShown ? 8 : -84)
+        .offset(x: rail.isShown || Motion.reduced ? 8 : -84)   // Reduce Motion: fade in place
         .opacity(rail.isShown ? 1 : 0)
         .sensoryFeedback(.selection, trigger: rail.isScrubbing ? rail.highlighted : nil)
         .allowsHitTesting(false)

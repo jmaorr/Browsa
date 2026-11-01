@@ -26,7 +26,6 @@ struct BottomBar: View {
 
     /// Collapsed to a small centred pill while the page scrolls down (Safari-style).
     private var compact: Bool { browser.currentTab?.isChromeCompact ?? false }
-    private static let collapse = Animation.interpolatingSpring(mass: 1, stiffness: 300, damping: 26)
     private static let sideControl = AnyTransition.scale(scale: 0.4).combined(with: .opacity)
 
     var body: some View {
@@ -46,7 +45,7 @@ struct BottomBar: View {
         .padding(.horizontal, compact ? 0 : 16)
         .padding(.vertical, compact ? 2 : 8)
         .frame(maxWidth: .infinity)
-        .animation(Self.collapse, value: compact)
+        .animation(Motion.collapse, value: compact)
         .sensoryFeedback(.selection, trigger: browser.currentTab?.id)
     }
 
@@ -89,7 +88,7 @@ struct BottomBar: View {
         }
         // Swiping to the next tab pushes the old label out and the new one in, from the swipe side.
         .id(tab?.id)
-        .transition(.push(from: browser.lastTabSwipeForward == false ? .leading : .trailing))
+        .transition(Motion.tabPush(forward: browser.lastTabSwipeForward ?? true))
         .clipped()
         .animation(Motion.snappy, value: tab?.url)
         .font(.callout)
@@ -102,7 +101,7 @@ struct BottomBar: View {
         .newTabZoomSource(.addressPill)
         .onTapGesture {
             if compact, let tab = browser.currentTab {
-                withAnimation(Self.collapse) { browser.session(for: tab).expandChrome() }
+                withAnimation(Motion.collapse) { browser.session(for: tab).expandChrome() }
             } else {
                 browser.presentAddressEditor(from: NewTabSource.addressPill.rawValue)
             }
@@ -122,7 +121,12 @@ struct BottomBar: View {
         , including: compact ? .subviews : .all)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel(tab?.displayTitle ?? "Address")
-        .accessibilityHint("Double-tap to edit. Swipe up for tabs.")
+        .accessibilityHint("Double-tap to edit the address.")
+        // VoiceOver can't do the pill's swipes, so offer them as actions (swipe up/down to pick).
+        .accessibilityAction(named: "Next Tab") { switchTab(by: 1) }
+        .accessibilityAction(named: "Previous Tab") { switchTab(by: -1) }
+        .accessibilityAction(named: "Show All Tabs") { browser.isTabSwitcherPresented = true }
+        .accessibilityAction(named: "New Tab") { browser.presentNewTab() }
     }
 
     private func switchTab(by delta: Int) {

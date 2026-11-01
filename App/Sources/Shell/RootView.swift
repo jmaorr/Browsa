@@ -58,9 +58,7 @@ struct WebContentView: View {
             WebViewHost(session: browser.session(for: tab), bottomObscuredInset: bottomObscuredInset)
                 .id(tab.id)
                 // Swipe between tabs on the bottom pill slides the pages too.
-                .transition(browser.lastTabSwipeForward.map { fwd in
-                    AnyTransition.push(from: fwd ? .trailing : .leading)
-                } ?? .opacity)
+                .transition(Motion.tabPush(forward: browser.lastTabSwipeForward))
                 .overlay(alignment: .top) {
                     if tab.isLoading {
                         ProgressView(value: tab.estimatedProgress)

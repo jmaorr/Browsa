@@ -57,7 +57,7 @@ struct UnfoldedLayout: View {
 
     private func toggleSidebar() {
         let space = browser.currentSpace
-        withAnimation(.interpolatingSpring(mass: 1, stiffness: 320, damping: 30)) {
+        withAnimation(Motion.spring) {
             if isPeeking {
                 isPeeking = false
                 space.isSidebarOpen = true      // pin the peeking sidebar
