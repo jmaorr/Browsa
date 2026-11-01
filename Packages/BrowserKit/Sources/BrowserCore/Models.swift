@@ -3,7 +3,7 @@ import Observation
 import Suggest
 
 @MainActor @Observable
-public final class Tab: Identifiable {
+public final class BrowserTab: Identifiable {
     public let id: UUID
     public var url: URL?
     public var title: String
@@ -18,6 +18,8 @@ public final class Tab: Identifiable {
     public var isLoading = false
     public var canGoBack = false
     public var canGoForward = false
+    /// Bottom bar collapsed to a small pill because the page is being scrolled down.
+    public var isChromeCompact = false
 
     public init(id: UUID = UUID(), url: URL?, title: String = "", isPinned: Bool = false,
                 lastActive: Date = .now, interactionState: Data? = nil, isPrivate: Bool = false) {
@@ -45,13 +47,13 @@ public final class Space: Identifiable {
     public var symbol: String
     /// Index into the app's space colour palette.
     public var colorIndex: Int
-    public var pinned: [Tab]
-    public var today: [Tab]
+    public var pinned: [BrowserTab]
+    public var today: [BrowserTab]
     public var selectedTabID: UUID?
     public var isSidebarOpen: Bool
 
     public init(id: UUID = UUID(), name: String, symbol: String = "circle.fill", colorIndex: Int = 0,
-                pinned: [Tab] = [], today: [Tab] = [], selectedTabID: UUID? = nil, isSidebarOpen: Bool = true) {
+                pinned: [BrowserTab] = [], today: [BrowserTab] = [], selectedTabID: UUID? = nil, isSidebarOpen: Bool = true) {
         self.id = id
         self.name = name
         self.symbol = symbol
@@ -62,9 +64,9 @@ public final class Space: Identifiable {
         self.isSidebarOpen = isSidebarOpen
     }
 
-    public var allTabs: [Tab] { pinned + today }
+    public var allTabs: [BrowserTab] { pinned + today }
 
-    public var selectedTab: Tab? {
+    public var selectedTab: BrowserTab? {
         allTabs.first { $0.id == selectedTabID }
     }
 }
@@ -104,7 +106,7 @@ struct BrowserSnapshot: Codable {
     var settings: BrowserSettings?
 }
 
-extension Tab {
+extension BrowserTab {
     var record: TabRecord {
         TabRecord(id: id, url: url, title: title, isPinned: isPinned, lastActive: lastActive,
                   interactionState: interactionState)
@@ -124,7 +126,7 @@ extension Space {
     }
     convenience init(_ r: SpaceRecord) {
         self.init(id: r.id, name: r.name, symbol: r.symbol, colorIndex: r.colorIndex,
-                  pinned: r.pinned.map(Tab.init), today: r.today.map(Tab.init),
+                  pinned: r.pinned.map(BrowserTab.init), today: r.today.map(BrowserTab.init),
                   selectedTabID: r.selectedTabID, isSidebarOpen: r.isSidebarOpen)
     }
 }

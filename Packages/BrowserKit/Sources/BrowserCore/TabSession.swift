@@ -7,22 +7,25 @@ import Suggest
 /// Owns one live WKWebView for one Tab, and mirrors its state back onto the Tab model.
 @MainActor
 public final class TabSession: NSObject {
-    public let tab: Tab
+    public let tab: BrowserTab
     public let webView: WKWebView
     private var observations: [NSKeyValueObservation] = []
     private weak var browser: BrowserState?
     /// Set when the user navigates from the address bar so history records a "typed" visit.
     var pendingVisitSource: Frecency.VisitSource?
+    private var chromeTracker = ScrollChromeTracker()
 
     /// - Parameter loadInitial: false for popups, where WebKit itself loads the request into
     ///   the web view we return from `createWebViewWith`.
-    init(tab: Tab, configuration: WKWebViewConfiguration, browser: BrowserState, loadInitial: Bool = true) {
+    init(tab: BrowserTab, configuration: WKWebViewConfiguration, browser: BrowserState, loadInitial: Bool = true) {
         self.tab = tab
         self.browser = browser
         self.webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
 
-        webView.allowsBackForwardNavigationGestures = true
+        // Off on purpose: the leading-edge swipe belongs to the tab strip (scrub through tabs),
+        // and accidental "back" swipes were a pain. Back lives on the toolbar button instead.
+        webView.allowsBackForwardNavigationGestures = false
         webView.allowsLinkPreview = true
         webView.isInspectable = true
         webView.navigationDelegate = self
@@ -61,7 +64,26 @@ public final class TabSession: NSObject {
             webView.observe(\.canGoForward, options: [.new]) { wv, _ in
                 MainActor.assumeIsolated { tab.canGoForward = wv.canGoForward }
             },
+            // Scroll direction drives the compact chrome. One Bool flips with hysteresis, and
+            // SwiftUI animates between two fixed layouts. No geometry readers.
+            webView.scrollView.observe(\.contentOffset, options: [.new]) { [weak self] sv, _ in
+                MainActor.assumeIsolated { self?.scrollChanged(sv) }
+            },
         ]
+    }
+
+    private func scrollChanged(_ sv: UIScrollView) {
+        let changed = chromeTracker.update(offsetY: sv.contentOffset.y,
+                                           contentHeight: sv.contentSize.height,
+                                           viewportHeight: sv.bounds.height,
+                                           topInset: sv.adjustedContentInset.top)
+        if changed { tab.isChromeCompact = chromeTracker.isCompact }
+    }
+
+    /// Tapping the compact pill brings the full bar back.
+    public func expandChrome() {
+        chromeTracker.expand()
+        tab.isChromeCompact = false
     }
 
     public func load(_ url: URL, source: Frecency.VisitSource = .typed) {
@@ -76,6 +98,10 @@ public final class TabSession: NSObject {
 }
 
 extension TabSession: WKNavigationDelegate {
+    public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        expandChrome()   // new page: show the full bar
+    }
+
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard let url = webView.url, !tab.isPrivate else { return }
         let source = pendingVisitSource ?? .link

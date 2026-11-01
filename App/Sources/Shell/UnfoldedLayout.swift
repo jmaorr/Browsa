@@ -7,6 +7,7 @@ import Suggest
 /// leading edge of the top toolbar (portrait, where the system uses horizontal bars).
 struct UnfoldedLayout: View {
     @Environment(BrowserState.self) private var browser
+    @Environment(TabRailController.self) private var rail
     @Environment(\.duoToolbarVerticalEdge) private var verticalBarEdge
 
     /// Put the sidebar on the edge opposite the system vertical bar so they never stack.
@@ -27,6 +28,10 @@ struct UnfoldedLayout: View {
             .toolbarTitleDisplayMode(.inline)
             .navigationTitle(browser.currentTab?.displayTitle ?? "")
             .duoVerticalBarPrefersOurItems()
+            // The docked or peeking sidebar already lists the tabs, so the strip doesn't peek then.
+            .onChange(of: space.isSidebarOpen || isPeeking, initial: true) { _, showing in
+                rail.sidebarShowsTabs = showing
+            }
             // Picking a tab from a peeking sidebar puts it away, like Arc.
             .onChange(of: browser.currentTab?.id) { if isPeeking { withAnimation(.smooth) { isPeeking = false } } }
         }

@@ -11,7 +11,7 @@ public final class BrowserState {
     public var spaces: [Space]
     public var selectedSpaceID: UUID
     public var favorites: [Favorite]
-    public var archive: [Tab] = []
+    public var archive: [BrowserTab] = []
 
     // Transient UI state
     public var isNewTabSheetPresented = false
@@ -52,7 +52,7 @@ public final class BrowserState {
             spaces = snap.spaces.map(Space.init)
             selectedSpaceID = snap.selectedSpaceID ?? snap.spaces[0].id
             favorites = snap.favorites
-            archive = snap.archive.map(Tab.init)
+            archive = snap.archive.map(BrowserTab.init)
             if let s = snap.settings { settings = s }
         } else {
             let personal = Space(name: "Personal", symbol: "house.fill", colorIndex: 0)
@@ -75,13 +75,13 @@ public final class BrowserState {
         spaces.first { $0.id == selectedSpaceID } ?? spaces[0]
     }
 
-    public var currentTab: Tab? { currentSpace.selectedTab }
+    public var currentTab: BrowserTab? { currentSpace.selectedTab }
 
-    public func session(for tab: Tab) -> TabSession {
+    public func session(for tab: BrowserTab) -> TabSession {
         pool.session(for: tab, browser: self)
     }
 
-    public func select(_ tab: Tab) {
+    public func select(_ tab: BrowserTab) {
         if let space = spaces.first(where: { $0.allTabs.contains { $0.id == tab.id } }) {
             selectedSpaceID = space.id
             space.selectedTabID = tab.id
@@ -113,9 +113,9 @@ public final class BrowserState {
 
     @discardableResult
     public func newTab(url: URL?, in space: Space? = nil, isPrivate: Bool = false,
-                       source: Frecency.VisitSource = .typed) -> Tab {
+                       source: Frecency.VisitSource = .typed) -> BrowserTab {
         let space = space ?? currentSpace
-        let tab = Tab(url: nil, isPrivate: isPrivate)
+        let tab = BrowserTab(url: nil, isPrivate: isPrivate)
         space.today.insert(tab, at: 0)
         select(tab)
         if let url { session(for: tab).load(url, source: source) }
@@ -144,9 +144,9 @@ public final class BrowserState {
         }
     }
 
-    func openPopup(url: URL, configuration: WKWebViewConfiguration, from opener: Tab) -> WKWebView {
+    func openPopup(url: URL, configuration: WKWebViewConfiguration, from opener: BrowserTab) -> WKWebView {
         let space = spaces.first { $0.allTabs.contains { $0.id == opener.id } } ?? currentSpace
-        let tab = Tab(url: url, isPrivate: opener.isPrivate)
+        let tab = BrowserTab(url: url, isPrivate: opener.isPrivate)
         space.today.insert(tab, at: 0)
         let s = TabSession(tab: tab, configuration: configuration, browser: self, loadInitial: false)
         pool.adopt(s)
@@ -156,12 +156,12 @@ public final class BrowserState {
 
     // MARK: Tab management
 
-    public func close(_ tab: Tab) {
+    public func close(_ tab: BrowserTab) {
         for space in spaces {
             if let i = space.today.firstIndex(where: { $0.id == tab.id }) {
                 space.today.remove(at: i)
                 if space.selectedTabID == tab.id {
-                    let next: Tab? = space.today.indices.contains(i) ? space.today[i] : (space.today.last ?? space.pinned.last)
+                    let next: BrowserTab? = space.today.indices.contains(i) ? space.today[i] : (space.today.last ?? space.pinned.last)
                     space.selectedTabID = next?.id
                 }
             } else if tab.isPinned, space.selectedTabID == tab.id {
@@ -173,7 +173,7 @@ public final class BrowserState {
         scheduleSave()
     }
 
-    public func togglePinned(_ tab: Tab) {
+    public func togglePinned(_ tab: BrowserTab) {
         let space = spaces.first { $0.allTabs.contains { $0.id == tab.id } } ?? currentSpace
         if tab.isPinned {
             space.pinned.removeAll { $0.id == tab.id }
@@ -227,7 +227,7 @@ public final class BrowserState {
 
     // MARK: Archive
 
-    public func restoreFromArchive(_ tab: Tab) {
+    public func restoreFromArchive(_ tab: BrowserTab) {
         archive.removeAll { $0.id == tab.id }
         tab.lastActive = .now
         currentSpace.today.insert(tab, at: 0)

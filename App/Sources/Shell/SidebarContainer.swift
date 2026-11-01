@@ -24,11 +24,10 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
     @ViewBuilder var sidebar: () -> Sidebar
     @ViewBuilder var content: () -> Content
 
-    /// Live drag offset, in points toward "more open". Zero when not dragging.
-    @GestureState private var drag: CGFloat = 0
+    /// Live drag offset, in points toward "more open". Zero when not dragging. Plain @State (not
+    /// @GestureState) so the release animates from exactly where the finger left it.
+    @State private var drag: CGFloat = 0
     @State private var isDragging = false
-
-    private let edgeHitWidth: CGFloat = 22
     private var sign: CGFloat { edge == .leading ? 1 : -1 }
 
     var body: some View {
@@ -53,13 +52,16 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
 
                 sidebarLayer
 
-                // Invisible grab strip along the edge while hidden.
+                // Edge swipe while hidden: scrub the tab strip, or keep pulling for the sidebar.
                 if mode == .hidden {
-                    Color.clear
-                        .frame(width: edgeHitWidth)
-                        .contentShape(.rect)
-                        .gesture(revealGesture)
-                        .ignoresSafeArea()
+                    TabRailEdge(
+                        handOffDistance: 130,
+                        onHandOff: { isDragging = true },
+                        onSidebarDrag: { dx in drag = max(0, dx * sign - 40) },
+                        onSidebarEnd: { predicted, velocity in
+                            isDragging = false
+                            set(predicted * sign - 40 > width * 0.5 ? .peek : .hidden, velocity: velocity * sign)
+                        })
                 }
             }
             .sensoryFeedback(.impact(weight: .light), trigger: mode)
@@ -124,26 +126,13 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
 
     // MARK: Gestures
 
-    private var revealGesture: some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .global)
-            .updating($drag) { v, state, _ in state = max(0, v.translation.width * sign) }
-            .onChanged { _ in isDragging = true }
-            .onEnded { v in
-                isDragging = false
-                let projected = v.predictedEndTranslation.width * sign
-                let velocity = v.velocity.width * sign
-                set(projected > width * 0.5 ? .peek : .hidden, velocity: velocity)
-            }
-    }
-
     private var dismissGesture: some Gesture {
         DragGesture(minimumDistance: 10, coordinateSpace: .global)
-            .updating($drag) { v, state, _ in
-                let dx = v.translation.width * sign
+            .onChanged { v in
+                isDragging = true
                 // Closing direction is negative; opening further rubber-bands.
-                state = dx
+                drag = v.translation.width * sign
             }
-            .onChanged { _ in isDragging = true }
             .onEnded { v in
                 isDragging = false
                 let projected = v.predictedEndTranslation.width * sign
@@ -160,6 +149,7 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
         let initial = Double(abs(velocity) / max(width, 1))
         withAnimation(.interpolatingSpring(mass: 1, stiffness: 320, damping: 30, initialVelocity: initial)) {
             mode = new
+            drag = 0
         }
     }
 }

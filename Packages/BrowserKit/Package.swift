@@ -22,5 +22,6 @@ let package = Package(
             dependencies: ["Suggest"],
             resources: [.copy("Resources/blocklist.json")]
         ),
+        .testTarget(name: "BrowserCoreTests", dependencies: ["BrowserCore"]),
     ]
 )

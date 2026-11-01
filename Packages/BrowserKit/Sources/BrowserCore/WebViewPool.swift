@@ -30,7 +30,7 @@ final class WebViewPool {
         return c
     }
 
-    func session(for tab: Tab, browser: BrowserState) -> TabSession {
+    func session(for tab: BrowserTab, browser: BrowserState) -> TabSession {
         touch(tab.id)
         if let s = sessions[tab.id] { return s }
         let s = TabSession(tab: tab, configuration: tab.isPrivate ? privateConfiguration : configuration,

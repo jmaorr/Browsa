@@ -5,6 +5,7 @@ import Suggest
 struct RootView: View {
     @Environment(BrowserState.self) private var browser
     @Namespace private var newTabNS
+    @State private var rail = TabRailController()
 
     var body: some View {
         @Bindable var browser = browser
@@ -27,6 +28,13 @@ struct RootView: View {
         .sheet(isPresented: $browser.isSettingsPresented) {
             SettingsView()
         }
+        // Tab icon strip, shared by both postures.
+        .overlay(alignment: .leading) { TabRailView() }
+        .coordinateSpace(.named("browserRoot"))
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rail.containerHeight = $0 }
+        .onChange(of: browser.currentTab?.id) { rail.currentTabChanged() }
+        .onAppear { rail.browser = browser }
+        .environment(rail)
         .tint(SpacePalette.color(browser.currentSpace.colorIndex))
         .environment(\.newTabNamespace, newTabNS)
     }
@@ -35,10 +43,11 @@ struct RootView: View {
 /// Shows the selected tab's web view, or the start page when there's no tab.
 struct WebContentView: View {
     @Environment(BrowserState.self) private var browser
+    var bottomObscuredInset: CGFloat = 0
 
     var body: some View {
         if let tab = browser.currentTab {
-            WebViewHost(session: browser.session(for: tab))
+            WebViewHost(session: browser.session(for: tab), bottomObscuredInset: bottomObscuredInset)
                 .id(tab.id)
                 // Swipe between tabs on the bottom pill slides the pages too.
                 .transition(browser.lastTabSwipeForward.map { fwd in

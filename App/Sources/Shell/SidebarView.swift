@@ -63,7 +63,7 @@ struct SidebarView: View {
         .newTabZoomSource(.sidebarAddress)
     }
 
-    private func pinnedTile(_ tab: Tab, selected: Bool) -> some View {
+    private func pinnedTile(_ tab: BrowserTab, selected: Bool) -> some View {
         Button { browser.select(tab) } label: {
             Group {
                 if let url = tab.url { FaviconView(url: url, size: 28) }
@@ -99,7 +99,7 @@ struct SidebarView: View {
 
 struct TabRow: View {
     @Environment(BrowserState.self) private var browser
-    let tab: Tab
+    let tab: BrowserTab
     let selected: Bool
 
     var body: some View {
@@ -126,7 +126,7 @@ struct TabRow: View {
 
 struct TabMenu: View {
     @Environment(BrowserState.self) private var browser
-    let tab: Tab
+    let tab: BrowserTab
 
     var body: some View {
         Button(tab.isPinned ? "Unpin" : "Pin", systemImage: tab.isPinned ? "pin.slash" : "pin") {

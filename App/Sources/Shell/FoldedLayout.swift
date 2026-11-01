@@ -6,11 +6,16 @@ import Suggest
 /// with the address pill and a plus button on the right, in thumb reach.
 struct FoldedLayout: View {
     @Environment(BrowserState.self) private var browser
+    @Environment(TabRailController.self) private var rail
 
     var body: some View {
-        WebContentView()
+        // The bar floats over the page (it doesn't resize it), so collapsing it never reflows the page.
+        WebContentView(bottomObscuredInset: 64)
             .ignoresSafeArea(.container, edges: .bottom)
-            .safeAreaInset(edge: .bottom, spacing: 0) { BottomBar() }
+            .overlay(alignment: .bottom) { BottomBar() }
+            // Leading-edge swipe scrubs through tabs (WebKit's swipe-back is turned off).
+            .overlay(alignment: .leading) { TabRailEdge().padding(.bottom, 96) }
+            .onAppear { rail.sidebarShowsTabs = false }
             .duoDisableVerticalBar()
     }
 }
@@ -19,17 +24,33 @@ struct BottomBar: View {
     @Environment(BrowserState.self) private var browser
     @State private var dragX: CGFloat = 0
 
+    /// Collapsed to a small centred pill while the page scrolls down (Safari-style).
+    private var compact: Bool { browser.currentTab?.isChromeCompact ?? false }
+    private static let collapse = Animation.interpolatingSpring(mass: 1, stiffness: 300, damping: 26)
+    private static let sideControl = AnyTransition.scale(scale: 0.4).combined(with: .opacity)
+
     var body: some View {
         HStack(spacing: 10) {
-            if let tab = browser.currentTab {
+            if !compact, let tab = browser.currentTab {
                 Button("Back", systemImage: "chevron.backward") { browser.session(for: tab).webView.goBack() }
                     .labelStyle(.iconOnly)
                     .disabled(!tab.canGoBack)
                     .frame(width: 44, height: 44)
+                    .transition(Self.sideControl)
             }
 
             addressPill
 
+            if !compact { plusButton.transition(Self.sideControl) }
+        }
+        .padding(.horizontal, compact ? 0 : 16)
+        .padding(.vertical, compact ? 2 : 8)
+        .frame(maxWidth: .infinity)
+        .animation(Self.collapse, value: compact)
+        .sensoryFeedback(.selection, trigger: browser.currentTab?.id)
+    }
+
+    private var plusButton: some View {
             Button { browser.presentNewTab(from: NewTabSource.bottomBar.rawValue) } label: {
                 Image(systemName: "plus")
                     .font(.title3.weight(.semibold))
@@ -51,10 +72,6 @@ struct BottomBar: View {
                     }
                 }
             }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .sensoryFeedback(.selection, trigger: browser.currentTab?.id)
     }
 
     /// Tap: edit address. Swipe left/right: previous/next tab. Swipe up: tab switcher.
@@ -76,13 +93,20 @@ struct BottomBar: View {
         .clipped()
         .animation(Motion.snappy, value: tab?.url)
         .font(.callout)
-        .frame(maxWidth: .infinity, minHeight: 48)
+        .scaleEffect(compact ? 0.84 : 1)
+        .frame(maxWidth: compact ? 180 : .infinity, minHeight: compact ? 30 : 48)
         .padding(.horizontal, 14)
         .glassEffect(.regular.interactive(), in: .capsule)
         .offset(x: dragX * 0.3)
         .contentShape(.capsule)
         .newTabZoomSource(.addressPill)
-        .onTapGesture { browser.presentAddressEditor(from: NewTabSource.addressPill.rawValue) }
+        .onTapGesture {
+            if compact, let tab = browser.currentTab {
+                withAnimation(Self.collapse) { browser.session(for: tab).expandChrome() }
+            } else {
+                browser.presentAddressEditor(from: NewTabSource.addressPill.rawValue)
+            }
+        }
         .gesture(
             DragGesture(minimumDistance: 12)
                 .onChanged { v in if abs(v.translation.width) > abs(v.translation.height) { dragX = v.translation.width } }
@@ -95,7 +119,7 @@ struct BottomBar: View {
                         switchTab(by: t.width < 0 ? 1 : -1)
                     }
                 }
-        )
+        , including: compact ? .subviews : .all)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel(tab?.displayTitle ?? "Address")
         .accessibilityHint("Double-tap to edit. Swipe up for tabs.")
@@ -163,7 +187,7 @@ struct TabSwitcherSheet: View {
         .presentationDetents([.medium, .large])
     }
 
-    private func row(_ tab: Tab) -> some View {
+    private func row(_ tab: BrowserTab) -> some View {
         Button {
             browser.select(tab)
             browser.isTabSwitcherPresented = false
