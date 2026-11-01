@@ -56,25 +56,6 @@ struct TabsButton: View {
     }
 }
 
-/// Copy the current page's address, with a haptic and a toast.
-struct CopyLinkButton: View {
-    @Environment(BrowserState.self) private var browser
-    @State private var copies = 0
-
-    var body: some View {
-        Button("Copy Link", systemImage: "link") { copy() }
-            .disabled(browser.currentTab?.url == nil)
-            .sensoryFeedback(.success, trigger: copies)
-    }
-
-    func copy() {
-        guard let url = browser.currentTab?.url else { return }
-        browser.copyToPasteboard(url)
-        browser.showToast("Link copied")
-        copies += 1
-    }
-}
-
 /// Everything else about the page, in one native menu.
 struct PageMenu: View {
     @Environment(BrowserState.self) private var browser

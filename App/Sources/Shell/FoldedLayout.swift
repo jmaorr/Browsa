@@ -4,9 +4,11 @@ import Suggest
 
 /// Outer display: one-handed phone layout.
 ///
-/// - The Duo's system vertical bar (the gutter beside the outer screen) carries the page controls:
-///   tabs, back and forward (hold for history), copy link and the page menu.
-/// - An Arc-style bottom bar keeps just the address pill and the plus button, in thumb reach.
+/// - The Duo's system vertical bar (the gutter beside the outer screen) carries the controls in two
+///   groups, like Safari: back, forward (hold for history) and the page menu at the top, and
+///   tabs plus new tab at the bottom, in thumb reach.
+/// - The bottom bar is just the address pill, full width. Copy Link lives in the address editor
+///   (and holding the pill), not in the toolbar.
 ///
 /// On a phone without the vertical bar the same items fall back to the top toolbar.
 struct FoldedLayout: View {
@@ -30,47 +32,23 @@ struct FoldedLayout: View {
     }
 
     @ToolbarContentBuilder private var gutter: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) { TabsButton() }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: false) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: true) }.duoPinnedToVerticalBar()
-        ToolbarItem(placement: .topBarTrailing) { CopyLinkButton() }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { PageMenu() }.duoPinnedToVerticalBar()
+        // Pushes the next group to the far end of the bar: the bottom, beside your thumb.
+        ToolbarSpacer(.flexible, placement: .topBarTrailing)
+        ToolbarItem(placement: .topBarTrailing) { NewTabButton() }.duoPinnedToVerticalBar()
+        ToolbarItem(placement: .topBarTrailing) { TabsButton() }.duoPinnedToVerticalBar()
     }
 }
 
-struct BottomBar: View {
+/// The vertical bar's new-tab button. The new-tab sheet zooms out of it; hold for a private tab
+/// or a tab in another space.
+struct NewTabButton: View {
     @Environment(BrowserState.self) private var browser
-    @State private var dragX: CGFloat = 0
-
-    /// Collapsed to a small centred pill while the page scrolls down (Safari-style).
-    private var compact: Bool { browser.currentTab?.isChromeCompact ?? false }
-    private static let sideControl = AnyTransition.scale(scale: 0.4).combined(with: .opacity)
-
-    @State private var copies = 0
 
     var body: some View {
-        HStack(spacing: 10) {
-            addressPill
-
-            if !compact { plusButton.transition(Self.sideControl) }
-        }
-        .padding(.horizontal, compact ? 0 : 16)
-        .padding(.vertical, compact ? 2 : 8)
-        .frame(maxWidth: .infinity)
-        .animation(Motion.collapse, value: compact)
-        .sensoryFeedback(.selection, trigger: browser.currentTab?.id)
-        .sensoryFeedback(.success, trigger: copies)
-    }
-
-    private var plusButton: some View {
-            Button { browser.presentNewTab(from: NewTabSource.bottomBar.rawValue) } label: {
-                Image(systemName: "plus")
-                    .font(.title3.weight(.semibold))
-                    .frame(width: 48, height: 48)
-            }
-            .buttonStyle(.glassProminent)
-            .buttonBorderShape(.circle)
-            .accessibilityLabel("New Tab")
+        Button("New Tab", systemImage: "plus") { browser.presentNewTab(from: NewTabSource.bottomBar.rawValue) }
             .newTabZoomSource(.bottomBar)
             .contextMenu {
                 Button("New Private Tab", systemImage: "eye.slash") {
@@ -84,6 +62,26 @@ struct BottomBar: View {
                     }
                 }
             }
+    }
+}
+
+struct BottomBar: View {
+    @Environment(BrowserState.self) private var browser
+    @State private var dragX: CGFloat = 0
+
+    /// Collapsed to a small centred pill while the page scrolls down (Safari-style).
+    private var compact: Bool { browser.currentTab?.isChromeCompact ?? false }
+
+    @State private var copies = 0
+
+    var body: some View {
+        addressPill
+        .padding(.horizontal, compact ? 0 : 16)
+        .padding(.vertical, compact ? 2 : 8)
+        .frame(maxWidth: .infinity)
+        .animation(Motion.collapse, value: compact)
+        .sensoryFeedback(.selection, trigger: browser.currentTab?.id)
+        .sensoryFeedback(.success, trigger: copies)
     }
 
     /// Tap: edit address. Swipe left/right: previous/next tab. Swipe up: tab switcher.

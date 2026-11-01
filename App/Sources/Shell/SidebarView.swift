@@ -55,26 +55,12 @@ struct SidebarView: View {
                     .lineLimit(1)
                     .foregroundStyle(browser.currentTab?.url == nil ? .secondary : .primary)
                 Spacer(minLength: 0)
-                // Room for the copy button, which sits on top so it gets its own taps.
-                Color.clear.frame(width: browser.currentTab?.url == nil ? 0 : 24, height: 1)
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
             .glassEffect(.regular, in: .rect(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
         .newTabZoomSource(.sidebarAddress)
-        .overlay(alignment: .trailing) {
-            if browser.currentTab?.url != nil {
-                // One tap to copy, without opening the editor.
-                CopyLinkButton()
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 44, height: 44)
-                    .contentShape(.rect)
-                    .padding(.trailing, 2)
-            }
-        }
     }
 
     private func pinnedTile(_ tab: BrowserTab, selected: Bool) -> some View {

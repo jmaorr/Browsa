@@ -14,6 +14,9 @@ struct NewTabSheet: View {
     /// slides over into the field and becomes the full, selected address.
     private let morphFrom: URL?
     @State private var morphed = false
+    /// Copy Link shows while the field still holds the page's address, and goes once you type.
+    @State private var edited = false
+    @State private var copies = 0
 
     init(engine: SuggestEngine, initialText: String, morphFrom: URL? = nil) {
         _model = State(initialValue: NewTabModel(engine: engine))
@@ -79,7 +82,10 @@ struct NewTabSheet: View {
                 .scaleEffect(morphed || Motion.reduced ? 1 : 0.6)
             AddressField(initialText: initialText, inline: model.inline,
                          placeholder: "Search, address or command",
-                         onTextChange: { model.textChanged($0, lastEditWasInsertion: $1) },
+                         onTextChange: { text, inserted in
+                             if !edited, text != initialText { withAnimation(Motion.snappy) { edited = true } }
+                             model.textChanged(text, lastEditWasInsertion: inserted)
+                         },
                          onSubmit: { text in
                              if let action = model.submitAction(fieldText: text) { browser.perform(action) }
                          },
@@ -106,6 +112,23 @@ struct NewTabSheet: View {
                         .accessibilityHidden(true)
                     }
                 }
+            if let url = morphFrom, !edited {
+                // Copying the address shouldn't mean a trip to the share sheet. It's here, where the
+                // address is, rather than taking a toolbar slot.
+                Button {
+                    browser.copyToPasteboard(url)
+                    copies += 1
+                } label: {
+                    Image(systemName: copies > 0 ? "checkmark" : "doc.on.doc")
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(copies > 0 ? "Link copied" : "Copy Link")
+                .sensoryFeedback(.success, trigger: copies)
+                .opacity(morphed ? 1 : 0)
+                .transition(.scale(scale: 0.6).combined(with: .opacity))
+            }
             Button("Cancel") { browser.isNewTabSheetPresented = false }
                 .fontWeight(.medium)
         }
