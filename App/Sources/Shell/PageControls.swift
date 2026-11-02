@@ -56,6 +56,41 @@ struct TabsButton: View {
     }
 }
 
+/// Shows in the toolbar while something downloads. A ring fills around the arrow (a spinner if the
+/// server didn't give a size), then a tick or a warning shows for a moment. Tap for the downloads list.
+struct DownloadProgressButton: View {
+    @Environment(BrowserState.self) private var browser
+
+    var body: some View {
+        let progress = browser.downloads.runningProgress
+        // Newest first, so this is whichever download ended last.
+        let failed = browser.downloads.items.first.map { if case .failed = $0.state { true } else { false } } ?? false
+        Button { browser.isDownloadsPresented = true } label: {
+            ZStack {
+                if let progress, progress == 0 {
+                    ProgressView().controlSize(.small)
+                } else if let progress {
+                    Circle().stroke(.quaternary, lineWidth: 2.5)
+                    Circle()
+                        .trim(from: 0, to: progress)
+                        .stroke(.primary, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .animation(Motion.snappy, value: progress)
+                    Image(systemName: "arrow.down").font(.system(size: 10, weight: .bold))
+                } else {
+                    Image(systemName: failed ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                        .font(.system(size: 22))
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .frame(width: 22, height: 22)
+            .animation(Motion.bouncy, value: progress == nil)
+        }
+        .accessibilityLabel("Downloads")
+        .accessibilityValue(progress.map { "\(Int($0 * 100)) percent" } ?? (failed ? "Failed" : "Finished"))
+    }
+}
+
 /// Everything else about the page, in one native menu.
 struct PageMenu: View {
     @Environment(BrowserState.self) private var browser

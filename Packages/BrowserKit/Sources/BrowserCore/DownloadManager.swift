@@ -20,9 +20,19 @@ public final class DownloadManager: NSObject {
     public private(set) var items: [Item] = []
     /// Bumps when a download finishes, for a haptic and a toast.
     public private(set) var lastFinished: UUID?
+    /// True while anything is downloading and for a moment after, for the toolbar's indicator.
+    public private(set) var isIndicatorVisible = false
+
+    /// Overall progress of what's running, 0...1. Nil when nothing is running.
+    public var runningProgress: Double? {
+        let running = items.filter { $0.state == .running }
+        guard !running.isEmpty else { return nil }
+        return running.map(\.progress).reduce(0, +) / Double(running.count)
+    }
 
     @ObservationIgnored private var byDownload: [ObjectIdentifier: UUID] = [:]
     @ObservationIgnored private var progressObservations: [UUID: NSKeyValueObservation] = [:]
+    @ObservationIgnored private var hideIndicatorTask: Task<Void, Never>?
 
     public static var directory: URL {
         URL.documentsDirectory.appending(path: "Downloads", directoryHint: .isDirectory)
@@ -33,6 +43,8 @@ public final class DownloadManager: NSObject {
         let item = Item(filename: download.originalRequest?.url?.lastPathComponent ?? "Download",
                         sourceURL: download.originalRequest?.url)
         items.insert(item, at: 0)
+        hideIndicatorTask?.cancel()
+        isIndicatorVisible = true
         byDownload[ObjectIdentifier(download)] = item.id
         let id = item.id
         progressObservations[id] = download.progress.observe(\.fractionCompleted) { [weak self] p, _ in
@@ -44,6 +56,17 @@ public final class DownloadManager: NSObject {
     public func remove(_ item: Item) {
         if let url = item.fileURL { try? FileManager.default.removeItem(at: url) }
         items.removeAll { $0.id == item.id }
+    }
+
+    /// Leaves the finished indicator up long enough to read, then takes it away.
+    private func scheduleIndicatorHide() {
+        guard runningProgress == nil else { return }
+        hideIndicatorTask?.cancel()
+        hideIndicatorTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            self?.isIndicatorVisible = false
+        }
     }
 
     private func update(_ id: UUID, _ change: (inout Item) -> Void) {
@@ -85,12 +108,14 @@ extension DownloadManager: WKDownloadDelegate {
         update(id) { $0.state = .finished; $0.progress = 1 }
         progressObservations[id] = nil
         lastFinished = id
+        scheduleIndicatorHide()
     }
 
     public func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
         guard let id = id(for: download) else { return }
         update(id) { $0.state = .failed(error.localizedDescription) }
         progressObservations[id] = nil
+        scheduleIndicatorHide()
     }
 }
 #endif

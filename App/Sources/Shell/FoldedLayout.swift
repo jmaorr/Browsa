@@ -40,6 +40,9 @@ struct FoldedLayout: View {
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: false) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: true) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { PageMenu() }.duoPinnedToVerticalBar()
+        if browser.downloads.isIndicatorVisible {
+            ToolbarItem(placement: .topBarTrailing) { DownloadProgressButton() }.duoPinnedToVerticalBar()
+        }
         // Bottom-bar items land at the far end of the vertical bar, beside your thumb.
         ToolbarItem(placement: lower) { NewTabButton() }.duoPinnedToVerticalBar()
         ToolbarItem(placement: lower) { TabsButton() }.duoPinnedToVerticalBar()

@@ -74,6 +74,9 @@ struct UnfoldedWideLayout: View {
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: false) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: true) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { PageMenu() }.duoPinnedToVerticalBar()
+        if browser.downloads.isIndicatorVisible {
+            ToolbarItem(placement: .topBarTrailing) { DownloadProgressButton() }.duoPinnedToVerticalBar()
+        }
         // Bottom-bar items land at the far end of the vertical bar.
         ToolbarItem(placement: .bottomBar) {
             Button("New Tab", systemImage: "plus") { browser.presentNewTab(from: NewTabSource.verticalBar.rawValue) }

@@ -86,6 +86,9 @@ struct UnfoldedPortraitLayout: View {
     @ToolbarContentBuilder private var topBar: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) { HistoryButton(forward: false) }
         ToolbarItem(placement: .topBarLeading) { HistoryButton(forward: true) }
+        if browser.downloads.isIndicatorVisible {
+            ToolbarItem(placement: .topBarTrailing) { DownloadProgressButton() }
+        }
         ToolbarItem(placement: .topBarTrailing) { PageMenu() }
     }
 

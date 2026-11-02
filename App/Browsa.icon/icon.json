@@ -3,12 +3,25 @@
     "refractivity",
     "specular-location"
   ],
-  "fill" : {
-    "linear-gradient" : [
-      "display-p3:0.09332,0.02491,0.01362,1.00000",
-      "display-p3:0.00000,0.00000,0.00000,1.00000"
-    ]
-  },
+  "fill-specializations" : [
+    {
+      "value" : {
+        "linear-gradient" : [
+          "display-p3:0.86914,0.79777,0.76419,1.00000",
+          "display-p3:0.91610,0.91699,0.88017,1.00000"
+        ]
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "linear-gradient" : [
+          "display-p3:0.08029,0.05051,0.01014,1.00000",
+          "display-p3:0.04382,0.04408,0.04273,1.00000"
+        ]
+      }
+    }
+  ],
   "groups" : [
     {
       "blur-material" : 0.5,
