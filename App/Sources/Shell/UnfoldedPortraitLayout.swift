@@ -48,7 +48,7 @@ struct UnfoldedPortraitLayout: View {
     private var page: some View {
         ZStack {
             WebContentView(topObscuredInset: topInset, bottomObscuredInset: 90)
-                .ignoresSafeArea(.container, edges: .vertical)
+                .ignoresSafeArea(.all, edges: .vertical)
             // The bar's height is the top safe area, which the toolbar sets.
             VStack(spacing: 0) {
                 Rectangle().fill(.ultraThinMaterial).frame(height: topInset)

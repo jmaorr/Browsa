@@ -32,6 +32,8 @@ struct UnfoldedWideLayout: View {
             } content: {
                 WebContentView(bottomObscuredInset: space.isSidebarOpen ? 24 : 90)
             }
+            // The keyboard goes over the page without resizing it. WebKit scrolls the field into view.
+            .ignoresSafeArea(.keyboard, edges: .bottom)
             // The sidebar holds the address; with it hidden, the same capsule as the outer display.
             .overlay(alignment: .bottom) {
                 if !space.isSidebarOpen {

@@ -23,7 +23,7 @@ struct FoldedLayout: View {
                 // Edge to edge like Safari: the page runs under the status area and the bar.
                 // (The inset is the bar plus the safe area below it.)
                 // Without the vertical bar, the controls are in a top toolbar the page must clear.
-                .ignoresSafeArea(.container, edges: verticalBarEdge == nil ? .bottom : .vertical)
+                .ignoresSafeArea(.all, edges: verticalBarEdge == nil ? .bottom : .vertical)
                 .overlay(alignment: .bottom) { BottomBar().hiddenWhileKeyboardIsUp() }
                 // Leading-edge swipe scrubs through tabs (WebKit's swipe-back is turned off).
                 .overlay(alignment: .leading) { TabRailEdge().padding(.bottom, 96) }

@@ -54,7 +54,7 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
                 .padding(.vertical, cardInset)
                 .frame(width: width)
                 .frame(maxHeight: .infinity)
-                .ignoresSafeArea(.container, edges: .vertical)
+                .ignoresSafeArea(.all, edges: .vertical)
                 .offset(x: isDocked ? 0 : -(width + 16) * sign)
                 .allowsHitTesting(isDocked)
         }
@@ -78,8 +78,8 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
             .offset(x: slide * sign)
             // Keeps the sliding page out of the vertical bar's strip.
             .clipped()
-            // The card measures its margin from the screen, not from the safe area.
-            .ignoresSafeArea(.container, edges: .vertical)
+            // The card measures its margin from the screen, not from the safe area or the keyboard.
+            .ignoresSafeArea(.all, edges: .vertical)
     }
 
     /// Slide the full-size page aside, then resize it to fit beside the sidebar.

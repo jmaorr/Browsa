@@ -22,8 +22,6 @@ struct RootView: View {
                 // A fold can cancel a swipe mid-gesture, which would leave the strip out.
                 rail.reset()
             }
-            // WebKit moves the page for the keyboard itself.
-            .ignoresSafeArea(.keyboard, edges: .bottom)
         }
         // One sheet for both layouts, so an open sheet (and its typed text) survives a fold.
         .sheet(isPresented: $browser.isNewTabSheetPresented) {
