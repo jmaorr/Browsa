@@ -22,6 +22,8 @@ public final class DownloadManager: NSObject {
     public private(set) var lastFinished: UUID?
     /// True while anything is downloading and for two minutes after, for the toolbar's indicator.
     public private(set) var isIndicatorVisible = false
+    /// True for the first few seconds after the last download ends, while the tick shows.
+    public private(set) var isShowingFinishTick = false
 
     /// Overall progress of what's running, 0...1. Nil when nothing is running.
     public var runningProgress: Double? {
@@ -45,6 +47,7 @@ public final class DownloadManager: NSObject {
         items.insert(item, at: 0)
         hideIndicatorTask?.cancel()
         isIndicatorVisible = true
+        isShowingFinishTick = false
         byDownload[ObjectIdentifier(download)] = item.id
         let id = item.id
         progressObservations[id] = download.progress.observe(\.fractionCompleted) { [weak self] p, _ in
@@ -62,8 +65,12 @@ public final class DownloadManager: NSObject {
     private func scheduleIndicatorHide() {
         guard runningProgress == nil else { return }
         hideIndicatorTask?.cancel()
+        isShowingFinishTick = true
         hideIndicatorTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(120))
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            self?.isShowingFinishTick = false
+            try? await Task.sleep(for: .seconds(115))
             guard !Task.isCancelled else { return }
             self?.isIndicatorVisible = false
         }

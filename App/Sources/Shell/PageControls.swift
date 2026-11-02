@@ -57,7 +57,8 @@ struct TabsButton: View {
 }
 
 /// Shows in the toolbar while something downloads. A ring fills around the arrow (a spinner if the
-/// server didn't give a size), then a tick or a warning stays for two minutes. Tap for the downloads list.
+/// server didn't give a size), then a tick shows for 5 s and a plain downloads icon for the rest of two minutes (a failure keeps
+/// its warning throughout). Tap for the downloads list.
 struct DownloadProgressButton: View {
     @Environment(BrowserState.self) private var browser
 
@@ -78,8 +79,10 @@ struct DownloadProgressButton: View {
                         .animation(Motion.snappy, value: progress)
                     Image(systemName: "arrow.down").font(.system(size: 10, weight: .bold))
                 } else {
-                    Image(systemName: failed ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                    Image(systemName: failed ? "exclamationmark.circle.fill"
+                          : browser.downloads.isShowingFinishTick ? "checkmark.circle.fill" : "arrow.down.circle")
                         .font(.system(size: 22))
+                        .contentTransition(.symbolEffect(.replace))
                         .transition(.scale.combined(with: .opacity))
                 }
             }
