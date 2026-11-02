@@ -11,8 +11,9 @@ import Suggest
 ///   the card's thumbnail, driven by a single spring.
 /// - Pinned tabs sit in a row at the top, Today's tabs in a grid below: two columns folded,
 ///   as many as fit unfolded.
-/// - Swipe a card sideways or tap its ✕ to close it. Long-press for the tab menu, or drag it to
-///   reorder.
+/// - Swipe a card left or tap its ✕ to close it. Long-press for the tab menu, or drag it to
+///   reorder. A scroll always wins: a swipe has to start clearly sideways, and taps are ignored
+///   until the grid has come to rest.
 struct TabGridOverlay: View {
     @Environment(BrowserState.self) private var browser
     @Namespace private var ns
@@ -23,6 +24,11 @@ struct TabGridOverlay: View {
     @State private var expanded = false
     @State private var heroID: UUID?
     @State private var size: CGSize = .init(width: 390, height: 844)
+    @State private var isScrolling = false
+    /// A tap this soon after a scroll stops was meant for the scroll.
+    @State private var scrollStoppedAt: Date = .distantPast
+
+    private var isAtRest: Bool { !isScrolling && Date().timeIntervalSince(scrollStoppedAt) > 0.2 }
 
     var body: some View {
         ZStack {
@@ -113,6 +119,10 @@ struct TabGridOverlay: View {
                 .padding(.top, 16)
                 .padding(.bottom, 90)
             }
+            .onScrollPhaseChange { _, phase in
+                if isScrolling && !phase.isScrolling { scrollStoppedAt = .now }
+                isScrolling = phase.isScrolling
+            }
             .onAppear { if let id = heroID { proxy.scrollTo(id, anchor: .center) } }
         }
         .overlay(alignment: .bottom) { bottomBar }
@@ -124,8 +134,9 @@ struct TabGridOverlay: View {
     private func card(_ tab: BrowserTab) -> some View {
         TabGridCard(tab: tab, selected: tab.id == browser.currentSpace.selectedTabID, aspect: aspect,
                     hidden: expanded && heroID == tab.id, ns: ns,
-                    onOpen: { close(into: tab) },
-                    onClose: { withAnimation(Motion.snappy) { browser.close(tab) } })
+                    onOpen: { if isAtRest { close(into: tab) } },
+                    onCloseTapped: { if isAtRest { withAnimation(Motion.snappy) { browser.close(tab) } } },
+                    onSwipedAway: { withAnimation(Motion.snappy) { browser.close(tab) } })
             .draggable(tab.id.uuidString) {
                 TabThumbnail(tab: tab, image: browser.thumbnails[tab.id], cornerRadius: 14)
                     .frame(width: 140, height: 140 / aspect)
@@ -201,8 +212,13 @@ private struct TabGridCard: View {
     let hidden: Bool
     let ns: Namespace.ID
     var onOpen: () -> Void
-    var onClose: () -> Void
+    var onCloseTapped: () -> Void
+    var onSwipedAway: () -> Void
     @State private var dragX: CGFloat = 0
+    @State private var isPastCloseLine = false
+
+    /// How far left a slow swipe has to go before letting go closes the tab.
+    private let closeLine: CGFloat = 90
 
     var body: some View {
         VStack(spacing: 6) {
@@ -220,14 +236,14 @@ private struct TabGridCard: View {
                 .overlay {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.separator),
-                                      lineWidth: selected ? 3 : 0.5)
+                                      lineWidth: selected ? 2.5 : 0.5)
                         .opacity(hidden ? 0 : 1)
                 }
                 .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(CardPressStyle())
             .overlay(alignment: .topTrailing) {
-                Button("Close", systemImage: "xmark", action: onClose)
+                Button("Close", systemImage: "xmark", action: onCloseTapped)
                     .labelStyle(.iconOnly)
                     .font(.caption.weight(.bold))
                     .frame(width: 26, height: 26)
@@ -245,27 +261,73 @@ private struct TabGridCard: View {
         }
         .offset(x: dragX)
         .opacity(1 - min(0.6, abs(dragX) / 300))
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 24)
-                .onChanged { v in
-                    if abs(v.translation.width) > abs(v.translation.height) * 1.5 { dragX = v.translation.width }
-                }
-                .onEnded { v in
-                    let proj = v.predictedEndTranslation.width
-                    if abs(dragX) > 0, abs(proj) > 140 {
-                        withAnimation(Motion.snappy) { dragX = proj > 0 ? 500 : -500 } completion: { onClose() }
-                    } else {
-                        withAnimation(Motion.bouncy) { dragX = 0 }
-                    }
-                }
-        )
+        .gesture(HorizontalSwipeGesture(onChanged: dragged, onEnded: released))
+        .sensoryFeedback(.selection, trigger: isPastCloseLine)
         .contextMenu { TabMenu(tab: tab) }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(tab.displayTitle)
         .accessibilityValue(selected ? "Current tab" : "")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { onOpen() }
-        .accessibilityAction(named: "Close Tab") { onClose() }
+        .accessibilityAction(named: "Close Tab") { onSwipedAway() }
+    }
+
+    /// Follows the finger to the left, and resists to the right, where nothing happens.
+    private func dragged(_ dx: CGFloat) {
+        dragX = dx < 0 ? dx : dx * 0.15
+        isPastCloseLine = dx < -closeLine
+    }
+
+    /// A slow swipe closes past the line. A flick closes sooner, but only if it travelled.
+    private func released(dx: CGFloat, velocity: CGFloat) {
+        isPastCloseLine = false
+        if dx < -closeLine || (dx < -36 && velocity < -700) {
+            withAnimation(Motion.snappy) { dragX = -600 } completion: { onSwipedAway() }
+        } else {
+            withAnimation(Motion.bouncy) { dragX = 0 }
+        }
+    }
+}
+
+private struct CardPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(Motion.snappy, value: configuration.isPressed)
+    }
+}
+
+/// A pan that only starts when the finger is moving clearly sideways. It's a UIKit recogniser so it
+/// competes properly with the scroll view: whichever starts first wins and the other stands down,
+/// which a SwiftUI simultaneous drag can't do.
+private struct HorizontalSwipeGesture: UIGestureRecognizerRepresentable {
+    var onChanged: (CGFloat) -> Void
+    var onEnded: (_ dx: CGFloat, _ velocity: CGFloat) -> Void
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let pan = UIPanGestureRecognizer()
+        pan.delegate = context.coordinator
+        return pan
+    }
+
+    func handleUIGestureRecognizerAction(_ pan: UIPanGestureRecognizer, context: Context) {
+        let dx = pan.translation(in: pan.view).x
+        switch pan.state {
+        case .changed: onChanged(dx)
+        case .ended: onEnded(dx, pan.velocity(in: pan.view).x)
+        case .cancelled, .failed: onEnded(0, 0)
+        default: break
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = recognizer as? UIPanGestureRecognizer else { return false }
+            let v = pan.velocity(in: pan.view)
+            return abs(v.x) > abs(v.y) * 2
+        }
     }
 }
 
