@@ -5,10 +5,12 @@ import BrowserCore
 /// motion is ours:
 ///
 /// - **Docked**: the sidebar pushes the page aside, and the page becomes an inset rounded card.
-/// - **Hidden**: the page is full-bleed. Drag in from the sidebar edge to pull the sidebar out
-///   under your finger. Let go past the halfway point (or flick) and it stays as a floating
-///   **peek** panel over the page, otherwise it springs back.
-/// - **Peek**: a floating, shadowed panel. Tap the page, pick a tab, or drag it back to dismiss.
+/// - **Hidden**: the page is full-bleed. A short swipe in from the edge brings out the tab strip;
+///   keep pulling and the strip itself grows into the sidebar (titles slide in beside the icons,
+///   the address field and spaces fade in). Let go past halfway (or flick) and it settles as the
+///   **peek** sidebar, otherwise it shrinks back to icons and tucks away.
+/// - **Peek**: a panel attached to the screen edge, over the page. Tap the page, pick a tab, or
+///   drag it back to dismiss.
 ///   Press the toggle while peeking to dock it.
 ///
 /// All transitions are velocity-matched springs, so a fast flick lands fast and you can grab
@@ -27,6 +29,9 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
     /// Live drag offset, in points toward "more open". Zero when not dragging. Plain @State (not
     /// @GestureState) so the release animates from exactly where the finger left it.
     @State private var drag: CGFloat = 0
+    @Environment(TabRailController.self) private var rail
+    /// Where the edge drag stops scrubbing tabs and the strip starts growing into the sidebar.
+    private let handOffDistance: CGFloat = 110
     @State private var isDragging = false
     private var sign: CGFloat { edge == .leading ? 1 : -1 }
 
@@ -54,14 +59,41 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
 
                 // Edge swipe while hidden: scrub the tab strip, or keep pulling for the sidebar.
                 if mode == .hidden {
-                    TabRailEdge(
-                        handOffDistance: 130,
-                        onHandOff: { isDragging = true },
-                        onSidebarDrag: { dx in drag = max(0, dx * sign - 40) },
-                        onSidebarEnd: { predicted, velocity in
-                            isDragging = false
-                            set(predicted * sign - 40 > width * 0.5 ? .peek : .hidden, velocity: velocity * sign)
-                        })
+                    if edge == .leading {
+                        // The tab strip grows into the sidebar under your finger, then the real
+                        // sidebar takes over in exactly the same place.
+                        TabRailEdge(
+                            handOffDistance: handOffDistance,
+                            onHandOff: {
+                                rail.expandedWidth = width
+                                rail.beginExpand()
+                            },
+                            onSidebarDrag: { dx in rail.expansion = growth(dx) },
+                            onSidebarEnd: { predicted, velocity in
+                                let span = width - TabRailView.width
+                                if growth(predicted) > 0.5 {
+                                    withAnimation(Motion.spring(initialVelocity: Double(abs(velocity) / span))) {
+                                        rail.expansion = 1
+                                    } completion: {
+                                        var t = Transaction(); t.disablesAnimations = true
+                                        withTransaction(t) { mode = .peek; drag = 0 }
+                                        rail.handOffToSidebar()
+                                    }
+                                } else {
+                                    rail.collapseExpansion(velocity: velocity / span)
+                                }
+                            })
+                    } else {
+                        // Sidebar on the trailing edge (vertical bar on the left): drag it out directly.
+                        TabRailEdge(
+                            handOffDistance: 130,
+                            onHandOff: { rail.cancelScrub(); isDragging = true },
+                            onSidebarDrag: { dx in drag = max(0, dx * sign - 40) },
+                            onSidebarEnd: { predicted, velocity in
+                                isDragging = false
+                                set(predicted * sign - 40 > width * 0.5 ? .peek : .hidden, velocity: velocity * sign)
+                            })
+                    }
                 }
             }
             .sensoryFeedback(.impact(weight: .light), trigger: mode)
@@ -82,14 +114,17 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
             .frame(maxHeight: .infinity)
             .background {
                 if mode != .docked {
-                    // Floating panel look when peeking.
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    // Peeking, it's attached to the screen edge like the tab strip it grows out
+                    // of: square against the edge, rounded on the open side.
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: edge == .leading ? 0 : 20, bottomLeadingRadius: edge == .leading ? 0 : 20,
+                        bottomTrailingRadius: edge == .leading ? 20 : 0, topTrailingRadius: edge == .leading ? 20 : 0,
+                        style: .continuous)
                         .fill(.regularMaterial)
-                        .shadow(color: .black.opacity(0.18), radius: 24, x: 8 * sign, y: 4)
+                        .shadow(color: .black.opacity(0.22), radius: 24, x: 8 * sign, y: 4)
+                        .ignoresSafeArea(edges: .vertical)
                 }
             }
-            .padding(.vertical, mode == .docked ? 0 : 8)
-            .padding(edge == .leading ? .leading : .trailing, mode == .docked ? 0 : 8)
             .offset(x: sidebarOffset * sign)
             .opacity(mode == .hidden && drag == 0 ? 0 : 1)
             .gesture(dismissGesture)
@@ -118,6 +153,13 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
     }
 
     private var cardInset: CGFloat { mode == .docked ? 8 : 0 }
+
+    /// Edge drag distance to strip growth: 0 at the hand-off point, 1 at full sidebar width,
+    /// resisting beyond that.
+    private func growth(_ dx: CGFloat) -> CGFloat {
+        let f = max(0, (dx - handOffDistance) / (width - TabRailView.width))
+        return f <= 1 ? f : 1 + rubberBand(f - 1)
+    }
 
     private func rubberBand(_ x: CGFloat) -> CGFloat {
         // Classic iOS rubber-band curve, tuned so a full-width overdrag moves ~8% of the width.
