@@ -1,6 +1,6 @@
 # Generate the Xcode project with XcodeGen:  brew install xcodegen && xcodegen
 # The .xcodeproj is git-ignored; this file is the source of truth.
-name: DuoBrowser
+name: Browsa
 options:
   bundleIdPrefix: com.jmaorr
   deploymentTarget:
@@ -16,7 +16,7 @@ packages:
   BrowserKit:
     path: Packages/BrowserKit
 targets:
-  DuoBrowser:
+  Browsa:
     type: application
     platform: iOS
     sources:
@@ -59,3 +59,16 @@ targets:
     scheme:
       testTargets:
         - package: BrowserKit/SuggestTests
+        - BrowsaUITests
+  BrowsaUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - App/UITests
+    dependencies:
+      - target: Browsa
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa.uitests
+        TARGETED_DEVICE_FAMILY: "1"

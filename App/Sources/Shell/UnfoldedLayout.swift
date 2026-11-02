@@ -30,7 +30,7 @@ struct UnfoldedWideLayout: View {
                              tint: SpacePalette.color(space.colorIndex)) {
                 SidebarView()
             } content: {
-                WebContentView(bottomObscuredInset: space.isSidebarOpen ? 24 : 90)
+                WebContentView(bottomObscuredInset: space.isSidebarOpen ? BarMetrics.dockedPageInset : BarMetrics.underCapsuleInset)
             }
             // The keyboard goes over the page without resizing it. WebKit scrolls the field into view.
             .ignoresSafeArea(.keyboard, edges: .bottom)

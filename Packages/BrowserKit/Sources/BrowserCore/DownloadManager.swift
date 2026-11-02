@@ -4,7 +4,7 @@ import Observation
 import WebKit
 
 /// Saves WKDownloads into Documents/Downloads, which the Files app shows under
-/// "On My iPhone > Duo Browser" (UIFileSharingEnabled + LSSupportsOpeningDocumentsInPlace).
+/// "On My iPhone > Browsa" (UIFileSharingEnabled + LSSupportsOpeningDocumentsInPlace).
 @MainActor @Observable
 public final class DownloadManager: NSObject {
     public struct Item: Identifiable, Sendable {

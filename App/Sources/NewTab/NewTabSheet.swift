@@ -145,7 +145,7 @@ struct NewTabSheet: View {
             }
         }
         .padding(.horizontal, 14)
-        .frame(height: 48)
+        .frame(height: BarMetrics.capsuleHeight)
         .glassEffect(.regular.interactive(), in: .capsule)
     }
 }

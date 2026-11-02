@@ -52,14 +52,14 @@ jobs:
       - name: Build app for iOS Simulator (full iPhone Duo SDK)
         if: env.HAS_DUO_SDK == '1'
         run: |
-          xcodebuild build -project DuoBrowser.xcodeproj -scheme DuoBrowser \
+          xcodebuild build -project Browsa.xcodeproj -scheme Browsa \
             -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO -quiet -skipPackagePluginValidation
 
       - name: Build app for iOS Simulator (older SDK, Duo APIs stubbed)
         if: env.HAS_DUO_SDK != '1'
         run: |
           SDK_VER=$(xcrun --sdk iphonesimulator --show-sdk-version)
-          xcodebuild build -project DuoBrowser.xcodeproj -scheme DuoBrowser \
+          xcodebuild build -project Browsa.xcodeproj -scheme Browsa \
             -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO -quiet -skipPackagePluginValidation \
             IPHONEOS_DEPLOYMENT_TARGET="$SDK_VER" \
             SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) NO_DUO_SDK' \

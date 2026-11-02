@@ -34,7 +34,7 @@ public enum RemoteSource: Hashable, Sendable {
                             .init(name: "limit", value: "3"), .init(name: "namespace", value: "0"),
                             .init(name: "format", value: "json")]
             var req = URLRequest(url: c.url!, timeoutInterval: 2)
-            req.setValue("DuoBrowser/1.0 (iOS; suggestions)", forHTTPHeaderField: "User-Agent")
+            req.setValue("Browsa/1.0 (iOS; suggestions)", forHTTPHeaderField: "User-Agent")
             return req
         }
     }

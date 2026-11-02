@@ -27,6 +27,7 @@ public struct WebViewHost: UIViewRepresentable {
 
     public func updateUIView(_ uiView: ContainerView, context: Context) {
         uiView.attach(session.webView)
+        session.recoverIfNeeded()
         // Tells WebKit the bar covers this strip, so fixed and sticky page headers sit below it.
         if #available(iOS 26, *), session.webView.obscuredContentInsets.top != topObscuredInset {
             session.webView.obscuredContentInsets.top = topObscuredInset

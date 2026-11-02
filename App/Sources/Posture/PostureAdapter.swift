@@ -36,6 +36,9 @@ struct PostureReader<Content: View>: View {
     @ViewBuilder var content: (Posture) -> Content
 
     var posture: Posture {
+        #if DEBUG
+        if let forced = UITestSupport.forcedHingeOpen { return forced ? .unfolded : .folded }
+        #endif
         if let hingeOpen { return hingeOpen ? .unfolded : .folded }
         return sizeClass == .regular ? .unfolded : .folded
     }

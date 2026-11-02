@@ -3,14 +3,21 @@ import AVFoundation
 import BrowserCore
 
 @main
-struct DuoBrowserApp: App {
-    @State private var browser = BrowserState()
+struct BrowsaApp: App {
+    @State private var browser = BrowsaApp.makeBrowser()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
         // Playback (not the default ambient) so web audio ignores the silent switch, like Safari,
         // and keeps playing in the background. WebKit activates the session when media starts.
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, policy: .longFormAudio)
+    }
+
+    private static func makeBrowser() -> BrowserState {
+        #if DEBUG
+        if let browser = UITestSupport.makeBrowser() { return browser }
+        #endif
+        return BrowserState()
     }
 
     var body: some Scene {
@@ -24,6 +31,8 @@ struct DuoBrowserApp: App {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active: browser.archiveStaleTabs()
+            // Still on screen, so the picture isn't blank. It's what the tab shows after a relaunch.
+            case .inactive: if let tab = browser.currentTab { browser.captureThumbnail(of: tab) }
             case .background: browser.saveNow()
             default: break
             }

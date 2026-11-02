@@ -1,4 +1,4 @@
-# DuoBrowser
+# Browsa
 
 A personal, native WebKit browser for iPhone Duo. It brings Arc's navigation model to iOS:
 
@@ -10,14 +10,14 @@ A personal, native WebKit browser for iPhone Duo. It brings Arc's navigation mod
   suggestions from the first keystroke (favourites, open tabs, history ranked by frecency, a
   bundled list of popular sites and search-engine suggestions), plus inline autocomplete like Safari's.
 
-The full plan is in the [Duo Browser build plan](https://claude.ai/artifact/ThrnaYjvkiKMqCKoukze3s).
+The full plan is in the [build plan](https://claude.ai/artifact/ThrnaYjvkiKMqCKoukze3s).
 
 ## Build
 
 ```sh
 brew install xcodegen
-xcodegen            # generates DuoBrowser.xcodeproj from project.yml
-open DuoBrowser.xcodeproj
+xcodegen            # generates Browsa.xcodeproj from project.yml
+open Browsa.xcodeproj
 ```
 
 You need Xcode 27.2 or later and the iOS 27.2 SDK. Set your development team in `project.yml` or in Xcode.
@@ -32,7 +32,7 @@ cd Packages/BrowserKit && swift test
 
 ```
 App/Sources/
-  DuoBrowserApp.swift      entry point, keyboard shortcuts, scene lifecycle
+  BrowsaApp.swift          entry point, keyboard shortcuts, scene lifecycle
   Posture/PostureAdapter   every iPhone Duo API call (hinge, vertical bar) lives here
   Shell/                   RootView, UnfoldedLayout + SidebarView, FoldedLayout + BottomBar, tab switcher
   NewTab/                  NewTabSheet, AddressField (inline autocomplete), NewTabModel
@@ -77,3 +77,13 @@ leaves the list and then closes the sheet.
 - A downloads button in the chrome (downloads live in the command bar, ⌥⌘J and the Files app for now)
 - CloudKit sync and a separate login profile for each space
 - Storing history in SQLite with full-text search (GRDB + FTS5) instead of JSON, once history gets big
+
+## UI tests
+
+`App/UITests` drives the real app on a simulator, using a throwaway state file and local pages. It
+runs on the Mac rather than in CI, because CI's Xcode has no iPhone Duo SDK yet:
+
+```sh
+xcodebuild test -project Browsa.xcodeproj -scheme Browsa -only-testing:BrowsaUITests \
+  -destination 'platform=iOS Simulator,name=iPhone Duo'
+```

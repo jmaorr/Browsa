@@ -46,3 +46,19 @@ import Testing
             ["! comment", "||ads.example^", "||more.example^"])
     }
 }
+
+@Suite struct ThumbnailStoreTests {
+    @Test func keepsWantedPicturesAndDeletesTheRest() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = ThumbnailStore(directory: dir)
+        let kept = UUID(), gone = UUID(), removed = UUID()
+        store.save(Data([1]), for: kept)
+        store.save(Data([2]), for: gone)
+        store.save(Data([3]), for: removed)
+        store.remove(removed)
+
+        #expect(store.loadAll(keeping: [kept, removed]) == [kept: Data([1])])
+        #expect(store.loadAll(keeping: [kept, gone]) == [kept: Data([1])])
+    }
+}

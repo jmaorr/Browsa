@@ -168,7 +168,7 @@ extension View {
         labelStyle(.iconOnly)
             .fontWeight(.medium)
             .foregroundStyle(.primary)
-            .frame(width: 48, height: 48)
+            .frame(width: BarMetrics.capsuleHeight, height: BarMetrics.capsuleHeight)
             .contentShape(.circle)
             .glassEffect(.regular.interactive(), in: .circle)
     }

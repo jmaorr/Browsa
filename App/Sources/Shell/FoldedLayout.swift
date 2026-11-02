@@ -19,9 +19,8 @@ struct FoldedLayout: View {
     var body: some View {
         NavigationStack {
             // The bar floats over the page (it doesn't resize it), so collapsing it never reflows the page.
-            WebContentView(bottomObscuredInset: 90)
+            WebContentView(bottomObscuredInset: BarMetrics.underCapsuleInset)
                 // Edge to edge like Safari: the page runs under the status area and the bar.
-                // (The inset is the bar plus the safe area below it.)
                 // Without the vertical bar, the controls are in a top toolbar the page must clear.
                 .ignoresSafeArea(.all, edges: verticalBarEdge == nil ? .bottom : .vertical)
                 .overlay(alignment: .bottom) { BottomBar().hiddenWhileKeyboardIsUp() }
@@ -91,7 +90,7 @@ struct BottomBar: View {
         // No padding below: like Safari the bar rests right on the safe area, and the small pill
         // drops into it, just above the home indicator.
         .padding(.horizontal, compact ? 0 : sideMargin)
-        .offset(y: compact ? 20 : 0)
+        .offset(y: compact ? BarMetrics.compactCapsuleDrop : 0)
         .frame(maxWidth: .infinity)
         .animation(Motion.collapse, value: compact)
         .sensoryFeedback(.selection, trigger: browser.currentTab?.id)
@@ -122,7 +121,7 @@ struct BottomBar: View {
         }
         .font(.callout)
         .scaleEffect(compact ? 0.84 : 1)
-        .frame(maxWidth: compact ? 165 : .infinity, minHeight: compact ? 34 : 48)
+        .frame(maxWidth: compact ? 165 : .infinity, minHeight: compact ? BarMetrics.compactCapsuleHeight : BarMetrics.capsuleHeight)
         .padding(.horizontal, 14)
         .overlay(alignment: .bottom) { if let tab { LoadingStrip(tab: tab) } }
         .clipShape(.capsule)

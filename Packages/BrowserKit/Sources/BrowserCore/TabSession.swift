@@ -14,6 +14,9 @@ public final class TabSession: NSObject {
     /// Set when the user navigates from the address bar so history records a "typed" visit.
     var pendingVisitSource: Frecency.VisitSource?
     private var chromeTracker = ScrollChromeTracker()
+    /// iOS killed the web process while this tab was out of sight. Reload when it's next shown.
+    private var needsRecovery = false
+    private var lastTermination: Date?
 
     /// - Parameter loadInitial: false for popups, where WebKit itself loads the request into
     ///   the web view we return from `createWebViewWith`.
@@ -45,6 +48,7 @@ public final class TabSession: NSObject {
         if !loadInitial {
             // WebKit drives the first load.
         } else if tab.interactionState != nil || tab.url != nil {
+            showLastPictureUntilPainted()
             browser.pool.afterContentRules { [weak self] in
                 guard let self else { return }
                 if let state = tab.interactionState {
@@ -66,7 +70,10 @@ public final class TabSession: NSObject {
                 MainActor.assumeIsolated { tab.title = wv.title ?? "" }
             },
             webView.observe(\.estimatedProgress, options: [.new]) { wv, _ in
-                MainActor.assumeIsolated { tab.estimatedProgress = wv.estimatedProgress }
+                MainActor.assumeIsolated {
+                    tab.estimatedProgress = wv.estimatedProgress
+                    if wv.estimatedProgress > 0.6 { tab.isAwaitingFirstPaint = false }
+                }
             },
             webView.observe(\.isLoading, options: [.new]) { wv, _ in
                 MainActor.assumeIsolated { tab.isLoading = wv.isLoading }
@@ -118,6 +125,33 @@ public final class TabSession: NSObject {
         webView.load(URLRequest(url: url))
     }
 
+    /// Covers the blank web view with the tab's last picture while it loads. The time limit is for
+    /// a restore that never reports back.
+    private func showLastPictureUntilPainted() {
+        tab.isAwaitingFirstPaint = true
+        let tab = self.tab
+        Task {
+            try? await Task.sleep(for: .seconds(6))
+            tab.isAwaitingFirstPaint = false
+        }
+    }
+
+    /// Called whenever the tab comes on screen.
+    func recoverIfNeeded() {
+        guard needsRecovery else { return }
+        needsRecovery = false
+        recover()
+    }
+
+    private func recover() {
+        showLastPictureUntilPainted()
+        if webView.url != nil {
+            webView.reload()
+        } else if let url = tab.url {
+            webView.load(URLRequest(url: url))
+        }
+    }
+
     /// Captures state so the web view can be torn down and rebuilt later.
     func freeze() {
         tab.interactionState = webView.interactionState as? Data
@@ -137,6 +171,7 @@ extension TabSession: WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         endRefreshing()
+        tab.isAwaitingFirstPaint = false
         guard let url = webView.url, !tab.isPrivate else { return }
         let source = pendingVisitSource ?? .link
         pendingVisitSource = nil
@@ -148,11 +183,13 @@ extension TabSession: WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
         endRefreshing()
+        tab.isAwaitingFirstPaint = false
     }
 
     /// The page never arrived: show our error page instead of a blank screen.
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
         endRefreshing()
+        tab.isAwaitingFirstPaint = false
         let ns = error as NSError
         guard !LoadError.isIgnorable(ns) else { return }
         let failed = (ns.userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? webView.url
@@ -176,8 +213,22 @@ extension TabSession: WKNavigationDelegate {
     }
 
     public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        // iOS kills background web content under memory pressure. Reload quietly.
-        webView.reload()
+        // iOS kills web content under memory pressure. A tab out of sight waits until it's shown,
+        // so a low-memory phone isn't reloading every tab at once.
+        guard webView.window != nil else {
+            needsRecovery = true
+            return
+        }
+        // Dying again straight after a reload is the page itself, and reloading would loop forever.
+        let diedRecently = lastTermination.map { Date().timeIntervalSince($0) < 10 } ?? false
+        lastTermination = .now
+        if diedRecently {
+            let error = NSError(domain: "Browsa", code: 1,
+                                userInfo: [NSLocalizedDescriptionKey: "This page keeps crashing."])
+            tab.loadError = LoadError(url: tab.url, error: error)
+        } else {
+            recover()
+        }
     }
 
     public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,

@@ -81,6 +81,17 @@ struct WebContentView: View {
                     }
                 }
                 .animation(Motion.snappy, value: tab.loadError)
+                // A tab that hasn't loaded yet shows its last picture, not a blank page.
+                .overlay {
+                    if tab.isAwaitingFirstPaint, let image = browser.thumbnails[tab.id] {
+                        Color.clear
+                            .overlay(alignment: .top) { Image(uiImage: image).resizable().scaledToFill() }
+                            .clipped()
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(Motion.snappy, value: tab.isAwaitingFirstPaint)
         } else {
             StartPage()
         }

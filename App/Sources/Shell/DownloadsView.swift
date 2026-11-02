@@ -3,7 +3,7 @@ import QuickLook
 import BrowserCore
 
 /// Downloads list. Finished files open in Quick Look (the same viewer Files uses) and can be
-/// shared or dragged out. Everything also lives in Files > On My iPhone > Duo > Downloads.
+/// shared or dragged out. Everything also lives in Files > On My iPhone > Browsa > Downloads.
 struct DownloadsView: View {
     @Environment(BrowserState.self) private var browser
     @Environment(\.dismiss) private var dismiss

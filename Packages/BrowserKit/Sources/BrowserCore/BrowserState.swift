@@ -33,11 +33,11 @@ public final class BrowserState {
     public var isUnfolded = false
     @ObservationIgnored var promptQueue: [(WebPrompt, CheckedContinuation<WebPromptResponse, Never>)] = []
     @ObservationIgnored var promptLog: [UUID: [Date]] = [:]
-    @ObservationIgnored private var toastTask: Task<Void, Never>?
+    @ObservationIgnored var toastTask: Task<Void, Never>?
     /// Tabs closed this session, newest last, for Cmd-Shift-T. In memory only, never private tabs.
     public private(set) var recentlyClosed: [BrowserTab] = []
     /// Small pictures of each tab's page for the tab grid, taken as you leave a tab.
-    /// In memory only; a tab without one shows its icon.
+    /// Saved to disk except for private tabs; a tab without one shows its icon.
     public var thumbnails: [UUID: UIImage] = [:]
     /// Filter list download/compile state, for Settings.
     public internal(set) var filterStatus = FilterStatus()
@@ -78,11 +78,14 @@ public final class BrowserState {
     @ObservationIgnored public private(set) var suggest: SuggestEngine!
     @ObservationIgnored private let snapshotURL: URL?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    @ObservationIgnored private let thumbnailStore: ThumbnailStore?
 
     public init(history: HistoryStore = HistoryStore(fileURL: HistoryStore.defaultFileURL()),
-                snapshotURL: URL? = BrowserState.defaultSnapshotURL()) {
+                snapshotURL: URL? = BrowserState.defaultSnapshotURL(),
+                thumbnailStore: ThumbnailStore? = ThumbnailStore()) {
         self.history = history
         self.snapshotURL = snapshotURL
+        self.thumbnailStore = thumbnailStore
         if let snapshotURL, let data = try? Data(contentsOf: snapshotURL),
            let snap = try? JSONDecoder().decode(BrowserSnapshot.self, from: data), !snap.spaces.isEmpty {
             spaces = snap.spaces.map(Space.init)
@@ -98,6 +101,18 @@ public final class BrowserState {
         }
         suggest = makeSuggestEngine()
         applyContentBlocking()
+        loadSavedThumbnails()
+    }
+
+    private func loadSavedThumbnails() {
+        guard let thumbnailStore else { return }
+        let ids = Set((spaces.flatMap(\.allTabs) + archive).map(\.id))
+        Task {
+            let saved = await Task.detached(priority: .utility) { thumbnailStore.loadAll(keeping: ids) }.value
+            for (id, data) in saved where thumbnails[id] == nil {
+                thumbnails[id] = UIImage(data: data)
+            }
+        }
     }
 
 
@@ -180,97 +195,6 @@ public final class BrowserState {
         }
     }
 
-    // MARK: Command bar
-
-    /// Commands that make sense right now, for the command bar.
-    public func availableCommands() -> [BrowserCommand] {
-        var out: [BrowserCommand] = []
-        if let tab = currentTab {
-            out.append(BrowserCommand(id: "pin", title: tab.isPinned ? "Unpin Tab" : "Pin Tab", keywords: ["tab"]))
-            if let url = tab.url, !isFavorite(url) {
-                out.append(BrowserCommand(id: "favourite", title: "Add to Favourites", subtitle: tab.displayTitle,
-                                          keywords: ["favorite", "star", "bookmark"]))
-            }
-            out.append(BrowserCommand(id: "close", title: "Close Tab", keywords: ["tab"]))
-            if let url = tab.url {
-                out.append(BrowserCommand(id: "copy-link", title: "Copy Link", subtitle: url.absoluteString, keywords: ["url", "share"]))
-            }
-        }
-        if currentSpace.today.count > 1 {
-            out.append(BrowserCommand(id: "close-others", title: "Close Other Tabs", keywords: ["tabs", "clean"]))
-        }
-        if let last = recentlyClosed.last {
-            out.append(BrowserCommand(id: "reopen", title: "Reopen Closed Tab", subtitle: last.displayTitle, keywords: ["undo", "restore"]))
-        }
-        if let tab = currentTab, tab.url != nil {
-            out.append(BrowserCommand(id: "desktop", title: tab.isDesktopSite ? "Request Mobile Site" : "Request Desktop Site",
-                                      keywords: ["desktop", "mobile", "user agent"]))
-            out.append(BrowserCommand(id: "find", title: "Find on Page", keywords: ["search", "text"]))
-            out.append(BrowserCommand(id: "reload", title: "Reload Page", keywords: ["refresh"]))
-        }
-        if !downloads.items.isEmpty {
-            out.append(BrowserCommand(id: "downloads", title: "Show Downloads", subtitle: "\(downloads.items.count) files", keywords: ["files"]))
-        }
-        out.append(BrowserCommand(id: "private", title: "New Private Tab", keywords: ["incognito"]))
-        for s in spaces where s.id != selectedSpaceID {
-            out.append(BrowserCommand(id: "space:" + s.id.uuidString, title: "Switch to \(s.name)", subtitle: "Space", keywords: ["space"]))
-        }
-        out.append(BrowserCommand(id: "settings", title: "Settings", keywords: ["preferences", "search engine"]))
-        out.append(BrowserCommand(id: "archive", title: "Show Archive", subtitle: "\(archive.count) archived tabs", keywords: ["history", "closed"]))
-        return out
-    }
-
-    public func run(command id: String) {
-        isNewTabSheetPresented = false
-        switch id {
-        case "pin": if let t = currentTab { togglePinned(t) }
-        case "favourite": if let t = currentTab, let url = t.url { addFavorite(url: url, title: t.displayTitle) }
-        case "close": if let t = currentTab { close(t) }
-        case "copy-link": if let url = currentTab?.url { copyToPasteboard(url) }
-        case "close-others":
-            let keep = currentTab?.id
-            for t in currentSpace.today where t.id != keep { close(t) }
-        case "private":
-            newTab(url: nil, isPrivate: true)
-            presentAddressEditor()
-        case "reopen": reopenClosedTab()
-        case "find":
-            // Wait for the sheet to finish dismissing so the find bar can take first responder.
-            Task { try? await Task.sleep(for: .milliseconds(350)); findInPage() }
-        case "reload": reload()
-        case "desktop": toggleDesktopSite()
-        case "downloads": isDownloadsPresented = true
-        case "settings": isSettingsPresented = true
-        case "archive": isArchivePresented = true
-        default:
-            if id.hasPrefix("space:"), let uuid = UUID(uuidString: String(id.dropFirst(6))),
-               let s = spaces.first(where: { $0.id == uuid }) {
-                selectSpace(s)
-            } else if id.hasPrefix("restore:"), let uuid = UUID(uuidString: String(id.dropFirst(8))),
-                      let t = archive.first(where: { $0.id == uuid }) {
-                restoreFromArchive(t)
-            }
-        }
-    }
-
-    private func navigate(to url: URL, reuseCurrent: Bool, source: Frecency.VisitSource) {
-        if reuseCurrent, let tab = currentTab {
-            session(for: tab).load(url, source: source)
-        } else {
-            newTab(url: url, source: source)
-        }
-    }
-
-    func openPopup(url: URL, configuration: WKWebViewConfiguration, from opener: BrowserTab) -> WKWebView {
-        let space = spaces.first { $0.allTabs.contains { $0.id == opener.id } } ?? currentSpace
-        let tab = BrowserTab(url: url, isPrivate: opener.isPrivate)
-        space.today.insert(tab, at: 0)
-        let s = TabSession(tab: tab, configuration: configuration, browser: self, loadInitial: false)
-        pool.adopt(s)
-        select(tab)
-        return s.webView
-    }
-
     // MARK: Tab management
 
     public func close(_ tab: BrowserTab) {
@@ -294,6 +218,10 @@ public final class BrowserState {
         }
         pool.remove(tab.id)
         thumbnails[tab.id] = nil
+        if let thumbnailStore {
+            let id = tab.id
+            Task.detached(priority: .utility) { thumbnailStore.remove(id) }
+        }
         scheduleSave()
     }
 
@@ -311,6 +239,9 @@ public final class BrowserState {
     public func captureThumbnail(of tab: BrowserTab) {
         guard tab.url != nil, let image = pool.existingSession(for: tab.id)?.renderThumbnail() else { return }
         thumbnails[tab.id] = image
+        guard !tab.isPrivate, let thumbnailStore, let data = image.jpegData(compressionQuality: 0.7) else { return }
+        let id = tab.id
+        Task.detached(priority: .utility) { thumbnailStore.save(data, for: id) }
     }
 
     /// Cmd-Shift-T: bring back the last closed tab, with its back/forward history.
@@ -339,172 +270,6 @@ public final class BrowserState {
         guard tabs.count > 1, let cur = currentTab, let i = tabs.firstIndex(where: { $0.id == cur.id }) else { return }
         lastTabSwipeForward = delta > 0
         select(tabs[(i + delta + tabs.count) % tabs.count])
-    }
-
-    // MARK: Links
-
-    /// Long-press > Open in Background: a new today tab right after the opener, loading quietly.
-    public func openInBackground(_ url: URL, from opener: BrowserTab?) {
-        let space = opener.flatMap { o in spaces.first { $0.allTabs.contains { $0.id == o.id } } } ?? currentSpace
-        let tab = BrowserTab(url: url, isPrivate: opener?.isPrivate ?? false)
-        let after = opener.flatMap { o in space.today.firstIndex { $0.id == o.id } }.map { $0 + 1 } ?? 0
-        space.today.insert(tab, at: after)
-        session(for: tab).load(url, source: .link)
-        // Loading made it most-recently-used in the pool; the visible tab must stay ahead of it.
-        if let current = currentTab { _ = session(for: current) }
-        showToast("Opened in background")
-        scheduleSave()
-    }
-
-    public func showToast(_ text: String) {
-        toastTask?.cancel()
-        toast = text
-        toastTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.6))
-            guard !Task.isCancelled else { return }
-            self?.toast = nil
-        }
-    }
-
-    // MARK: Desktop / mobile sites
-
-    /// Desktop on the inner display, mobile on the outer, unless the site has an override.
-    func prefersDesktop(for url: URL?) -> Bool {
-        if let host = url.map(URLNormalizer.displayHost), let o = settings.siteDesktopOverrides[host] { return o }
-        return isUnfolded && settings.desktopSitesWhenUnfolded
-    }
-
-    /// "Request Desktop Site" / "Request Mobile Site": remembered for the site, page reloads.
-    public func toggleDesktopSite() {
-        guard let tab = currentTab, let url = tab.url else { return }
-        let host = URLNormalizer.displayHost(url)
-        let wantDesktop = !tab.isDesktopSite
-        // Store an override only when it differs from what the posture would pick anyway.
-        let natural = isUnfolded && settings.desktopSitesWhenUnfolded
-        settings.siteDesktopOverrides[host] = wantDesktop == natural ? nil : wantDesktop
-        // reloadFromOrigin re-runs the navigation policy, so the new content mode applies.
-        session(for: tab).webView.reloadFromOrigin()
-    }
-
-    // MARK: Current page actions
-
-    public func goBack() { currentTab.map { session(for: $0).webView.goBack() } }
-    public func goForward() { currentTab.map { session(for: $0).webView.goForward() } }
-    public func reload() { currentTab.map { session(for: $0).webView.reload() } }
-    public func stopLoading() { currentTab.map { session(for: $0).webView.stopLoading() } }
-
-    /// Cmd-F: the system find bar (same one Safari uses), which sits above the keyboard.
-    public func findInPage() {
-        guard let tab = currentTab, tab.url != nil else { return }
-        session(for: tab).webView.findInteraction?.presentFindNavigator(showingReplace: false)
-    }
-
-    /// Cmd-D: toggles the current page in favourites.
-    public func toggleFavoriteForCurrentTab() {
-        guard let tab = currentTab, let url = tab.url else { return }
-        let key = URLNormalizer.key(for: url)
-        if let f = favorites.first(where: { URLNormalizer.key(for: $0.url) == key }) { removeFavorite(f) }
-        else { addFavorite(url: url, title: tab.displayTitle) }
-    }
-
-    public func togglePinned(_ tab: BrowserTab) {
-        let space = spaces.first { $0.allTabs.contains { $0.id == tab.id } } ?? currentSpace
-        if tab.isPinned {
-            space.pinned.removeAll { $0.id == tab.id }
-            space.today.insert(tab, at: 0)
-        } else {
-            space.today.removeAll { $0.id == tab.id }
-            space.pinned.append(tab)
-        }
-        tab.isPinned.toggle()
-        scheduleSave()
-    }
-
-    /// Call on launch and when returning to the foreground.
-    public func archiveStaleTabs(now: Date = .now) {
-        for space in spaces {
-            let stale = space.today.filter { $0.id != space.selectedTabID && now.timeIntervalSince($0.lastActive) > settings.archiveAfterHours * 3600 }
-            guard !stale.isEmpty else { continue }
-            space.today.removeAll { t in stale.contains { $0.id == t.id } }
-            stale.forEach { pool.existingSession(for: $0.id)?.freeze(); pool.remove($0.id) }
-            archive.insert(contentsOf: stale.filter { !$0.isPrivate }, at: 0)
-        }
-        archive = Array(archive.prefix(500))
-        scheduleSave()
-    }
-
-    // MARK: Spaces
-
-    public func addSpace() {
-        let used = Set(spaces.map(\.colorIndex))
-        let color = (0..<6).first { !used.contains($0) } ?? spaces.count
-        let space = Space(name: "Space \(spaces.count + 1)", symbol: "circle.fill", colorIndex: color)
-        spaces.append(space)
-        scheduleSave()
-    }
-
-    public func deleteSpace(_ space: Space) {
-        guard spaces.count > 1, let i = spaces.firstIndex(where: { $0.id == space.id }) else { return }
-        space.allTabs.forEach { pool.remove($0.id) }
-        spaces.remove(at: i)
-        if selectedSpaceID == space.id { selectedSpaceID = spaces[0].id }
-        if settings.externalLinksSpaceID == space.id { settings.externalLinksSpaceID = nil }
-        scheduleSave()
-    }
-
-    /// A link opened from another app (once this is the default browser).
-    public func openExternal(_ url: URL) {
-        let target = spaces.first { $0.id == settings.externalLinksSpaceID } ?? currentSpace
-        isNewTabSheetPresented = false
-        newTab(url: url, in: target, source: .link)
-    }
-
-    // MARK: Archive
-
-    public func restoreFromArchive(_ tab: BrowserTab) {
-        archive.removeAll { $0.id == tab.id }
-        tab.lastActive = .now
-        currentSpace.today.insert(tab, at: 0)
-        select(tab)
-    }
-
-    public func clearArchive() {
-        archive.removeAll()
-        scheduleSave()
-    }
-
-    // MARK: Favourites
-
-    public func isFavorite(_ url: URL) -> Bool {
-        let key = URLNormalizer.key(for: url)
-        return favorites.contains { URLNormalizer.key(for: $0.url) == key }
-    }
-
-    public func addFavorite(url: URL, title: String) {
-        guard !isFavorite(url) else { return }
-        favorites.append(Favorite(url: url, title: title, order: (favorites.map(\.order).max() ?? -1) + 1))
-        Task { await history.setBookmarked(url, true) }
-        scheduleSave()
-    }
-
-    public func removeFavorite(_ fav: Favorite) {
-        favorites.removeAll { $0.id == fav.id }
-        Task { await history.setBookmarked(fav.url, false) }
-        scheduleSave()
-    }
-
-    public func renameFavorite(_ fav: Favorite, to name: String) {
-        guard let i = favorites.firstIndex(where: { $0.id == fav.id }) else { return }
-        favorites[i].customName = name.isEmpty ? nil : name
-        scheduleSave()
-    }
-
-    public func moveFavorites(fromOffsets: IndexSet, toOffset: Int) {
-        var sorted = favorites.sorted { $0.order < $1.order }
-        sorted.move(fromOffsets: fromOffsets, toOffset: toOffset)
-        for i in sorted.indices { sorted[i].order = i }
-        favorites = sorted
-        scheduleSave()
     }
 
     // MARK: Suggest wiring

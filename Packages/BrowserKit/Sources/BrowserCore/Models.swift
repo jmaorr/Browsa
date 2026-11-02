@@ -27,6 +27,8 @@ public final class BrowserTab: Identifiable {
     public var isDesktopSite = false
     /// The colour WebKit shows beyond the page's edges. Nil until the page says.
     public var pageBackground: CGColor?
+    /// A new web view hasn't drawn its page yet, so show the tab's last picture over it.
+    public var isAwaitingFirstPaint = false
 
     public init(id: UUID = UUID(), url: URL?, title: String = "", isPinned: Bool = false,
                 lastActive: Date = .now, interactionState: Data? = nil, isPrivate: Bool = false) {
