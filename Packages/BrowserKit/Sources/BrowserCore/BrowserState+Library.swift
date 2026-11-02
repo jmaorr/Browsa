@@ -28,8 +28,8 @@ extension BrowserState {
 
     /// A link opened from another app (once this is the default browser).
     public func openExternal(_ url: URL) {
-        // Never into Private, unless that's where you are and no space is set for links.
-        let target = regularSpaces.first { $0.id == settings.externalLinksSpaceID } ?? currentSpace
+        // Never into Private: links from other apps belong with your normal tabs.
+        let target = regularSpaces.first { $0.id == settings.externalLinksSpaceID } ?? regularTargetSpace
         isNewTabSheetPresented = false
         newTab(url: url, in: target, source: .link)
     }
