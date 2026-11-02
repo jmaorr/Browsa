@@ -34,17 +34,15 @@ enum PostureLog {
     static let logger = Logger(subsystem: "com.orriginal.browsa", category: "posture")
 }
 
-/// Reads the hinge (when there is one) and the size class, and publishes a `Posture`.
+/// Publishes a `Posture` from the size class alone, so the layout changes in step with the display.
 struct PostureReader<Content: View>: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
-    @State private var hingeOpen: Bool?   // nil = not a Duo, fall back to size class
     @ViewBuilder var content: (Posture) -> Content
 
     var posture: Posture {
         #if DEBUG
         if let forced = UITestSupport.forcedHingeOpen { return forced ? .unfolded : .folded }
         #endif
-        if let hingeOpen { return hingeOpen ? .unfolded : .folded }
         return sizeClass == .regular ? .unfolded : .folded
     }
 
@@ -58,29 +56,27 @@ struct PostureReader<Content: View>: View {
                 t.animation = nil
                 t.disablesAnimations = true
             }
-            .duoOnHingeChange { hingeOpen = $0 }
+            .duoLogHingeChanges()
             // In Console, filter on subsystem com.orriginal.browsa to see what the hinge reported
             // around a blank unfold.
             .onChange(of: posture) { old, new in
-                let detail = "posture \(old) -> \(new), hinge open: \(String(describing: hingeOpen)), size class: \(String(describing: sizeClass))"
+                let detail = "posture \(old) -> \(new), size class: \(String(describing: sizeClass))"
                 PostureLog.logger.notice("\(detail, privacy: .public)")
+            }
+            .onChange(of: sizeClass) { old, new in
+                PostureLog.logger.notice("size class \(String(describing: old), privacy: .public) -> \(String(describing: new), privacy: .public)")
             }
     }
 }
 
 extension View {
-    /// Calls `action` with true (open), false (closed) or nil (not a Duo) when the hinge moves.
-    func duoOnHingeChange(_ action: @escaping (Bool?) -> Void) -> some View {
+    /// Logs what the hinge reports. Nothing depends on it.
+    func duoLogHingeChanges() -> some View {
         #if NO_DUO_SDK
         self
         #else
         onHingeChange { _, new in
-            guard let hinge = new.hinge else { action(nil); return }
-            switch hinge.status {
-            case .closed: action(false)
-            case .partiallyOpen, .fullyOpen: action(true)
-            default: action(nil)
-            }
+            PostureLog.logger.notice("hinge event: \(String(describing: new.hinge?.status), privacy: .public)")
         }
         #endif
     }

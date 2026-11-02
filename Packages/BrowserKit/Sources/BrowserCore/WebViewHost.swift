@@ -1,6 +1,10 @@
 #if os(iOS)
 import SwiftUI
 import WebKit
+import OSLog
+
+/// In Console, filter on subsystem com.orriginal.browsa to line these up with the hinge's reports.
+let webViewLog = Logger(subsystem: "com.orriginal.browsa", category: "webview")
 
 /// Hosts a tab's live WKWebView. The same WKWebView instance is re-parented when the layout
 /// changes (fold/unfold), so pages never reload because of a posture change.
@@ -57,6 +61,7 @@ public struct WebViewHost: UIViewRepresentable {
         func claim(_ webView: WKWebView) {
             self.webView = webView
             guard webView.superview !== self else { return }
+            webViewLog.notice("claim: web view in window \(webView.window != nil, privacy: .public), new host in window \(self.window != nil, privacy: .public)")
             webView.removeFromSuperview()
             webView.translatesAutoresizingMaskIntoConstraints = false
             addSubview(webView)
@@ -72,6 +77,7 @@ public struct WebViewHost: UIViewRepresentable {
 
         public override func didMoveToWindow() {
             super.didMoveToWindow()
+            webViewLog.notice("host in window \(self.window != nil, privacy: .public), owns web view \(self.webView?.superview === self, privacy: .public)")
             if window != nil, let webView, webView.superview !== self { claim(webView) }
         }
     }

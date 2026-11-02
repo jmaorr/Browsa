@@ -31,8 +31,6 @@ struct RootView: View {
             NewTabSheet(engine: browser.suggest,
                         initialText: browser.newTabSheetEditsCurrentTab ? (browser.currentTab?.url?.absoluteString ?? "") : "",
                         morphFrom: browser.newTabSheetEditsCurrentTab ? browser.currentTab?.url : nil)
-                // The sheet grows out of whichever plus button (or address pill) was tapped.
-                .navigationTransition(.zoom(sourceID: browser.newTabSourceID, in: newTabNS))
         }
         .sheet(isPresented: $browser.isSettingsPresented) {
             // Settings keeps the system's control colours.

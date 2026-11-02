@@ -144,6 +144,7 @@ public final class TabSession: NSObject {
     }
 
     private func recover() {
+        webViewLog.notice("recovering by reload: \(self.tab.url?.host() ?? "no host", privacy: .public)")
         showLastPictureUntilPainted()
         if webView.url != nil {
             webView.reload()
@@ -213,6 +214,7 @@ extension TabSession: WKNavigationDelegate {
     }
 
     public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        webViewLog.error("web process terminated: \(self.tab.url?.host() ?? "no host", privacy: .public), in window \(webView.window != nil, privacy: .public), app state \(UIApplication.shared.applicationState.rawValue, privacy: .public)")
         // iOS kills web content under memory pressure. A tab out of sight waits until it's shown,
         // so a low-memory phone isn't reloading every tab at once.
         guard webView.window != nil else {
