@@ -41,6 +41,8 @@ struct UnfoldedWideLayout: View {
                 }
             }
             .toolbar { toolbar }
+            // Docked, the space's tint surrounds the page instead.
+            .pageColoredSurroundings(browser.currentTab, isEnabled: !space.isSidebarOpen)
             .toolbarTitleDisplayMode(.inline)
             .duoVerticalBarPrefersOurItems()
             // The docked sidebar already lists the tabs, so the strip doesn't peek then.

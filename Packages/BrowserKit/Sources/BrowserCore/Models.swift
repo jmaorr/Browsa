@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 import Observation
 import Suggest
 
@@ -24,6 +25,8 @@ public final class BrowserTab: Identifiable {
     public var loadError: LoadError?
     /// Whether the current page was requested as the desktop site.
     public var isDesktopSite = false
+    /// The colour WebKit shows beyond the page's edges. Nil until the page says.
+    public var pageBackground: CGColor?
 
     public init(id: UUID = UUID(), url: URL?, title: String = "", isPinned: Bool = false,
                 lastActive: Date = .now, interactionState: Data? = nil, isPrivate: Bool = false) {

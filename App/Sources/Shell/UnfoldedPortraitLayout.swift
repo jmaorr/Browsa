@@ -19,6 +19,7 @@ struct UnfoldedPortraitLayout: View {
             NavigationStack {
                 page
                     .toolbar { topBar }
+                    .pageColoredSurroundings(browser.currentTab)
                     .toolbarTitleDisplayMode(.inline)
                     .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
             }
@@ -52,6 +53,7 @@ struct UnfoldedPortraitLayout: View {
             // The bar's height is the top safe area, which the toolbar sets.
             VStack(spacing: 0) {
                 Rectangle().fill(.ultraThinMaterial).frame(height: topInset)
+                    .pageMatchedAppearance(browser.currentTab)
                 Spacer(minLength: 0)
             }
             .ignoresSafeArea(.container, edges: .top)

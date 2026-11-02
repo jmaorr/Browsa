@@ -28,6 +28,7 @@ struct FoldedLayout: View {
                 // Leading-edge swipe scrubs through tabs (WebKit's swipe-back is turned off).
                 .overlay(alignment: .leading) { TabRailEdge().padding(.bottom, 96) }
                 .toolbar { gutter }
+                .pageColoredSurroundings(browser.currentTab)
                 .toolbarTitleDisplayMode(.inline)
                 .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
                 .duoVerticalBarPrefersOurItems()

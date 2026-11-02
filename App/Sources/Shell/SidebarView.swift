@@ -35,7 +35,8 @@ struct SidebarView: View {
                         .listRowInsets(.init(top: 2, leading: 0, bottom: 2, trailing: 0))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .swipeActions { Button("Close", systemImage: "xmark", role: .destructive) { browser.close(tab) } }
+                        // Its own tint: the app-wide .primary is white in dark mode, under white text.
+                        .swipeActions { Button("Close", systemImage: "xmark", role: .destructive) { browser.close(tab) }.tint(.red) }
                 }
                 .onMove { from, to in space.today.move(fromOffsets: from, toOffset: to); browser.scheduleSave() }
             }

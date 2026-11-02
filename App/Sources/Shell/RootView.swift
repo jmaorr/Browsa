@@ -89,6 +89,40 @@ struct WebContentView: View {
     }
 }
 
+extension View {
+    /// Runs the page's background colour out under the system's bars, like Safari, and matches the
+    /// status items to it so they stay readable whatever the app's own appearance.
+    func pageColoredSurroundings(_ tab: BrowserTab?, isEnabled: Bool = true) -> some View {
+        let color = isEnabled ? tab?.pageBackground : nil
+        return self
+            .background { if let color { Color(cgColor: color).ignoresSafeArea() } }
+            .toolbarColorScheme(color.map { $0.isLight ? .light : .dark }, for: .navigationBar)
+    }
+}
+
+private struct PageMatchedAppearance: ViewModifier {
+    let tab: BrowserTab?
+    @Environment(\.colorScheme) private var system
+
+    func body(content: Content) -> some View {
+        content.environment(\.colorScheme, tab?.pageBackground.map { $0.isLight ? .light : .dark } ?? system)
+    }
+}
+
+extension View {
+    /// For a bar behind the system's status items, which `pageColoredSurroundings` has flipped.
+    /// Never put this around the web view, or a site's own dark mode would follow the page's colour.
+    func pageMatchedAppearance(_ tab: BrowserTab?) -> some View { modifier(PageMatchedAppearance(tab: tab)) }
+}
+
+private extension CGColor {
+    var isLight: Bool {
+        var white: CGFloat = 1
+        UIColor(cgColor: self).getWhite(&white, alpha: nil)
+        return white > 0.5
+    }
+}
+
 /// Empty state: big plus, plus favourites for one-tap access.
 struct StartPage: View {
     @Environment(BrowserState.self) private var browser

@@ -71,6 +71,9 @@ public final class TabSession: NSObject {
             webView.observe(\.isLoading, options: [.new]) { wv, _ in
                 MainActor.assumeIsolated { tab.isLoading = wv.isLoading }
             },
+            webView.observe(\.underPageBackgroundColor, options: [.initial, .new]) { wv, _ in
+                MainActor.assumeIsolated { tab.pageBackground = wv.underPageBackgroundColor.cgColor }
+            },
             webView.observe(\.canGoBack, options: [.new]) { wv, _ in
                 MainActor.assumeIsolated { tab.canGoBack = wv.canGoBack }
             },
