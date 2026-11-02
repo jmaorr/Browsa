@@ -8,16 +8,28 @@ on:
 concurrency:
   group: filter-rules
 
+permissions:
+  contents: read
+
 jobs:
   publish:
     runs-on: macos-latest
     timeout-minutes: 30
+    env:
+      OUT: ${{ github.workspace }}/../rules
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - name: Build and upload
+      # Runs third-party package code, so it doesn't get the token.
+      - name: Build
+        working-directory: tools/filter-rules
+        run: ./publish.sh build
+
+      - name: Upload
         working-directory: tools/filter-rules
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: ./publish.sh
+        run: ./publish.sh upload
