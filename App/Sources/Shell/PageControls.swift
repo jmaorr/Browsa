@@ -98,3 +98,36 @@ struct PageMenu: View {
         }
     }
 }
+
+/// Reload, or stop while the page is loading. Sits at the trailing end of the address capsule.
+struct ReloadButton: View {
+    @Environment(BrowserState.self) private var browser
+    let tab: BrowserTab
+
+    var body: some View {
+        Button(tab.isLoading ? "Stop" : "Reload", systemImage: tab.isLoading ? "xmark" : "arrow.clockwise") {
+            tab.isLoading ? browser.stopLoading() : browser.reload()
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .frame(width: 32, height: 32)
+        .contentShape(.rect)
+    }
+}
+
+/// Page load progress: a thin line along the bottom of the address capsule, which clips it.
+struct LoadingStrip: View {
+    let tab: BrowserTab
+
+    var body: some View {
+        Rectangle()
+            .fill(.primary.opacity(0.55))
+            .frame(height: 2)
+            .scaleEffect(x: max(0.03, tab.estimatedProgress), anchor: .leading)
+            .opacity(tab.isLoading ? 1 : 0)
+            .animation(Motion.snappy, value: tab.estimatedProgress)
+            .animation(Motion.snappy, value: tab.isLoading)
+            .allowsHitTesting(false)
+    }
+}

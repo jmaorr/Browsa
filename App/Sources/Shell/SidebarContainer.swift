@@ -5,197 +5,132 @@ import BrowserCore
 /// motion is ours:
 ///
 /// - **Docked**: the sidebar pushes the page aside, and the page becomes an inset rounded card.
-/// - **Hidden**: the page is full-bleed. A short swipe in from the edge brings out the tab strip;
-///   keep pulling and the strip itself grows into the sidebar (titles slide in beside the icons,
-///   the address field and spaces fade in). Let go past halfway (or flick) and it settles as the
-///   **peek** sidebar, otherwise it shrinks back to icons and tucks away.
-/// - **Peek**: a panel attached to the screen edge, over the page. Tap the page, pick a tab, or
-///   drag it back to dismiss.
-///   Press the toggle while peeking to dock it.
+/// - **Hidden**: the page is full-bleed. A swipe in from the leading edge brings out the tab strip.
 ///
-/// All transitions are velocity-matched springs, so a fast flick lands fast and you can grab
-/// the sidebar mid-animation.
+/// Laying out a web view is slow, so the page never resizes during the animation. It changes size
+/// once, while it's off to the side of its final position, and the motion itself only slides it.
 struct SidebarContainer<Sidebar: View, Content: View>: View {
-    enum Mode: Equatable { case docked, hidden, peek }
-
-    @Binding var mode: Mode
+    var isDocked: Bool
     /// Which screen edge the sidebar lives on.
     var edge: HorizontalEdge
     var width: CGFloat = 288
     var tint: Color
+    /// Vertical edges where the page runs to the screen edge instead of stopping at the safe area.
+    var fullBleedEdges: Edge.Set = .vertical
     @ViewBuilder var sidebar: () -> Sidebar
     @ViewBuilder var content: () -> Content
 
-    /// Live drag offset, in points toward "more open". Zero when not dragging. Plain @State (not
-    /// @GestureState) so the release animates from exactly where the finger left it.
-    @State private var drag: CGFloat = 0
-    @Environment(TabRailController.self) private var rail
-    /// Where the edge drag stops scrubbing tabs and the strip starts growing into the sidebar.
-    private let handOffDistance: CGFloat = 110
-    @State private var isDragging = false
+    /// The page's actual size follows this, not `isDocked`, so it changes only between animations.
+    @State private var laidOutDocked: Bool
+    @State private var slide: CGFloat = 0
+    /// Top and bottom margin and corner radius drawn by clipping while the page slides.
+    @State private var clipInset: CGFloat = 0
+    @State private var radius: CGFloat
+
+    private let cardInset: CGFloat = 8
+    private let cardRadius: CGFloat = 14
     private var sign: CGFloat { edge == .leading ? 1 : -1 }
 
-    var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: edge == .leading ? .leading : .trailing) {
-                // Background tint shows through around the inset page card when docked.
-                tint.opacity(0.14).ignoresSafeArea()
-
-                pageCard
-                    .padding(edge == .leading ? .leading : .trailing, dockedInset)
-                    .padding(.vertical, cardInset)
-                    .padding(edge == .leading ? .trailing : .leading, cardInset > 0 ? 2 : 0)
-                    // The card measures its margin from the screen, not from the safe area.
-                    .ignoresSafeArea(.container, edges: .vertical)
-                    .overlay {
-                        // Dimming + tap-to-dismiss while peeking.
-                        if mode == .peek || (mode == .hidden && revealFraction > 0) {
-                            Color.black.opacity(0.12 * revealFraction)
-                                .ignoresSafeArea()
-                                .onTapGesture { set(.hidden) }
-                                .transition(.opacity)
-                        }
-                    }
-
-                sidebarLayer
-
-                // Edge swipe while hidden: scrub the tab strip, or keep pulling for the sidebar.
-                if mode == .hidden {
-                    if edge == .leading {
-                        // The tab strip grows into the sidebar under your finger, then the real
-                        // sidebar takes over in exactly the same place.
-                        TabRailEdge(
-                            handOffDistance: handOffDistance,
-                            onHandOff: {
-                                rail.expandedWidth = width
-                                rail.beginExpand()
-                            },
-                            onSidebarDrag: { dx in rail.expansion = growth(dx) },
-                            onSidebarEnd: { predicted, velocity in
-                                let span = width - TabRailView.width
-                                if growth(predicted) > 0.5 {
-                                    withAnimation(Motion.spring(initialVelocity: Double(abs(velocity) / span))) {
-                                        rail.expansion = 1
-                                    } completion: {
-                                        var t = Transaction(); t.disablesAnimations = true
-                                        withTransaction(t) { mode = .peek; drag = 0 }
-                                        rail.handOffToSidebar()
-                                    }
-                                } else {
-                                    rail.collapseExpansion(velocity: velocity / span)
-                                }
-                            })
-                    } else {
-                        // Sidebar on the trailing edge (vertical bar on the left): drag it out directly.
-                        TabRailEdge(
-                            handOffDistance: 130,
-                            onHandOff: { rail.cancelScrub(); isDragging = true },
-                            onSidebarDrag: { dx in drag = max(0, dx * sign - 40) },
-                            onSidebarEnd: { predicted, velocity in
-                                isDragging = false
-                                set(predicted * sign - 40 > width * 0.5 ? .peek : .hidden, velocity: velocity * sign)
-                            })
-                    }
-                }
-            }
-            .sensoryFeedback(.impact(weight: .light), trigger: mode)
-        }
+    init(isDocked: Bool, edge: HorizontalEdge, width: CGFloat = 288, tint: Color,
+         fullBleedEdges: Edge.Set = .vertical,
+         @ViewBuilder sidebar: @escaping () -> Sidebar, @ViewBuilder content: @escaping () -> Content) {
+        self.isDocked = isDocked
+        self.edge = edge
+        self.width = width
+        self.tint = tint
+        self.fullBleedEdges = fullBleedEdges
+        self.sidebar = sidebar
+        self.content = content
+        _laidOutDocked = State(initialValue: isDocked)
+        _radius = State(initialValue: isDocked ? 14 : 0)
     }
 
-    // MARK: Layers
+    var body: some View {
+        ZStack(alignment: edge == .leading ? .leading : .trailing) {
+            // The space's colour, behind the sidebar and around the inset page card.
+            tint.opacity(isDocked ? 0.14 : 0).ignoresSafeArea()
+
+            pageCard
+
+            sidebar()
+                .padding(.vertical, cardInset)
+                .frame(width: width)
+                .frame(maxHeight: .infinity)
+                .ignoresSafeArea(.container, edges: fullBleedEdges)
+                .offset(x: isDocked ? 0 : -(width + 16) * sign)
+                .allowsHitTesting(isDocked)
+        }
+        // Edge swipe while hidden: scrub the tab strip.
+        .overlay(alignment: .leading) {
+            if !isDocked { TabRailEdge() }
+        }
+        .sensoryFeedback(.impact(weight: .light), trigger: isDocked)
+        .onChange(of: isDocked) { _, docked in docked ? dock() : undock() }
+    }
 
     private var pageCard: some View {
         content()
-            .clipShape(.rect(cornerRadius: mode == .docked ? 14 : 0, style: .continuous))
-            .shadow(color: .black.opacity(mode == .docked ? 0.08 : 0), radius: 10, y: 2)
+            .clipShape(PageClip(inset: clipInset, radius: radius))
+            .shadow(color: .black.opacity(radius > 0 ? 0.08 : 0), radius: 10, y: 2)
+            .padding(edge == .leading ? .leading : .trailing, laidOutDocked ? width : 0)
+            .padding(.vertical, laidOutDocked ? cardInset : 0)
+            .padding(edge == .leading ? .trailing : .leading, laidOutDocked ? 2 : 0)
+            .offset(x: slide * sign)
+            // Keeps the sliding page out of the vertical bar's strip.
+            .clipped()
+            // The card measures its margin from the screen, not from the safe area.
+            .ignoresSafeArea(.container, edges: fullBleedEdges)
     }
 
-    private var sidebarLayer: some View {
-        sidebar()
-            .padding(.vertical, 8)
-            .frame(width: width)
-            .frame(maxHeight: .infinity)
-            .ignoresSafeArea(.container, edges: .vertical)
-            .background {
-                if mode != .docked {
-                    // Peeking, it's attached to the screen edge like the tab strip it grows out
-                    // of: square against the edge, rounded on the open side.
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: edge == .leading ? 0 : 20, bottomLeadingRadius: edge == .leading ? 0 : 20,
-                        bottomTrailingRadius: edge == .leading ? 20 : 0, topTrailingRadius: edge == .leading ? 20 : 0,
-                        style: .continuous)
-                        .fill(.regularMaterial)
-                        .shadow(color: .black.opacity(0.22), radius: 24, x: 8 * sign, y: 4)
-                        .ignoresSafeArea(edges: .vertical)
-                }
+    /// Slide the full-size page aside, then resize it to fit beside the sidebar.
+    private func dock() {
+        withAnimation(Motion.spring) {
+            slide = width
+            clipInset = cardInset
+            radius = cardRadius
+        } completion: {
+            guard isDocked else { return }
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) {
+                laidOutDocked = true
+                slide = 0
+                clipInset = 0
             }
-            .offset(x: sidebarOffset * sign)
-            .opacity(mode == .hidden && drag == 0 ? 0 : 1)
-            .gesture(dismissGesture)
-            .allowsHitTesting(mode != .hidden || isDragging)
-    }
-
-    // MARK: Geometry
-
-    /// How open the sidebar is, 0...1 (can overshoot slightly while rubber-banding).
-    private var revealFraction: CGFloat {
-        let base: CGFloat = mode == .hidden ? 0 : 1
-        return max(0, min(1.06, base + drag / width))
-    }
-
-    /// Horizontal offset of the sidebar from its open position (negative = off-screen).
-    private var sidebarOffset: CGFloat {
-        let f = revealFraction
-        if f > 1 { return rubberBand(f - 1) * width }   // past fully open: resist
-        return -(1 - f) * (width + 16)
-    }
-
-    /// Leading padding the page card gets so the docked sidebar doesn't cover it.
-    private var dockedInset: CGFloat {
-        guard mode == .docked else { return 0 }
-        return max(0, width * revealFraction) + 0
-    }
-
-    private var cardInset: CGFloat { mode == .docked ? 8 : 0 }
-
-    /// Edge drag distance to strip growth: 0 at the hand-off point, 1 at full sidebar width,
-    /// resisting beyond that.
-    private func growth(_ dx: CGFloat) -> CGFloat {
-        let f = max(0, (dx - handOffDistance) / (width - TabRailView.width))
-        return f <= 1 ? f : 1 + rubberBand(f - 1)
-    }
-
-    private func rubberBand(_ x: CGFloat) -> CGFloat {
-        // Classic iOS rubber-band curve, tuned so a full-width overdrag moves ~8% of the width.
-        (1 - 1 / (x * 0.55 / 0.08 + 1)) * 0.08
-    }
-
-    // MARK: Gestures
-
-    private var dismissGesture: some Gesture {
-        DragGesture(minimumDistance: 10, coordinateSpace: .global)
-            .onChanged { v in
-                isDragging = true
-                // Closing direction is negative; opening further rubber-bands.
-                drag = v.translation.width * sign
-            }
-            .onEnded { v in
-                isDragging = false
-                let projected = v.predictedEndTranslation.width * sign
-                if projected < -width * 0.4 {
-                    set(.hidden, velocity: v.velocity.width * sign)
-                } else {
-                    set(mode, velocity: v.velocity.width * sign)
-                }
-            }
-    }
-
-    private func set(_ new: Mode, velocity: CGFloat = 0) {
-        // Convert the finger's px/s into the spring's unit-per-second for a seamless hand-off.
-        let initial = Double(abs(velocity) / max(width, 1))
-        withAnimation(Motion.spring(initialVelocity: initial)) {
-            mode = new
-            drag = 0
         }
+    }
+
+    /// Resize the page to full size while it's still beside the sidebar, then slide it into place.
+    private func undock() {
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) {
+            if laidOutDocked {
+                laidOutDocked = false
+                slide = width
+                clipInset = cardInset
+            }
+        }
+        Task { @MainActor in
+            await Task.yield()
+            withAnimation(Motion.spring) {
+                slide = 0
+                clipInset = 0
+                radius = 0
+            }
+        }
+    }
+}
+
+/// The page card's outline while it slides: a rounded rectangle pulled in from the top and bottom.
+private struct PageClip: Shape {
+    var inset: CGFloat
+    var radius: CGFloat
+
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(inset, radius) }
+        set { inset = newValue.first; radius = newValue.second }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        Path(roundedRect: rect.insetBy(dx: 0, dy: inset), cornerRadius: radius, style: .continuous)
     }
 }

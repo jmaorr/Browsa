@@ -17,7 +17,13 @@ struct RootView: View {
                 }
             }
             // New pages ask for the desktop site on the inner display, mobile on the outer.
-            .onChange(of: posture, initial: true) { _, p in browser.isUnfolded = (p == .unfolded) }
+            .onChange(of: posture, initial: true) { _, p in
+                browser.isUnfolded = (p == .unfolded)
+                // A fold can cancel a swipe mid-gesture, which would leave the strip out.
+                rail.reset()
+            }
+            // WebKit moves the page for the keyboard itself.
+            .ignoresSafeArea(.keyboard, edges: .bottom)
         }
         // One sheet for both layouts, so an open sheet (and its typed text) survives a fold.
         .sheet(isPresented: $browser.isNewTabSheetPresented) {
@@ -28,7 +34,8 @@ struct RootView: View {
                 .navigationTransition(.zoom(sourceID: browser.newTabSourceID, in: newTabNS))
         }
         .sheet(isPresented: $browser.isSettingsPresented) {
-            SettingsView()
+            // Settings keeps the system's control colours.
+            SettingsView().tint(Color?.none)
         }
         .sheet(isPresented: $browser.isArchivePresented) {
             ArchiveView()
@@ -53,7 +60,8 @@ struct RootView: View {
         .onChange(of: browser.currentTab?.id) { rail.currentTabChanged() }
         .onAppear { rail.browser = browser }
         .environment(rail)
-        .tint(SpacePalette.color(browser.currentSpace.colorIndex))
+        // Neutral chrome, like Safari. A space's colour only tints the sidebar's background.
+        .tint(.primary)
         .environment(\.newTabNamespace, newTabNS)
     }
 }
@@ -75,13 +83,6 @@ struct WebContentView: View {
                     }
                 }
                 .animation(Motion.snappy, value: tab.loadError)
-                .overlay(alignment: .top) {
-                    if tab.isLoading {
-                        ProgressView(value: tab.estimatedProgress)
-                            .progressViewStyle(.linear)
-                            .transition(.opacity)
-                    }
-                }
         } else {
             StartPage()
         }

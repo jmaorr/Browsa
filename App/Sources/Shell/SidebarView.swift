@@ -49,15 +49,23 @@ struct SidebarView: View {
 
     private var addressButton: some View {
         Button { browser.presentAddressEditor(from: NewTabSource.sidebarAddress.rawValue) } label: {
-            HStack {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                Text(browser.currentTab?.url.map(URLNormalizer.displayHost) ?? "Search or enter address")
-                    .lineLimit(1)
-                    .foregroundStyle(browser.currentTab?.url == nil ? .secondary : .primary)
+            HStack(spacing: 8) {
+                if let url = browser.currentTab?.url {
+                    FaviconView(url: url, size: 18)
+                    Text(URLNormalizer.displayHost(url)).lineLimit(1)
+                } else {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    Text("Search or enter address").lineLimit(1).foregroundStyle(.secondary)
+                }
                 Spacer(minLength: 0)
+                if let tab = browser.currentTab, tab.url != nil { ReloadButton(tab: tab) }
             }
-            .padding(.horizontal, 12).padding(.vertical, 10)
-            .glassEffect(.regular, in: .rect(cornerRadius: 12, style: .continuous))
+            .font(.callout)
+            .frame(minHeight: 44)
+            .padding(.horizontal, 14)
+            .overlay(alignment: .bottom) { if let tab = browser.currentTab { LoadingStrip(tab: tab) } }
+            .clipShape(.capsule)
+            .glassEffect(.regular, in: .capsule)
         }
         .buttonStyle(.plain)
         .newTabZoomSource(.sidebarAddress)
@@ -82,7 +90,7 @@ struct SidebarView: View {
             ForEach(browser.spaces) { s in
                 Button { withAnimation(.smooth) { browser.selectSpace(s) } } label: {
                     Image(systemName: s.symbol)
-                        .foregroundStyle(s.id == browser.selectedSpaceID ? SpacePalette.color(s.colorIndex) : .secondary)
+                        .foregroundStyle(s.id == browser.selectedSpaceID ? .primary : .secondary)
                         .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.plain)

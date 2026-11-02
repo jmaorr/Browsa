@@ -8,8 +8,7 @@ import Suggest
 /// - **Peek**: appears for ~1.4 s whenever you open or switch tabs (unless the docked sidebar
 ///   already shows them), so you always see where you are in the stack.
 /// - **Scrub**: a swipe in from the leading edge brings it out under your finger. Slide up and
-///   down to move the highlight (a haptic tick per tab), let go to switch. In the unfolded layout,
-///   keep pulling outward and the gesture hands over to the full sidebar.
+///   down to move the highlight (a haptic tick per tab), let go to switch.
 ///
 /// The highlight is computed from the finger's y with plain arithmetic on fixed row sizes, so
 /// there's no per-frame geometry reading.
@@ -22,14 +21,6 @@ final class TabRailController {
     var containerHeight: CGFloat = 0
     /// True while the docked sidebar already lists the tabs; peeks are skipped then.
     var sidebarShowsTabs = false
-
-    /// Unfolded only: how far the strip has grown into the full sidebar, 0 (icons) … 1 (sidebar),
-    /// overshooting a little while rubber-banding. Driven by the edge drag.
-    var expansion: CGFloat = 0
-    /// Width of the sidebar the strip grows into.
-    var expandedWidth: CGFloat = 288
-    /// The real sidebar has taken over; the strip fades out in place.
-    private(set) var handedOff = false
 
     @ObservationIgnored weak var browser: BrowserState?
     @ObservationIgnored private var hideTask: Task<Void, Never>?
@@ -93,42 +84,12 @@ final class TabRailController {
         scheduleHide(after: .milliseconds(260))
     }
 
-    /// The gesture turned into a sidebar reveal.
-    func cancelScrub() {
-        isScrubbing = false
-        hide()
-    }
-
-    // MARK: Growing into the sidebar (unfolded)
-
-    /// Keep pulling past the scrub: stop scrubbing and start growing. The highlight goes back to
-    /// the current tab, which is what the sidebar will show selected.
-    func beginExpand() {
+    /// Tucks the strip away at once, wherever it had got to.
+    func reset() {
         hideTask?.cancel()
         isScrubbing = false
-        highlighted = browser?.currentTab?.id
-        show()
-    }
-
-    /// The strip reached full size and the real sidebar is now in exactly its place: fade the
-    /// strip out, then reset it without animation.
-    func handOffToSidebar() {
-        withAnimation(.easeOut(duration: 0.15)) { handedOff = true } completion: { [weak self] in
-            guard let self else { return }
-            var t = Transaction(); t.disablesAnimations = true
-            withTransaction(t) {
-                self.expansion = 0
-                self.isShown = false
-                self.handedOff = false
-            }
-        }
-    }
-
-    /// Let go before halfway: shrink back to icons, then tuck away.
-    func collapseExpansion(velocity: CGFloat = 0) {
-        withAnimation(Motion.spring(initialVelocity: Double(abs(velocity)))) { expansion = 0 } completion: { [weak self] in
-            self?.scheduleHide(after: .milliseconds(120))
-        }
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { isShown = false }
     }
 
     // MARK: Visibility
@@ -161,15 +122,6 @@ struct TabRailView: View {
     @Environment(TabRailController.self) private var rail
     nonisolated static let width: CGFloat = 54
 
-    /// 0 = icon strip, 1 = full sidebar (unfolded drag only).
-    private var e: CGFloat { max(0, rail.expansion) }
-    private var width: CGFloat { Self.width + e * (rail.expandedWidth - Self.width) }
-    private var height: CGFloat? {
-        guard e > 0 else { return nil }
-        let full = max(rail.railHeight, rail.containerHeight)
-        return rail.railHeight + min(e, 1) * (full - rail.railHeight)
-    }
-
     var body: some View {
         let reveal: CGFloat = rail.isShown ? 1 : 0
         VStack(spacing: 0) {
@@ -185,17 +137,13 @@ struct TabRailView: View {
         .opacity(Motion.reduced ? reveal : max(0, reveal * 1.6 - 0.3))
         .scaleEffect(Motion.reduced ? 1 : 0.85 + 0.15 * reveal, anchor: .leading)
         .offset(x: Motion.reduced ? 0 : (reveal - 1) * 26)
-        .frame(width: width, height: height, alignment: .leading)
-        // Growing into the sidebar: its address field and footer fade in around the tabs.
-        .overlay(alignment: .top) { if e > 0 { sidebarHeader.opacity(min(1, e * e)) } }
-        .overlay(alignment: .bottom) { if e > 0 { sidebarFooter.opacity(min(1, e * e)) } }
+        .frame(width: Self.width, alignment: .leading)
         .background(alignment: .leading) {
-            EdgeNotchShape(reveal: Motion.reduced ? 1 : reveal, fullWidth: width, flare: 20 * (1 - min(e, 1)))
+            EdgeNotchShape(reveal: Motion.reduced ? 1 : reveal, fullWidth: Self.width)
                 .fill(.regularMaterial)
-                .shadow(color: .black.opacity((0.16 + 0.06 * min(e, 1)) * reveal), radius: 10 + 14 * min(e, 1), x: 2)
+                .shadow(color: .black.opacity(0.16 * reveal), radius: 10, x: 2)
                 .opacity(Motion.reduced ? reveal : 1)   // Reduce Motion: fade in place
         }
-        .opacity(rail.handedOff ? 0 : 1)
         // Flush with the physical edge, even where there's a safe-area inset.
         .ignoresSafeArea(edges: .horizontal)
         .sensoryFeedback(.selection, trigger: rail.isScrubbing ? rail.highlighted : nil)
@@ -203,55 +151,20 @@ struct TabRailView: View {
         .accessibilityHidden(true)
     }
 
-    private var sidebarHeader: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            Text(rail.browser?.currentTab?.url.map(URLNormalizer.displayHost) ?? "Search or enter address")
-                .lineLimit(1)
-            Spacer(minLength: 0)
-        }
-        .font(.subheadline)
-        .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(.fill.tertiary, in: .rect(cornerRadius: 12, style: .continuous))
-        .padding(.horizontal, 12).padding(.top, 12)
-    }
-
-    private var sidebarFooter: some View {
-        HStack(spacing: 10) {
-            ForEach(rail.browser?.spaces ?? []) { s in
-                Image(systemName: s.symbol).font(.footnote)
-                    .foregroundStyle(s.id == rail.browser?.selectedSpaceID ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 20).padding(.bottom, 16)
-    }
-
     private func icon(_ tab: BrowserTab) -> some View {
         let on = tab.id == rail.highlighted
-        return HStack(spacing: 10) {
-            Group {
-                if let url = tab.url { FaviconView(url: url, size: 30) }
-                else { Image(systemName: "globe").frame(width: 30, height: 30) }
-            }
-            .frame(width: 38, height: 38)
-            // Titles slide in beside the icons, which stay put, as the strip becomes the sidebar.
-            if e > 0 {
-                Text(tab.displayTitle)
-                    .font(.subheadline)
-                    .lineLimit(1)
-                    .opacity(min(1, e * 1.4 - 0.25))
-                Spacer(minLength: 0)
-            }
+        return Group {
+            if let url = tab.url { FaviconView(url: url, size: 30) }
+            else { Image(systemName: "globe").frame(width: 30, height: 30) }
         }
-        .frame(width: e > 0 ? width - 16 : 38, height: 38, alignment: .leading)
+        .frame(width: 38, height: 38)
         .background(on ? AnyShapeStyle(.fill.secondary) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 11, style: .continuous))
-        .scaleEffect(on && e == 0 ? 1.12 : 1, anchor: .leading)
+        .scaleEffect(on ? 1.12 : 1, anchor: .leading)
         .padding(.leading, 8)
         .frame(height: TabRailController.rowPitch)
-        // Title bubble beside the highlighted icon (not while growing: the row shows its title).
+        // Title bubble beside the highlighted icon.
         .overlay(alignment: .leading) {
-            if on && e == 0 {
+            if on {
                 Text(tab.displayTitle)
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
@@ -310,17 +223,9 @@ struct EdgeNotchShape: Shape {
 }
 
 /// A thin invisible strip on the leading edge that starts a scrub.
-/// `onHandOff` is called once if the finger keeps pulling outward past `handOffDistance`
-/// (unfolded layout uses it to grow the strip into the sidebar); after that, `onSidebarDrag` and
-/// `onSidebarEnd` receive the rest of the gesture. The owner decides what happens to the strip.
 struct TabRailEdge: View {
     @Environment(TabRailController.self) private var rail
-    var handOffDistance: CGFloat? = nil
-    var onHandOff: () -> Void = {}
-    var onSidebarDrag: (_ dx: CGFloat) -> Void = { _ in }
-    var onSidebarEnd: (_ predictedDx: CGFloat, _ velocity: CGFloat) -> Void = { _, _ in }
-
-    @State private var handedOff = false
+    @GestureState private var isDragging = false
     @State private var began = false
 
     var body: some View {
@@ -330,25 +235,23 @@ struct TabRailEdge: View {
             .contentShape(.rect)
             .gesture(
                 DragGesture(minimumDistance: 4, coordinateSpace: .named("browserRoot"))
+                    .updating($isDragging) { _, state, _ in state = true }
                     .onChanged { v in
                         if !began { began = true; rail.beginScrub() }
-                        let dx = v.translation.width
-                        if let handOffDistance, !handedOff, dx > handOffDistance {
-                            handedOff = true
-                            onHandOff()
-                        }
-                        if handedOff { onSidebarDrag(dx) } else { rail.scrub(toY: v.location.y) }
-                    }
-                    .onEnded { v in
-                        if handedOff {
-                            onSidebarEnd(v.predictedEndTranslation.width, v.velocity.width)
-                        } else {
-                            rail.commit()
-                        }
-                        handedOff = false
-                        began = false
+                        rail.scrub(toY: v.location.y)
                     }
             )
+            // Also fires when the system cancels the gesture, which never reaches onEnded.
+            .onChange(of: isDragging) { _, dragging in
+                if !dragging { finish() }
+            }
+            .onDisappear { finish() }
             .accessibilityHidden(true)
+    }
+
+    private func finish() {
+        guard began else { return }
+        began = false
+        rail.commit()
     }
 }

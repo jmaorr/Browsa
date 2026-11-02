@@ -14,6 +14,7 @@ import Suggest
 struct FoldedLayout: View {
     @Environment(BrowserState.self) private var browser
     @Environment(TabRailController.self) private var rail
+    @Environment(\.duoToolbarVerticalEdge) private var verticalBarEdge
 
     var body: some View {
         NavigationStack {
@@ -21,7 +22,8 @@ struct FoldedLayout: View {
             WebContentView(bottomObscuredInset: 90)
                 // Edge to edge like Safari: the page runs under the status area and the bar.
                 // (The inset is the bar plus the safe area below it.)
-                .ignoresSafeArea(.container, edges: .vertical)
+                // Without the vertical bar, the controls are in a top toolbar the page must clear.
+                .ignoresSafeArea(.container, edges: verticalBarEdge == nil ? .bottom : .vertical)
                 .overlay(alignment: .bottom) { BottomBar() }
                 // Leading-edge swipe scrubs through tabs (WebKit's swipe-back is turned off).
                 .overlay(alignment: .leading) { TabRailEdge().padding(.bottom, 96) }
@@ -34,12 +36,13 @@ struct FoldedLayout: View {
     }
 
     @ToolbarContentBuilder private var gutter: some ToolbarContent {
+        let lower: ToolbarItemPlacement = verticalBarEdge == nil ? .topBarTrailing : .bottomBar
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: false) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: true) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { PageMenu() }.duoPinnedToVerticalBar()
         // Bottom-bar items land at the far end of the vertical bar, beside your thumb.
-        ToolbarItem(placement: .bottomBar) { NewTabButton() }.duoPinnedToVerticalBar()
-        ToolbarItem(placement: .bottomBar) { TabsButton() }.duoPinnedToVerticalBar()
+        ToolbarItem(placement: lower) { NewTabButton() }.duoPinnedToVerticalBar()
+        ToolbarItem(placement: lower) { TabsButton() }.duoPinnedToVerticalBar()
     }
 }
 
@@ -74,6 +77,7 @@ struct BottomBar: View {
     private var compact: Bool { browser.currentTab?.isChromeCompact ?? false }
 
     @State private var copies = 0
+    @State private var keyboardUp = false
 
     var body: some View {
         addressPill
@@ -83,6 +87,15 @@ struct BottomBar: View {
         .offset(y: compact ? 20 : 0)
         .frame(maxWidth: .infinity)
         .animation(Motion.collapse, value: compact)
+        // Like Safari, a web form's keyboard takes the bar's place rather than pushing it up the page.
+        .opacity(keyboardUp ? 0 : 1)
+        .allowsHitTesting(!keyboardUp)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            keyboardUp = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(Motion.snappy) { keyboardUp = false }
+        }
         .sensoryFeedback(.selection, trigger: browser.currentTab?.id)
         .sensoryFeedback(.success, trigger: copies)
     }
@@ -91,24 +104,30 @@ struct BottomBar: View {
     private var addressPill: some View {
         let tab = browser.currentTab
         return HStack(spacing: 8) {
-            if let url = tab?.url {
-                FaviconView(url: url, size: 18)
-                Text(URLNormalizer.displayHost(url)).lineLimit(1)
-                    .contentTransition(.interpolate)
-            } else {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                Text("Search or enter address").foregroundStyle(.secondary).lineLimit(1)
+            HStack(spacing: 8) {
+                if let url = tab?.url {
+                    FaviconView(url: url, size: 18)
+                    Text(URLNormalizer.displayHost(url)).lineLimit(1)
+                        .contentTransition(.interpolate)
+                } else {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    Text("Search or enter address").foregroundStyle(.secondary).lineLimit(1)
+                }
+                if !compact { Spacer(minLength: 0) }
             }
+            // Swiping to the next tab pushes the old label out and the new one in, from the swipe side.
+            .id(tab?.id)
+            .transition(Motion.tabPush(forward: browser.lastTabSwipeForward ?? true))
+            .clipped()
+            .animation(Motion.snappy, value: tab?.url)
+            if !compact, let tab, tab.url != nil { ReloadButton(tab: tab) }
         }
-        // Swiping to the next tab pushes the old label out and the new one in, from the swipe side.
-        .id(tab?.id)
-        .transition(Motion.tabPush(forward: browser.lastTabSwipeForward ?? true))
-        .clipped()
-        .animation(Motion.snappy, value: tab?.url)
         .font(.callout)
         .scaleEffect(compact ? 0.84 : 1)
         .frame(maxWidth: compact ? 165 : .infinity, minHeight: compact ? 34 : 48)
         .padding(.horizontal, 14)
+        .overlay(alignment: .bottom) { if let tab { LoadingStrip(tab: tab) } }
+        .clipShape(.capsule)
         .glassEffect(.regular.interactive(), in: .capsule)
         .offset(x: dragX * 0.3)
         .contentShape(.capsule)

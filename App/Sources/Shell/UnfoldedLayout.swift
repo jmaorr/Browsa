@@ -14,32 +14,37 @@ struct UnfoldedLayout: View {
     /// Put the sidebar on the edge opposite the system vertical bar so they never stack.
     private var sidebarEdge: HorizontalEdge { verticalBarEdge == .leading ? .trailing : .leading }
 
-    @State private var isPeeking = false
+    /// Without the vertical bar the controls sit in a top toolbar, so the page must stop below it.
+    private var fullBleedEdges: Edge.Set { verticalBarEdge == nil ? .bottom : .vertical }
 
     var body: some View {
         let space = browser.currentSpace
         NavigationStack {
-            SidebarContainer(mode: sidebarMode, edge: sidebarEdge,
-                             tint: SpacePalette.color(space.colorIndex)) {
+            SidebarContainer(isDocked: space.isSidebarOpen, edge: sidebarEdge,
+                             tint: SpacePalette.color(space.colorIndex), fullBleedEdges: fullBleedEdges) {
                 SidebarView()
             } content: {
-                WebContentView(bottomObscuredInset: 24)
+                WebContentView(bottomObscuredInset: space.isSidebarOpen ? 24 : 90)
+            }
+            // The sidebar holds the address; with it hidden, the same capsule as the outer display.
+            .overlay(alignment: .bottom) {
+                if !space.isSidebarOpen {
+                    BottomBar().frame(maxWidth: 480).transition(.opacity)
+                }
             }
             .toolbar { toolbar }
             .toolbarTitleDisplayMode(.inline)
             .duoVerticalBarPrefersOurItems()
-            // The docked or peeking sidebar already lists the tabs, so the strip doesn't peek then.
-            .onChange(of: space.isSidebarOpen || isPeeking, initial: true) { _, showing in
+            // The docked sidebar already lists the tabs, so the strip doesn't peek then.
+            .onChange(of: space.isSidebarOpen, initial: true) { _, showing in
                 rail.sidebarShowsTabs = showing
             }
-            // "Show All Tabs" (⇧⌘\) means the sidebar here, not the grid.
+            // "Show All Tabs" (⇧⌘\\) means the sidebar here, not the grid.
             .onChange(of: browser.isTabSwitcherPresented) { _, wanted in
                 guard wanted else { return }
                 browser.isTabSwitcherPresented = false
                 toggleSidebar()
             }
-            // Picking a tab from a peeking sidebar puts it away, like Arc.
-            .onChange(of: browser.currentTab?.id) { if isPeeking { withAnimation(.smooth) { isPeeking = false } } }
         }
         .background {
             // Hardware keyboard: Cmd-S toggles the sidebar, like Arc.
@@ -47,30 +52,9 @@ struct UnfoldedLayout: View {
         }
     }
 
-    private var sidebarMode: Binding<SidebarContainer<SidebarView, WebContentView>.Mode> {
-        Binding {
-            let space = browser.currentSpace
-            return space.isSidebarOpen ? .docked : (isPeeking ? .peek : .hidden)
-        } set: { mode in
-            let space = browser.currentSpace
-            isPeeking = mode == .peek
-            if space.isSidebarOpen != (mode == .docked) {
-                space.isSidebarOpen = mode == .docked
-                browser.scheduleSave()
-            }
-        }
-    }
-
     private func toggleSidebar() {
         let space = browser.currentSpace
-        withAnimation(Motion.spring) {
-            if isPeeking {
-                isPeeking = false
-                space.isSidebarOpen = true      // pin the peeking sidebar
-            } else {
-                space.isSidebarOpen.toggle()
-            }
-        }
+        withAnimation(Motion.spring) { space.isSidebarOpen.toggle() }
         browser.scheduleSave()
     }
 
@@ -79,15 +63,18 @@ struct UnfoldedLayout: View {
     /// tabs slot is the sidebar button, because the sidebar is the tab list. Tabs are always
     /// in the same place, whichever way the phone is.
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        // Bottom-bar items land at the far end of the vertical bar. With no vertical bar they'd
+        // make a real bottom bar, so everything stays together in the top toolbar.
+        let lower: ToolbarItemPlacement = verticalBarEdge == nil ? .topBarTrailing : .bottomBar
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: false) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: true) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { PageMenu() }.duoPinnedToVerticalBar()
-        ToolbarItem(placement: .bottomBar) {
+        ToolbarItem(placement: lower) {
             Button("New Tab", systemImage: "plus") { browser.presentNewTab(from: NewTabSource.verticalBar.rawValue) }
                 .newTabZoomSource(.verticalBar)
         }
         .duoPinnedToVerticalBar()
-        ToolbarItem(placement: .bottomBar) {
+        ToolbarItem(placement: lower) {
             Button("Toggle Sidebar", systemImage: "sidebar.leading") { toggleSidebar() }
                 .sensoryFeedback(.selection, trigger: browser.currentSpace.isSidebarOpen)
         }
