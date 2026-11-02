@@ -62,4 +62,7 @@ jobs:
           xcodebuild build -project DuoBrowser.xcodeproj -scheme DuoBrowser \
             -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO -quiet -skipPackagePluginValidation \
             IPHONEOS_DEPLOYMENT_TARGET="$SDK_VER" \
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) NO_DUO_SDK'
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) NO_DUO_SDK' \
+            EXCLUDED_SOURCE_FILE_NAMES='Browsa.icon' ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon
+          # Browsa.icon is saved by Icon Composer 27, which older actool can't read, so this
+          # build uses the placeholder AppIcon instead.
