@@ -4,7 +4,7 @@ name: DuoBrowser
 options:
   bundleIdPrefix: com.jmaorr
   deploymentTarget:
-    iOS: "27.0"
+    iOS: "27.1"
   xcodeVersion: "27.2"
   createIntermediateGroups: true
 settings:

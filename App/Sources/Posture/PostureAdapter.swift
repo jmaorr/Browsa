@@ -59,7 +59,7 @@ extension View {
             switch hinge.status {
             case .closed: action(false)
             case .partiallyOpen, .fullyOpen: action(true)
-            @unknown default: action(nil)
+            default: action(nil)
             }
         }
         #endif
