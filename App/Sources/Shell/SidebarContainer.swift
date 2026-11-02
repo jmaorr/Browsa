@@ -26,6 +26,8 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
     /// Top and bottom margin and corner radius drawn by clipping while the page slides.
     @State private var clipInset: CGFloat = 0
     @State private var radius: CGFloat
+    /// Bumped by every move, so a move that was overtaken can't finish on top of the newer one.
+    @State private var moveID = 0
 
     private let cardInset: CGFloat = 8
     private let cardRadius: CGFloat = 14
@@ -66,6 +68,8 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
         }
         .sensoryFeedback(.impact(weight: .light), trigger: isDocked)
         .onChange(of: isDocked) { _, docked in docked ? dock() : undock() }
+        // Coming back from the other posture: any move in progress never got to finish.
+        .onAppear { settle() }
     }
 
     private var pageCard: some View {
@@ -84,23 +88,22 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
 
     /// Slide the full-size page aside, then resize it to fit beside the sidebar.
     private func dock() {
+        moveID += 1
+        let move = moveID
         withAnimation(Motion.spring) {
             slide = width
             clipInset = cardInset
             radius = cardRadius
         } completion: {
-            guard isDocked else { return }
-            var t = Transaction(); t.disablesAnimations = true
-            withTransaction(t) {
-                laidOutDocked = true
-                slide = 0
-                clipInset = 0
-            }
+            guard move == moveID else { return }
+            settle()
         }
     }
 
     /// Resize the page to full size while it's still beside the sidebar, then slide it into place.
     private func undock() {
+        moveID += 1
+        let move = moveID
         var t = Transaction(); t.disablesAnimations = true
         withTransaction(t) {
             if laidOutDocked {
@@ -111,11 +114,24 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
         }
         Task { @MainActor in
             await Task.yield()
+            guard move == moveID else { return }
             withAnimation(Motion.spring) {
                 slide = 0
                 clipInset = 0
                 radius = 0
             }
+        }
+    }
+
+    /// Puts everything exactly where `isDocked` says, with no animation.
+    private func settle() {
+        moveID += 1
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) {
+            laidOutDocked = isDocked
+            slide = 0
+            clipInset = 0
+            radius = isDocked ? cardRadius : 0
         }
     }
 }

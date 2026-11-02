@@ -52,7 +52,13 @@ final class WebViewPool {
     /// Runs `load` once the content rule lists are installed, so a tab restored at launch can't
     /// slip through unblocked while they're still being looked up.
     func afterContentRules(_ load: @escaping () -> Void) {
-        if contentRulesReady { load() } else { loadsWaitingForContentRules.append(load) }
+        if contentRulesReady { load(); return }
+        loadsWaitingForContentRules.append(load)
+        // Compiling can take a while on a phone. A page without blocking beats a blank one.
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            self?.markContentRulesReady()
+        }
     }
 
     func markContentRulesReady() {
