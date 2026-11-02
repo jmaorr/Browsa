@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Builds the rules and uploads them to the R2 bucket behind rules.browsa.app. The manifest goes last,
 # so the app never sees a version whose files aren't there yet. Run from this directory, with
-# Wrangler logged in or CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID set.
+# Wrangler logged in, or CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID set (see .dev.vars.example).
 set -euo pipefail
+if [ -f .dev.vars ]; then set -a; . ./.dev.vars; set +a; fi
 BUCKET="${BUCKET:-browsa-rules}"
 WRANGLER="${WRANGLER:-npx --yes wrangler@4}"
 OUT="$(mktemp -d)"
