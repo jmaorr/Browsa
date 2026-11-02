@@ -6,6 +6,9 @@ struct RootView: View {
     @Environment(BrowserState.self) private var browser
     @Namespace private var newTabNS
     @State private var rail = TabRailController()
+    @AppStorage(ReaderView.fullScreenKey) private var readerFullScreen = false
+    /// Reader is between its sheet and its full-screen cover.
+    @State private var readerSwapping = false
 
     var body: some View {
         @Bindable var browser = browser
@@ -38,9 +41,10 @@ struct RootView: View {
         .sheet(isPresented: $browser.isArchivePresented) {
             ArchiveView()
         }
-        .sheet(item: $browser.readerArticle) { article in
-            ReaderView(article: article)
-        }
+        // Reader in a sheet, or filling the screen. Its full-screen button swaps one for the other.
+        .sheet(item: readerBinding(fullScreen: false)) { ReaderView(article: $0) }
+        .fullScreenCover(item: readerBinding(fullScreen: true)) { ReaderView(article: $0) }
+        .onChange(of: readerFullScreen) { swapReaderPresentation() }
         .sheet(isPresented: $browser.isDownloadsPresented) {
             DownloadsView()
         }
@@ -59,6 +63,31 @@ struct RootView: View {
         // Neutral chrome, like Safari. A space's colour only tints the sidebar's background.
         .tint(.primary)
         .environment(\.newTabNamespace, newTabNS)
+    }
+}
+
+extension RootView {
+    /// The open article, for whichever presentation Reader is using.
+    private func readerBinding(fullScreen: Bool) -> Binding<ReaderArticle?> {
+        Binding {
+            readerSwapping || readerFullScreen != fullScreen ? nil : browser.readerArticle
+        } set: { article in
+            // Only a real dismissal (Close, or swiping the sheet away) closes Reader.
+            guard article == nil, !readerSwapping, readerFullScreen == fullScreen else { return }
+            browser.readerArticle = nil
+        }
+    }
+
+    /// Takes Reader down from one presentation without animation, then puts it up in the other
+    /// once UIKit has finished, since it can't present while a dismissal is still running.
+    private func swapReaderPresentation() {
+        guard browser.readerArticle != nil else { return }
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { readerSwapping = true }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            withTransaction(t) { readerSwapping = false }
+        }
     }
 }
 
