@@ -1,0 +1,74 @@
+# Generate the Xcode project with XcodeGen:  brew install xcodegen && xcodegen
+# The .xcodeproj is git-ignored; this file is the source of truth.
+name: Browsa
+options:
+  bundleIdPrefix: com.orriginal
+  deploymentTarget:
+    iOS: "27.1"
+  xcodeVersion: "27.2"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: UAU4449Y7J
+packages:
+  BrowserKit:
+    path: Packages/BrowserKit
+targets:
+  Browsa:
+    type: application
+    platform: iOS
+    sources:
+      - App/Sources
+      - App/Resources
+      - App/Browsa.icon
+    dependencies:
+      - package: BrowserKit
+        product: BrowserCore
+      - package: BrowserKit
+        product: Suggest
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Browsa
+        UILaunchScreen: {}
+        # Downloads land in Documents/Downloads and show up in the Files app.
+        # Audio and picture-in-picture keep going when you leave the app, like Safari.
+        UIBackgroundModes: [audio]
+        NSCameraUsageDescription: Websites you allow can use the camera, for example for video calls.
+        NSMicrophoneUsageDescription: Websites you allow can use the microphone, for example for video calls.
+        NSLocationWhenInUseUsageDescription: Websites you allow can see your location, for example to show nearby places.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        UIApplicationSupportsMultipleScenes: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # Lets the app appear in Settings > Default Browser App once Apple grants the
+        # com.apple.developer.web-browser entitlement (request it when you're ready to ship).
+        CFBundleURLTypes:
+          - CFBundleURLName: Web
+            CFBundleURLSchemes: [http, https]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: Browsa
+    scheme:
+      testTargets:
+        - package: BrowserKit/SuggestTests
+        - BrowsaUITests
+  BrowsaUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - App/UITests
+    dependencies:
+      - target: Browsa
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa.uitests
+        TARGETED_DEVICE_FAMILY: "1"
