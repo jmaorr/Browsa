@@ -93,8 +93,22 @@ public struct BrowserSettings: Codable, Equatable, Sendable {
     public var siteDesktopOverrides: [String: Bool] = [:]
     /// Remembered camera/microphone/motion answers, keyed by host then permission.
     public var sitePermissions: [String: [String: Bool]] = [:]
+    /// Click "Reject" on cookie banners automatically (DuckDuckGo's autoconsent).
+    public var declineCookieBanners = true
+    /// Strip tracking parameters (utm_*, fbclid…) from links before they load.
+    public var cleanLinks = true
+    /// Which filter lists feed the ad/tracker blocker, when `blockContent` is on.
+    public var filterGroups: Set<FilterGroup> = Set(FilterGroup.allCases)
+    /// Sites where blocking (ads, trackers, cookie banners) is switched off. Hosts.
+    public var blockingDisabledHosts: Set<String> = []
 
     public init() {}
+
+    /// True when the user turned blockers off for this host (or a parent domain of it).
+    public func blockingDisabled(for host: String?) -> Bool {
+        guard let host = host?.lowercased(), !host.isEmpty else { return false }
+        return blockingDisabledHosts.contains { host == $0 || host.hasSuffix("." + $0) }
+    }
 
     public init(from decoder: any Decoder) throws {
         // Decode field by field so settings saved by older builds still load.
@@ -107,6 +121,46 @@ public struct BrowserSettings: Codable, Equatable, Sendable {
         desktopSitesWhenUnfolded = try c.decodeIfPresent(Bool.self, forKey: .desktopSitesWhenUnfolded) ?? true
         siteDesktopOverrides = try c.decodeIfPresent([String: Bool].self, forKey: .siteDesktopOverrides) ?? [:]
         sitePermissions = try c.decodeIfPresent([String: [String: Bool]].self, forKey: .sitePermissions) ?? [:]
+        declineCookieBanners = try c.decodeIfPresent(Bool.self, forKey: .declineCookieBanners) ?? true
+        cleanLinks = try c.decodeIfPresent(Bool.self, forKey: .cleanLinks) ?? true
+        filterGroups = try c.decodeIfPresent(Set<FilterGroup>.self, forKey: .filterGroups) ?? Set(FilterGroup.allCases)
+        blockingDisabledHosts = try c.decodeIfPresent(Set<String>.self, forKey: .blockingDisabledHosts) ?? []
+    }
+}
+
+/// One content blocker. WebKit caps each at 150,000 rules, so the filter lists are split
+/// across several, the way AdGuard for iOS does it.
+public enum FilterGroup: String, Codable, CaseIterable, Sendable, Identifiable {
+    case ads, privacy, annoyances
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .ads: "Ads"
+        case .privacy: "Trackers"
+        case .annoyances: "Annoyances"
+        }
+    }
+
+    public var detail: String {
+        switch self {
+        case .ads: "AdGuard Base and Mobile Ads filters"
+        case .privacy: "AdGuard Tracking Protection and Social Media filters"
+        case .annoyances: "Cookie notices, pop-ups, app banners and widgets"
+        }
+    }
+
+    /// AdGuard filter IDs (filters.adtidy.org), in iOS-optimised form.
+    public var filterIDs: [Int] {
+        switch self {
+        case .ads: [2, 11]
+        case .privacy: [3, 4]
+        case .annoyances: [18, 19, 20, 21, 22]
+        }
+    }
+
+    public var urls: [URL] {
+        filterIDs.map { URL(string: "https://filters.adtidy.org/ios/filters/\($0)_optimized.txt")! }
     }
 }
 

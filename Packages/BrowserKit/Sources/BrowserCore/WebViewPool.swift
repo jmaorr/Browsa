@@ -30,6 +30,10 @@ final class WebViewPool {
         // Videos can float in picture-in-picture when you leave the page or the app.
         c.allowsPictureInPictureMediaPlayback = true
         c.allowsAirPlayForMediaPlayback = true
+        // Say "Safari" like Safari does. WKWebView's default user agent leaves out the
+        // "Version/… Safari/…" tokens, and some sites (Google among them) then serve older,
+        // plainer pages or warn that the browser isn't supported.
+        c.applicationNameForUserAgent = SafariUserAgent.mobileApplicationName
         return c
     }
 
@@ -72,6 +76,21 @@ final class WebViewPool {
             sessions[victim]?.freeze()
             remove(victim)
         }
+    }
+}
+/// User agent strings that match Safari on this OS version.
+enum SafariUserAgent {
+    static var version: String {
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        return "\(v.majorVersion).\(v.minorVersion)"
+    }
+
+    /// Appended to WebKit's mobile UA ("Mozilla/5.0 (iPhone; …) AppleWebKit/605.1.15 (KHTML, like Gecko)").
+    static var mobileApplicationName: String { "Version/\(version) Mobile/15E148 Safari/604.1" }
+
+    /// What Safari sends when it asks for the desktop site (the same as Safari on a Mac).
+    static var desktop: String {
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(version) Safari/605.1.15"
     }
 }
 #endif

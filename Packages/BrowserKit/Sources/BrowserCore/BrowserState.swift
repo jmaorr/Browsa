@@ -39,6 +39,12 @@ public final class BrowserState {
     /// Small pictures of each tab's page for the tab grid, taken as you leave a tab.
     /// In memory only; a tab without one shows its icon.
     public var thumbnails: [UUID: UIImage] = [:]
+    /// Filter list download/compile state, for Settings.
+    public internal(set) var filterStatus = FilterStatus()
+    @ObservationIgnored var blockingTask: Task<Void, Never>?
+    @ObservationIgnored var lastCookieToastURL: String?
+    /// The article shown in Reader, when it's open.
+    public var readerArticle: ReaderArticle?
     /// Live downloads and finished files, newest first.
     public let downloads = DownloadManager()
 
@@ -48,7 +54,11 @@ public final class BrowserState {
             if settings.searchEngine != oldValue.searchEngine || settings.remoteSuggestions != oldValue.remoteSuggestions {
                 suggest = makeSuggestEngine()
             }
-            if settings.blockContent != oldValue.blockContent { applyContentBlocking() }
+            if settings.blockContent != oldValue.blockContent || settings.filterGroups != oldValue.filterGroups
+                || settings.declineCookieBanners != oldValue.declineCookieBanners
+                || settings.blockingDisabledHosts != oldValue.blockingDisabledHosts {
+                applyContentBlocking()
+            }
             scheduleSave()
         }
     }

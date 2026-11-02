@@ -75,10 +75,18 @@ struct PageMenu: View {
                            systemImage: browser.isFavorite(url) ? "star.slash" : "star") {
                         browser.toggleFavoriteForCurrentTab()
                     }
+                    Button("Show Reader", systemImage: "doc.plaintext") { browser.showReader() }
                     Button("Find on Page", systemImage: "doc.text.magnifyingglass") { browser.findInPage() }
                     Button(tab.isDesktopSite ? "Request Mobile Site" : "Request Desktop Site",
                            systemImage: tab.isDesktopSite ? "iphone" : "desktopcomputer") { browser.toggleDesktopSite() }
                     Button("Reload", systemImage: "arrow.clockwise") { browser.reload() }
+                }
+                Section {
+                    // Safari puts this in the page menu too: the quick fix when blocking breaks a site.
+                    Button(browser.blockingDisabledForCurrentSite ? "Turn On Blockers for This Site" : "Turn Off Blockers for This Site",
+                           systemImage: browser.blockingDisabledForCurrentSite ? "shield.lefthalf.filled" : "shield.slash") {
+                        browser.toggleBlockingForCurrentSite()
+                    }
                 }
             }
             Section {

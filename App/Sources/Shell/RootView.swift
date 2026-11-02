@@ -33,6 +33,9 @@ struct RootView: View {
         .sheet(isPresented: $browser.isArchivePresented) {
             ArchiveView()
         }
+        .sheet(item: $browser.readerArticle) { article in
+            ReaderView(article: article)
+        }
         .sheet(isPresented: $browser.isDownloadsPresented) {
             DownloadsView()
         }

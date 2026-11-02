@@ -8,6 +8,43 @@ struct SettingsView: View {
     @State private var braveKey = ""
     @State private var confirmClearHistory = false
 
+    private func groupBinding(_ group: FilterGroup) -> Binding<Bool> {
+        Binding {
+            browser.settings.filterGroups.contains(group)
+        } set: { on in
+            if on { browser.settings.filterGroups.insert(group) } else { browser.settings.filterGroups.remove(group) }
+        }
+    }
+
+    @ViewBuilder private var filterStatusRow: some View {
+        let status = browser.filterStatus
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                if status.isUpdating {
+                    Text("Updating filters…")
+                } else if let last = status.lastUpdated {
+                    Text("\(status.ruleCount.formatted()) rules")
+                    Text("Updated \(last.formatted(.relative(presentation: .named)))")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Using the built-in starter list")
+                    Text("Full filters download on Wi-Fi or cellular in the background.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if let error = status.error {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                }
+            }
+            Spacer()
+            if status.isUpdating {
+                ProgressView()
+            } else {
+                Button("Update") { Task { await browser.updateFilters() } }
+                    .buttonStyle(.borderless)
+            }
+        }
+    }
+
     private enum EngineChoice: String, CaseIterable, Identifiable {
         case google = "Google", duckDuckGo = "DuckDuckGo", brave = "Brave"
         var id: String { rawValue }
@@ -57,10 +94,23 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("Block ads and trackers", isOn: $browser.settings.blockContent)
+                    if browser.settings.blockContent {
+                        ForEach(FilterGroup.allCases) { group in
+                            Toggle(isOn: groupBinding(group)) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(group.title)
+                                    Text(group.detail).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        filterStatusRow
+                    }
+                    Toggle("Decline cookie banners", isOn: $browser.settings.declineCookieBanners)
+                    Toggle("Remove tracking from links", isOn: $browser.settings.cleanLinks)
                 } header: {
                     Text("Privacy")
                 } footer: {
-                    Text("Blocks third-party requests to known ad and tracking domains.")
+                    Text("Uses AdGuard's filter lists, refreshed every few days, and DuckDuckGo's cookie-banner engine, which picks \"reject\" for you. Removing tracking strips tags like utm_source and fbclid from links you open and copy. Switch everything off for one site from its page menu.")
                 }
 
                 Section("Spaces") {
@@ -149,14 +199,15 @@ struct WebsiteSettingsView: View {
     @Environment(BrowserState.self) private var browser
 
     private var hosts: [String] {
-        Set(browser.settings.sitePermissions.keys).union(browser.settings.siteDesktopOverrides.keys).sorted()
+        Set(browser.settings.sitePermissions.keys).union(browser.settings.siteDesktopOverrides.keys)
+            .union(browser.settings.blockingDisabledHosts).sorted()
     }
 
     var body: some View {
         List {
             if hosts.isEmpty {
                 ContentUnavailableView("No website settings", systemImage: "globe",
-                                       description: Text("Permissions you grant and sites you switch to desktop or mobile show up here."))
+                                       description: Text("Permissions you grant, sites you switch to desktop or mobile, and sites with blockers off show up here."))
             }
             ForEach(hosts, id: \.self) { host in
                 VStack(alignment: .leading, spacing: 4) {
@@ -169,6 +220,7 @@ struct WebsiteSettingsView: View {
                 for host in idx.map({ hosts[$0] }) {
                     browser.forgetPermissions(for: host)
                     browser.settings.siteDesktopOverrides[host] = nil
+                    browser.settings.blockingDisabledHosts.remove(host)
                 }
             }
         }
@@ -179,6 +231,7 @@ struct WebsiteSettingsView: View {
     private func summary(for host: String) -> String {
         var parts: [String] = []
         if let d = browser.settings.siteDesktopOverrides[host] { parts.append(d ? "Desktop site" : "Mobile site") }
+        if browser.settings.blockingDisabledHosts.contains(host) { parts.append("Blockers off") }
         for (perm, allowed) in (browser.settings.sitePermissions[host] ?? [:]).sorted(by: { $0.key < $1.key }) {
             let name = SitePermission(rawValue: perm).map { p in
                 switch p {

@@ -175,10 +175,26 @@ extension TabSession: WKNavigationDelegate {
         if navigationAction.shouldPerformDownload { return (.download, preferences) }
         guard let url = navigationAction.request.url, let scheme = url.scheme?.lowercased() else { return (.allow, preferences) }
         if ["http", "https", "about", "blob", "data", "file"].contains(scheme) {
+            let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
+            // Tracking parameters come off before the page ever sees them. Only plain GET
+            // navigations are rewritten, so form posts and redirects with bodies are untouched.
+            if isMainFrame, let browser, browser.settings.cleanLinks,
+               navigationAction.request.httpMethod ?? "GET" == "GET",
+               !browser.settings.blockingDisabled(for: url.host()),
+               let clean = LinkCleaner.clean(url) {
+                var request = navigationAction.request
+                request.url = clean
+                webView.load(request)
+                return (.cancel, preferences)
+            }
             // Desktop site on the inner display, mobile on the outer (per-site overrides win).
-            if navigationAction.targetFrame?.isMainFrame ?? true, let browser {
+            if isMainFrame, let browser {
                 let desktop = browser.prefersDesktop(for: url)
                 preferences.preferredContentMode = desktop ? .desktop : .mobile
+                // WebKit's desktop UA would still carry the mobile "Safari" tokens, so send
+                // Mac Safari's exact string instead.
+                let ua = desktop ? SafariUserAgent.desktop : nil
+                if webView.customUserAgent != ua { webView.customUserAgent = ua }
                 tab.isDesktopSite = desktop
             }
             return (.allow, preferences)
