@@ -64,6 +64,13 @@ public final class BrowserState {
     }
     public var searchEngine: SearchEngine { settings.searchEngine }
 
+    /// When and which way the space last changed, so tab lists can cascade in from that side.
+    public struct SpaceSwitch: Equatable, Sendable {
+        public let at: Date
+        public let forward: Bool
+    }
+    public private(set) var lastSpaceSwitch: SpaceSwitch?
+
     public let history: HistoryStore
     @ObservationIgnored let pool = WebViewPool()
     @ObservationIgnored public private(set) var suggest: SuggestEngine!
@@ -120,6 +127,10 @@ public final class BrowserState {
     }
 
     public func selectSpace(_ space: Space) {
+        if let from = spaces.firstIndex(where: { $0.id == selectedSpaceID }),
+           let to = spaces.firstIndex(where: { $0.id == space.id }), from != to {
+            lastSpaceSwitch = SpaceSwitch(at: .now, forward: to > from)
+        }
         selectedSpaceID = space.id
         scheduleSave()
     }

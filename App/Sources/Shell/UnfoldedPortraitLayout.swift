@@ -31,14 +31,19 @@ struct UnfoldedPortraitLayout: View {
                 sidebar.transition(.move(edge: .leading))
             }
         }
-        .onAppear { rail.sidebarShowsTabs = false }
+        // The open sidebar already lists the tabs, so the strip doesn't peek then.
+        .onChange(of: isSidebarShown, initial: true) { _, shown in rail.sidebarShowsTabs = shown }
         // "Show All Tabs" (⇧⌘\\) means the sidebar here, not the grid.
         .onChange(of: browser.isTabSwitcherPresented) { _, wanted in
             guard wanted else { return }
             browser.isTabSwitcherPresented = false
             setSidebar(!isSidebarShown)
         }
-        .onChange(of: browser.currentTab?.id) { setSidebar(false) }
+        // Picking a tab puts the sidebar away. Changing space changes the tab too, but stays open.
+        .onChange(of: browser.currentTab?.id) {
+            let changedSpace = browser.lastSpaceSwitch.map { Date().timeIntervalSince($0.at) < 0.3 } ?? false
+            if !changedSpace { setSidebar(false) }
+        }
         .onChange(of: browser.isNewTabSheetPresented) { _, presented in if presented { setSidebar(false) } }
         .background {
             // Hardware keyboard: Cmd-S toggles the sidebar, like Arc.

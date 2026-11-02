@@ -108,9 +108,15 @@ struct TabGridOverlay: View {
                         }
                     }
                     LazyVGrid(columns: columns, spacing: 18) {
-                        ForEach(space.today) { tab in card(tab).id(tab.id) }
+                        ForEach(Array(space.today.enumerated()), id: \.element.id) { i, tab in
+                            card(tab)
+                                .spaceCascade(index: i, distance: 360, spaceSwitch: browser.lastSpaceSwitch)
+                                .id(tab.id)
+                        }
                     }
                     .padding(.horizontal, 16)
+                    .id(space.id)
+                    .transition(.spaceListChange(forward: browser.lastSpaceSwitch?.forward ?? true))
                     if space.today.isEmpty && space.pinned.isEmpty {
                         ContentUnavailableView("No tabs", systemImage: "square.on.square",
                                                description: Text("Tap plus to open one."))

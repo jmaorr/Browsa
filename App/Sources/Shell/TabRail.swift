@@ -43,7 +43,9 @@ final class TabRailController {
 
     func currentTabChanged() {
         if suppressNextPeek { suppressNextPeek = false; return }
-        guard !isScrubbing, !sidebarShowsTabs, ordered.count > 1 else { return }
+        // A space change cascades its tabs in wherever they're listed, so it doesn't peek as well.
+        let changedSpace = browser?.lastSpaceSwitch.map { Date().timeIntervalSince($0.at) < 0.3 } ?? false
+        guard !isScrubbing, !sidebarShowsTabs, !changedSpace, ordered.count > 1 else { return }
         highlighted = browser?.currentTab?.id
         show()
         scheduleHide(after: .milliseconds(1400))

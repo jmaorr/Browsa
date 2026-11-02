@@ -15,7 +15,10 @@ struct SidebarView: View {
 
             if !space.pinned.isEmpty {
                 LazyVGrid(columns: pinnedColumns, spacing: 8) {
-                    ForEach(space.pinned) { tab in pinnedTile(tab, selected: tab.id == space.selectedTabID) }
+                    ForEach(Array(space.pinned.enumerated()), id: \.element.id) { i, tab in
+                        pinnedTile(tab, selected: tab.id == space.selectedTabID)
+                            .spaceCascade(index: i, distance: 240, spaceSwitch: browser.lastSpaceSwitch)
+                    }
                 }
             }
 
@@ -32,6 +35,8 @@ struct SidebarView: View {
             List {
                 ForEach(space.today) { tab in
                     TabRow(tab: tab, selected: tab.id == space.selectedTabID)
+                        .spaceCascade(index: (space.today.firstIndex { $0.id == tab.id } ?? 0) + space.pinned.count,
+                                      distance: 240, spaceSwitch: browser.lastSpaceSwitch)
                         .listRowInsets(.init(top: 2, leading: 0, bottom: 2, trailing: 0))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -42,6 +47,11 @@ struct SidebarView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            // A new list per space, so its rows arrive fresh and the old ones leave together.
+            .id(space.id)
+            .transition(.spaceListChange(forward: browser.lastSpaceSwitch?.forward ?? true))
+            .frame(maxHeight: .infinity)
+            .clipped()
 
             spaceSwitcher
         }
@@ -89,7 +99,7 @@ struct SidebarView: View {
     private var spaceSwitcher: some View {
         HStack(spacing: 14) {
             ForEach(browser.spaces) { s in
-                Button { withAnimation(.smooth) { browser.selectSpace(s) } } label: {
+                Button { withAnimation(Motion.spring) { browser.selectSpace(s) } } label: {
                     Image(systemName: s.symbol)
                         .foregroundStyle(s.id == browser.selectedSpaceID ? .primary : .secondary)
                         .frame(width: 32, height: 32)
