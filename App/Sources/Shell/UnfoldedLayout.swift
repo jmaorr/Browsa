@@ -87,7 +87,7 @@ struct UnfoldedWideLayout: View {
             ToolbarItem(placement: .topBarTrailing) { DownloadProgressButton() }.duoPinnedToVerticalBar()
         }
         // Bottom-bar items land at the far end of the vertical bar.
-        ToolbarItem(placement: .bottomBar) { NewTabButton(source: .verticalBar) }
+        ToolbarItem(placement: .bottomBar) { NewTabButton() }
         .duoPinnedToVerticalBar()
         ToolbarItem(placement: .bottomBar) {
             Button("Toggle Sidebar", systemImage: "sidebar.leading") { toggleSidebar() }

@@ -80,7 +80,7 @@ struct UnfoldedPortraitLayout: View {
             }
             BottomBar(sideMargin: 0)
             if !compact {
-                NewTabButton(source: .bottomBar)
+                NewTabButton()
                     .glassCircleButton()
                     .transition(.opacity)
             }

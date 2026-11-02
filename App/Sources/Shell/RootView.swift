@@ -4,7 +4,6 @@ import Suggest
 
 struct RootView: View {
     @Environment(BrowserState.self) private var browser
-    @Namespace private var newTabNS
     @State private var rail = TabRailController()
     @AppStorage(ReaderView.fullScreenKey) private var readerFullScreen = false
     /// Reader is between its sheet and its full-screen cover.
@@ -63,7 +62,6 @@ struct RootView: View {
         .environment(rail)
         // Neutral chrome, like Safari. A space's colour only tints the sidebar's background.
         .tint(.primary)
-        .environment(\.newTabNamespace, newTabNS)
     }
 }
 
@@ -179,13 +177,12 @@ struct StartPage: View {
                           onOpen: { browser.perform(.open($0.url), source: .bookmark) },
                           onRename: { _ in }, onRemove: { browser.removeFavorite($0) })
                 .frame(maxWidth: 420)
-            Button { browser.presentNewTab(from: NewTabSource.startPage.rawValue) } label: {
+            Button { browser.presentNewTab() } label: {
                 Label("New Tab", systemImage: "plus")
                     .font(.headline)
                     .padding(.horizontal, 20).padding(.vertical, 12)
             }
             .buttonStyle(.glass)
-            .newTabZoomSource(.startPage)
             Spacer()
         }
         .padding(16)

@@ -5,7 +5,6 @@ import OSLog
 /// written here, this is the only file to fix.
 ///
 /// APIs used (iOS 27.1+):
-///   - View.onHingeChange { old, new in new.hinge?.status }    -> .closed / .partiallyOpen / .fullyOpen
 ///   - EnvironmentValues.toolbarVerticalEdge                    -> HorizontalEdge? (nil = no vertical bar)
 ///   - View.toolbarVerticalBehavior(_:)                         -> .automatic / .disabled
 ///   - View.toolbarVerticalCompressionBehavior(_:)              -> .prefersToolbarItems
@@ -41,7 +40,7 @@ struct PostureReader<Content: View>: View {
 
     var posture: Posture {
         #if DEBUG
-        if let forced = UITestSupport.forcedHingeOpen { return forced ? .unfolded : .folded }
+        if let forced = UITestSupport.forcedUnfolded { return forced ? .unfolded : .folded }
         #endif
         return sizeClass == .regular ? .unfolded : .folded
     }
@@ -56,29 +55,12 @@ struct PostureReader<Content: View>: View {
                 t.animation = nil
                 t.disablesAnimations = true
             }
-            .duoLogHingeChanges()
-            // In Console, filter on subsystem com.orriginal.browsa to see what the hinge reported
-            // around a blank unfold.
+            // In Console, filter on subsystem com.orriginal.browsa to line layout swaps up with
+            // the web view's moves.
             .onChange(of: posture) { old, new in
                 let detail = "posture \(old) -> \(new), size class: \(String(describing: sizeClass))"
                 PostureLog.logger.notice("\(detail, privacy: .public)")
             }
-            .onChange(of: sizeClass) { old, new in
-                PostureLog.logger.notice("size class \(String(describing: old), privacy: .public) -> \(String(describing: new), privacy: .public)")
-            }
-    }
-}
-
-extension View {
-    /// Logs what the hinge reports. Nothing depends on it.
-    func duoLogHingeChanges() -> some View {
-        #if NO_DUO_SDK
-        self
-        #else
-        onHingeChange { _, new in
-            PostureLog.logger.notice("hinge event: \(String(describing: new.hinge?.status), privacy: .public)")
-        }
-        #endif
     }
 }
 

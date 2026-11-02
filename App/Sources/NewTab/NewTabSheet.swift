@@ -61,7 +61,7 @@ struct NewTabSheet: View {
         .task { await model.loadZeroState() }
         .task {
             guard !morphed else { return }
-            // Let the zoom get underway first, so the slide reads as part of it.
+            // Let the sheet get underway first, so the slide reads as part of it.
             if !Motion.reduced { try? await Task.sleep(for: .milliseconds(160)) }
             withAnimation(Motion.spring) { morphed = true }
         }
@@ -118,7 +118,7 @@ struct NewTabSheet: View {
                             FaviconView(url: url, size: 18)
                             Text(URLNormalizer.displayHost(url)).font(.callout).lineLimit(1)
                         }
-                        // Starts centred like the pill it zoomed out of, then glides to the
+                        // Starts centred like the pill that was tapped, then glides to the
                         // field's leading edge while the full URL takes its place.
                         .frame(maxWidth: .infinity, alignment: morphed ? .leading : .center)
                         .opacity(morphed ? 0 : 1)

@@ -21,8 +21,6 @@ public final class BrowserState {
     public var newTabSheetEditsCurrentTab = false
     public var isTabSwitcherPresented = false
     public var isSettingsPresented = false
-    /// Which on-screen control opened the new-tab sheet, so it can zoom out of (and back into) it.
-    public var newTabSourceID = "plus.bottomBar"
     /// Direction of the last swipe between tabs, for push transitions (nil = not a swipe).
     public var lastTabSwipeForward: Bool?
     public var isArchivePresented = false
@@ -32,7 +30,7 @@ public final class BrowserState {
     public internal(set) var activePrompt: WebPrompt?
     /// Short confirmation shown at the top of the screen ("Opened in background").
     public var toast: String?
-    /// Set by the app from the hinge. Drives desktop vs mobile sites.
+    /// Set by the app from the posture. Drives desktop vs mobile sites.
     public var isUnfolded = false
     @ObservationIgnored var promptQueue: [(WebPrompt, CheckedContinuation<WebPromptResponse, Never>)] = []
     @ObservationIgnored var promptLog: [UUID: [Date]] = [:]
@@ -202,15 +200,13 @@ public final class BrowserState {
     // MARK: New tab / navigation
 
     /// One tap on any plus button.
-    public func presentNewTab(from sourceID: String? = nil) {
-        if let sourceID { newTabSourceID = sourceID }
+    public func presentNewTab() {
         newTabSheetEditsCurrentTab = false
         isNewTabSheetPresented = true
     }
 
     /// Tap on the address pill / field.
-    public func presentAddressEditor(from sourceID: String? = nil) {
-        if let sourceID { newTabSourceID = sourceID }
+    public func presentAddressEditor() {
         newTabSheetEditsCurrentTab = currentTab != nil
         isNewTabSheetPresented = true
     }

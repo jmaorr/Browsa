@@ -46,20 +46,17 @@ struct FoldedLayout: View {
             ToolbarItem(placement: .topBarTrailing) { DownloadProgressButton() }.duoPinnedToVerticalBar()
         }
         // Bottom-bar items land at the far end of the vertical bar, beside your thumb.
-        ToolbarItem(placement: lower) { NewTabButton(source: .bottomBar) }.duoPinnedToVerticalBar()
+        ToolbarItem(placement: lower) { NewTabButton() }.duoPinnedToVerticalBar()
         ToolbarItem(placement: lower) { TabsButton() }.duoPinnedToVerticalBar()
     }
 }
 
-/// A new-tab button. The new-tab sheet zooms out of it; hold for a private tab or a tab in
-/// another space. The same menu in every layout.
+/// A new-tab button. Hold for a private tab or a tab in another space. The same menu in every layout.
 struct NewTabButton: View {
     @Environment(BrowserState.self) private var browser
-    var source: NewTabSource
 
     var body: some View {
-        Button("New Tab", systemImage: "plus") { browser.presentNewTab(from: source.rawValue) }
-            .newTabZoomSource(source)
+        Button("New Tab", systemImage: "plus") { browser.presentNewTab() }
             .contextMenu { NewTabMenu() }
     }
 }
@@ -145,7 +142,6 @@ struct BottomBar: View {
         .glassEffect(.regular.interactive(), in: .capsule)
         .offset(x: dragX * 0.3)
         .contentShape(.capsule)
-        .newTabZoomSource(.addressPill)
         // Press and hold the pill to copy the address straight away.
         .onLongPressGesture(minimumDuration: 0.45) {
             guard let url = browser.currentTab?.url else { return }
@@ -157,7 +153,7 @@ struct BottomBar: View {
             if compact, let tab = browser.currentTab {
                 withAnimation(Motion.collapse) { browser.session(for: tab).expandChrome() }
             } else {
-                browser.presentAddressEditor(from: NewTabSource.addressPill.rawValue)
+                browser.presentAddressEditor()
             }
         }
         .gesture(
