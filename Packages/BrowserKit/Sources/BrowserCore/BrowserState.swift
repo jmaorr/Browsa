@@ -219,11 +219,12 @@ public final class BrowserState {
     public func newTab(url: URL?, in space: Space? = nil, isPrivate: Bool = false,
                        source: Frecency.VisitSource = .typed) -> BrowserTab {
         // A tab opened while you're in Private is private too.
-        let wantsPrivate = isPrivate || (space ?? currentSpace).isPrivate
+        let requested = space ?? currentSpace
+        let wantsPrivate = isPrivate || requested.isPrivate
         if wantsPrivate, !currentSpace.isPrivate { spaceBeforePrivate = selectedSpaceID }
-        let space = wantsPrivate ? openPrivateSpace() : (space ?? currentSpace)
+        let target = wantsPrivate ? openPrivateSpace() : requested
         let tab = BrowserTab(url: nil, isPrivate: wantsPrivate)
-        space.today.insert(tab, at: 0)
+        target.today.insert(tab, at: 0)
         select(tab)
         if let url { session(for: tab).load(url, source: source) }
         return tab
