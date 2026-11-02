@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Browsa, a native browser for iPhone Duo</title>
+<meta name="description" content="Browsa is an open source WebKit browser built around iPhone Duo: a sidebar when it's open, a proper phone layout when it's closed.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f4f1">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121211">
+<meta property="og:title" content="Browsa">
+<meta property="og:description" content="An open source WebKit browser built around iPhone Duo.">
+<meta property="og:image" content="https://browsa.app/media/hero.webp">
+<meta property="og:url" content="https://browsa.app/">
+<link rel="canonical" href="https://browsa.app/">
+<link rel="icon" href="/favicon.png">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/vendor/transitions/ui-generation.css">
+<script type="module" src="/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#details">Skip to features</a>
+
+<header class="bar">
+  <a class="brand" href="/" aria-current="page"><img src="/media/orb.webp" alt="" width="26" height="26">Browsa</a>
+  <nav aria-label="Main">
+    <a href="#details">Details</a>
+    <a href="/privacy/">Privacy</a>
+    <a href="https://github.com/jmaorr/DuoBrowser">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <h1 id="hero-title">A browser handcrafted<br>for iPhone&nbsp;Duo.</h1>
+      <div class="hero-side">
+        <p>Native WebKit, with a sidebar when it's open and a proper phone layout when it's closed. Open source, with no account and no analytics.</p>
+        <p class="actions">
+          <a class="button" href="https://github.com/jmaorr/DuoBrowser">View on GitHub</a>
+          <span class="soon">Coming to the App Store</span>
+        </p>
+      </div>
+    </div>
+
+    <div class="stage" data-posture="open">
+      <figure class="device wide" id="posture-open">
+        <div class="screen"><video data-t-generate-skip data-loop muted playsinline loop preload="metadata" poster="/media/hero.webp" aria-label="Browsa open with the sidebar showing. The sidebar hides so Figma fills the screen, the tab strip peeks in from the side to switch to Linear, and the page scrolls."><source src="/media/hero.mp4" type="video/mp4"></video></div>
+      </figure>
+      <figure class="device tall" id="posture-closed" hidden>
+        <div class="screen"><video data-t-generate-skip data-loop muted playsinline loop preload="metadata" poster="/media/linear.webp" aria-label="Browsa closed, showing Linear in a phone layout with the address pill at the bottom."><source src="/media/linear.mp4" type="video/mp4"></video></div>
+      </figure>
+    </div>
+
+    <div class="stage-controls">
+      <div class="segmented" role="group" aria-label="Device posture">
+        <button type="button" data-set-posture="open" aria-pressed="true">Open</button>
+        <button type="button" data-set-posture="closed" aria-pressed="false">Closed</button>
+      </div>
+      <button type="button" class="motion" id="motion" aria-pressed="false">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path class="i-pause" d="M4 2.5h3v11H4zM9 2.5h3v11H9z"/><path class="i-play" d="M4.5 2.2 13 8l-8.5 5.8z"/></svg>
+        <span>Pause clips</span>
+      </button>
+    </div>
+  </section>
+
+  <section class="layouts" id="layouts" aria-labelledby="layouts-title" hidden>
+    <div class="layouts-copy">
+      <h2 id="layouts-title">Five layouts, each made by hand.</h2>
+      <p id="layout-caption" aria-live="polite"></p>
+    </div>
+    <div class="m-stage" role="img" aria-label="An iPhone Duo moving between Browsa's five layouts, with the sidebar, gutter and address bar changing place in each.">
+      <div class="m-device">
+        <div class="m-screen">
+          <div class="m-page"><img data-t-generate-skip class="wide" src="/media/page-wide.webp" alt="" draggable="false"><img data-t-generate-skip class="narrow" src="/media/page-narrow.webp" alt="" draggable="false"></div>
+          <div class="m-topbar" data-m="topbar"></div>
+          <div class="m-scrim" data-m="scrim"></div>
+          <div class="m-navbg" data-m="navbg"></div>
+          <div class="m-navbg" data-m="stackbg"></div>
+          <span class="m-ic" data-m="back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></span>
+          <span class="m-ic" data-m="fwd"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></span>
+          <span class="m-ic" data-m="more"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></span>
+          <span class="m-ic" data-m="plus"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>
+          <span class="m-ic" data-m="toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="M9.5 5v14"/></svg></span>
+          <span class="m-ic" data-m="tabs"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="8" width="12" height="12" rx="2.5"/><path d="M8 4.5h9.5A2.5 2.5 0 0 1 20 7v9.5"/></svg></span>
+          <span class="m-cam" data-m="cam"></span>
+          <span class="m-time" data-m="time">9:41</span>
+          <span class="m-ic m-ring" data-m="ring"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 11a8 8 0 0 1 11 0M9 13.8a4.5 4.5 0 0 1 6 0"/><circle cx="12" cy="16.8" r="1"/></svg></span>
+          <div class="m-pill" data-m="pill"><i></i><span>linear.app</span></div>
+          <div class="m-sidebar" data-m="sidebar"><img data-t-generate-skip src="/media/sidebar-top.webp" alt="" draggable="false"><img data-t-generate-skip src="/media/sidebar-bottom.webp" alt="" draggable="false"><div class="m-map" aria-hidden="true"><b class="m-map-box" data-x="11" data-y="19" data-w="251" data-h="42"></b><span class="m-map-text" data-x="50" data-y="32">linear.app</span><b class="m-map-box" data-x="12" data-y="72" data-w="54" data-h="45"></b><b class="m-map-box" data-x="78" data-y="72" data-w="54" data-h="45"></b><b class="m-map-box" data-x="11" data-y="129" data-w="251" data-h="1"></b><span class="m-map-text" data-x="45" data-y="143">New Tab</span><b class="m-map-box" data-x="11" data-y="174" data-w="250" data-h="45"></b><b class="m-map-box" data-x="21" data-y="187" data-w="19" data-h="19"></b><span class="m-map-text" data-x="50" data-y="188">Linear – The system for</span><b class="m-map-box" data-x="11" data-y="223" data-w="250" data-h="45"></b><b class="m-map-box" data-x="21" data-y="236" data-w="19" data-h="19"></b><span class="m-map-text" data-x="50" data-y="237">Figma: The collaborative</span><b class="m-map-box" data-x="11" data-y="272" data-w="250" data-h="45"></b><b class="m-map-box" data-x="21" data-y="285" data-w="19" data-h="19"></b><span class="m-map-text" data-x="50" data-y="286">Framer</span><b class="m-map-box" data-x="11" data-y="321" data-w="250" data-h="45"></b><b class="m-map-box" data-x="21" data-y="334" data-w="19" data-h="19"></b><span class="m-map-text" data-x="50" data-y="335">Notion</span><b class="m-map-box" data-x="22" data-y="590" data-w="20" data-h="18"></b><b class="m-map-box" data-x="65" data-y="590" data-w="20" data-h="18"></b><b class="m-map-box" data-x="110" data-y="590" data-w="20" data-h="18"></b><b class="m-map-box" data-x="236" data-y="590" data-w="20" data-h="18"></b></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="t-tabs" role="group" aria-label="Layout">
+      <span class="t-tabs-pill" aria-hidden="true"></span>
+      <button type="button" class="t-tab" data-layout-pick="sidebar" aria-pressed="true">Sidebar</button>
+      <button type="button" class="t-tab" data-layout-pick="open" aria-pressed="false">Landscape</button>
+      <button type="button" class="t-tab" data-layout-pick="portrait" aria-pressed="false">Portrait</button>
+      <button type="button" class="t-tab" data-layout-pick="overlay" aria-pressed="false">Overlay</button>
+      <button type="button" class="t-tab" data-layout-pick="closed" aria-pressed="false">Closed</button>
+    </div>
+  </section>
+
+  <section class="details" id="details" aria-labelledby="details-title">
+    <h2 id="details-title">Built for Duo, down to the details.</h2>
+    <div class="features">
+      <article>
+        <figure class="device wide"><div class="screen"><video data-loop muted playsinline loop preload="none" poster="/media/sidebar.webp" aria-label="The sidebar sliding away so a Colossal article fills the screen, then sliding back."><source src="/media/sidebar.mp4" type="video/mp4"></video></div></figure>
+        <h3>A sidebar made for the big screen</h3>
+        <p>Spaces, pinned tabs and today's tabs slide in from the edge, then get out of the way.</p>
+      </article>
+      <article>
+        <figure class="device wide"><div class="screen"><video data-loop muted playsinline loop preload="none" poster="/media/spaces.webp" aria-label="Switching from the Personal space to the Work space and back. The sidebar's colour and tabs change together."><source src="/media/spaces.mp4" type="video/mp4"></video></div></figure>
+        <h3>Spaces, curated your way</h3>
+        <p>Keep work and life apart, each with its own tabs, pins and colour.</p>
+      </article>
+      <article>
+        <figure class="device wide"><div class="screen"><video data-loop muted playsinline loop preload="none" poster="/media/suggest.webp" aria-label="The new tab sheet opening, then suggestions and an inline completion for Linear appearing while typing."><source src="/media/suggest.mp4" type="video/mp4"></video></div></figure>
+        <h3>Suggestions from the first keystroke</h3>
+        <p>Favourites above the keyboard, with your tabs, history and popular sites matching as you type.</p>
+      </article>
+      <article>
+        <figure class="device wide"><div class="screen"><video data-loop muted playsinline loop preload="none" poster="/media/reader.webp" aria-label="Opening Reader on a Colossal article from the page menu, then closing it."><source src="/media/reader.mp4" type="video/mp4"></video></div></figure>
+        <h3>A quieter way to read</h3>
+        <p>Reader strips any article back to its words and pictures.</p>
+      </article>
+      <article class="third">
+        <div class="shot detail"><video data-loop muted playsinline loop preload="none" poster="/media/gutter.webp" aria-label="Close on the controls beside the page: a download ring fills, then finishes with a tick."><source src="/media/gutter.mp4" type="video/mp4"></video></div>
+        <h3>Small details in the gutter</h3>
+        <p>Back, forward and new tab sit in Duo's vertical bar, and downloads spin there too.</p>
+      </article>
+      <article class="third">
+        <figure class="device tall"><div class="screen"><video data-loop muted playsinline loop preload="none" poster="/media/grid.webp" aria-label="Closed, opening every tab in the space as a grid of thumbnails, then closing it."><source src="/media/grid.mp4" type="video/mp4"></video></div></figure>
+        <h3>Just as considered when closed</h3>
+        <p>Swipe the address pill to change tabs, or up to see them all.</p>
+      </article>
+      <article class="third">
+        <figure class="device upright"><div class="screen"><video data-loop muted playsinline loop preload="none" poster="/media/portrait.webp" aria-label="Scrolling an article on Colossal in the unfolded portrait layout."><source src="/media/portrait.mp4" type="video/mp4"></video></div></figure>
+        <h3>Handcrafted portrait mode</h3>
+        <p>The controls move to the top, in a layout made for this shape.</p>
+      </article>
+    </div>
+
+    <dl class="more" aria-label="Also in Browsa">
+      <div><dt>Built on WebKit</dt><dd>The same engine as Safari, with a native interface.</dd></div>
+      <div><dt>Video</dt><dd>The system player, with picture-in-picture and AirPlay.</dd></div>
+      <div><dt>Downloads</dt><dd>Saved to the Files app.</dd></div>
+      <div><dt>Private tabs</dt><dd>Hold any plus button. Cookies and storage go when the last tab closes.</dd></div>
+      <div><dt>Saved</dt><dd>Keep a page for later.</dd></div>
+      <div><dt>Keyboard</dt><dd>Hold <kbd>⌘</kbd> to see every shortcut.</dd></div>
+      <div><dt>Other iPhones</dt><dd>Runs on iOS 27.1 or later, using the closed layout.</dd></div>
+    </dl>
+  </section>
+
+  <section class="privacy" aria-labelledby="privacy-title">
+    <h2 id="privacy-title">Your browsing isn't our business.</h2>
+    <div>
+      <p>No account and no analytics. Your tabs and history stay on your device, and Browsa blocks ads, trackers and cookie banners.</p>
+      <p>The <a href="/privacy/">privacy policy</a> lists every service it talks to, like your search engine, and what each one receives.</p>
+    </div>
+  </section>
+
+  <section class="source" aria-labelledby="source-title">
+    <h2 id="source-title">Open source, so you can check.</h2>
+    <p>Browsa's code is on GitHub under the MIT license. Read it, build it, or fork it into your own browser.</p>
+    <p class="actions"><a class="button" href="https://github.com/jmaorr/DuoBrowser">jmaorr/DuoBrowser</a></p>
+    <p class="credits">Browsa stands on other people's work: <a href="https://github.com/duckduckgo/autoconsent">DuckDuckGo autoconsent</a> (MPL 2.0) declines cookie banners and <a href="https://github.com/mozilla/readability">Readability.js</a> (Apache 2.0) powers Reader. Motion from <a href="https://transitions.dev/">Transitions.dev</a>. The blocking rules are built from <a href="https://github.com/AdguardTeam/AdguardFilters">AdGuard's filter lists</a> and published under GPL 3.0, with their <a href="https://github.com/jmaorr/DuoBrowser/tree/main/tools/filter-rules">sources</a> and <a href="https://rules.browsa.app/v1/LICENSE.txt">license</a> alongside them.</p>
+  </section>
+</main>
+
+<footer class="foot">
+  <span class="brand"><img src="/media/orb.webp" alt="" width="20" height="20">Browsa</span>
+  <span>Made by <a href="https://orriginal.me">Joshua Orr</a></span>
+  <a href="/privacy/">Privacy</a>
+  <a href="https://github.com/jmaorr/DuoBrowser">GitHub</a>
+  <a href="mailto:hello@orriginal.me">Contact</a>
+</footer>
+</body>
+</html>
