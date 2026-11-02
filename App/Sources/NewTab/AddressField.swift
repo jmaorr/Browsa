@@ -8,6 +8,8 @@ struct AddressField: UIViewRepresentable {
     var initialText: String
     var inline: InlineCompletion?
     var placeholder: String
+    /// Off while the field's trailing slot is showing something else.
+    var showsClearButton = true
     var onTextChange: (_ typed: String, _ lastEditWasInsertion: Bool) -> Void
     var onSubmit: (_ fieldText: String) -> Void
     /// Hardware keyboard: Up/Down move through the suggestions (-1 / +1).
@@ -36,7 +38,6 @@ struct AddressField: UIViewRepresentable {
         f.spellCheckingType = .no
         f.smartInsertDeleteType = .no
         f.textContentType = .URL
-        f.clearButtonMode = .whileEditing
         f.enablesReturnKeyAutomatically = true
         f.delegate = context.coordinator
         f.addTarget(context.coordinator, action: #selector(Coordinator.editingChanged(_:)), for: .editingChanged)
@@ -50,7 +51,15 @@ struct AddressField: UIViewRepresentable {
 
     func updateUIView(_ field: UITextField, context: Context) {
         context.coordinator.parent = self
+        field.clearButtonMode = showsClearButton ? .whileEditing : .never
         context.coordinator.apply(inline, to: field)
+    }
+
+    /// Takes the width it's offered. A text field otherwise asks for the width of its text, and
+    /// a long URL would push the whole sheet wider than the screen.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextField, context: Context) -> CGSize? {
+        guard let width = proposal.width else { return nil }
+        return CGSize(width: width, height: proposal.height ?? uiView.intrinsicContentSize.height)
     }
 
     final class Coordinator: NSObject, UITextFieldDelegate {

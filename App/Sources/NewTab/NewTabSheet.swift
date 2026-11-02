@@ -76,12 +76,31 @@ struct NewTabSheet: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
+            field
+            Button("Close", systemImage: "xmark") { browser.isNewTabSheetPresented = false }
+                .labelStyle(.iconOnly)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+                .frame(width: 48, height: 48)
+                .contentShape(.circle)
+                .glassEffect(.regular.interactive(), in: .circle)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 20)
+        .padding(.bottom, 8)
+    }
+
+    /// The search capsule: icon, text, then one trailing control (Copy Link until you type, the
+    /// field's own clear button after that).
+    private var field: some View {
+        HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 .opacity(morphed ? 1 : 0)
                 .scaleEffect(morphed || Motion.reduced ? 1 : 0.6)
             AddressField(initialText: initialText, inline: model.inline,
                          placeholder: "Search, address or command",
+                         showsClearButton: morphFrom == nil || edited,
                          onTextChange: { text, inserted in
                              if !edited, text != initialText { withAnimation(Motion.snappy) { edited = true } }
                              model.textChanged(text, lastEditWasInsertion: inserted)
@@ -129,13 +148,10 @@ struct NewTabSheet: View {
                 .opacity(morphed ? 1 : 0)
                 .transition(.scale(scale: 0.6).combined(with: .opacity))
             }
-            Button("Cancel") { browser.isNewTabSheetPresented = false }
-                .fontWeight(.medium)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 8)
-        .background(.bar)
+        .padding(.horizontal, 14)
+        .frame(height: 48)
+        .glassEffect(.regular.interactive(), in: .capsule)
     }
 }
 
