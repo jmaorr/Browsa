@@ -20,6 +20,10 @@ extension BrowserState {
             }
             out.append(BrowserCommand(id: "close", title: "Close Tab", keywords: ["tab"]))
             if let url = tab.url {
+                out.append(BrowserCommand(id: "save", title: isSaved(url) ? "Remove from Saved" : "Save Page",
+                                          subtitle: tab.displayTitle, keywords: ["bookmark", "read later", "saved"]))
+            }
+            if let url = tab.url {
                 out.append(BrowserCommand(id: "copy-link", title: "Copy Link", subtitle: url.absoluteString, keywords: ["url", "share"]))
             }
         }
@@ -46,6 +50,9 @@ extension BrowserState {
         for s in spaces where s.id != selectedSpaceID {
             out.append(BrowserCommand(id: "space:" + s.id.uuidString, title: "Switch to \(s.name)", subtitle: "Space", keywords: ["space"]))
         }
+        if !saved.isEmpty {
+            out.append(BrowserCommand(id: "saved", title: "Show Saved", subtitle: "\(saved.count) sites", keywords: ["bookmarks", "read later"]))
+        }
         out.append(BrowserCommand(id: "settings", title: "Settings", keywords: ["preferences", "search engine"]))
         out.append(BrowserCommand(id: "archive", title: "Show Archive", subtitle: "\(archive.count) archived tabs", keywords: ["history", "closed"]))
         return out
@@ -65,6 +72,8 @@ extension BrowserState {
             newTab(url: nil, isPrivate: true)
             presentAddressEditor()
         case "close-private": closePrivateSpace()
+        case "save": toggleSavedForCurrentTab()
+        case "saved": isSavedPresented = true
         case "reopen": reopenClosedTab()
         case "find":
             // Wait for the sheet to finish dismissing so the find bar can take first responder.

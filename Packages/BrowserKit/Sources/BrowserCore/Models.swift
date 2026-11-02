@@ -238,6 +238,24 @@ public struct LoadError: Equatable, Sendable {
     }
 }
 
+// MARK: - Saved sites
+
+/// A page put aside to read later, from the page menu's Save. A flat list, newest first, like the
+/// saved posts in a social app. No folders.
+public struct SavedSite: Codable, Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public var url: URL
+    public var title: String
+    public var savedAt: Date
+
+    public init(id: UUID = UUID(), url: URL, title: String, savedAt: Date = .now) {
+        self.id = id
+        self.url = url
+        self.title = title
+        self.savedAt = savedAt
+    }
+}
+
 // MARK: - Codable snapshot for persistence
 
 struct TabRecord: Codable {
@@ -255,6 +273,8 @@ struct BrowserSnapshot: Codable {
     var favorites: [Favorite]
     var archive: [TabRecord]
     var settings: BrowserSettings?
+    /// Missing in state saved before Saved Sites existed.
+    var saved: [SavedSite]?
 }
 
 extension BrowserTab {

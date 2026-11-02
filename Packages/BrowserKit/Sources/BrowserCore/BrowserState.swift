@@ -12,6 +12,8 @@ public final class BrowserState {
     public var selectedSpaceID: UUID
     public var favorites: [Favorite]
     public var archive: [BrowserTab] = []
+    /// Saved sites, newest first.
+    public var saved: [SavedSite] = []
 
     // Transient UI state
     public var isNewTabSheetPresented = false
@@ -25,6 +27,7 @@ public final class BrowserState {
     public var lastTabSwipeForward: Bool?
     public var isArchivePresented = false
     public var isDownloadsPresented = false
+    public var isSavedPresented = false
     /// The dialog, permission or login request on screen now (one at a time).
     public internal(set) var activePrompt: WebPrompt?
     /// Short confirmation shown at the top of the screen ("Opened in background").
@@ -78,7 +81,7 @@ public final class BrowserState {
     @ObservationIgnored public private(set) var suggest: SuggestEngine!
     @ObservationIgnored private let snapshotURL: URL?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
-    @ObservationIgnored private let thumbnailStore: ThumbnailStore?
+    @ObservationIgnored let thumbnailStore: ThumbnailStore?
     /// The space you were in before going into Private, to go back to when it closes.
     @ObservationIgnored var spaceBeforePrivate: UUID?
 
@@ -94,6 +97,7 @@ public final class BrowserState {
             selectedSpaceID = snap.selectedSpaceID ?? snap.spaces[0].id
             favorites = snap.favorites
             archive = snap.archive.map(BrowserTab.init)
+            saved = snap.saved ?? []
             if let s = snap.settings { settings = s }
         } else {
             let personal = Space(name: "Personal", symbol: "house.fill", colorIndex: 0)
@@ -108,7 +112,7 @@ public final class BrowserState {
 
     private func loadSavedThumbnails() {
         guard let thumbnailStore else { return }
-        let ids = Set((spaces.flatMap(\.allTabs) + archive).map(\.id))
+        let ids = Set((spaces.flatMap(\.allTabs) + archive).map(\.id) + saved.map(\.id))
         Task {
             let saved = await Task.detached(priority: .utility) { thumbnailStore.loadAll(keeping: ids) }.value
             for (id, data) in saved where thumbnails[id] == nil {
@@ -373,7 +377,8 @@ public final class BrowserState {
         // Private is never saved. Next launch opens in the space you came to it from.
         let selected = currentSpace.isPrivate ? (spaceBeforePrivate ?? regularSpaces.first?.id) : selectedSpaceID
         let snap = BrowserSnapshot(spaces: regularSpaces.map(\.record), selectedSpaceID: selected,
-                                   favorites: favorites, archive: archive.map(\.record), settings: settings)
+                                   favorites: favorites, archive: archive.map(\.record), settings: settings,
+                                   saved: saved)
         guard let data = try? JSONEncoder().encode(snap) else { return }
         try? FileManager.default.createDirectory(at: snapshotURL.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)

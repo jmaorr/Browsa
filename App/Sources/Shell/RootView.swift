@@ -48,6 +48,9 @@ struct RootView: View {
         .sheet(isPresented: $browser.isDownloadsPresented) {
             DownloadsView()
         }
+        .sheet(isPresented: $browser.isSavedPresented) {
+            SavedSitesView()
+        }
         // A light tap when a download lands, like Safari's downloads button bounce.
         .sensoryFeedback(.success, trigger: browser.downloads.lastFinished)
         // Page dialogs, permission requests and logins, one at a time.

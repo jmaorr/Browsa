@@ -107,6 +107,10 @@ struct PageMenu: View {
                     ShareLink(item: url)
                 }
                 Section {
+                    Button(browser.isSaved(url) ? "Unsave" : "Save",
+                           systemImage: browser.isSaved(url) ? "bookmark.slash" : "bookmark") {
+                        browser.toggleSavedForCurrentTab()
+                    }
                     Button(browser.isFavorite(url) ? "Remove from Favourites" : "Add to Favourites",
                            systemImage: browser.isFavorite(url) ? "star.slash" : "star") {
                         browser.toggleFavoriteForCurrentTab()
@@ -126,6 +130,7 @@ struct PageMenu: View {
                 }
             }
             Section {
+                Button("Saved", systemImage: "bookmark") { browser.isSavedPresented = true }
                 Button("Downloads", systemImage: "arrow.down.circle") { browser.isDownloadsPresented = true }
                 Button("Settings", systemImage: "gearshape") { browser.isSettingsPresented = true }
             }
