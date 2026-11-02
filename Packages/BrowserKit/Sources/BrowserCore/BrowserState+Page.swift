@@ -54,7 +54,7 @@ extension BrowserState {
 
     public func goBack() { currentTab.map { session(for: $0).webView.goBack() } }
     public func goForward() { currentTab.map { session(for: $0).webView.goForward() } }
-    public func reload() { currentTab.map { session(for: $0).webView.reload() } }
+    public func reload() { currentTab.map { session(for: $0).reloadOrLoad() } }
     public func stopLoading() { currentTab.map { session(for: $0).webView.stopLoading() } }
 
     /// Cmd-F: the system find bar (same one Safari uses), which sits above the keyboard.

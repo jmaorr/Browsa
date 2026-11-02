@@ -53,6 +53,10 @@ public final class TabSession: NSObject {
                 guard let self else { return }
                 if let state = tab.interactionState {
                     webView.interactionState = state
+                    Task { [weak self] in
+                        try? await Task.sleep(for: .seconds(2))
+                        self?.loadIfRestoreStalled()
+                    }
                 } else if let url = tab.url {
                     webView.load(URLRequest(url: url))
                 }
@@ -104,8 +108,8 @@ public final class TabSession: NSObject {
     }
 
     @objc private func pulledToRefresh(_ sender: UIRefreshControl) {
-        if webView.url == nil { sender.endRefreshing(); return }
-        webView.reload()
+        if webView.url == nil && tab.url == nil { sender.endRefreshing(); return }
+        reloadOrLoad()
     }
 
     private func endRefreshing() {
@@ -146,11 +150,24 @@ public final class TabSession: NSObject {
     private func recover() {
         webViewLog.notice("recovering by reload: \(self.tab.url?.host() ?? "no host", privacy: .public)")
         showLastPictureUntilPainted()
+        reloadOrLoad()
+    }
+
+    /// A web view that has no page of its own has nothing for `reload()` to act on, and does nothing.
+    func reloadOrLoad() {
+        webViewLog.notice("reload: \(self.tab.url?.host() ?? "no host", privacy: .public), web view has page \(self.webView.url != nil, privacy: .public), loading \(self.webView.isLoading, privacy: .public)")
         if webView.url != nil {
             webView.reload()
         } else if let url = tab.url {
             webView.load(URLRequest(url: url))
         }
+    }
+
+    /// Restoring saved state can come to nothing, leaving the tab showing a URL the web view doesn't have.
+    private func loadIfRestoreStalled() {
+        webViewLog.notice("restore check: \(self.tab.url?.host() ?? "no host", privacy: .public), web view has page \(self.webView.url != nil, privacy: .public), loading \(self.webView.isLoading, privacy: .public), back list \(self.webView.backForwardList.backList.count, privacy: .public)")
+        guard webView.url == nil, !webView.isLoading, let url = tab.url else { return }
+        webView.load(URLRequest(url: url))
     }
 
     /// Captures state so the web view can be torn down and rebuilt later.
@@ -171,6 +188,7 @@ extension TabSession: WKNavigationDelegate {
     }
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        webViewLog.notice("did finish: \(webView.url?.host() ?? "no host", privacy: .public)")
         endRefreshing()
         tab.isAwaitingFirstPaint = false
         guard let url = webView.url, !tab.isPrivate else { return }
@@ -183,12 +201,14 @@ extension TabSession: WKNavigationDelegate {
     }
 
     public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: any Error) {
+        webViewLog.notice("did fail: \(webView.url?.host() ?? "no host", privacy: .public), \(String(describing: error), privacy: .public)")
         endRefreshing()
         tab.isAwaitingFirstPaint = false
     }
 
     /// The page never arrived: show our error page instead of a blank screen.
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
+        webViewLog.notice("did fail provisional: \(self.tab.url?.host() ?? "no host", privacy: .public), \(String(describing: error), privacy: .public)")
         endRefreshing()
         tab.isAwaitingFirstPaint = false
         let ns = error as NSError
