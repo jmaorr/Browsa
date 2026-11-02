@@ -39,3 +39,10 @@ import Testing
         #expect(back == s)
     }
 }
+
+@Suite struct FilterListTests {
+    @Test func splitsCRLFAndLFLines() {
+        #expect(FilterGroup.rules(inFilterList: "! comment\r\n||ads.example^\r\n\r\n||more.example^\n") ==
+            ["! comment", "||ads.example^", "||more.example^"])
+    }
+}

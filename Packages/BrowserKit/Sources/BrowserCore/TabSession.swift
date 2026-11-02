@@ -30,7 +30,9 @@ public final class TabSession: NSObject {
         webView.isInspectable = true
         webView.navigationDelegate = self
         webView.uiDelegate = self
-        webView.scrollView.contentInsetAdjustmentBehavior = .automatic
+        // The layouts set the insets themselves, so the page reaches the top edge instead of
+        // sitting under a blank safe-area band.
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
         // Cmd-F and the command bar's "Find on Page" use the system find bar (as Safari does).
         webView.isFindInteractionEnabled = true
         // Pull to refresh, with the system control.
@@ -42,10 +44,15 @@ public final class TabSession: NSObject {
 
         if !loadInitial {
             // WebKit drives the first load.
-        } else if let state = tab.interactionState {
-            webView.interactionState = state
-        } else if let url = tab.url {
-            webView.load(URLRequest(url: url))
+        } else if tab.interactionState != nil || tab.url != nil {
+            browser.pool.afterContentRules { [weak self] in
+                guard let self else { return }
+                if let state = tab.interactionState {
+                    webView.interactionState = state
+                } else if let url = tab.url {
+                    webView.load(URLRequest(url: url))
+                }
+            }
         }
     }
 

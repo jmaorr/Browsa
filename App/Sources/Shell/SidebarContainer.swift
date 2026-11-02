@@ -44,7 +44,9 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
                 pageCard
                     .padding(edge == .leading ? .leading : .trailing, dockedInset)
                     .padding(.vertical, cardInset)
-                    .padding(edge == .leading ? .trailing : .leading, cardInset)
+                    .padding(edge == .leading ? .trailing : .leading, cardInset > 0 ? 2 : 0)
+                    // The card measures its margin from the screen, not from the safe area.
+                    .ignoresSafeArea(.container, edges: .vertical)
                     .overlay {
                         // Dimming + tap-to-dismiss while peeking.
                         if mode == .peek || (mode == .hidden && revealFraction > 0) {
@@ -110,8 +112,10 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
 
     private var sidebarLayer: some View {
         sidebar()
+            .padding(.vertical, 8)
             .frame(width: width)
             .frame(maxHeight: .infinity)
+            .ignoresSafeArea(.container, edges: .vertical)
             .background {
                 if mode != .docked {
                     // Peeking, it's attached to the screen edge like the tab strip it grows out

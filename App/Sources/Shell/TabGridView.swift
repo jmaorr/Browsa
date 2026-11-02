@@ -187,8 +187,7 @@ struct TabGridOverlay: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
         .glassEffect(.regular, in: .capsule)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
+        .padding(.horizontal, 24)
     }
 }
 
@@ -208,15 +207,16 @@ private struct TabGridCard: View {
     var body: some View {
         VStack(spacing: 6) {
             Button(action: onOpen) {
-                ZStack {
-                    Color.clear
+                // The clear shape alone sets the card's size, so the picture can't push it wider.
+                Color.clear
+                .aspectRatio(aspect, contentMode: .fit)
+                .overlay {
                     if !hidden {
                         TabThumbnail(tab: tab, image: browser.thumbnails[tab.id], cornerRadius: 14)
                             .matchedGeometryEffect(id: tab.id, in: ns)
                             .transition(.identity)
                     }
                 }
-                .aspectRatio(aspect, contentMode: .fit)
                 .overlay {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.separator),
@@ -278,10 +278,12 @@ struct TabThumbnail: View {
     var body: some View {
         Group {
             if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                // In an overlay, because a scaled-to-fill image reports its overflowing size.
+                Color.clear.overlay(alignment: .top) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                }
             } else {
                 ZStack {
                     Color(.secondarySystemGroupedBackground)

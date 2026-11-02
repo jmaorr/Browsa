@@ -9,6 +9,8 @@ final class WebViewPool {
     let capacity: Int
     private(set) var sessions: [UUID: TabSession] = [:]
     private var lru: [UUID] = []
+    private var contentRulesReady = false
+    private var loadsWaitingForContentRules: [() -> Void] = []
 
     let configuration: WKWebViewConfiguration
     let privateConfiguration: WKWebViewConfiguration
@@ -45,6 +47,19 @@ final class WebViewPool {
         sessions[tab.id] = s
         evictIfNeeded(keeping: tab.id)
         return s
+    }
+
+    /// Runs `load` once the content rule lists are installed, so a tab restored at launch can't
+    /// slip through unblocked while they're still being looked up.
+    func afterContentRules(_ load: @escaping () -> Void) {
+        if contentRulesReady { load() } else { loadsWaitingForContentRules.append(load) }
+    }
+
+    func markContentRulesReady() {
+        contentRulesReady = true
+        let waiting = loadsWaitingForContentRules
+        loadsWaitingForContentRules = []
+        waiting.forEach { $0() }
     }
 
     /// Registers a session created by WebKit for a popup (window.open).

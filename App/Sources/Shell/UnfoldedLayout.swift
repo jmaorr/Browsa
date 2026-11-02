@@ -23,11 +23,10 @@ struct UnfoldedLayout: View {
                              tint: SpacePalette.color(space.colorIndex)) {
                 SidebarView()
             } content: {
-                WebContentView()
+                WebContentView(bottomObscuredInset: 24)
             }
             .toolbar { toolbar }
             .toolbarTitleDisplayMode(.inline)
-            .navigationTitle(browser.currentTab?.displayTitle ?? "")
             .duoVerticalBarPrefersOurItems()
             // The docked or peeking sidebar already lists the tabs, so the strip doesn't peek then.
             .onChange(of: space.isSidebarOpen || isPeeking, initial: true) { _, showing in
@@ -83,13 +82,12 @@ struct UnfoldedLayout: View {
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: false) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: true) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { PageMenu() }.duoPinnedToVerticalBar()
-        ToolbarSpacer(.flexible, placement: .topBarTrailing)
-        ToolbarItem(placement: .topBarTrailing) {
+        ToolbarItem(placement: .bottomBar) {
             Button("New Tab", systemImage: "plus") { browser.presentNewTab(from: NewTabSource.verticalBar.rawValue) }
                 .newTabZoomSource(.verticalBar)
         }
         .duoPinnedToVerticalBar()
-        ToolbarItem(placement: .topBarTrailing) {
+        ToolbarItem(placement: .bottomBar) {
             Button("Toggle Sidebar", systemImage: "sidebar.leading") { toggleSidebar() }
                 .sensoryFeedback(.selection, trigger: browser.currentSpace.isSidebarOpen)
         }

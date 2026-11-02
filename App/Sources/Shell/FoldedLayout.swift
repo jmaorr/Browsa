@@ -18,8 +18,10 @@ struct FoldedLayout: View {
     var body: some View {
         NavigationStack {
             // The bar floats over the page (it doesn't resize it), so collapsing it never reflows the page.
-            WebContentView(bottomObscuredInset: 64)
-                .ignoresSafeArea(.container, edges: .bottom)
+            WebContentView(bottomObscuredInset: 90)
+                // Edge to edge like Safari: the page runs under the status area and the bar.
+                // (The inset is the bar plus the safe area below it.)
+                .ignoresSafeArea(.container, edges: .vertical)
                 .overlay(alignment: .bottom) { BottomBar() }
                 // Leading-edge swipe scrubs through tabs (WebKit's swipe-back is turned off).
                 .overlay(alignment: .leading) { TabRailEdge().padding(.bottom, 96) }
@@ -35,10 +37,9 @@ struct FoldedLayout: View {
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: false) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: true) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { PageMenu() }.duoPinnedToVerticalBar()
-        // Pushes the next group to the far end of the bar: the bottom, beside your thumb.
-        ToolbarSpacer(.flexible, placement: .topBarTrailing)
-        ToolbarItem(placement: .topBarTrailing) { NewTabButton() }.duoPinnedToVerticalBar()
-        ToolbarItem(placement: .topBarTrailing) { TabsButton() }.duoPinnedToVerticalBar()
+        // Bottom-bar items land at the far end of the vertical bar, beside your thumb.
+        ToolbarItem(placement: .bottomBar) { NewTabButton() }.duoPinnedToVerticalBar()
+        ToolbarItem(placement: .bottomBar) { TabsButton() }.duoPinnedToVerticalBar()
     }
 }
 
@@ -76,8 +77,10 @@ struct BottomBar: View {
 
     var body: some View {
         addressPill
-        .padding(.horizontal, compact ? 0 : 16)
-        .padding(.vertical, compact ? 2 : 8)
+        // No padding below: like Safari the bar rests right on the safe area, and the small pill
+        // drops into it, just above the home indicator.
+        .padding(.horizontal, compact ? 0 : 24)
+        .offset(y: compact ? 20 : 0)
         .frame(maxWidth: .infinity)
         .animation(Motion.collapse, value: compact)
         .sensoryFeedback(.selection, trigger: browser.currentTab?.id)
@@ -104,7 +107,7 @@ struct BottomBar: View {
         .animation(Motion.snappy, value: tab?.url)
         .font(.callout)
         .scaleEffect(compact ? 0.84 : 1)
-        .frame(maxWidth: compact ? 180 : .infinity, minHeight: compact ? 30 : 48)
+        .frame(maxWidth: compact ? 165 : .infinity, minHeight: compact ? 34 : 48)
         .padding(.horizontal, 14)
         .glassEffect(.regular.interactive(), in: .capsule)
         .offset(x: dragX * 0.3)

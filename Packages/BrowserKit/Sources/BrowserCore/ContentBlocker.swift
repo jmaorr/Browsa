@@ -41,7 +41,8 @@ final class ContentBlocker {
     }
 
     var needsUpdate: Bool {
-        guard let last = metadata.lastUpdated else { return true }
+        // No rules at all means the last download was unusable, so don't wait out the interval.
+        guard let last = metadata.lastUpdated, metadata.ruleCounts.values.contains(where: { $0 > 0 }) else { return true }
         return Date().timeIntervalSince(last) > refreshInterval
     }
 
@@ -139,11 +140,8 @@ final class ContentBlocker {
     /// AdGuard syntax to WebKit JSON, on a background thread (a big list takes a few seconds).
     nonisolated static func convert(_ text: String) async -> (json: String, count: Int) {
         await Task.detached(priority: .utility) {
-            var text = text
-            text.makeContiguousUTF8()
-            let lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
             let result = ContentBlockerConverter().convertArray(
-                rules: lines,
+                rules: FilterGroup.rules(inFilterList: text),
                 safariVersion: SafariVersion.autodetect(),
                 advancedBlocking: false
             )
@@ -176,6 +174,7 @@ extension WebViewPool {
             c.removeAllContentRuleLists()
             lists.forEach(c.add)
         }
+        markContentRulesReady()
     }
 }
 
