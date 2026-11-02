@@ -69,11 +69,13 @@ struct RootView: View {
 /// Shows the selected tab's web view, or the start page when there's no tab.
 struct WebContentView: View {
     @Environment(BrowserState.self) private var browser
+    var topObscuredInset: CGFloat = 0
     var bottomObscuredInset: CGFloat = 0
 
     var body: some View {
         if let tab = browser.currentTab {
-            WebViewHost(session: browser.session(for: tab), bottomObscuredInset: bottomObscuredInset)
+            WebViewHost(session: browser.session(for: tab), topObscuredInset: topObscuredInset,
+                        bottomObscuredInset: bottomObscuredInset)
                 .id(tab.id)
                 // Swipe between tabs on the bottom pill slides the pages too.
                 .transition(Motion.tabPush(forward: browser.lastTabSwipeForward))

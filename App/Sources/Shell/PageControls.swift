@@ -131,3 +131,34 @@ struct LoadingStrip: View {
             .allowsHitTesting(false)
     }
 }
+
+extension View {
+    /// An icon button floating in its own glass circle, the same height as the address capsule.
+    func glassCircleButton() -> some View {
+        labelStyle(.iconOnly)
+            .fontWeight(.medium)
+            .foregroundStyle(.primary)
+            .frame(width: 48, height: 48)
+            .contentShape(.circle)
+            .glassEffect(.regular.interactive(), in: .circle)
+    }
+
+    /// Like Safari, a web form's keyboard takes the bar's place rather than pushing it up the page.
+    func hiddenWhileKeyboardIsUp() -> some View { modifier(HiddenWhileKeyboardIsUp()) }
+}
+
+private struct HiddenWhileKeyboardIsUp: ViewModifier {
+    @State private var keyboardUp = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(keyboardUp ? 0 : 1)
+            .allowsHitTesting(!keyboardUp)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                keyboardUp = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                withAnimation(Motion.snappy) { keyboardUp = false }
+            }
+    }
+}

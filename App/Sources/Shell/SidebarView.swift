@@ -117,10 +117,6 @@ struct TabRow: View {
                 else { Image(systemName: "globe").frame(width: 20) }
                 Text(tab.displayTitle).lineLimit(1)
                 Spacer(minLength: 0)
-                if selected {
-                    Button("Close", systemImage: "xmark") { browser.close(tab) }
-                        .labelStyle(.iconOnly).font(.caption).foregroundStyle(.secondary)
-                }
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
             .background(selected ? AnyShapeStyle(.thickMaterial) : AnyShapeStyle(.clear),

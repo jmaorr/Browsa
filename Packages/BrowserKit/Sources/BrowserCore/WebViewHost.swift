@@ -6,13 +6,16 @@ import WebKit
 /// changes (fold/unfold), so pages never reload because of a posture change.
 public struct WebViewHost: UIViewRepresentable {
     let session: TabSession
+    /// Space at the top covered by a translucent bar. The page lays out below it and scrolls under.
+    let topObscuredInset: CGFloat
     /// Space at the bottom covered by floating chrome (the folded bottom bar). The page can scroll
     /// under it, but its last line can still scroll clear. Kept fixed while the bar collapses, so
     /// the page never reflows mid-scroll.
     let bottomObscuredInset: CGFloat
 
-    public init(session: TabSession, bottomObscuredInset: CGFloat = 0) {
+    public init(session: TabSession, topObscuredInset: CGFloat = 0, bottomObscuredInset: CGFloat = 0) {
         self.session = session
+        self.topObscuredInset = topObscuredInset
         self.bottomObscuredInset = bottomObscuredInset
     }
 
@@ -25,6 +28,12 @@ public struct WebViewHost: UIViewRepresentable {
     public func updateUIView(_ uiView: ContainerView, context: Context) {
         uiView.attach(session.webView)
         let sv = session.webView.scrollView
+        if sv.contentInset.top != topObscuredInset {
+            let wasAtTop = sv.contentOffset.y <= -sv.contentInset.top + 1
+            sv.contentInset.top = topObscuredInset
+            sv.verticalScrollIndicatorInsets.top = topObscuredInset
+            if wasAtTop { sv.contentOffset.y = -topObscuredInset }
+        }
         if sv.contentInset.bottom != bottomObscuredInset {
             sv.contentInset.bottom = bottomObscuredInset
             sv.verticalScrollIndicatorInsets.bottom = bottomObscuredInset

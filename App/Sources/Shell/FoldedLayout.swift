@@ -24,7 +24,7 @@ struct FoldedLayout: View {
                 // (The inset is the bar plus the safe area below it.)
                 // Without the vertical bar, the controls are in a top toolbar the page must clear.
                 .ignoresSafeArea(.container, edges: verticalBarEdge == nil ? .bottom : .vertical)
-                .overlay(alignment: .bottom) { BottomBar() }
+                .overlay(alignment: .bottom) { BottomBar().hiddenWhileKeyboardIsUp() }
                 // Leading-edge swipe scrubs through tabs (WebKit's swipe-back is turned off).
                 .overlay(alignment: .leading) { TabRailEdge().padding(.bottom, 96) }
                 .toolbar { gutter }
@@ -71,31 +71,23 @@ struct NewTabButton: View {
 
 struct BottomBar: View {
     @Environment(BrowserState.self) private var browser
+    /// Space either side of the capsule at full size.
+    var sideMargin: CGFloat = 24
     @State private var dragX: CGFloat = 0
 
     /// Collapsed to a small centred pill while the page scrolls down (Safari-style).
     private var compact: Bool { browser.currentTab?.isChromeCompact ?? false }
 
     @State private var copies = 0
-    @State private var keyboardUp = false
 
     var body: some View {
         addressPill
         // No padding below: like Safari the bar rests right on the safe area, and the small pill
         // drops into it, just above the home indicator.
-        .padding(.horizontal, compact ? 0 : 24)
+        .padding(.horizontal, compact ? 0 : sideMargin)
         .offset(y: compact ? 20 : 0)
         .frame(maxWidth: .infinity)
         .animation(Motion.collapse, value: compact)
-        // Like Safari, a web form's keyboard takes the bar's place rather than pushing it up the page.
-        .opacity(keyboardUp ? 0 : 1)
-        .allowsHitTesting(!keyboardUp)
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-            keyboardUp = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            withAnimation(Motion.snappy) { keyboardUp = false }
-        }
         .sensoryFeedback(.selection, trigger: browser.currentTab?.id)
         .sensoryFeedback(.success, trigger: copies)
     }

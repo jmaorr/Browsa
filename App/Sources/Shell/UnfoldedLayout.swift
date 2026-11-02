@@ -2,11 +2,20 @@ import SwiftUI
 import BrowserCore
 import Suggest
 
-/// Inner display: Arc-style collapsible sidebar + full-bleed web content.
-/// The Duo's system vertical bar carries the same two groups as on the outer display (back,
-/// forward and page menu up top; new tab and the sidebar button, in the tabs slot, at the bottom). Where the system uses a
-/// horizontal bar instead, the same items sit at the trailing end of the top toolbar.
+/// Inner display. With the system's vertical bar beside the page there's room for a docked
+/// sidebar; in portrait the system has no vertical bar, and the page gets the whole width.
 struct UnfoldedLayout: View {
+    @Environment(\.duoToolbarVerticalEdge) private var verticalBarEdge
+
+    var body: some View {
+        if verticalBarEdge == nil { UnfoldedPortraitLayout() } else { UnfoldedWideLayout() }
+    }
+}
+
+/// Inner display, wide: Arc-style collapsible sidebar + full-bleed web content.
+/// The Duo's system vertical bar carries the same two groups as on the outer display (back,
+/// forward and page menu up top; new tab and the sidebar button, in the tabs slot, at the bottom).
+struct UnfoldedWideLayout: View {
     @Environment(BrowserState.self) private var browser
     @Environment(TabRailController.self) private var rail
     @Environment(\.duoToolbarVerticalEdge) private var verticalBarEdge
@@ -14,14 +23,11 @@ struct UnfoldedLayout: View {
     /// Put the sidebar on the edge opposite the system vertical bar so they never stack.
     private var sidebarEdge: HorizontalEdge { verticalBarEdge == .leading ? .trailing : .leading }
 
-    /// Without the vertical bar the controls sit in a top toolbar, so the page must stop below it.
-    private var fullBleedEdges: Edge.Set { verticalBarEdge == nil ? .bottom : .vertical }
-
     var body: some View {
         let space = browser.currentSpace
         NavigationStack {
             SidebarContainer(isDocked: space.isSidebarOpen, edge: sidebarEdge,
-                             tint: SpacePalette.color(space.colorIndex), fullBleedEdges: fullBleedEdges) {
+                             tint: SpacePalette.color(space.colorIndex)) {
                 SidebarView()
             } content: {
                 WebContentView(bottomObscuredInset: space.isSidebarOpen ? 24 : 90)
@@ -29,7 +35,7 @@ struct UnfoldedLayout: View {
             // The sidebar holds the address; with it hidden, the same capsule as the outer display.
             .overlay(alignment: .bottom) {
                 if !space.isSidebarOpen {
-                    BottomBar().frame(maxWidth: 480).transition(.opacity)
+                    BottomBar().frame(maxWidth: 480).hiddenWhileKeyboardIsUp().transition(.opacity)
                 }
             }
             .toolbar { toolbar }
@@ -63,18 +69,16 @@ struct UnfoldedLayout: View {
     /// tabs slot is the sidebar button, because the sidebar is the tab list. Tabs are always
     /// in the same place, whichever way the phone is.
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        // Bottom-bar items land at the far end of the vertical bar. With no vertical bar they'd
-        // make a real bottom bar, so everything stays together in the top toolbar.
-        let lower: ToolbarItemPlacement = verticalBarEdge == nil ? .topBarTrailing : .bottomBar
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: false) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: true) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { PageMenu() }.duoPinnedToVerticalBar()
-        ToolbarItem(placement: lower) {
+        // Bottom-bar items land at the far end of the vertical bar.
+        ToolbarItem(placement: .bottomBar) {
             Button("New Tab", systemImage: "plus") { browser.presentNewTab(from: NewTabSource.verticalBar.rawValue) }
                 .newTabZoomSource(.verticalBar)
         }
         .duoPinnedToVerticalBar()
-        ToolbarItem(placement: lower) {
+        ToolbarItem(placement: .bottomBar) {
             Button("Toggle Sidebar", systemImage: "sidebar.leading") { toggleSidebar() }
                 .sensoryFeedback(.selection, trigger: browser.currentSpace.isSidebarOpen)
         }

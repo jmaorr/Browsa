@@ -79,12 +79,7 @@ struct NewTabSheet: View {
         HStack(spacing: 10) {
             field
             Button("Close", systemImage: "xmark") { browser.isNewTabSheetPresented = false }
-                .labelStyle(.iconOnly)
-                .fontWeight(.medium)
-                .foregroundStyle(.primary)
-                .frame(width: 48, height: 48)
-                .contentShape(.circle)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .glassCircleButton()
         }
         .padding(.horizontal, 16)
         .padding(.top, 20)

@@ -15,8 +15,6 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
     var edge: HorizontalEdge
     var width: CGFloat = 288
     var tint: Color
-    /// Vertical edges where the page runs to the screen edge instead of stopping at the safe area.
-    var fullBleedEdges: Edge.Set = .vertical
     @ViewBuilder var sidebar: () -> Sidebar
     @ViewBuilder var content: () -> Content
 
@@ -34,13 +32,11 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
     private var sign: CGFloat { edge == .leading ? 1 : -1 }
 
     init(isDocked: Bool, edge: HorizontalEdge, width: CGFloat = 288, tint: Color,
-         fullBleedEdges: Edge.Set = .vertical,
          @ViewBuilder sidebar: @escaping () -> Sidebar, @ViewBuilder content: @escaping () -> Content) {
         self.isDocked = isDocked
         self.edge = edge
         self.width = width
         self.tint = tint
-        self.fullBleedEdges = fullBleedEdges
         self.sidebar = sidebar
         self.content = content
         _laidOutDocked = State(initialValue: isDocked)
@@ -58,7 +54,7 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
                 .padding(.vertical, cardInset)
                 .frame(width: width)
                 .frame(maxHeight: .infinity)
-                .ignoresSafeArea(.container, edges: fullBleedEdges)
+                .ignoresSafeArea(.container, edges: .vertical)
                 .offset(x: isDocked ? 0 : -(width + 16) * sign)
                 .allowsHitTesting(isDocked)
         }
@@ -83,7 +79,7 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
             // Keeps the sliding page out of the vertical bar's strip.
             .clipped()
             // The card measures its margin from the screen, not from the safe area.
-            .ignoresSafeArea(.container, edges: fullBleedEdges)
+            .ignoresSafeArea(.container, edges: .vertical)
     }
 
     /// Slide the full-size page aside, then resize it to fit beside the sidebar.
