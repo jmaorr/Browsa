@@ -70,6 +70,8 @@ public final class BrowserState {
         public let forward: Bool
     }
     public private(set) var lastSpaceSwitch: SpaceSwitch?
+    /// The tab gallery is over the page, so the page's colour shouldn't surround it.
+    public var tabGridCoversPage = false
 
     public let history: HistoryStore
     @ObservationIgnored let pool = WebViewPool()

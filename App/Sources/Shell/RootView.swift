@@ -48,8 +48,6 @@ struct RootView: View {
         .sensoryFeedback(.success, trigger: browser.downloads.lastFinished)
         // Page dialogs, permission requests and logins, one at a time.
         .modifier(WebPromptAlert())
-        // Tab grid, both postures. Above the layout so the page can grow out of its card.
-        .overlay { TabGridOverlay() }
         .overlay { ToastOverlay() }
         // Tab icon strip, shared by both postures.
         .overlay(alignment: .leading) { TabRailView() }
@@ -92,10 +90,16 @@ struct WebContentView: View {
 extension View {
     /// Runs the page's background colour out under the system's bars, like Safari, and matches the
     /// status items to it so they stay readable whatever the app's own appearance.
-    func pageColoredSurroundings(_ tab: BrowserTab?, isEnabled: Bool = true) -> some View {
-        let color = isEnabled ? tab?.pageBackground : nil
+    func pageColoredSurroundings(_ tab: BrowserTab?, isEnabled: Bool = true, galleryIsUp: Bool = false) -> some View {
+        let color = isEnabled && !galleryIsUp ? tab?.pageBackground : nil
         return self
-            .background { if let color { Color(cgColor: color).ignoresSafeArea() } }
+            .background {
+                if galleryIsUp {
+                    Color(.systemGroupedBackground).ignoresSafeArea()
+                } else if let color {
+                    Color(cgColor: color).ignoresSafeArea()
+                }
+            }
             .toolbarColorScheme(color.map { $0.isLight ? .light : .dark }, for: .navigationBar)
     }
 }

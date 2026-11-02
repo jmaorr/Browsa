@@ -6,9 +6,9 @@ import Suggest
 /// Safari-style tab overview, for when there's no room for the sidebar (the outer display).
 /// Unfolded, the sidebar is the tab list and the same vertical-bar slot toggles it instead.
 ///
-/// - Opening it shrinks the current page into its card; picking a card grows that page back to
-///   full screen. Both are one `matchedGeometryEffect` between a full-screen "hero" picture and
-///   the card's thumbnail, driven by a single spring.
+/// - It lives in the page's area. The Duo's vertical bar stays put and keeps working around it.
+/// - Opening it shrinks the current page into its card; picking a card grows that page back. Both
+///   are one picture of the page flying between two measured frames, driven by a single spring.
 /// - Pinned tabs sit in a row at the top, Today's tabs in a grid below: two columns folded,
 ///   as many as fit unfolded.
 /// - Swipe a card left or tap its ✕ to close it. Long-press for the tab menu, or drag it to
@@ -16,14 +16,16 @@ import Suggest
 ///   until the grid has come to rest.
 struct TabGridOverlay: View {
     @Environment(BrowserState.self) private var browser
-    @Namespace private var ns
 
     /// Overlay is in the hierarchy.
     @State private var shown = false
-    /// The hero picture covers the screen (opening start, closing end).
+    /// The hero picture fills the page's area (opening start, closing end).
     @State private var expanded = false
+    /// The tab whose picture is flying. Its card hides its own until it lands.
     @State private var heroID: UUID?
-    @State private var size: CGSize = .init(width: 390, height: 844)
+    /// The page's area, in the overlay's coordinates.
+    @State private var pageFrame: CGRect = .init(x: 0, y: 0, width: 390, height: 844)
+    @State private var cardFrames = CardFrames()
     @State private var isScrolling = false
     /// A tap this soon after a scroll stops was meant for the scroll.
     @State private var scrollStoppedAt: Date = .distantPast
@@ -34,19 +36,26 @@ struct TabGridOverlay: View {
         ZStack {
             if shown {
                 grid
-                    .background(Color(.systemGroupedBackground).opacity(expanded ? 0 : 1))
-                if expanded, let id = heroID, let tab = tab(id) {
-                    TabThumbnail(tab: tab, image: browser.thumbnails[id], cornerRadius: 0)
-                        .ignoresSafeArea()
-                        .matchedGeometryEffect(id: id, in: ns)
+                    .background(Color(.systemGroupedBackground).opacity(expanded ? 0 : 1), ignoresSafeAreaEdges: .vertical)
+                if let id = heroID, let tab = tab(id) {
+                    let frame = expanded ? pageFrame : (cardFrames.byTab[id] ?? pageFrame)
+                    TabThumbnail(tab: tab, image: browser.thumbnails[id], cornerRadius: expanded ? 0 : 14)
+                        .frame(width: frame.width, height: frame.height)
+                        .position(x: frame.midX, y: frame.midY)
                         .allowsHitTesting(false)
-                        .transition(.identity)
                 }
             }
         }
-        .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+        .background {
+            Color.clear
+                .ignoresSafeArea(.container, edges: .vertical)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(galleryCoordinates)) } action: { pageFrame = $0 }
+        }
+        .coordinateSpace(.named(galleryCoordinates))
         // Unfolding with the grid up: the sidebar takes over, so just get out of the way.
-        .onChange(of: browser.isUnfolded) { _, unfolded in if unfolded && shown { finish() } }
+        .onDisappear { if shown { finish() } }
+        // Any plus button: the new-tab sheet is the next thing to animate, so leave without the zoom.
+        .onChange(of: browser.isNewTabSheetPresented) { _, presented in if presented && shown { finish() } }
         .onChange(of: browser.isTabSwitcherPresented) { _, wanted in
             if wanted { open() } else if shown { close(into: browser.currentTab) }
         }
@@ -55,32 +64,58 @@ struct TabGridOverlay: View {
     // MARK: Open and close
 
     private func open() {
-        // Unfolded, the request goes to the sidebar instead (UnfoldedLayout handles it).
-        guard !shown, !browser.isUnfolded else { return }
+        guard !shown else { return }
         if let tab = browser.currentTab { browser.captureThumbnail(of: tab) }
-        heroID = browser.currentTab?.id
         var t = Transaction(); t.disablesAnimations = true
-        withTransaction(t) { shown = true; expanded = heroID != nil }
-        // Next frame: the hero flies into its card.
-        Task { @MainActor in
-            withAnimation(Motion.spring) { expanded = false }
+        withTransaction(t) {
+            heroID = browser.currentTab?.id
+            shown = true
+            expanded = heroID != nil
+        }
+        fly {
+            expanded = false
+            browser.tabGridCoversPage = true
+        } landed: {
+            if !expanded { heroID = nil }
         }
     }
 
-    /// Grows `tab`'s card back to full screen and leaves the grid. With no tab, just fades out.
+    /// Grows `tab`'s card back to fill the page's area and leaves the grid. With no tab, just fades out.
     private func close(into tab: BrowserTab?) {
         if let tab {
             browser.select(tab)
-            heroID = tab.id
-            withAnimation(Motion.spring) { expanded = true } completion: { finish() }
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) { heroID = tab.id }
+            fly {
+                expanded = true
+                browser.tabGridCoversPage = false
+            } landed: {
+                if expanded { finish() }
+            }
         } else {
-            withAnimation(Motion.snappy) { shown = false } completion: { finish() }
+            withAnimation(Motion.snappy) {
+                shown = false
+                browser.tabGridCoversPage = false
+            } completion: { finish() }
+        }
+    }
+
+    /// Gives the hero one frame in its starting place (and the grid its first layout), then flies.
+    private func fly(_ change: @escaping () -> Void, landed: @escaping () -> Void) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(30))
+            withAnimation(Motion.spring, change, completion: landed)
         }
     }
 
     private func finish() {
-        shown = false
-        expanded = false
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) {
+            shown = false
+            expanded = false
+            heroID = nil
+            browser.tabGridCoversPage = false
+        }
         if browser.isTabSwitcherPresented { browser.isTabSwitcherPresented = false }
     }
 
@@ -88,7 +123,7 @@ struct TabGridOverlay: View {
 
     // MARK: Grid
 
-    private var aspect: CGFloat { max(0.4, min(2, size.width / max(size.height, 1))) }
+    private var aspect: CGFloat { max(0.4, min(2, pageFrame.width / max(pageFrame.height, 1))) }
 
     private var columns: [GridItem] {
         browser.isUnfolded
@@ -132,14 +167,14 @@ struct TabGridOverlay: View {
             .onAppear { if let id = heroID { proxy.scrollTo(id, anchor: .center) } }
         }
         .overlay(alignment: .bottom) { bottomBar }
-        .opacity(expanded ? 0.001 : 1)   // stays laid out so the hero has a card to fly to
+        .opacity(expanded ? 0 : 1)   // stays laid out so the hero has a card to fly to
         .animation(Motion.snappy, value: space.today.map(\.id))
         .onKeyPress(.escape) { close(into: browser.currentTab); return .handled }
     }
 
     private func card(_ tab: BrowserTab) -> some View {
         TabGridCard(tab: tab, selected: tab.id == browser.currentSpace.selectedTabID, aspect: aspect,
-                    hidden: expanded && heroID == tab.id, ns: ns,
+                    hidden: heroID == tab.id, frames: cardFrames,
                     onOpen: { if isAtRest { close(into: tab) } },
                     onCloseTapped: { if isAtRest { withAnimation(Motion.snappy) { browser.close(tab) } } },
                     onSwipedAway: { withAnimation(Motion.snappy) { browser.close(tab) } })
@@ -173,10 +208,6 @@ struct TabGridOverlay: View {
     private var bottomBar: some View {
         HStack {
             Button("New Tab", systemImage: "plus") {
-                // Leave without the zoom: the new-tab sheet is the next thing to animate.
-                shown = false
-                expanded = false
-                browser.isTabSwitcherPresented = false
                 browser.presentNewTab()
             }
             .labelStyle(.iconOnly)
@@ -208,6 +239,14 @@ struct TabGridOverlay: View {
     }
 }
 
+private let galleryCoordinates = "tabGallery"
+
+/// Where each card's picture is. A plain reference, because it changes on every frame of a scroll
+/// and only the hero's take-off reads it.
+@MainActor private final class CardFrames {
+    var byTab: [UUID: CGRect] = [:]
+}
+
 /// One card: the page picture with a close button, and the title underneath.
 private struct TabGridCard: View {
     @Environment(BrowserState.self) private var browser
@@ -216,7 +255,7 @@ private struct TabGridCard: View {
     let aspect: CGFloat
     /// The hero is standing in for this card's picture.
     let hidden: Bool
-    let ns: Namespace.ID
+    let frames: CardFrames
     var onOpen: () -> Void
     var onCloseTapped: () -> Void
     var onSwipedAway: () -> Void
@@ -232,12 +271,11 @@ private struct TabGridCard: View {
                 // The clear shape alone sets the card's size, so the picture can't push it wider.
                 Color.clear
                 .aspectRatio(aspect, contentMode: .fit)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(galleryCoordinates)) } action: {
+                    frames.byTab[tab.id] = $0
+                }
                 .overlay {
-                    if !hidden {
-                        TabThumbnail(tab: tab, image: browser.thumbnails[tab.id], cornerRadius: 14)
-                            .matchedGeometryEffect(id: tab.id, in: ns)
-                            .transition(.identity)
-                    }
+                    if !hidden { TabThumbnail(tab: tab, image: browser.thumbnails[tab.id], cornerRadius: 14) }
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)

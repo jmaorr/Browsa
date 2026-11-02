@@ -11,7 +11,9 @@ struct HistoryButton: View {
 
     var body: some View {
         let tab = browser.currentTab
-        let enabled = forward ? (tab?.canGoForward ?? false) : (tab?.canGoBack ?? false)
+        let canGo = forward ? (tab?.canGoForward ?? false) : (tab?.canGoBack ?? false)
+        // The page is out of sight behind the tab gallery.
+        let enabled = canGo && !browser.tabGridCoversPage
         Menu {
             if let tab {
                 let wv = browser.session(for: tab).webView
@@ -42,7 +44,7 @@ struct TabsButton: View {
 
     var body: some View {
         let count = browser.currentSpace.allTabs.count
-        Button { browser.isTabSwitcherPresented = true } label: {
+        Button { browser.isTabSwitcherPresented.toggle() } label: {
             Text(count > 99 ? "∞" : "\(count)")
                 .font(.system(size: 12, weight: .bold, design: .rounded))
                 .monospacedDigit()

@@ -27,8 +27,10 @@ struct FoldedLayout: View {
                 .overlay(alignment: .bottom) { BottomBar().hiddenWhileKeyboardIsUp() }
                 // Leading-edge swipe scrubs through tabs (WebKit's swipe-back is turned off).
                 .overlay(alignment: .leading) { TabRailEdge().padding(.bottom, 96) }
+                // Part of the page, so the system's bars stay above it and keep working.
+                .overlay { TabGridOverlay() }
                 .toolbar { gutter }
-                .pageColoredSurroundings(browser.currentTab)
+                .pageColoredSurroundings(browser.currentTab, galleryIsUp: browser.tabGridCoversPage)
                 .toolbarTitleDisplayMode(.inline)
                 .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
                 .duoVerticalBarPrefersOurItems()
