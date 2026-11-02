@@ -57,7 +57,7 @@ struct TabsButton: View {
 }
 
 /// Shows in the toolbar while something downloads. A ring fills around the arrow (a spinner if the
-/// server didn't give a size), then a tick or a warning shows for a moment. Tap for the downloads list.
+/// server didn't give a size), then a tick or a warning stays for two minutes. Tap for the downloads list.
 struct DownloadProgressButton: View {
     @Environment(BrowserState.self) private var browser
 

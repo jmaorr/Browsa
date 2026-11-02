@@ -20,7 +20,7 @@ public final class DownloadManager: NSObject {
     public private(set) var items: [Item] = []
     /// Bumps when a download finishes, for a haptic and a toast.
     public private(set) var lastFinished: UUID?
-    /// True while anything is downloading and for a moment after, for the toolbar's indicator.
+    /// True while anything is downloading and for two minutes after, for the toolbar's indicator.
     public private(set) var isIndicatorVisible = false
 
     /// Overall progress of what's running, 0...1. Nil when nothing is running.
@@ -58,12 +58,12 @@ public final class DownloadManager: NSObject {
         items.removeAll { $0.id == item.id }
     }
 
-    /// Leaves the finished indicator up long enough to read, then takes it away.
+    /// Keeps the indicator handy for a while, since a recent download is often opened next.
     private func scheduleIndicatorHide() {
         guard runningProgress == nil else { return }
         hideIndicatorTask?.cancel()
         hideIndicatorTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(120))
             guard !Task.isCancelled else { return }
             self?.isIndicatorVisible = false
         }
