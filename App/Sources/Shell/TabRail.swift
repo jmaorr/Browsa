@@ -119,7 +119,7 @@ final class TabRailController {
 /// icons drift out from under the edge.
 struct TabRailView: View {
     @Environment(TabRailController.self) private var rail
-    static let width: CGFloat = 54
+    nonisolated static let width: CGFloat = 54
 
     var body: some View {
         let reveal: CGFloat = rail.isShown ? 1 : 0
@@ -183,7 +183,7 @@ struct TabRailView: View {
 /// scale with it, and it animates as a plain number.
 struct EdgeNotchShape: Shape {
     var reveal: CGFloat
-    var fullWidth: CGFloat = TabRailView.width
+    var fullWidth: CGFloat = 54
     var cornerRadius: CGFloat = 20
     var flare: CGFloat = 20
 
