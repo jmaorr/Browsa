@@ -2,7 +2,8 @@ import SwiftUI
 import BrowserCore
 import Suggest
 
-/// The slim strip of tab icons that slides out from the leading edge.
+/// The slim strip of tab icons that grows out of the leading edge of the screen, like a notch:
+/// it's attached to the edge, and its top and bottom flare into the edge with concave curves.
 ///
 /// - **Peek**: appears for ~1.4 s whenever you open or switch tabs (unless the docked sidebar
 ///   already shows them), so you always see where you are in the stack.
@@ -112,10 +113,16 @@ final class TabRailController {
 }
 
 /// The strip itself. Lives in RootView's overlay so both postures share it.
+///
+/// Rather than a floating panel sliding in, the shape's width grows from zero at the screen edge
+/// (one spring on `reveal`), so the flares stay pinned to the edge and swell with it while the
+/// icons drift out from under the edge.
 struct TabRailView: View {
     @Environment(TabRailController.self) private var rail
+    static let width: CGFloat = 54
 
     var body: some View {
+        let reveal: CGFloat = rail.isShown ? 1 : 0
         VStack(spacing: 0) {
             ForEach(rail.pinned) { icon($0) }
             if !rail.pinned.isEmpty && !rail.today.isEmpty {
@@ -125,10 +132,18 @@ struct TabRailView: View {
             ForEach(rail.today) { icon($0) }
         }
         .padding(.vertical, TabRailController.padding)
-        .frame(width: 54)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
-        .offset(x: rail.isShown || Motion.reduced ? 8 : -84)   // Reduce Motion: fade in place
-        .opacity(rail.isShown ? 1 : 0)
+        .frame(width: Self.width)
+        .opacity(Motion.reduced ? reveal : max(0, reveal * 1.6 - 0.3))
+        .scaleEffect(Motion.reduced ? 1 : 0.85 + 0.15 * reveal, anchor: .leading)
+        .offset(x: Motion.reduced ? 0 : (reveal - 1) * 26)
+        .background(alignment: .leading) {
+            EdgeNotchShape(reveal: Motion.reduced ? 1 : reveal)
+                .fill(.regularMaterial)
+                .shadow(color: .black.opacity(0.16 * reveal), radius: 10, x: 2)
+                .opacity(Motion.reduced ? reveal : 1)   // Reduce Motion: fade in place
+        }
+        // Flush with the physical edge, even where there's a safe-area inset.
+        .ignoresSafeArea(edges: .horizontal)
         .sensoryFeedback(.selection, trigger: rail.isScrubbing ? rail.highlighted : nil)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -141,8 +156,7 @@ struct TabRailView: View {
             else { Image(systemName: "globe").frame(width: 30, height: 30) }
         }
         .frame(width: 38, height: 38)
-        .background(on ? AnyShapeStyle(.background) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 11, style: .continuous))
-        .shadow(color: .black.opacity(on ? 0.15 : 0), radius: 4, y: 1)
+        .background(on ? AnyShapeStyle(.fill.secondary) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 11, style: .continuous))
         .scaleEffect(on ? 1.12 : 1)
         .frame(height: TabRailController.rowPitch)
         // Title bubble beside the highlighted icon.
@@ -160,6 +174,48 @@ struct TabRailView: View {
             }
         }
         .animation(Motion.snappy, value: on)
+    }
+}
+
+/// The strip's outline: flat against the screen edge, rounded on the outside, and flaring into
+/// the edge above and below with concave curves, so it reads as part of the display rather than
+/// a card on top of it. `reveal` (0…1) grows it out of the edge; both the width and the flares
+/// scale with it, and it animates as a plain number.
+struct EdgeNotchShape: Shape {
+    var reveal: CGFloat
+    var fullWidth: CGFloat = TabRailView.width
+    var cornerRadius: CGFloat = 20
+    var flare: CGFloat = 20
+
+    var animatableData: CGFloat {
+        get { reveal }
+        set { reveal = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let p = max(0, reveal)
+        let w = fullWidth * p
+        guard w > 0.5 else { return Path() }
+        let f = flare * min(p, 1)
+        let r = min(cornerRadius, w, rect.height / 2)
+        let x0 = rect.minX, top = rect.minY, bottom = rect.maxY
+        // A cubic with handles at ~55% gives a smooth, continuous-looking flare.
+        let k: CGFloat = 0.55
+        var path = Path()
+        path.move(to: CGPoint(x: x0, y: top - f))
+        path.addCurve(to: CGPoint(x: x0 + f, y: top),
+                      control1: CGPoint(x: x0, y: top - f + f * k),
+                      control2: CGPoint(x: x0 + f - f * k, y: top))
+        path.addLine(to: CGPoint(x: x0 + w - r, y: top))
+        path.addQuadCurve(to: CGPoint(x: x0 + w, y: top + r), control: CGPoint(x: x0 + w, y: top))
+        path.addLine(to: CGPoint(x: x0 + w, y: bottom - r))
+        path.addQuadCurve(to: CGPoint(x: x0 + w - r, y: bottom), control: CGPoint(x: x0 + w, y: bottom))
+        path.addLine(to: CGPoint(x: x0 + f, y: bottom))
+        path.addCurve(to: CGPoint(x: x0, y: bottom + f),
+                      control1: CGPoint(x: x0 + f - f * k, y: bottom),
+                      control2: CGPoint(x: x0, y: bottom + f - f * k))
+        path.closeSubpath()
+        return path
     }
 }
 
