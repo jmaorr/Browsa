@@ -75,4 +75,5 @@ public struct WebViewHost: UIViewRepresentable {
             if window != nil, let webView, webView.superview !== self { claim(webView) }
         }
     }
+}
 #endif
