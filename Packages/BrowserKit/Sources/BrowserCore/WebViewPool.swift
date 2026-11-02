@@ -30,8 +30,13 @@ final class WebViewPool {
         c.mediaTypesRequiringUserActionForPlayback = .all
         c.upgradeKnownHostsToHTTPS = true
         c.defaultWebpagePreferences.preferredContentMode = .mobile
-        c.preferences.isElementFullscreenEnabled = true
-        // Videos can float in picture-in-picture when you leave the page or the app.
+        // Off, like Safari on iPhone. With it on, a site's fullscreen button blew up its own
+        // player (the whole element) instead of handing the video to the system player. Off, sites
+        // fall back to the video element's native fullscreen: AVKit's player, with
+        // picture-in-picture, AirPlay and the system scrubber.
+        c.preferences.isElementFullscreenEnabled = false
+        // Videos can float in picture-in-picture from the system player, and keep playing when
+        // you leave the app (the app has the audio background mode for this).
         c.allowsPictureInPictureMediaPlayback = true
         c.allowsAirPlayForMediaPlayback = true
         // Say "Safari" like Safari does. WKWebView's default user agent leaves out the
