@@ -38,23 +38,13 @@ struct HistoryButton: View {
     }
 }
 
-/// Safari-style tab button: the number of open tabs in a rounded square.
+/// Opens and closes the tab gallery. Holds no count, so it reads the same however many tabs are open.
 struct TabsButton: View {
     @Environment(BrowserState.self) private var browser
 
     var body: some View {
-        let count = browser.currentSpace.allTabs.count
-        Button { browser.isTabSwitcherPresented.toggle() } label: {
-            Text(count > 99 ? "∞" : "\(count)")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .contentTransition(.numericText(value: Double(count)))
-                .frame(width: 22, height: 22)
-                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(lineWidth: 1.8))
-                .animation(Motion.snappy, value: count)
-        }
-        .accessibilityLabel("Tabs")
-        .accessibilityValue("\(count) open")
+        Button("Tabs", systemImage: "square.on.square") { browser.isTabSwitcherPresented.toggle() }
+            .accessibilityValue("\(browser.currentSpace.allTabs.count) open")
     }
 }
 
@@ -162,8 +152,8 @@ struct LoadingStrip: View {
 
     var body: some View {
         Rectangle()
-            .fill(.primary.opacity(0.55))
-            .frame(height: 2)
+            .fill(.blue)
+            .frame(height: 3)
             .scaleEffect(x: max(0.03, tab.estimatedProgress), anchor: .leading)
             .opacity(tab.isLoading ? 1 : 0)
             .animation(Motion.snappy, value: tab.estimatedProgress)

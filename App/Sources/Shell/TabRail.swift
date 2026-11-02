@@ -5,8 +5,8 @@ import Suggest
 /// The slim strip of tab icons that grows out of the leading edge of the screen, like a notch:
 /// it's attached to the edge, and its top and bottom flare into the edge with concave curves.
 ///
-/// - **Peek**: appears for ~1.4 s whenever you open or switch tabs (unless the docked sidebar
-///   already shows them), so you always see where you are in the stack.
+/// - **Peek**: appears for ~1.4 s whenever you open or switch tabs (unless the docked sidebar or
+///   the gallery already shows them), so you always see where you are in the stack.
 /// - **Scrub**: a swipe in from the leading edge brings it out under your finger. Slide up and
 ///   down to move the highlight (a haptic tick per tab), let go to switch.
 ///
@@ -45,7 +45,9 @@ final class TabRailController {
         if suppressNextPeek { suppressNextPeek = false; return }
         // A space change cascades its tabs in wherever they're listed, so it doesn't peek as well.
         let changedSpace = browser?.lastSpaceSwitch.map { Date().timeIntervalSince($0.at) < 0.3 } ?? false
-        guard !isScrubbing, !sidebarShowsTabs, !changedSpace, ordered.count > 1 else { return }
+        // Picking from the gallery, you've just seen where every tab is.
+        guard !isScrubbing, !sidebarShowsTabs, !changedSpace, browser?.tabGridCoversPage == false,
+              ordered.count > 1 else { return }
         highlighted = browser?.currentTab?.id
         show()
         scheduleHide(after: .milliseconds(1400))
