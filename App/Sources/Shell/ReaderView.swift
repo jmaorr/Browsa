@@ -1,6 +1,7 @@
 import SwiftUI
 import WebKit
 import BrowserCore
+import Suggest
 
 /// Reader: the article on its own, in the system font, following light/dark mode and Dynamic
 /// Type. Shown in a web view with JavaScript off, so nothing from the page can run here.
