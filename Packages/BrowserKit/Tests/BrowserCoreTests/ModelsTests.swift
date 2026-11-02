@@ -62,3 +62,18 @@ import Testing
         #expect(store.loadAll(keeping: [kept, gone]) == [kept: Data([1])])
     }
 }
+
+@Suite struct SnapshotCodingTests {
+    @Test func stateFromBeforeSavedSitesStillLoads() throws {
+        let old = #"{"spaces":[],"favorites":[],"archive":[]}"#
+        let snap = try JSONDecoder().decode(BrowserSnapshot.self, from: Data(old.utf8))
+        #expect(snap.saved == nil)
+    }
+
+    @Test func savedSitesRoundTrip() throws {
+        let site = SavedSite(url: URL(string: "https://example.com/a")!, title: "A", savedAt: Date(timeIntervalSince1970: 1_000))
+        let snap = BrowserSnapshot(spaces: [], selectedSpaceID: nil, favorites: [], archive: [], settings: nil, saved: [site])
+        let back = try JSONDecoder().decode(BrowserSnapshot.self, from: JSONEncoder().encode(snap))
+        #expect(back.saved == [site])
+    }
+}
