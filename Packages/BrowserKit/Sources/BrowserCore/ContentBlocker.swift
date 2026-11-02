@@ -1,17 +1,16 @@
 #if os(iOS)
 import Foundation
 import WebKit
-import ContentBlockerConverter
 
 /// Ad, tracker and annoyance blocking with AdGuard's filter lists.
 ///
 /// iOS only applies installed content blockers (AdGuard, 1Blocker…) to Safari, never to
 /// WKWebView browsers, so the browser does the same job itself:
 ///
-/// 1. The filter lists for each `FilterGroup` are downloaded from AdGuard (iOS-optimised builds),
-///    at most every few days.
-/// 2. AdGuard's SafariConverterLib turns them into WebKit content-blocking JSON, off the main
-///    thread. That JSON is kept on disk.
+/// 1. `tools/filter-rules` converts the lists into WebKit content-blocking JSON and publishes them.
+///    That converter is GPL, so it stays out of this app, which only downloads what it produces.
+/// 2. The JSON for each `FilterGroup` is downloaded from `rulesBaseURL`, at most every few days,
+///    and kept on disk.
 /// 3. WebKit compiles each group into its own `WKContentRuleList` (each is capped at 150k rules,
 ///    which is why they're split, like AdGuard for iOS does). Compiled lists are cached by WebKit,
 ///    so later launches only look them up.
@@ -21,6 +20,8 @@ import ContentBlockerConverter
 @MainActor
 final class ContentBlocker {
     static let shared = ContentBlocker()
+    /// Where `tools/filter-rules` publishes. Change this if you host your own.
+    static let rulesBaseURL = URL(string: "https://rules.browsa.app/v1/")!
 
     private let store = WKContentRuleListStore.default()!
     private let directory = URL.applicationSupportDirectory.appending(path: "Filters", directoryHint: .isDirectory)
@@ -29,6 +30,9 @@ final class ContentBlocker {
 
     struct Metadata: Codable {
         var lastUpdated: Date?
+        var lastChecked: Date?
+        /// The published rules' version, so an unchanged one isn't downloaded again.
+        var version: String?
         var ruleCounts: [String: Int] = [:]
     }
 
@@ -42,7 +46,7 @@ final class ContentBlocker {
 
     var needsUpdate: Bool {
         // No rules at all means the last download was unusable, so don't wait out the interval.
-        guard let last = metadata.lastUpdated, metadata.ruleCounts.values.contains(where: { $0 > 0 }) else { return true }
+        guard let last = metadata.lastChecked ?? metadata.lastUpdated, metadata.ruleCounts.values.contains(where: { $0 > 0 }) else { return true }
         return Date().timeIntervalSince(last) > refreshInterval
     }
 
@@ -112,41 +116,47 @@ final class ContentBlocker {
 
     // MARK: Updating
 
-    /// Downloads and converts every group's filters. Returns rule counts per group.
+    private struct Manifest: Decodable {
+        struct Group: Decodable {
+            let file: String
+            let rules: Int
+        }
+        let version: String
+        let groups: [String: Group]
+    }
+
+    /// Downloads every group's rules if a newer version is published. Returns rule counts per group.
     func update(groups: Set<FilterGroup>) async throws -> [FilterGroup: Int] {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        var counts: [FilterGroup: Int] = [:]
-        for group in FilterGroup.allCases where groups.contains(group) {
-            var text = ""
-            for url in group.urls {
-                var request = URLRequest(url: url, timeoutInterval: 30)
-                request.cachePolicy = .reloadRevalidatingCacheData
-                let (data, response) = try await URLSession.shared.data(for: request)
-                guard (response as? HTTPURLResponse)?.statusCode == 200 else { continue }
-                text += String(decoding: data, as: UTF8.self) + "\n"
-            }
-            guard !text.isEmpty else { continue }
-            let (json, count) = await Self.convert(text)
-            try json.write(to: jsonURL(group), atomically: true, encoding: .utf8)
-            counts[group] = count
-        }
+        let manifest = try JSONDecoder().decode(Manifest.self, from: await download("manifest.json"))
+        let chosen = FilterGroup.allCases.filter(groups.contains)
         var meta = metadata
+        meta.lastChecked = .now
+        // A group switched on since the last update has no file yet, whatever the version says.
+        let hasAll = chosen.allSatisfy { FileManager.default.fileExists(atPath: jsonURL($0).path()) }
+        guard manifest.version != meta.version || !hasAll else {
+            metadata = meta
+            return [:]
+        }
+        var counts: [FilterGroup: Int] = [:]
+        for group in chosen {
+            guard let entry = manifest.groups[group.rawValue] else { continue }
+            try await download(entry.file).write(to: jsonURL(group), options: .atomic)
+            counts[group] = entry.rules
+            meta.ruleCounts[group.rawValue] = entry.rules
+        }
         meta.lastUpdated = .now
-        for (g, c) in counts { meta.ruleCounts[g.rawValue] = c }
+        meta.version = manifest.version
         metadata = meta
         return counts
     }
 
-    /// AdGuard syntax to WebKit JSON, on a background thread (a big list takes a few seconds).
-    nonisolated static func convert(_ text: String) async -> (json: String, count: Int) {
-        await Task.detached(priority: .utility) {
-            let result = ContentBlockerConverter().convertArray(
-                rules: FilterGroup.rules(inFilterList: text),
-                safariVersion: SafariVersion.autodetect(),
-                advancedBlocking: false
-            )
-            return (result.safariRulesJSON, result.safariRulesCount)
-        }.value
+    private func download(_ file: String) async throws -> Data {
+        var request = URLRequest(url: Self.rulesBaseURL.appending(path: file), timeoutInterval: 30)
+        request.cachePolicy = .reloadRevalidatingCacheData
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        return data
     }
 }
 

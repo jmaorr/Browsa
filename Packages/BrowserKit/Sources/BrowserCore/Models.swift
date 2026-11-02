@@ -158,25 +158,6 @@ public enum FilterGroup: String, Codable, CaseIterable, Sendable, Identifiable {
         case .annoyances: "Cookie notices, pop-ups, app banners and widgets"
         }
     }
-
-    /// AdGuard filter IDs (filters.adtidy.org), in iOS-optimised form.
-    public var filterIDs: [Int] {
-        switch self {
-        case .ads: [2, 11]
-        case .privacy: [3, 4]
-        case .annoyances: [18, 19, 20, 21, 22]
-        }
-    }
-
-    public var urls: [URL] {
-        filterIDs.map { URL(string: "https://filters.adtidy.org/ios/filters/\($0)_optimized.txt")! }
-    }
-
-    /// One rule per line. AdGuard serves these lists with CRLF endings, and "\r\n" is a single
-    /// Character in Swift, so splitting on "\n" alone would leave the whole list as one line.
-    public static func rules(inFilterList text: String) -> [String] {
-        text.split(whereSeparator: \.isNewline).map(String.init)
-    }
 }
 
 /// Why a page couldn't load, shown in place of the page.

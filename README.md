@@ -55,6 +55,7 @@ Packages/BrowserKit/
 App/UITests/               UI tests that drive the real app on a simulator
 tools/build_seed.py        rebuilds the seed list from Chrome UX Report top lists (see below)
 tools/seed_curated.json    brand names, typed aliases (yt, gh, gmail), allow and deny lists
+tools/filter-rules/        builds and publishes the content-blocking rules (GPL 3.0, see License)
 ```
 
 ## How it fits together
@@ -67,6 +68,15 @@ tools/seed_curated.json    brand names, typed aliases (yt, gh, gmail), allow and
 - **Debugging.** In Console, filter on subsystem `com.orriginal.browsa` (or your own, once you've
   changed it in the source). Layout swaps, web view moves, stalled restores and web process
   terminations are logged there.
+
+## Content blocking
+
+iOS doesn't apply installed content blockers to WKWebView browsers, so the app applies its own.
+`tools/filter-rules` converts AdGuard's lists into WebKit rules, and the
+[`filter-rules` workflow](.github/workflows/filter-rules.yml) publishes them to Cloudflare R2 every
+three days. The app checks `ContentBlocker.rulesBaseURL` every few days, and uses a small bundled
+list until its first download. If you fork the app, host your own rules:
+see [tools/filter-rules](tools/filter-rules/README.md).
 
 ## Suggestions
 
@@ -120,12 +130,11 @@ flag in `PostureAdapter`.
 Browsa's own code is available under the [MIT license](LICENSE). It bundles or downloads third-party
 work under its own terms:
 
-- [AdGuard SafariConverterLib](https://github.com/AdguardTeam/SafariConverterLib), **GPL 3.0**, a Swift
-  package dependency that's compiled into the app. An app built with it has to meet the GPL's terms,
-  which matters if you plan to distribute a build. To avoid that, remove the dependency and the
-  conversion step in `ContentBlocker`.
 - [Readability.js](https://github.com/mozilla/readability), Apache 2.0, in `Resources/Readability-LICENSE.txt`
 - [DuckDuckGo autoconsent](https://github.com/duckduckgo/autoconsent), MPL 2.0, in `Resources/autoconsent-LICENSE.txt`
-- [AdGuard filter lists](https://github.com/AdguardTeam/AdguardFilters), downloaded at runtime from `filters.adtidy.org`
+- [AdGuard filter lists](https://github.com/AdguardTeam/AdguardFilters), GPL 3.0. The app downloads rules
+  derived from them at runtime, from `rules.browsa.app`, and doesn't bundle them. `tools/filter-rules`, which
+  builds those rules with AdGuard's GPL 3.0 SafariConverterLib, is GPL 3.0 itself. It's a separate program
+  that isn't part of the app.
 - The seed list in `Resources/seed-sites.json` is built from
   [CrUX top lists](https://github.com/zakird/crux-top-lists) by `tools/build_seed.py`

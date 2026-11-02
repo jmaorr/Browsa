@@ -40,13 +40,6 @@ import Testing
     }
 }
 
-@Suite struct FilterListTests {
-    @Test func splitsCRLFAndLFLines() {
-        #expect(FilterGroup.rules(inFilterList: "! comment\r\n||ads.example^\r\n\r\n||more.example^\n") ==
-            ["! comment", "||ads.example^", "||more.example^"])
-    }
-}
-
 @Suite struct ThumbnailStoreTests {
     @Test func keepsWantedPicturesAndDeletesTheRest() throws {
         let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
