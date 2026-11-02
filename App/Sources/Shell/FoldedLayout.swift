@@ -46,31 +46,45 @@ struct FoldedLayout: View {
             ToolbarItem(placement: .topBarTrailing) { DownloadProgressButton() }.duoPinnedToVerticalBar()
         }
         // Bottom-bar items land at the far end of the vertical bar, beside your thumb.
-        ToolbarItem(placement: lower) { NewTabButton() }.duoPinnedToVerticalBar()
+        ToolbarItem(placement: lower) { NewTabButton(source: .bottomBar) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: lower) { TabsButton() }.duoPinnedToVerticalBar()
     }
 }
 
-/// The vertical bar's new-tab button. The new-tab sheet zooms out of it; hold for a private tab
-/// or a tab in another space.
+/// A new-tab button. The new-tab sheet zooms out of it; hold for a private tab or a tab in
+/// another space. The same menu in every layout.
 struct NewTabButton: View {
+    @Environment(BrowserState.self) private var browser
+    var source: NewTabSource
+
+    var body: some View {
+        Button("New Tab", systemImage: "plus") { browser.presentNewTab(from: source.rawValue) }
+            .newTabZoomSource(source)
+            .contextMenu { NewTabMenu() }
+    }
+}
+
+/// What holding a plus button offers.
+struct NewTabMenu: View {
     @Environment(BrowserState.self) private var browser
 
     var body: some View {
-        Button("New Tab", systemImage: "plus") { browser.presentNewTab(from: NewTabSource.bottomBar.rawValue) }
-            .newTabZoomSource(.bottomBar)
-            .contextMenu {
-                Button("New Private Tab", systemImage: "eye.slash") {
-                    browser.newTab(url: nil, isPrivate: true)
-                    browser.presentAddressEditor()
-                }
-                ForEach(browser.spaces) { s in
-                    Button("New Tab in \(s.name)", systemImage: s.symbol) {
-                        browser.selectSpace(s)
-                        browser.presentNewTab()
-                    }
-                }
+        Button("New Private Tab", systemImage: "eye.slash") {
+            browser.newTab(url: nil, isPrivate: true)
+            browser.presentAddressEditor()
+        }
+        ForEach(browser.regularSpaces) { s in
+            Button("New Tab in \(s.name)", systemImage: s.symbol) {
+                browser.selectSpace(s)
+                browser.presentNewTab()
             }
+        }
+        if browser.privateSpace != nil {
+            Divider()
+            Button("Close Private Tabs", systemImage: "xmark", role: .destructive) {
+                withAnimation(Motion.spring) { browser.closePrivateSpace() }
+            }
+        }
     }
 }
 
@@ -102,6 +116,9 @@ struct BottomBar: View {
         let tab = browser.currentTab
         return HStack(spacing: 8) {
             HStack(spacing: 8) {
+                if tab?.isPrivate == true {
+                    Image(systemName: "eye.slash").foregroundStyle(.secondary).accessibilityLabel("Private")
+                }
                 if let url = tab?.url {
                     FaviconView(url: url, size: 18)
                     Text(URLNormalizer.displayHost(url)).lineLimit(1)

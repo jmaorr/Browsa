@@ -216,6 +216,12 @@ struct TabGridOverlay: View {
                     Label(s.name, systemImage: s.symbol)
                 }
             }
+            if browser.privateSpace != nil {
+                Divider()
+                Button("Close Private Tabs", systemImage: "xmark", role: .destructive) {
+                    withAnimation(Motion.snappy) { browser.closePrivateSpace() }
+                }
+            }
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: browser.currentSpace.symbol).font(.subheadline)

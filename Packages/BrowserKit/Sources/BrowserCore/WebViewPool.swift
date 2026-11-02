@@ -13,6 +13,8 @@ final class WebViewPool {
     private var loadsWaitingForContentRules: [() -> Void] = []
 
     let configuration: WKWebViewConfiguration
+    /// Shared by every private tab, so they share a sign-in, like Safari's private tabs.
+    /// Its data store is replaced when the last private tab closes, which throws its cookies and storage away.
     let privateConfiguration: WKWebViewConfiguration
 
     init(capacity: Int = 6) {
@@ -81,6 +83,14 @@ final class WebViewPool {
         sessions[id]?.webView.stopLoading()
         sessions[id] = nil
         lru.removeAll { $0 == id }
+    }
+
+    /// The Private space closed: forget everything its tabs stored.
+    func resetPrivateStore() {
+        for (id, s) in sessions where s.tab.isPrivate { remove(id) }
+        // Web views copy the configuration when they're made, so the next private tab gets a
+        // fresh store and keeps the same blockers and scripts.
+        privateConfiguration.websiteDataStore = .nonPersistent()
     }
 
     func freezeAll() {

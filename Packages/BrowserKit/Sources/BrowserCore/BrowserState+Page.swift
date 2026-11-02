@@ -72,6 +72,8 @@ extension BrowserState {
     }
 
     public func togglePinned(_ tab: BrowserTab) {
+        // Pinned tabs outlive closing; private ones shouldn't.
+        guard !tab.isPrivate else { return }
         let space = spaces.first { $0.allTabs.contains { $0.id == tab.id } } ?? currentSpace
         if tab.isPinned {
             space.pinned.removeAll { $0.id == tab.id }
@@ -86,7 +88,7 @@ extension BrowserState {
 
     /// Call on launch and when returning to the foreground.
     public func archiveStaleTabs(now: Date = .now) {
-        for space in spaces {
+        for space in spaces where !space.isPrivate {
             let stale = space.today.filter { $0.id != space.selectedTabID && now.timeIntervalSince($0.lastActive) > settings.archiveAfterHours * 3600 }
             guard !stale.isEmpty else { continue }
             space.today.removeAll { t in stale.contains { $0.id == t.id } }

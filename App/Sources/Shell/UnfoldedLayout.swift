@@ -34,7 +34,7 @@ struct UnfoldedWideLayout: View {
         let space = browser.currentSpace
         NavigationStack {
             SidebarContainer(isDocked: space.isSidebarOpen, edge: sidebarEdge,
-                             tint: SpacePalette.color(space.colorIndex)) {
+                             tint: SpacePalette.color(for: space)) {
                 SidebarView()
             } content: {
                 WebContentView(bottomObscuredInset: space.isSidebarOpen ? BarMetrics.dockedPageInset : BarMetrics.underCapsuleInset)
@@ -87,10 +87,7 @@ struct UnfoldedWideLayout: View {
             ToolbarItem(placement: .topBarTrailing) { DownloadProgressButton() }.duoPinnedToVerticalBar()
         }
         // Bottom-bar items land at the far end of the vertical bar.
-        ToolbarItem(placement: .bottomBar) {
-            Button("New Tab", systemImage: "plus") { browser.presentNewTab(from: NewTabSource.verticalBar.rawValue) }
-                .newTabZoomSource(.verticalBar)
-        }
+        ToolbarItem(placement: .bottomBar) { NewTabButton(source: .verticalBar) }
         .duoPinnedToVerticalBar()
         ToolbarItem(placement: .bottomBar) {
             Button("Toggle Sidebar", systemImage: "sidebar.leading") { toggleSidebar() }

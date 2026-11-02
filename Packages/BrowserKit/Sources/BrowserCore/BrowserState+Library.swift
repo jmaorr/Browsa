@@ -10,23 +10,26 @@ extension BrowserState {
     public func addSpace() {
         let used = Set(spaces.map(\.colorIndex))
         let color = (0..<6).first { !used.contains($0) } ?? spaces.count
-        let space = Space(name: "Space \(spaces.count + 1)", symbol: "circle.fill", colorIndex: color)
-        spaces.append(space)
+        let space = Space(name: "Space \(regularSpaces.count + 1)", symbol: "circle.fill", colorIndex: color)
+        // Private stays at the end.
+        spaces.insert(space, at: spaces.firstIndex { $0.isPrivate } ?? spaces.endIndex)
         scheduleSave()
     }
 
     public func deleteSpace(_ space: Space) {
-        guard spaces.count > 1, let i = spaces.firstIndex(where: { $0.id == space.id }) else { return }
+        if space.isPrivate { closePrivateSpace(); return }
+        guard regularSpaces.count > 1, let i = spaces.firstIndex(where: { $0.id == space.id }) else { return }
         space.allTabs.forEach { pool.remove($0.id) }
         spaces.remove(at: i)
-        if selectedSpaceID == space.id { selectedSpaceID = spaces[0].id }
+        if selectedSpaceID == space.id { selectedSpaceID = regularSpaces[0].id }
         if settings.externalLinksSpaceID == space.id { settings.externalLinksSpaceID = nil }
         scheduleSave()
     }
 
     /// A link opened from another app (once this is the default browser).
     public func openExternal(_ url: URL) {
-        let target = spaces.first { $0.id == settings.externalLinksSpaceID } ?? currentSpace
+        // Never into Private, unless that's where you are and no space is set for links.
+        let target = regularSpaces.first { $0.id == settings.externalLinksSpaceID } ?? currentSpace
         isNewTabSheetPresented = false
         newTab(url: url, in: target, source: .link)
     }
@@ -36,7 +39,7 @@ extension BrowserState {
     public func restoreFromArchive(_ tab: BrowserTab) {
         archive.removeAll { $0.id == tab.id }
         tab.lastActive = .now
-        currentSpace.today.insert(tab, at: 0)
+        regularTargetSpace.today.insert(tab, at: 0)
         select(tab)
     }
 

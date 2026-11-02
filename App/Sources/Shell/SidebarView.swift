@@ -28,6 +28,7 @@ struct SidebarView: View {
                 Label("New Tab", systemImage: "plus").frame(maxWidth: .infinity, alignment: .leading)
             }
             .newTabZoomSource(.sidebar)
+            .contextMenu { NewTabMenu() }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 10)
@@ -61,6 +62,9 @@ struct SidebarView: View {
     private var addressButton: some View {
         Button { browser.presentAddressEditor(from: NewTabSource.sidebarAddress.rawValue) } label: {
             HStack(spacing: 8) {
+                if browser.currentTab?.isPrivate == true {
+                    Image(systemName: "eye.slash").foregroundStyle(.secondary).accessibilityLabel("Private")
+                }
                 if let url = browser.currentTab?.url {
                     FaviconView(url: url, size: 18)
                     Text(URLNormalizer.displayHost(url)).lineLimit(1)
@@ -106,6 +110,13 @@ struct SidebarView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(s.name)
+                .contextMenu {
+                    if s.isPrivate {
+                        Button("Close Private Tabs", systemImage: "xmark", role: .destructive) {
+                            withAnimation(Motion.spring) { browser.closePrivateSpace() }
+                        }
+                    }
+                }
             }
             Spacer()
             Button("Settings", systemImage: "gearshape") { browser.isSettingsPresented = true }
@@ -144,8 +155,10 @@ struct TabMenu: View {
     let tab: BrowserTab
 
     var body: some View {
-        Button(tab.isPinned ? "Unpin" : "Pin", systemImage: tab.isPinned ? "pin.slash" : "pin") {
-            browser.togglePinned(tab)
+        if !tab.isPrivate {
+            Button(tab.isPinned ? "Unpin" : "Pin", systemImage: tab.isPinned ? "pin.slash" : "pin") {
+                browser.togglePinned(tab)
+            }
         }
         if let url = tab.url {
             Button(browser.isFavorite(url) ? "Already a Favourite" : "Add to Favourites", systemImage: "star") {

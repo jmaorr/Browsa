@@ -196,4 +196,6 @@ struct StartPage: View {
 enum SpacePalette {
     static let colors: [Color] = [.indigo, .orange, .teal, .pink, .green, .purple]
     static func color(_ i: Int) -> Color { colors[((i % colors.count) + colors.count) % colors.count] }
+    /// The sidebar's tint for a space. Private is a neutral grey, like Safari's dark private bar.
+    @MainActor static func color(for space: Space) -> Color { space.isPrivate ? .gray : color(space.colorIndex) }
 }

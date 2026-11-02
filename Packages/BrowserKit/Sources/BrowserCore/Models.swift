@@ -60,9 +60,12 @@ public final class Space: Identifiable {
     public var today: [BrowserTab]
     public var selectedTabID: UUID?
     public var isSidebarOpen: Bool
+    /// The Private space: shows in the spaces list only while it has tabs, and is never saved.
+    public let isPrivate: Bool
 
     public init(id: UUID = UUID(), name: String, symbol: String = "circle.fill", colorIndex: Int = 0,
-                pinned: [BrowserTab] = [], today: [BrowserTab] = [], selectedTabID: UUID? = nil, isSidebarOpen: Bool = true) {
+                pinned: [BrowserTab] = [], today: [BrowserTab] = [], selectedTabID: UUID? = nil, isSidebarOpen: Bool = true,
+                isPrivate: Bool = false) {
         self.id = id
         self.name = name
         self.symbol = symbol
@@ -71,6 +74,7 @@ public final class Space: Identifiable {
         self.today = today
         self.selectedTabID = selectedTabID
         self.isSidebarOpen = isSidebarOpen
+        self.isPrivate = isPrivate
     }
 
     public var allTabs: [BrowserTab] { pinned + today }
