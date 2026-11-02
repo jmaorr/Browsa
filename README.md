@@ -9,6 +9,10 @@ A personal, native WebKit browser for iPhone Duo. It brings Arc's navigation mod
 - **New-tab sheet:** the keyboard is up right away and favourites appear above it. You get
   suggestions from the first keystroke (favourites, open tabs, history ranked by frecency, a
   bundled list of popular sites and search-engine suggestions), plus inline autocomplete like Safari's.
+- **Private browsing:** a Private space that appears with your first private tab (hold any plus
+  button) and goes away, with its cookies and storage, when the last one closes.
+- **Saved:** Save in a page's ⋯ menu keeps it in a flat, newest-first list (⋯ > Saved).
+- **Video:** fullscreen hands the video to the system player, with picture-in-picture and AirPlay.
 
 The full plan is in the [build plan](https://claude.ai/artifact/ThrnaYjvkiKMqCKoukze3s).
 
