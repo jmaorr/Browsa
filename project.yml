@@ -30,7 +30,7 @@ targets:
     info:
       path: App/Info.plist
       properties:
-        CFBundleDisplayName: Duo
+        CFBundleDisplayName: Browsa
         UILaunchScreen: {}
         # Downloads land in Documents/Downloads and show up in the Files app.
         # Audio and picture-in-picture keep going when you leave the app, like Safari.
