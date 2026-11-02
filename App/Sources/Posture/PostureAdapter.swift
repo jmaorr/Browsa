@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 
 /// Every iPhone Duo-specific API call lives in this file, so if an API name differs from what's
 /// written here, this is the only file to fix.
@@ -29,6 +30,10 @@ extension EnvironmentValues {
     }
 }
 
+enum PostureLog {
+    static let logger = Logger(subsystem: "com.orriginal.browsa", category: "posture")
+}
+
 /// Reads the hinge (when there is one) and the size class, and publishes a `Posture`.
 struct PostureReader<Content: View>: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -46,8 +51,20 @@ struct PostureReader<Content: View>: View {
     var body: some View {
         content(posture)
             .environment(\.posture, posture)
-            .animation(.smooth(duration: 0.35), value: posture)
+            // Swap layouts outright. Cross-fading them left two layouts on screen at once, both
+            // holding the same web view while the scene moved displays, and the page could come
+            // up blank with dead controls after unfolding.
+            .transaction(value: posture) { t in
+                t.animation = nil
+                t.disablesAnimations = true
+            }
             .duoOnHingeChange { hingeOpen = $0 }
+            // In Console, filter on subsystem com.orriginal.browsa to see what the hinge reported
+            // around a blank unfold.
+            .onChange(of: posture) { old, new in
+                let detail = "posture \(old) -> \(new), hinge open: \(String(describing: hingeOpen)), size class: \(String(describing: sizeClass))"
+                PostureLog.logger.notice("\(detail, privacy: .public)")
+            }
     }
 }
 

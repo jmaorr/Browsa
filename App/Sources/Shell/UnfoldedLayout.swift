@@ -8,7 +8,14 @@ struct UnfoldedLayout: View {
     @Environment(\.duoToolbarVerticalEdge) private var verticalBarEdge
 
     var body: some View {
-        if verticalBarEdge == nil { UnfoldedPortraitLayout() } else { UnfoldedWideLayout() }
+        Group {
+            if verticalBarEdge == nil { UnfoldedPortraitLayout() } else { UnfoldedWideLayout() }
+        }
+        // Rotating swaps layouts outright, for the same reason PostureReader does.
+        .transaction(value: verticalBarEdge) { t in
+            t.animation = nil
+            t.disablesAnimations = true
+        }
     }
 }
 
