@@ -74,7 +74,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Search")
                 } footer: {
-                    Text("Search suggestions send what you type to \(SuggestEngine.defaultSources(for: browser.settings.searchEngine).map(\.displayName).formatted(.list(type: .and))). Favourites, history, open tabs and the built-in list of popular sites are always matched on the device.")
+                    Text("Outside private tabs, search suggestions send what you type to \(SuggestEngine.defaultSources(for: browser.settings.searchEngine).map(\.displayName).formatted(.list(type: .and))). Favourites, history, open tabs and the built-in list of popular sites are always matched on the device.")
                 }
 
                 Section {

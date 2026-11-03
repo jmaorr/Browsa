@@ -14,3 +14,6 @@
 
 /privacy/
   Cache-Control: public, max-age=0, must-revalidate, no-transform
+
+/support/
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
