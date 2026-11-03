@@ -1,7 +1,14 @@
 # Browsa
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/layouts-dark.webp">
+    <img src="docs/media/layouts-light.webp" width="560" alt="An iPhone Duo moving between Browsa's five layouts: sidebar, landscape, portrait, portrait with the sidebar over the page, and closed.">
+  </picture>
+</p>
+
 A native WebKit browser for iPhone Duo, open source under the [MIT license](LICENSE). Use it as it
-is, or fork it as a starting point for your own browser. It brings Arc's navigation model to iOS:
+is, or fork it as a starting point for your own browser. See it at [browsa.app](https://browsa.app). It brings Arc's navigation model to iOS:
 
 - **Unfolded (inner display):** a collapsible sidebar with spaces, pinned tabs and today tabs. The
   sidebar toggle and a one-tap **New Tab** sit in the Duo's system vertical bar.
@@ -17,6 +24,35 @@ is, or fork it as a starting point for your own browser. It brings Arc's navigat
 - **Video:** fullscreen hands the video to the system player, with picture-in-picture and AirPlay.
 - **Content blocking:** blocks ads and trackers, declines cookie banners and strips tracking
   parameters from links. Each can be turned off in Settings, and blockers can be turned off per site.
+
+## In motion
+
+<table>
+  <tr>
+    <td><img src="docs/media/sidebar.webp" alt="The sidebar sliding away so a page fills the screen, then sliding back."></td>
+    <td><img src="docs/media/spaces.webp" alt="Switching between the Personal and Work spaces."></td>
+  </tr>
+  <tr>
+    <td align="center">Sidebar</td>
+    <td align="center">Spaces</td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/suggest.webp" alt="The new-tab sheet with suggestions appearing while typing."></td>
+    <td><img src="docs/media/reader.webp" alt="Opening Reader on an article from the page menu."></td>
+  </tr>
+  <tr>
+    <td align="center">Suggestions</td>
+    <td align="center">Reader</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/media/grid.webp" width="280" alt="Closed, opening every tab in the space as a grid."></td>
+    <td align="center"><img src="docs/media/gutter.webp" width="130" alt="A download ring filling in the Duo's vertical bar, then finishing with a tick."></td>
+  </tr>
+  <tr>
+    <td align="center">All tabs, closed</td>
+    <td align="center">Downloads in the gutter</td>
+  </tr>
+</table>
 
 ## Build
 
