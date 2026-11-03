@@ -96,6 +96,8 @@ struct BottomBar: View {
     @Environment(BrowserState.self) private var browser
     /// Space either side of the capsule at full size.
     var sideMargin: CGFloat = 24
+    /// How far the small capsule drops. A resizable iPad window has little room below it.
+    var compactDrop = BarMetrics.compactCapsuleDrop
     @State private var dragX: CGFloat = 0
 
     /// Collapsed to a small centred pill while the page scrolls down (Safari-style).
@@ -108,7 +110,7 @@ struct BottomBar: View {
         // No padding below: like Safari the bar rests right on the safe area, and the small pill
         // drops into it, just above the home indicator.
         .padding(.horizontal, compact ? 0 : sideMargin)
-        .offset(y: compact ? BarMetrics.compactCapsuleDrop : 0)
+        .offset(y: compact ? compactDrop : 0)
         .frame(maxWidth: .infinity)
         .animation(Motion.collapse, value: compact)
         .sensoryFeedback(.selection, trigger: browser.currentTab?.id)

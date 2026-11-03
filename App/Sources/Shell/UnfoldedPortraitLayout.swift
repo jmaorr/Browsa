@@ -10,6 +10,7 @@ struct UnfoldedPortraitLayout: View {
     @Environment(TabRailController.self) private var rail
     @State private var isSidebarShown = false
     @State private var topInset: CGFloat = 0
+    @State private var bottomInset: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -56,16 +57,17 @@ struct UnfoldedPortraitLayout: View {
                 .ignoresSafeArea(.all, edges: .vertical)
             Color.clear
                 .allowsHitTesting(false)
-                .overlay(alignment: .bottom) { NoGutterBar { setSidebar(!isSidebarShown) } }
+                .overlay(alignment: .bottom) { NoGutterBar(bottomInset: bottomInset) { setSidebar(!isSidebarShown) } }
         }
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
+        .onGeometryChange(for: CGFloat.self) { BarMetrics.topCornerInset($0) } action: { topInset = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
     }
 
     private var sidebar: some View {
         SidebarView(showsAddress: false)
             .padding(.vertical, 12)
-            // An iPad's status bar runs along the top, under the sidebar.
-            .padding(.top, UIDevice.current.userInterfaceIdiom == .pad ? 24 : 0)
+            // Clears the status bar or an iPad window's controls.
+            .padding(.top, topInset)
             .frame(width: 320)
             .frame(maxHeight: .infinity)
             .ignoresSafeArea(.container, edges: .vertical)
@@ -91,6 +93,7 @@ struct UnfoldedPortraitLayout: View {
 /// The rest of the page's controls are in the address sheet, as on a phone.
 struct NoGutterBar: View {
     @Environment(BrowserState.self) private var browser
+    var bottomInset: CGFloat
     var onToggleSidebar: () -> Void
 
     private var compact: Bool { browser.currentTab?.isChromeCompact ?? false }
@@ -114,7 +117,8 @@ struct NoGutterBar: View {
                 .glassEffect(.regular.interactive(), in: .capsule)
                 .transition(.opacity)
             }
-            BottomBar(sideMargin: 0).frame(maxWidth: compact ? nil : BarMetrics.noGutterAddressWidth)
+            BottomBar(sideMargin: 0, compactDrop: BarMetrics.compactDrop(bottomInset: bottomInset))
+                .frame(maxWidth: compact ? nil : BarMetrics.noGutterAddressWidth)
             Spacer(minLength: 0)
             if !compact {
                 if browser.downloads.isIndicatorVisible {

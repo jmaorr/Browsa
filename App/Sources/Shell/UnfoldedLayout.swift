@@ -37,29 +37,35 @@ struct UnfoldedWideLayout: View {
 
     /// Put the sidebar on the edge opposite the system vertical bar so they never stack.
     private var sidebarEdge: HorizontalEdge { verticalBarEdge == .leading ? .trailing : .leading }
+    /// The status bar alone, for the page when the docked sidebar sits under the window's controls.
+    @State private var statusInset: CGFloat = 0
     @State private var topInset: CGFloat = 0
+    @State private var bottomInset: CGFloat = 0
 
     var body: some View {
         let space = browser.currentSpace
         NavigationStack {
             SidebarContainer(isDocked: space.isSidebarOpen, edge: sidebarEdge,
                              tint: SpacePalette.color(for: space)) {
-                // An iPad's status bar runs along the top of the sidebar.
+                // Clears the status bar or an iPad window's controls.
                 SidebarView(showsAddress: verticalBarEdge != nil).padding(.top, verticalBarEdge == nil ? topInset : 0)
             } content: {
                 if verticalBarEdge == nil {
-                    WebContentView(topObscuredInset: topInset, bottomObscuredInset: BarMetrics.underCapsuleInset)
+                    WebContentView(topObscuredInset: space.isSidebarOpen ? statusInset : topInset,
+                                   bottomObscuredInset: BarMetrics.underCapsuleInset)
                 } else {
                     WebContentView(bottomObscuredInset: space.isSidebarOpen ? BarMetrics.dockedPageInset : BarMetrics.underCapsuleInset)
                 }
             }
-            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
+            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { statusInset = $0 }
+            .onGeometryChange(for: CGFloat.self) { BarMetrics.topCornerInset($0) } action: { topInset = $0 }
+            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
             // The keyboard goes over the page without resizing it. WebKit scrolls the field into view.
             .ignoresSafeArea(.keyboard, edges: .bottom)
             .overlay(alignment: .bottom) {
                 if verticalBarEdge == nil {
                     // Across the page, beside the sidebar when it's docked.
-                    NoGutterBar { toggleSidebar() }
+                    NoGutterBar(bottomInset: bottomInset) { toggleSidebar() }
                         .padding(.leading, space.isSidebarOpen ? SidebarContainer<EmptyView, EmptyView>.defaultWidth : 0)
                 } else if !space.isSidebarOpen {
                     // The sidebar holds the address; with it hidden, the same capsule as the outer display.

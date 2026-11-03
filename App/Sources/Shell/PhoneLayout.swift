@@ -12,6 +12,7 @@ struct PhoneLayout: View {
     @Environment(BrowserState.self) private var browser
     @Environment(TabRailController.self) private var rail
     @State private var topInset: CGFloat = 0
+    @State private var bottomInset: CGFloat = 0
 
     private var compact: Bool { browser.currentTab?.isChromeCompact ?? false }
 
@@ -25,7 +26,8 @@ struct PhoneLayout: View {
                 .overlay(alignment: .bottom) { bar }
         }
         .pageColoredSurroundings(browser.currentTab, galleryIsUp: browser.tabGridCoversPage)
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
+        .onGeometryChange(for: CGFloat.self) { BarMetrics.topCornerInset($0) } action: { topInset = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
         .onAppear {
             rail.sidebarShowsTabs = false
             rail.edge = .trailing
@@ -43,7 +45,7 @@ struct PhoneLayout: View {
                 // The gallery's own capsule, the space switcher, sits here.
                 Spacer(minLength: 0)
             } else {
-                BottomBar(sideMargin: 0)
+                BottomBar(sideMargin: 0, compactDrop: BarMetrics.compactDrop(bottomInset: bottomInset))
             }
             if !compact {
                 if browser.downloads.isIndicatorVisible {
