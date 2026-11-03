@@ -56,6 +56,7 @@ App/UITests/               UI tests that drive the real app on a simulator
 tools/build_seed.py        rebuilds the seed list from Chrome UX Report top lists (see below)
 tools/seed_curated.json    brand names, typed aliases (yt, gh, gmail), allow and deny lists
 tools/filter-rules/        builds and publishes the content-blocking rules (GPL 3.0, see License)
+website/                   the browsa.app site and privacy policy (see website/README.md)
 ```
 
 ## How it fits together
@@ -136,5 +137,16 @@ work under its own terms:
   derived from them at runtime, from `rules.browsa.app`, and doesn't bundle them. `tools/filter-rules`, which
   builds those rules with AdGuard's GPL 3.0 SafariConverterLib, is GPL 3.0 itself. It's a separate program
   that isn't part of the app.
-- The seed list in `Resources/seed-sites.json` is built from
-  [CrUX top lists](https://github.com/zakird/crux-top-lists) by `tools/build_seed.py`
+- The seed list in `Resources/seed-sites.json` is built by `tools/build_seed.py` from
+  [CrUX top lists](https://github.com/zakird/crux-top-lists), which come from Google's
+  [Chrome UX Report](https://developer.chrome.com/docs/crux) (CC BY 4.0).
+- The website's `website/public/vendor/transitions/` is [Transitions.dev](https://transitions.dev/)'s
+  runtime under its own license, in `LICENSE.txt` in that folder.
+
+The Browsa name and app icon aren't covered by the MIT license. If you ship a fork, give it its own
+name and icon.
+
+## Contributing
+
+Issues and pull requests are welcome. CI builds the app and runs the BrowserKit tests on every pull
+request; run `swift test` in `Packages/BrowserKit` before you open one.
