@@ -44,8 +44,6 @@ struct SidebarView: View {
                 .transition(.spaceListChange(forward: browser.lastSpaceSwitch?.forward ?? true))
             }
 
-            Divider()
-
             Button { browser.presentNewTab() } label: {
                 Label("New Tab", systemImage: "plus").frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -59,7 +57,7 @@ struct SidebarView: View {
                     TabRow(tab: tab, selected: tab.id == space.selectedTabID)
                         .spaceCascade(index: (space.today.firstIndex { $0.id == tab.id } ?? 0) + space.pinned.count,
                                       distance: Self.cascadeDistance, spaceSwitch: browser.lastSpaceSwitch)
-                        .listRowInsets(.init(top: 2, leading: 0, bottom: 2, trailing: 0))
+                        .listRowInsets(.init(top: 1, leading: 0, bottom: 1, trailing: 0))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         // Its own tint: the app-wide .primary is white in dark mode, under white text.
@@ -68,6 +66,8 @@ struct SidebarView: View {
                 .onMove { from, to in space.today.move(fromOffsets: from, toOffset: to); browser.scheduleSave() }
             }
             .listStyle(.plain)
+            // Pinned, so the selected tab's taller background never changes the spacing between tabs.
+            .environment(\.defaultMinListRowHeight, TabRow.pitch)
             .scrollContentBackground(.hidden)
             // A new list per space, so its rows arrive fresh and the old ones leave together.
             .id(space.id)
@@ -151,6 +151,11 @@ struct TabRow: View {
     let tab: BrowserTab
     let selected: Bool
 
+    /// One tab's slot in the list: the same spacing as before.
+    static let pitch: CGFloat = 44
+    /// The selected background fills the slot, apart from a point above and below.
+    private static let height = pitch - 2
+
     var body: some View {
         Button { browser.select(tab) } label: {
             HStack(spacing: 10) {
@@ -159,7 +164,8 @@ struct TabRow: View {
                 Text(tab.displayTitle).lineLimit(1)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 10).padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .frame(minHeight: Self.height)
             .background(selected ? AnyShapeStyle(.thickMaterial) : AnyShapeStyle(.clear),
                         in: .rect(cornerRadius: 10, style: .continuous))
             .contentShape(.rect)

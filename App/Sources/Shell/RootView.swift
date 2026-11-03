@@ -174,4 +174,6 @@ enum SpacePalette {
     static func color(_ i: Int) -> Color { colors[((i % colors.count) + colors.count) % colors.count] }
     /// The sidebar's tint for a space. Private is a neutral grey, like Safari's dark private bar.
     @MainActor static func color(for space: Space) -> Color { space.isPrivate ? .gray : color(space.colorIndex) }
+    /// How strongly that tint washes the sidebar and the background around the page. Just a hint.
+    static let surfaceOpacity = 0.08
 }

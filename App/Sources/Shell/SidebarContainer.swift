@@ -9,6 +9,8 @@ import BrowserCore
 ///
 /// Laying out a web view is slow, so the page never resizes during the animation. It changes size
 /// once, while it's off to the side of its final position, and the motion itself only slides it.
+/// A light frost covers the page for that moment, so its reflow reads as part of the move instead
+/// of a jump at the end.
 struct SidebarContainer<Sidebar: View, Content: View>: View {
     var isDocked: Bool
     /// Which screen edge the sidebar lives on.
@@ -27,6 +29,8 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
     @State private var radius: CGFloat
     /// Bumped by every move, so a move that was overtaken can't finish on top of the newer one.
     @State private var moveID = 0
+    /// The frost over the page while it moves and reflows, 0 to 1.
+    @State private var frost: Double = 0
 
     private let cardInset: CGFloat = 8
     private let cardRadius: CGFloat = 14
@@ -47,7 +51,7 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
     var body: some View {
         ZStack(alignment: edge == .leading ? .leading : .trailing) {
             // The space's colour, behind the sidebar and around the inset page card.
-            tint.opacity(isDocked ? 0.14 : 0).ignoresSafeArea()
+            tint.opacity(isDocked ? SpacePalette.surfaceOpacity : 0).ignoresSafeArea()
 
             pageCard
 
@@ -62,11 +66,18 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
         .sensoryFeedback(.impact(weight: .light), trigger: isDocked)
         .onChange(of: isDocked) { _, docked in docked ? dock() : undock() }
         // Coming back from the other posture: any move in progress never got to finish.
-        .onAppear { settle() }
+        .onAppear { settle(); frost = 0 }
     }
 
     private var pageCard: some View {
         content()
+            // A material, not .blur: SwiftUI can't blur the web view's own UIKit layers.
+            .overlay {
+                Rectangle().fill(.ultraThinMaterial)
+                    .opacity(frost)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
             .clipShape(PageClip(inset: clipInset, radius: radius))
             .shadow(color: .black.opacity(radius > 0 ? 0.08 : 0), radius: 10, y: 2)
             .padding(edge == .leading ? .leading : .trailing, laidOutDocked ? width : 0)
@@ -83,6 +94,7 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
     private func dock() {
         moveID += 1
         let move = moveID
+        withAnimation(Self.frostIn) { frost = 1 }
         withAnimation(Motion.spring) {
             slide = width
             clipInset = cardInset
@@ -90,6 +102,7 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
         } completion: {
             guard move == moveID else { return }
             settle()
+            clearFrost()
         }
     }
 
@@ -105,6 +118,7 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
                 clipInset = cardInset
             }
         }
+        withAnimation(Self.frostIn) { frost = 1 }
         Task { @MainActor in
             await Task.yield()
             guard move == moveID else { return }
@@ -112,7 +126,24 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
                 slide = 0
                 clipInset = 0
                 radius = 0
+            } completion: {
+                guard move == moveID else { return }
+                clearFrost()
             }
+        }
+    }
+
+    // Computed: a generic type can't have static stored properties.
+    private static var frostIn: Animation { .easeOut(duration: 0.12) }
+
+    /// Gives WebKit a beat to lay out the new width, then lets the page come back into focus.
+    private func clearFrost() {
+        let move = moveID
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(60))
+            // A newer move keeps the frost on, and clears it when it finishes.
+            guard move == moveID else { return }
+            withAnimation(.easeOut(duration: 0.22)) { frost = 0 }
         }
     }
 
