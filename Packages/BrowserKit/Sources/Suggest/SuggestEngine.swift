@@ -122,7 +122,7 @@ public final class SuggestEngine: Sendable {
     // MARK: Typing
 
     /// Local-only pass. Fast enough to call synchronously-ish on every keystroke.
-    public func localResults(for query: String, lastEditWasInsertion: Bool) async -> SuggestResults {
+    public func localResults(for query: String, lastEditWasInsertion: Bool, includeRemote: Bool = true) async -> SuggestResults {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         let gathered = await withTaskGroup(of: [Suggestion].self) { group in
             for p in local {
@@ -148,7 +148,7 @@ public final class SuggestEngine: Sendable {
             primary: primaryRow(for: trimmed),
             remote: [],
             inline: InlineAutocomplete.completion(for: query, lastEditWasInsertion: lastEditWasInsertion, top: ranked),
-            isComplete: remote == nil || trimmed.isEmpty
+            isComplete: !includeRemote || remote == nil || trimmed.isEmpty
         )
         if let alias, ranked.first?.dedupeKey == alias.dedupeKey { results.defaultAction = alias.action }
         return results
@@ -156,10 +156,11 @@ public final class SuggestEngine: Sendable {
 
     /// Streams local results immediately, then the same list with remote rows appended.
     /// Cancel the consuming task (or drop the stream) when the user types again.
-    public func results(for query: String, lastEditWasInsertion: Bool) -> AsyncStream<SuggestResults> {
+    /// With `includeRemote` false, what's typed stays on the device, as in a private tab.
+    public func results(for query: String, lastEditWasInsertion: Bool, includeRemote: Bool = true) -> AsyncStream<SuggestResults> {
         AsyncStream { continuation in
             let task = Task {
-                var current = await localResults(for: query, lastEditWasInsertion: lastEditWasInsertion)
+                var current = await localResults(for: query, lastEditWasInsertion: lastEditWasInsertion, includeRemote: includeRemote)
                 continuation.yield(current)
                 guard !current.isComplete, let remote else { continuation.finish(); return }
 

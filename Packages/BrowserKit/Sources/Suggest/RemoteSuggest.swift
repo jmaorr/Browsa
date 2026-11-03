@@ -99,7 +99,7 @@ public struct RemoteSuggestAggregator: SuggestionProvider {
 
     public var isRemote: Bool { true }
 
-    public init(sources: [RemoteSource], session: URLSession = .shared, deadline: Duration = .milliseconds(900)) {
+    public init(sources: [RemoteSource], session: URLSession = .suggestions, deadline: Duration = .milliseconds(900)) {
         self.sources = sources
         self.session = session
         self.deadline = deadline
@@ -205,4 +205,15 @@ public struct RemoteSuggestAggregator: SuggestionProvider {
         if let article { out.append(article) }
         return out
     }
+}
+
+extension URLSession {
+    /// Keeps no cookies, so a suggestion service can't recognise you between keystrokes or launches.
+    public static let suggestions: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.httpCookieAcceptPolicy = .never
+        config.httpShouldSetCookies = false
+        config.httpCookieStorage = nil
+        return URLSession(configuration: config)
+    }()
 }

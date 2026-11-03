@@ -21,8 +21,8 @@ struct NewTabSheet: View {
     /// A layout with no room for the page's controls shows them here, under the address.
     private let showsPageActions: Bool
 
-    init(engine: SuggestEngine, initialText: String, morphFrom: URL? = nil, showsPageActions: Bool = false) {
-        _model = State(initialValue: NewTabModel(engine: engine))
+    init(engine: SuggestEngine, isPrivate: Bool, initialText: String, morphFrom: URL? = nil, showsPageActions: Bool = false) {
+        _model = State(initialValue: NewTabModel(engine: engine, isPrivate: isPrivate))
         self.initialText = initialText
         self.morphFrom = morphFrom
         self.showsPageActions = showsPageActions

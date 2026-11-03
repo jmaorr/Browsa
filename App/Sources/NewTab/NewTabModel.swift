@@ -52,10 +52,12 @@ final class NewTabModel {
     var isTyping: Bool { !typed.trimmingCharacters(in: .whitespaces).isEmpty }
 
     private let engine: SuggestEngine
+    private let isPrivate: Bool
     @ObservationIgnored private var task: Task<Void, Never>?
 
-    init(engine: SuggestEngine) {
+    init(engine: SuggestEngine, isPrivate: Bool) {
         self.engine = engine
+        self.isPrivate = isPrivate
     }
 
     func loadZeroState() async {
@@ -67,7 +69,7 @@ final class NewTabModel {
         highlighted = nil
         task?.cancel()
         guard !text.isEmpty else { results = nil; return }
-        let stream = engine.results(for: text, lastEditWasInsertion: lastEditWasInsertion)
+        let stream = engine.results(for: text, lastEditWasInsertion: lastEditWasInsertion, includeRemote: !isPrivate)
         task = Task { [weak self] in
             for await r in stream {
                 guard !Task.isCancelled, let self, self.typed == r.query else { return }

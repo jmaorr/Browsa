@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var braveKey = ""
     @State private var confirmClearHistory = false
+    @State private var confirmClearWebsiteData = false
 
     private func groupBinding(_ group: FilterGroup) -> Binding<Bool> {
         Binding {
@@ -129,6 +130,9 @@ struct SettingsView: View {
 
                 Section {
                     Button("Clear History", role: .destructive) { confirmClearHistory = true }
+                    Button("Clear Cookies and Site Data", role: .destructive) { confirmClearWebsiteData = true }
+                } footer: {
+                    Text("Clearing cookies and site data signs you out of websites.")
                 }
 
                 Section("About") {
@@ -144,6 +148,11 @@ struct SettingsView: View {
             }
             .confirmationDialog("Clear all browsing history?", isPresented: $confirmClearHistory, titleVisibility: .visible) {
                 Button("Clear History", role: .destructive) { Task { await browser.history.clearAll() } }
+            }
+            .confirmationDialog("Clear all cookies and site data?", isPresented: $confirmClearWebsiteData, titleVisibility: .visible) {
+                Button("Clear Cookies and Site Data", role: .destructive) { Task { await browser.clearWebsiteData() } }
+            } message: {
+                Text("This signs you out of websites. Your tabs, history and favourites stay.")
             }
             .onAppear {
                 if case .brave(let key) = browser.settings.searchEngine { braveKey = key }

@@ -26,6 +26,7 @@ struct RootView: View {
         // One sheet for both layouts, so an open sheet (and its typed text) survives a fold.
         .sheet(isPresented: $browser.isNewTabSheetPresented) {
             NewTabSheet(engine: browser.suggest,
+                        isPrivate: browser.currentSpace.isPrivate,
                         initialText: browser.newTabSheetEditsCurrentTab ? (browser.currentTab?.url?.absoluteString ?? "") : "",
                         morphFrom: browser.newTabSheetEditsCurrentTab ? browser.currentTab?.url : nil,
                         showsPageActions: verticalBarEdge == nil)
