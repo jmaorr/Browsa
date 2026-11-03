@@ -48,7 +48,7 @@ plain grid     footage/c2_grid     "scale=760:-2" 2.9 3.1
 dissolve gutter web-clips/gutter-download 0 5.2 "crop=248:560:1150:620,scale=496:-2"
 dissolve hero     web-clips/hero-alt 0 12.7 "scale=1760:-2"
 dissolve linear   footage/f6_linear 3.5 5.2 "scale=760:-2"
-dissolve portrait footage/c2_portrait 2.8 5.0 "scale=960:-2"
+dissolve portrait footage/c4_portrait 2.6 5.1 "scale=960:-2"
 
 poster suggest 3.2
 poster reader 3.2
