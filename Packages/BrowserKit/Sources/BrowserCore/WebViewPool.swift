@@ -13,6 +13,8 @@ final class WebViewPool {
     private var loadsWaitingForContentRules: [() -> Void] = []
 
     let configuration: WKWebViewConfiguration
+    /// Shared by every private tab, so they share a sign-in, like Safari's private tabs.
+    /// Its data store is replaced when the last private tab closes, which throws its cookies and storage away.
     let privateConfiguration: WKWebViewConfiguration
 
     init(capacity: Int = 6) {
@@ -28,8 +30,13 @@ final class WebViewPool {
         c.mediaTypesRequiringUserActionForPlayback = .all
         c.upgradeKnownHostsToHTTPS = true
         c.defaultWebpagePreferences.preferredContentMode = .mobile
-        c.preferences.isElementFullscreenEnabled = true
-        // Videos can float in picture-in-picture when you leave the page or the app.
+        // Off, like Safari on iPhone. With it on, a site's fullscreen button blew up its own
+        // player (the whole element) instead of handing the video to the system player. Off, sites
+        // fall back to the video element's native fullscreen: AVKit's player, with
+        // picture-in-picture, AirPlay and the system scrubber.
+        c.preferences.isElementFullscreenEnabled = false
+        // Videos can float in picture-in-picture from the system player, and keep playing when
+        // you leave the app (the app has the audio background mode for this).
         c.allowsPictureInPictureMediaPlayback = true
         c.allowsAirPlayForMediaPlayback = true
         // Say "Safari" like Safari does. WKWebView's default user agent leaves out the
@@ -81,6 +88,14 @@ final class WebViewPool {
         sessions[id]?.webView.stopLoading()
         sessions[id] = nil
         lru.removeAll { $0 == id }
+    }
+
+    /// The Private space closed: forget everything its tabs stored.
+    func resetPrivateStore() {
+        for (id, s) in sessions where s.tab.isPrivate { remove(id) }
+        // Web views copy the configuration when they're made, so the next private tab gets a
+        // fresh store and keeps the same blockers and scripts.
+        privateConfiguration.websiteDataStore = .nonPersistent()
     }
 
     func freezeAll() {

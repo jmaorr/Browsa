@@ -11,12 +11,18 @@ extension BrowserState {
     public func availableCommands() -> [BrowserCommand] {
         var out: [BrowserCommand] = []
         if let tab = currentTab {
-            out.append(BrowserCommand(id: "pin", title: tab.isPinned ? "Unpin Tab" : "Pin Tab", keywords: ["tab"]))
+            if !tab.isPrivate {
+                out.append(BrowserCommand(id: "pin", title: tab.isPinned ? "Unpin Tab" : "Pin Tab", keywords: ["tab"]))
+            }
             if let url = tab.url, !isFavorite(url) {
                 out.append(BrowserCommand(id: "favourite", title: "Add to Favourites", subtitle: tab.displayTitle,
                                           keywords: ["favorite", "star", "bookmark"]))
             }
             out.append(BrowserCommand(id: "close", title: "Close Tab", keywords: ["tab"]))
+            if let url = tab.url {
+                out.append(BrowserCommand(id: "save", title: isSaved(url) ? "Remove from Saved" : "Save Page",
+                                          subtitle: tab.displayTitle, keywords: ["bookmark", "read later", "saved"]))
+            }
             if let url = tab.url {
                 out.append(BrowserCommand(id: "copy-link", title: "Copy Link", subtitle: url.absoluteString, keywords: ["url", "share"]))
             }
@@ -37,8 +43,15 @@ extension BrowserState {
             out.append(BrowserCommand(id: "downloads", title: "Show Downloads", subtitle: "\(downloads.items.count) files", keywords: ["files"]))
         }
         out.append(BrowserCommand(id: "private", title: "New Private Tab", keywords: ["incognito"]))
+        if let p = privateSpace {
+            out.append(BrowserCommand(id: "close-private", title: "Close Private Tabs", subtitle: "\(p.allTabs.count) tabs",
+                                      keywords: ["incognito", "private", "clear"]))
+        }
         for s in spaces where s.id != selectedSpaceID {
             out.append(BrowserCommand(id: "space:" + s.id.uuidString, title: "Switch to \(s.name)", subtitle: "Space", keywords: ["space"]))
+        }
+        if !saved.isEmpty {
+            out.append(BrowserCommand(id: "saved", title: "Show Saved", subtitle: "\(saved.count) sites", keywords: ["bookmarks", "read later"]))
         }
         out.append(BrowserCommand(id: "settings", title: "Settings", keywords: ["preferences", "search engine"]))
         out.append(BrowserCommand(id: "archive", title: "Show Archive", subtitle: "\(archive.count) archived tabs", keywords: ["history", "closed"]))
@@ -58,6 +71,9 @@ extension BrowserState {
         case "private":
             newTab(url: nil, isPrivate: true)
             presentAddressEditor()
+        case "close-private": closePrivateSpace()
+        case "save": toggleSavedForCurrentTab()
+        case "saved": isSavedPresented = true
         case "reopen": reopenClosedTab()
         case "find":
             // Wait for the sheet to finish dismissing so the find bar can take first responder.

@@ -51,26 +51,37 @@ struct FoldedLayout: View {
     }
 }
 
-/// The vertical bar's new-tab button. The new-tab sheet zooms out of it; hold for a private tab
-/// or a tab in another space.
+/// A new-tab button. Hold for a private tab or a tab in another space. The same menu in every layout.
 struct NewTabButton: View {
     @Environment(BrowserState.self) private var browser
 
     var body: some View {
-        Button("New Tab", systemImage: "plus") { browser.presentNewTab(from: NewTabSource.bottomBar.rawValue) }
-            .newTabZoomSource(.bottomBar)
-            .contextMenu {
-                Button("New Private Tab", systemImage: "eye.slash") {
-                    browser.newTab(url: nil, isPrivate: true)
-                    browser.presentAddressEditor()
-                }
-                ForEach(browser.spaces) { s in
-                    Button("New Tab in \(s.name)", systemImage: s.symbol) {
-                        browser.selectSpace(s)
-                        browser.presentNewTab()
-                    }
-                }
+        Button("New Tab", systemImage: "plus") { browser.presentNewTab() }
+            .contextMenu { NewTabMenu() }
+    }
+}
+
+/// What holding a plus button offers.
+struct NewTabMenu: View {
+    @Environment(BrowserState.self) private var browser
+
+    var body: some View {
+        Button("New Private Tab", systemImage: "eye.slash") {
+            browser.newTab(url: nil, isPrivate: true)
+            browser.presentAddressEditor()
+        }
+        ForEach(browser.regularSpaces) { s in
+            Button("New Tab in \(s.name)", systemImage: s.symbol) {
+                browser.selectSpace(s)
+                browser.presentNewTab()
             }
+        }
+        if browser.privateSpace != nil {
+            Divider()
+            Button("Close Private Tabs", systemImage: "xmark", role: .destructive) {
+                withAnimation(Motion.spring) { browser.closePrivateSpace() }
+            }
+        }
     }
 }
 
@@ -102,6 +113,9 @@ struct BottomBar: View {
         let tab = browser.currentTab
         return HStack(spacing: 8) {
             HStack(spacing: 8) {
+                if tab?.isPrivate == true {
+                    Image(systemName: "eye.slash").foregroundStyle(.secondary).accessibilityLabel("Private")
+                }
                 if let url = tab?.url {
                     FaviconView(url: url, size: 18)
                     Text(URLNormalizer.displayHost(url)).lineLimit(1)
@@ -128,7 +142,6 @@ struct BottomBar: View {
         .glassEffect(.regular.interactive(), in: .capsule)
         .offset(x: dragX * 0.3)
         .contentShape(.capsule)
-        .newTabZoomSource(.addressPill)
         // Press and hold the pill to copy the address straight away.
         .onLongPressGesture(minimumDuration: 0.45) {
             guard let url = browser.currentTab?.url else { return }
@@ -140,7 +153,7 @@ struct BottomBar: View {
             if compact, let tab = browser.currentTab {
                 withAnimation(Motion.collapse) { browser.session(for: tab).expandChrome() }
             } else {
-                browser.presentAddressEditor(from: NewTabSource.addressPill.rawValue)
+                browser.presentAddressEditor()
             }
         }
         .gesture(

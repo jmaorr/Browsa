@@ -6,9 +6,9 @@ import BrowserCore
 /// touch your real tabs or the network. The arguments do nothing in release builds.
 ///
 /// - `--ui-testing <tabs>`: start fresh with that many tabs.
-/// - `--posture folded|unfolded`: pick the layout without a real hinge.
+/// - `--posture folded|unfolded`: pick the layout without a real fold.
 enum UITestSupport {
-    static var forcedHingeOpen: Bool? {
+    static var forcedUnfolded: Bool? {
         guard let i = CommandLine.arguments.firstIndex(of: "--posture"), i + 1 < CommandLine.arguments.count else { return nil }
         return CommandLine.arguments[i + 1] == "unfolded"
     }

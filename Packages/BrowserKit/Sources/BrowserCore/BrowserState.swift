@@ -12,6 +12,8 @@ public final class BrowserState {
     public var selectedSpaceID: UUID
     public var favorites: [Favorite]
     public var archive: [BrowserTab] = []
+    /// Saved sites, newest first.
+    public var saved: [SavedSite] = []
 
     // Transient UI state
     public var isNewTabSheetPresented = false
@@ -19,17 +21,16 @@ public final class BrowserState {
     public var newTabSheetEditsCurrentTab = false
     public var isTabSwitcherPresented = false
     public var isSettingsPresented = false
-    /// Which on-screen control opened the new-tab sheet, so it can zoom out of (and back into) it.
-    public var newTabSourceID = "plus.bottomBar"
     /// Direction of the last swipe between tabs, for push transitions (nil = not a swipe).
     public var lastTabSwipeForward: Bool?
     public var isArchivePresented = false
     public var isDownloadsPresented = false
+    public var isSavedPresented = false
     /// The dialog, permission or login request on screen now (one at a time).
     public internal(set) var activePrompt: WebPrompt?
     /// Short confirmation shown at the top of the screen ("Opened in background").
     public var toast: String?
-    /// Set by the app from the hinge. Drives desktop vs mobile sites.
+    /// Set by the app from the posture. Drives desktop vs mobile sites.
     public var isUnfolded = false
     @ObservationIgnored var promptQueue: [(WebPrompt, CheckedContinuation<WebPromptResponse, Never>)] = []
     @ObservationIgnored var promptLog: [UUID: [Date]] = [:]
@@ -78,7 +79,9 @@ public final class BrowserState {
     @ObservationIgnored public private(set) var suggest: SuggestEngine!
     @ObservationIgnored private let snapshotURL: URL?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
-    @ObservationIgnored private let thumbnailStore: ThumbnailStore?
+    @ObservationIgnored let thumbnailStore: ThumbnailStore?
+    /// The space you were in before going into Private, to go back to when it closes.
+    @ObservationIgnored var spaceBeforePrivate: UUID?
 
     public init(history: HistoryStore = HistoryStore(fileURL: HistoryStore.defaultFileURL()),
                 snapshotURL: URL? = BrowserState.defaultSnapshotURL(),
@@ -92,6 +95,7 @@ public final class BrowserState {
             selectedSpaceID = snap.selectedSpaceID ?? snap.spaces[0].id
             favorites = snap.favorites
             archive = snap.archive.map(BrowserTab.init)
+            saved = snap.saved ?? []
             if let s = snap.settings { settings = s }
         } else {
             let personal = Space(name: "Personal", symbol: "house.fill", colorIndex: 0)
@@ -106,7 +110,7 @@ public final class BrowserState {
 
     private func loadSavedThumbnails() {
         guard let thumbnailStore else { return }
-        let ids = Set((spaces.flatMap(\.allTabs) + archive).map(\.id))
+        let ids = Set((spaces.flatMap(\.allTabs) + archive).map(\.id) + saved.map(\.id))
         Task {
             let saved = await Task.detached(priority: .utility) { thumbnailStore.loadAll(keeping: ids) }.value
             for (id, data) in saved where thumbnails[id] == nil {
@@ -128,6 +132,46 @@ public final class BrowserState {
 
     public var currentTab: BrowserTab? { currentSpace.selectedTab }
 
+    // MARK: Private space
+
+    /// Every space but Private. Settings, "New Tab in…" and saving only deal with these.
+    public var regularSpaces: [Space] { spaces.filter { !$0.isPrivate } }
+
+    /// Private browsing is a space of its own, at the end of the list. It appears with the first
+    /// private tab and goes away, with everything its tabs stored, when the last one closes.
+    public var privateSpace: Space? { spaces.first { $0.isPrivate } }
+
+    /// Where a tab that isn't private goes when Private is the current space.
+    var regularTargetSpace: Space {
+        currentSpace.isPrivate ? (regularSpaces.first { $0.id == spaceBeforePrivate } ?? regularSpaces[0]) : currentSpace
+    }
+
+    private func openPrivateSpace() -> Space {
+        if let privateSpace { return privateSpace }
+        let space = Space(name: "Private", symbol: "eye.slash", colorIndex: 0,
+                          isSidebarOpen: currentSpace.isSidebarOpen, isPrivate: true)
+        spaces.append(space)
+        return space
+    }
+
+    /// Closes every private tab, which removes the Private space and clears its cookies.
+    public func closePrivateSpace() {
+        guard let space = privateSpace else { return }
+        for tab in space.allTabs {
+            cancelPrompts(for: tab.id)
+            thumbnails[tab.id] = nil
+        }
+        let wasCurrent = selectedSpaceID == space.id
+        if wasCurrent, let back = regularSpaces.first(where: { $0.id == spaceBeforePrivate }) ?? regularSpaces.first {
+            lastSpaceSwitch = SpaceSwitch(at: .now, forward: false)
+            selectedSpaceID = back.id
+        }
+        spaces.removeAll { $0.id == space.id }
+        pool.resetPrivateStore()
+        spaceBeforePrivate = nil
+        scheduleSave()
+    }
+
     public func session(for tab: BrowserTab) -> TabSession {
         pool.session(for: tab, browser: self)
     }
@@ -144,6 +188,7 @@ public final class BrowserState {
     }
 
     public func selectSpace(_ space: Space) {
+        if space.isPrivate, !currentSpace.isPrivate { spaceBeforePrivate = selectedSpaceID }
         if let from = spaces.firstIndex(where: { $0.id == selectedSpaceID }),
            let to = spaces.firstIndex(where: { $0.id == space.id }), from != to {
             lastSpaceSwitch = SpaceSwitch(at: .now, forward: to > from)
@@ -155,15 +200,13 @@ public final class BrowserState {
     // MARK: New tab / navigation
 
     /// One tap on any plus button.
-    public func presentNewTab(from sourceID: String? = nil) {
-        if let sourceID { newTabSourceID = sourceID }
+    public func presentNewTab() {
         newTabSheetEditsCurrentTab = false
         isNewTabSheetPresented = true
     }
 
     /// Tap on the address pill / field.
-    public func presentAddressEditor(from sourceID: String? = nil) {
-        if let sourceID { newTabSourceID = sourceID }
+    public func presentAddressEditor() {
         newTabSheetEditsCurrentTab = currentTab != nil
         isNewTabSheetPresented = true
     }
@@ -171,9 +214,13 @@ public final class BrowserState {
     @discardableResult
     public func newTab(url: URL?, in space: Space? = nil, isPrivate: Bool = false,
                        source: Frecency.VisitSource = .typed) -> BrowserTab {
-        let space = space ?? currentSpace
-        let tab = BrowserTab(url: nil, isPrivate: isPrivate)
-        space.today.insert(tab, at: 0)
+        // A tab opened while you're in Private is private too.
+        let requested = space ?? currentSpace
+        let wantsPrivate = isPrivate || requested.isPrivate
+        if wantsPrivate, !currentSpace.isPrivate { spaceBeforePrivate = selectedSpaceID }
+        let target = wantsPrivate ? openPrivateSpace() : requested
+        let tab = BrowserTab(url: nil, isPrivate: wantsPrivate)
+        target.today.insert(tab, at: 0)
         select(tab)
         if let url { session(for: tab).load(url, source: source) }
         return tab
@@ -218,6 +265,7 @@ public final class BrowserState {
         }
         pool.remove(tab.id)
         thumbnails[tab.id] = nil
+        if let p = privateSpace, p.allTabs.isEmpty { closePrivateSpace() }
         if let thumbnailStore {
             let id = tab.id
             Task.detached(priority: .utility) { thumbnailStore.remove(id) }
@@ -248,7 +296,7 @@ public final class BrowserState {
     public func reopenClosedTab() {
         guard let tab = recentlyClosed.popLast() else { return }
         tab.lastActive = .now
-        currentSpace.today.insert(tab, at: 0)
+        regularTargetSpace.today.insert(tab, at: 0)
         select(tab)
     }
 
@@ -284,8 +332,10 @@ public final class BrowserState {
             openTabs: { [weak self] in
                 await MainActor.run {
                     guard let self else { return [] }
+                    let inPrivate = self.currentSpace.isPrivate
                     return self.spaces.flatMap(\.allTabs)
-                        .filter { $0.url != nil && $0.id != self.currentTab?.id }
+                        // Private tabs only come up while you're in Private.
+                        .filter { $0.url != nil && $0.id != self.currentTab?.id && (inPrivate || !$0.isPrivate) }
                         .sorted { $0.lastActive > $1.lastActive }
                         .map { OpenTabSnapshot(id: $0.id, url: $0.url!, title: $0.title) }
                 }
@@ -321,8 +371,11 @@ public final class BrowserState {
     public func saveNow() {
         guard let snapshotURL else { return }
         pool.freezeAll()
-        let snap = BrowserSnapshot(spaces: spaces.map(\.record), selectedSpaceID: selectedSpaceID,
-                                   favorites: favorites, archive: archive.map(\.record), settings: settings)
+        // Private is never saved. Next launch opens in the space you came to it from.
+        let selected = currentSpace.isPrivate ? (spaceBeforePrivate ?? regularSpaces.first?.id) : selectedSpaceID
+        let snap = BrowserSnapshot(spaces: regularSpaces.map(\.record), selectedSpaceID: selected,
+                                   favorites: favorites, archive: archive.map(\.record), settings: settings,
+                                   saved: saved)
         guard let data = try? JSONEncoder().encode(snap) else { return }
         try? FileManager.default.createDirectory(at: snapshotURL.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)

@@ -1,10 +1,10 @@
 import SwiftUI
+import OSLog
 
 /// Every iPhone Duo-specific API call lives in this file, so if an API name differs from what's
 /// written here, this is the only file to fix.
 ///
 /// APIs used (iOS 27.1+):
-///   - View.onHingeChange { old, new in new.hinge?.status }    -> .closed / .partiallyOpen / .fullyOpen
 ///   - EnvironmentValues.toolbarVerticalEdge                    -> HorizontalEdge? (nil = no vertical bar)
 ///   - View.toolbarVerticalBehavior(_:)                         -> .automatic / .disabled
 ///   - View.toolbarVerticalCompressionBehavior(_:)              -> .prefersToolbarItems
@@ -29,43 +29,38 @@ extension EnvironmentValues {
     }
 }
 
-/// Reads the hinge (when there is one) and the size class, and publishes a `Posture`.
+enum PostureLog {
+    static let logger = Logger(subsystem: "com.orriginal.browsa", category: "posture")
+}
+
+/// Publishes a `Posture` from the size class alone, so the layout changes in step with the display.
 struct PostureReader<Content: View>: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
-    @State private var hingeOpen: Bool?   // nil = not a Duo, fall back to size class
     @ViewBuilder var content: (Posture) -> Content
 
     var posture: Posture {
         #if DEBUG
-        if let forced = UITestSupport.forcedHingeOpen { return forced ? .unfolded : .folded }
+        if let forced = UITestSupport.forcedUnfolded { return forced ? .unfolded : .folded }
         #endif
-        if let hingeOpen { return hingeOpen ? .unfolded : .folded }
         return sizeClass == .regular ? .unfolded : .folded
     }
 
     var body: some View {
         content(posture)
             .environment(\.posture, posture)
-            .animation(.smooth(duration: 0.35), value: posture)
-            .duoOnHingeChange { hingeOpen = $0 }
-    }
-}
-
-extension View {
-    /// Calls `action` with true (open), false (closed) or nil (not a Duo) when the hinge moves.
-    func duoOnHingeChange(_ action: @escaping (Bool?) -> Void) -> some View {
-        #if NO_DUO_SDK
-        self
-        #else
-        onHingeChange { _, new in
-            guard let hinge = new.hinge else { action(nil); return }
-            switch hinge.status {
-            case .closed: action(false)
-            case .partiallyOpen, .fullyOpen: action(true)
-            default: action(nil)
+            // Swap layouts outright. Cross-fading them left two layouts on screen at once, both
+            // holding the same web view while the scene moved displays, and the page could come
+            // up blank with dead controls after unfolding.
+            .transaction(value: posture) { t in
+                t.animation = nil
+                t.disablesAnimations = true
             }
-        }
-        #endif
+            // In Console, filter on subsystem com.orriginal.browsa to line layout swaps up with
+            // the web view's moves.
+            .onChange(of: posture) { old, new in
+                let detail = "posture \(old) -> \(new), size class: \(String(describing: sizeClass))"
+                PostureLog.logger.notice("\(detail, privacy: .public)")
+            }
     }
 }
 

@@ -109,7 +109,7 @@ struct UnfoldedPortraitLayout: View {
                 let shape = UnevenRoundedRectangle(bottomTrailingRadius: 24, topTrailingRadius: 24, style: .continuous)
                 ZStack {
                     shape.fill(.regularMaterial)
-                    shape.fill(SpacePalette.color(browser.currentSpace.colorIndex).opacity(0.14))
+                    shape.fill(SpacePalette.color(for: browser.currentSpace).opacity(0.14))
                 }
                 .shadow(color: .black.opacity(0.22), radius: 24, x: 8)
                 .ignoresSafeArea()

@@ -11,6 +11,8 @@ import Suggest
 ///   are one picture of the page flying between two measured frames, driven by a single spring.
 /// - Pinned tabs sit in a row at the top, Today's tabs in a grid below: two columns folded,
 ///   as many as fit unfolded.
+/// - The vertical bar's tabs button becomes a tick that closes it. The capsule at the bottom only
+///   switches spaces.
 /// - Swipe a card left or tap its ✕ to close it. Long-press for the tab menu, or drag it to
 ///   reorder. A scroll always wins: a swipe has to start clearly sideways, and taps are ignored
 ///   until the grid has come to rest.
@@ -205,36 +207,34 @@ struct TabGridOverlay: View {
         .accessibilityLabel("\(tab.displayTitle), pinned")
     }
 
+    /// Just the space switcher. The vertical bar's tabs button (a tick while the gallery is up)
+    /// closes the gallery, and its plus opens a new tab, so neither is repeated here.
     private var bottomBar: some View {
-        HStack {
-            Button("New Tab", systemImage: "plus") {
-                browser.presentNewTab()
-            }
-            .labelStyle(.iconOnly)
-            .frame(width: 44, height: 44)
-            Spacer()
-            Menu {
-                ForEach(browser.spaces) { s in
-                    Button { withAnimation(Motion.snappy) { browser.selectSpace(s) } } label: {
-                        Label(s.name, systemImage: s.symbol)
-                    }
+        Menu {
+            ForEach(browser.spaces) { s in
+                Button { withAnimation(Motion.snappy) { browser.selectSpace(s) } } label: {
+                    Label(s.name, systemImage: s.symbol)
                 }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(browser.currentSpace.name).fontWeight(.semibold)
-                    Image(systemName: "chevron.down").font(.caption.weight(.bold))
-                }
-                .foregroundStyle(.primary)
             }
-            .accessibilityLabel("Space, \(browser.currentSpace.name)")
-            Spacer()
-            Button("Done") { close(into: browser.currentTab) }
-                .fontWeight(.semibold)
-                .frame(minWidth: 44, minHeight: 44)
+            if browser.privateSpace != nil {
+                Divider()
+                Button("Close Private Tabs", systemImage: "xmark", role: .destructive) {
+                    withAnimation(Motion.snappy) { browser.closePrivateSpace() }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: browser.currentSpace.symbol).font(.subheadline)
+                Text(browser.currentSpace.name).fontWeight(.semibold)
+                Image(systemName: "chevron.up.chevron.down").font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 20)
+            .frame(minHeight: 44)
+            .contentShape(.capsule)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
-        .glassEffect(.regular, in: .capsule)
-        .padding(.horizontal, 24)
+        .accessibilityLabel("Space, \(browser.currentSpace.name)")
+        .glassEffect(.regular.interactive(), in: .capsule)
     }
 }

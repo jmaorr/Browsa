@@ -53,6 +53,10 @@ public final class TabSession: NSObject {
                 guard let self else { return }
                 if let state = tab.interactionState {
                     webView.interactionState = state
+                    Task { [weak self] in
+                        try? await Task.sleep(for: .seconds(2))
+                        self?.loadIfRestoreStalled()
+                    }
                 } else if let url = tab.url {
                     webView.load(URLRequest(url: url))
                 }
@@ -104,8 +108,8 @@ public final class TabSession: NSObject {
     }
 
     @objc private func pulledToRefresh(_ sender: UIRefreshControl) {
-        if webView.url == nil { sender.endRefreshing(); return }
-        webView.reload()
+        if webView.url == nil && tab.url == nil { sender.endRefreshing(); return }
+        reloadOrLoad()
     }
 
     private func endRefreshing() {
@@ -144,12 +148,25 @@ public final class TabSession: NSObject {
     }
 
     private func recover() {
+        webViewLog.notice("recovering by reload: \(self.tab.url?.host() ?? "no host", privacy: .public)")
         showLastPictureUntilPainted()
+        reloadOrLoad()
+    }
+
+    /// A web view that has no page of its own has nothing for `reload()` to act on, and does nothing.
+    func reloadOrLoad() {
         if webView.url != nil {
             webView.reload()
         } else if let url = tab.url {
             webView.load(URLRequest(url: url))
         }
+    }
+
+    /// Restoring saved state can come to nothing, leaving the tab showing a URL the web view doesn't have.
+    private func loadIfRestoreStalled() {
+        guard webView.url == nil, !webView.isLoading, let url = tab.url else { return }
+        webViewLog.notice("restore stalled, loading: \(url.host() ?? "no host", privacy: .public)")
+        webView.load(URLRequest(url: url))
     }
 
     /// Captures state so the web view can be torn down and rebuilt later.
@@ -213,6 +230,7 @@ extension TabSession: WKNavigationDelegate {
     }
 
     public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        webViewLog.error("web process terminated: \(self.tab.url?.host() ?? "no host", privacy: .public), in window \(webView.window != nil, privacy: .public), app state \(UIApplication.shared.applicationState.rawValue, privacy: .public)")
         // iOS kills web content under memory pressure. A tab out of sight waits until it's shown,
         // so a low-memory phone isn't reloading every tab at once.
         guard webView.window != nil else {

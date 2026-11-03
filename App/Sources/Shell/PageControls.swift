@@ -39,12 +39,18 @@ struct HistoryButton: View {
 }
 
 /// Opens and closes the tab gallery. Holds no count, so it reads the same however many tabs are open.
+/// While the gallery is up it turns into a tick that closes it, so the gallery needs no Done button.
 struct TabsButton: View {
     @Environment(BrowserState.self) private var browser
 
     var body: some View {
-        Button("Tabs", systemImage: "square.on.square") { browser.isTabSwitcherPresented.toggle() }
-            .accessibilityValue("\(browser.currentSpace.allTabs.count) open")
+        let open = browser.isTabSwitcherPresented
+        Button { browser.isTabSwitcherPresented.toggle() } label: {
+            Label(open ? "Done" : "Tabs", systemImage: open ? "checkmark" : "square.on.square")
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .accessibilityValue(open ? "" : "\(browser.currentSpace.allTabs.count) open")
+        .sensoryFeedback(.selection, trigger: open)
     }
 }
 
@@ -101,6 +107,10 @@ struct PageMenu: View {
                     ShareLink(item: url)
                 }
                 Section {
+                    Button(browser.isSaved(url) ? "Unsave" : "Save",
+                           systemImage: browser.isSaved(url) ? "bookmark.slash" : "bookmark") {
+                        browser.toggleSavedForCurrentTab()
+                    }
                     Button(browser.isFavorite(url) ? "Remove from Favourites" : "Add to Favourites",
                            systemImage: browser.isFavorite(url) ? "star.slash" : "star") {
                         browser.toggleFavoriteForCurrentTab()
@@ -120,6 +130,7 @@ struct PageMenu: View {
                 }
             }
             Section {
+                Button("Saved", systemImage: "bookmark") { browser.isSavedPresented = true }
                 Button("Downloads", systemImage: "arrow.down.circle") { browser.isDownloadsPresented = true }
                 Button("Settings", systemImage: "gearshape") { browser.isSettingsPresented = true }
             }
@@ -179,16 +190,33 @@ extension View {
 
 private struct HiddenWhileKeyboardIsUp: ViewModifier {
     @State private var keyboardUp = false
+    @Environment(\.posture) private var posture
 
     func body(content: Content) -> some View {
         content
             .opacity(keyboardUp ? 0 : 1)
             .allowsHitTesting(!keyboardUp)
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-                keyboardUp = true
+            // The frame, not show/hide: folding or unfolding with a field focused can move the
+            // keyboard between displays without a matching hide, which used to leave the bar gone.
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+                let up = Self.isOnScreen(note)
+                guard up != keyboardUp else { return }
+                if up { keyboardUp = true } else { withAnimation(Motion.snappy) { keyboardUp = false } }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
                 withAnimation(Motion.snappy) { keyboardUp = false }
             }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
+                keyboardUp = false
+            }
+            // A new display: if the keyboard is still up there, it says so again.
+            .onChange(of: posture) { keyboardUp = false }
+    }
+
+    private static func isOnScreen(_ note: Notification) -> Bool {
+        guard let end = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return false }
+        // A hardware keyboard leaves only a short shortcuts bar, which doesn't cover the bar.
+        let screen = (note.object as? UIScreen)?.bounds ?? end
+        return end.height > 80 && end.minY < screen.maxY - 1
     }
 }

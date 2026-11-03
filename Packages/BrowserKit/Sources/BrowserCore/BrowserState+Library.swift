@@ -10,23 +10,26 @@ extension BrowserState {
     public func addSpace() {
         let used = Set(spaces.map(\.colorIndex))
         let color = (0..<6).first { !used.contains($0) } ?? spaces.count
-        let space = Space(name: "Space \(spaces.count + 1)", symbol: "circle.fill", colorIndex: color)
-        spaces.append(space)
+        let space = Space(name: "Space \(regularSpaces.count + 1)", symbol: "circle.fill", colorIndex: color)
+        // Private stays at the end.
+        spaces.insert(space, at: spaces.firstIndex { $0.isPrivate } ?? spaces.endIndex)
         scheduleSave()
     }
 
     public func deleteSpace(_ space: Space) {
-        guard spaces.count > 1, let i = spaces.firstIndex(where: { $0.id == space.id }) else { return }
+        if space.isPrivate { closePrivateSpace(); return }
+        guard regularSpaces.count > 1, let i = spaces.firstIndex(where: { $0.id == space.id }) else { return }
         space.allTabs.forEach { pool.remove($0.id) }
         spaces.remove(at: i)
-        if selectedSpaceID == space.id { selectedSpaceID = spaces[0].id }
+        if selectedSpaceID == space.id { selectedSpaceID = regularSpaces[0].id }
         if settings.externalLinksSpaceID == space.id { settings.externalLinksSpaceID = nil }
         scheduleSave()
     }
 
     /// A link opened from another app (once this is the default browser).
     public func openExternal(_ url: URL) {
-        let target = spaces.first { $0.id == settings.externalLinksSpaceID } ?? currentSpace
+        // Never into Private: links from other apps belong with your normal tabs.
+        let target = regularSpaces.first { $0.id == settings.externalLinksSpaceID } ?? regularTargetSpace
         isNewTabSheetPresented = false
         newTab(url: url, in: target, source: .link)
     }
@@ -36,12 +39,52 @@ extension BrowserState {
     public func restoreFromArchive(_ tab: BrowserTab) {
         archive.removeAll { $0.id == tab.id }
         tab.lastActive = .now
-        currentSpace.today.insert(tab, at: 0)
+        regularTargetSpace.today.insert(tab, at: 0)
         select(tab)
     }
 
     public func clearArchive() {
         archive.removeAll()
+        scheduleSave()
+    }
+
+    // MARK: Saved sites
+
+    public func isSaved(_ url: URL) -> Bool {
+        let key = URLNormalizer.key(for: url)
+        return saved.contains { URLNormalizer.key(for: $0.url) == key }
+    }
+
+    /// The page menu's Save / Unsave for the current page. Keeps a picture of the page for the list.
+    public func toggleSavedForCurrentTab() {
+        guard let tab = currentTab, let url = tab.url else { return }
+        let key = URLNormalizer.key(for: url)
+        if let existing = saved.first(where: { URLNormalizer.key(for: $0.url) == key }) {
+            removeSaved(existing)
+            showToast("Removed from Saved")
+            return
+        }
+        let site = SavedSite(url: url, title: tab.displayTitle)
+        saved.insert(site, at: 0)
+        if let image = pool.existingSession(for: tab.id)?.renderThumbnail() ?? thumbnails[tab.id] {
+            thumbnails[site.id] = image
+            // A private page's picture stays in memory, like private tabs' own.
+            if !tab.isPrivate, let thumbnailStore, let data = image.jpegData(compressionQuality: 0.7) {
+                let id = site.id
+                Task.detached(priority: .utility) { thumbnailStore.save(data, for: id) }
+            }
+        }
+        showToast("Saved")
+        scheduleSave()
+    }
+
+    public func removeSaved(_ site: SavedSite) {
+        saved.removeAll { $0.id == site.id }
+        thumbnails[site.id] = nil
+        if let thumbnailStore {
+            let id = site.id
+            Task.detached(priority: .utility) { thumbnailStore.remove(id) }
+        }
         scheduleSave()
     }
 

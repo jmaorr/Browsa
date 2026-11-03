@@ -48,9 +48,11 @@ final class GalleryUITests: XCTestCase {
         XCTAssertEqual(cards.count, before)
     }
 
+    /// The tabs button turns into a tick (labelled Done) while the gallery is up.
     func testTabsButtonClosesGalleryAndGutterStaysUsable() {
-        app.buttons["Tabs"].tap()
+        app.buttons["Done"].tap()
         XCTAssertTrue(app.buttons["Done"].waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Tabs"].waitForExistence(timeout: 3))
         app.buttons["Tabs"].tap()
         XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 3))
         app.buttons["New Tab"].firstMatch.tap()

@@ -1,6 +1,7 @@
 # Browsa
 
-A personal, native WebKit browser for iPhone Duo. It brings Arc's navigation model to iOS:
+A native WebKit browser for iPhone Duo, open source under the [MIT license](LICENSE). Use it as it
+is, or fork it as a starting point for your own browser. It brings Arc's navigation model to iOS:
 
 - **Unfolded (inner display):** a collapsible sidebar with spaces, pinned tabs and today tabs. The
   sidebar toggle and a one-tap **New Tab** sit in the Duo's system vertical bar.
@@ -9,8 +10,13 @@ A personal, native WebKit browser for iPhone Duo. It brings Arc's navigation mod
 - **New-tab sheet:** the keyboard is up right away and favourites appear above it. You get
   suggestions from the first keystroke (favourites, open tabs, history ranked by frecency, a
   bundled list of popular sites and search-engine suggestions), plus inline autocomplete like Safari's.
-
-The full plan is in the [build plan](https://claude.ai/artifact/ThrnaYjvkiKMqCKoukze3s).
+- **Private browsing:** a Private space that appears with your first private tab (hold any plus
+  button) and goes away, with its cookies and storage, when the last one closes.
+- **Saved:** Save in a page's ⋯ menu keeps it in a flat, newest-first list (⋯ > Saved).
+- **Reader:** a distraction-free view of the page, in a sheet or full screen, using Readability.js.
+- **Video:** fullscreen hands the video to the system player, with picture-in-picture and AirPlay.
+- **Content blocking:** blocks ads and trackers, declines cookie banners and strips tracking
+  parameters from links. Each can be turned off in Settings, and blockers can be turned off per site.
 
 ## Build
 
@@ -20,7 +26,12 @@ xcodegen            # generates Browsa.xcodeproj from project.yml
 open Browsa.xcodeproj
 ```
 
-You need Xcode 27.2 or later and the iOS 27.2 SDK. Set your development team in `project.yml` or in Xcode.
+You need Xcode 27.2 or later and the iOS 27.2 SDK. The app runs on iOS 27.1 or later, on an iPhone
+Duo or its simulator, and on other iPhones, where it uses the folded layout.
+
+To build your own copy, change `DEVELOPMENT_TEAM` and `bundleIdPrefix` in `project.yml`, and the
+target bundle identifiers below them, then run `xcodegen` again. The `.xcodeproj` is generated and
+git-ignored, so `project.yml` is the file to edit.
 
 Run the suggestion engine's tests without the app:
 
@@ -33,16 +44,39 @@ cd Packages/BrowserKit && swift test
 ```
 App/Sources/
   BrowsaApp.swift          entry point, keyboard shortcuts, scene lifecycle
-  Posture/PostureAdapter   every iPhone Duo API call (hinge, vertical bar) lives here
+  Posture/PostureAdapter   picks the layout, and every iPhone Duo API call (vertical bar) lives here
   Shell/                   RootView, UnfoldedLayout + SidebarView, FoldedLayout + BottomBar, tab switcher
   NewTab/                  NewTabSheet, AddressField (inline autocomplete), NewTabModel
 Packages/BrowserKit/
   Sources/Suggest/         pure Swift: providers, ranking, frecency, inline completion, seed list
-  Sources/BrowserCore/     WKWebView sessions + pool, tabs/spaces model, history store, persistence
-  Tests/SuggestTests/      Swift Testing suite for the suggest engine
+  Sources/BrowserCore/     WKWebView sessions + pool, tabs/spaces model, history store, persistence,
+                           content blocking, Reader
+  Tests/                   Swift Testing suites for BrowserCore and the suggest engine
+App/UITests/               UI tests that drive the real app on a simulator
 tools/build_seed.py        rebuilds the seed list from Chrome UX Report top lists (see below)
 tools/seed_curated.json    brand names, typed aliases (yt, gh, gmail), allow and deny lists
+tools/filter-rules/        builds and publishes the content-blocking rules (GPL 3.0, see License)
 ```
+
+## How it fits together
+
+- **Posture follows the size class.** Compact width gets the folded layout and regular width gets
+  the unfolded one. The hinge isn't involved, so the layout can't disagree with the display.
+- **The web view outlives the layouts.** `BrowserState` is the single source of truth, and each tab
+  has one `WKWebView` that `WebViewHost` re-parents when the layout changes, so folding never
+  reloads a page. `WebViewPool` keeps a limited number of them alive and freezes the rest.
+- **Debugging.** In Console, filter on subsystem `com.orriginal.browsa` (or your own, once you've
+  changed it in the source). Layout swaps, web view moves, stalled restores and web process
+  terminations are logged there.
+
+## Content blocking
+
+iOS doesn't apply installed content blockers to WKWebView browsers, so the app applies its own.
+`tools/filter-rules` converts AdGuard's lists into WebKit rules, and the
+[`filter-rules` workflow](.github/workflows/filter-rules.yml) publishes them to Cloudflare R2 every
+three days. The app checks `ContentBlocker.rulesBaseURL` every few days, and uses a small bundled
+list until its first download. If you fork the app, host your own rules:
+see [tools/filter-rules](tools/filter-rules/README.md).
 
 ## Suggestions
 
@@ -71,10 +105,10 @@ leaves the list and then closes the sheet.
 
 ## Not built yet
 
+Good places to start if you'd like to extend it:
+
 - Resizing the sidebar by dragging its edge
-- Reader mode (WebKit has no public API for it, so it needs a Readability.js port)
 - Drag and drop of links and favourites between the sidebar and other apps
-- A downloads button in the chrome (downloads live in the command bar, ⌥⌘J and the Files app for now)
 - CloudKit sync and a separate login profile for each space
 - Storing history in SQLite with full-text search (GRDB + FTS5) instead of JSON, once history gets big
 
@@ -87,3 +121,20 @@ runs on the Mac rather than in CI, because CI's Xcode has no iPhone Duo SDK yet:
 xcodebuild test -project Browsa.xcodeproj -scheme Browsa -only-testing:BrowsaUITests \
   -destination 'platform=iOS Simulator,name=iPhone Duo'
 ```
+
+CI builds the app against stub Duo APIs when its Xcode is too old for the SDK, using the `NO_DUO_SDK`
+flag in `PostureAdapter`.
+
+## License
+
+Browsa's own code is available under the [MIT license](LICENSE). It bundles or downloads third-party
+work under its own terms:
+
+- [Readability.js](https://github.com/mozilla/readability), Apache 2.0, in `Resources/Readability-LICENSE.txt`
+- [DuckDuckGo autoconsent](https://github.com/duckduckgo/autoconsent), MPL 2.0, in `Resources/autoconsent-LICENSE.txt`
+- [AdGuard filter lists](https://github.com/AdguardTeam/AdguardFilters), GPL 3.0. The app downloads rules
+  derived from them at runtime, from `rules.browsa.app`, and doesn't bundle them. `tools/filter-rules`, which
+  builds those rules with AdGuard's GPL 3.0 SafariConverterLib, is GPL 3.0 itself. It's a separate program
+  that isn't part of the app.
+- The seed list in `Resources/seed-sites.json` is built from
+  [CrUX top lists](https://github.com/zakird/crux-top-lists) by `tools/build_seed.py`

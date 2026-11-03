@@ -4,8 +4,10 @@ import Suggest
 
 struct RootView: View {
     @Environment(BrowserState.self) private var browser
-    @Namespace private var newTabNS
     @State private var rail = TabRailController()
+    @AppStorage(ReaderView.fullScreenKey) private var readerFullScreen = false
+    /// Reader is between its sheet and its full-screen cover.
+    @State private var readerSwapping = false
 
     var body: some View {
         @Bindable var browser = browser
@@ -28,8 +30,6 @@ struct RootView: View {
             NewTabSheet(engine: browser.suggest,
                         initialText: browser.newTabSheetEditsCurrentTab ? (browser.currentTab?.url?.absoluteString ?? "") : "",
                         morphFrom: browser.newTabSheetEditsCurrentTab ? browser.currentTab?.url : nil)
-                // The sheet grows out of whichever plus button (or address pill) was tapped.
-                .navigationTransition(.zoom(sourceID: browser.newTabSourceID, in: newTabNS))
         }
         .sheet(isPresented: $browser.isSettingsPresented) {
             // Settings keeps the system's control colours.
@@ -38,11 +38,15 @@ struct RootView: View {
         .sheet(isPresented: $browser.isArchivePresented) {
             ArchiveView()
         }
-        .sheet(item: $browser.readerArticle) { article in
-            ReaderView(article: article)
-        }
+        // Reader in a sheet, or filling the screen. Its full-screen button swaps one for the other.
+        .sheet(item: readerBinding(fullScreen: false)) { ReaderView(article: $0) }
+        .fullScreenCover(item: readerBinding(fullScreen: true)) { ReaderView(article: $0) }
+        .onChange(of: readerFullScreen) { swapReaderPresentation() }
         .sheet(isPresented: $browser.isDownloadsPresented) {
             DownloadsView()
+        }
+        .sheet(isPresented: $browser.isSavedPresented) {
+            SavedSitesView()
         }
         // A light tap when a download lands, like Safari's downloads button bounce.
         .sensoryFeedback(.success, trigger: browser.downloads.lastFinished)
@@ -58,7 +62,31 @@ struct RootView: View {
         .environment(rail)
         // Neutral chrome, like Safari. A space's colour only tints the sidebar's background.
         .tint(.primary)
-        .environment(\.newTabNamespace, newTabNS)
+    }
+}
+
+extension RootView {
+    /// The open article, for whichever presentation Reader is using.
+    private func readerBinding(fullScreen: Bool) -> Binding<ReaderArticle?> {
+        Binding {
+            readerSwapping || readerFullScreen != fullScreen ? nil : browser.readerArticle
+        } set: { article in
+            // Only a real dismissal (Close, or swiping the sheet away) closes Reader.
+            guard article == nil, !readerSwapping, readerFullScreen == fullScreen else { return }
+            browser.readerArticle = nil
+        }
+    }
+
+    /// Takes Reader down from one presentation without animation, then puts it up in the other
+    /// once UIKit has finished, since it can't present while a dismissal is still running.
+    private func swapReaderPresentation() {
+        guard browser.readerArticle != nil else { return }
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { readerSwapping = true }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            withTransaction(t) { readerSwapping = false }
+        }
     }
 }
 
@@ -149,13 +177,12 @@ struct StartPage: View {
                           onOpen: { browser.perform(.open($0.url), source: .bookmark) },
                           onRename: { _ in }, onRemove: { browser.removeFavorite($0) })
                 .frame(maxWidth: 420)
-            Button { browser.presentNewTab(from: NewTabSource.startPage.rawValue) } label: {
+            Button { browser.presentNewTab() } label: {
                 Label("New Tab", systemImage: "plus")
                     .font(.headline)
                     .padding(.horizontal, 20).padding(.vertical, 12)
             }
             .buttonStyle(.glass)
-            .newTabZoomSource(.startPage)
             Spacer()
         }
         .padding(16)
@@ -167,4 +194,6 @@ struct StartPage: View {
 enum SpacePalette {
     static let colors: [Color] = [.indigo, .orange, .teal, .pink, .green, .purple]
     static func color(_ i: Int) -> Color { colors[((i % colors.count) + colors.count) % colors.count] }
+    /// The sidebar's tint for a space. Private is a neutral grey, like Safari's dark private bar.
+    @MainActor static func color(for space: Space) -> Color { space.isPrivate ? .gray : color(space.colorIndex) }
 }

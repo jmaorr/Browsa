@@ -43,7 +43,7 @@ struct AddressField: UIViewRepresentable {
         f.addTarget(context.coordinator, action: #selector(Coordinator.editingChanged(_:)), for: .editingChanged)
         f.setContentHuggingPriority(.defaultLow, for: .horizontal)
         // Raise the keyboard the moment the field is in a window, which is the start of the
-        // sheet's presentation. UIKit then runs the keyboard animation alongside the zoom, so
+        // sheet's presentation. UIKit then runs the keyboard animation alongside the sheet, so
         // the two arrive together (as in Safari), instead of the keyboard following it.
         f.focusOnFirstWindow = true
         return f

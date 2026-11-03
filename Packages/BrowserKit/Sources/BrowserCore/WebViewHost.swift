@@ -1,6 +1,10 @@
 #if os(iOS)
 import SwiftUI
 import WebKit
+import OSLog
+
+/// In Console, filter on subsystem com.orriginal.browsa to line these up with the hinge's reports.
+let webViewLog = Logger(subsystem: "com.orriginal.browsa", category: "webview")
 
 /// Hosts a tab's live WKWebView. The same WKWebView instance is re-parented when the layout
 /// changes (fold/unfold), so pages never reload because of a posture change.
@@ -21,12 +25,13 @@ public struct WebViewHost: UIViewRepresentable {
 
     public func makeUIView(context: Context) -> ContainerView {
         let v = ContainerView()
-        v.attach(session.webView)
+        v.claim(session.webView)
         return v
     }
 
     public func updateUIView(_ uiView: ContainerView, context: Context) {
-        uiView.attach(session.webView)
+        // A different tab in the same place: this host takes the new tab's web view.
+        if uiView.webView !== session.webView { uiView.claim(session.webView) }
         session.recoverIfNeeded()
         // Tells WebKit the bar covers this strip, so fixed and sticky page headers sit below it.
         if #available(iOS 26, *), session.webView.obscuredContentInsets.top != topObscuredInset {
@@ -45,12 +50,18 @@ public struct WebViewHost: UIViewRepresentable {
         }
     }
 
+    /// Holds one web view. When the layout changes (a fold, or the inner display switching between
+    /// portrait and the wide layout), the old layout's host can still be on screen, fading out,
+    /// while the new one appears. Both point at the same WKWebView, which can only have one
+    /// superview, so the rule is: the host that most recently arrived in a window owns it.
+    /// A host that's leaving never takes it back, and one that arrives again does.
     public final class ContainerView: UIView {
-        private weak var current: WKWebView?
+        private(set) weak var webView: WKWebView?
 
-        func attach(_ webView: WKWebView) {
-            guard current !== webView else { return }
-            current?.removeFromSuperview()
+        func claim(_ webView: WKWebView) {
+            self.webView = webView
+            guard webView.superview !== self else { return }
+            webViewLog.notice("claim: web view in window \(webView.window != nil, privacy: .public), new host in window \(self.window != nil, privacy: .public)")
             webView.removeFromSuperview()
             webView.translatesAutoresizingMaskIntoConstraints = false
             addSubview(webView)
@@ -60,7 +71,14 @@ public struct WebViewHost: UIViewRepresentable {
                 webView.topAnchor.constraint(equalTo: topAnchor),
                 webView.bottomAnchor.constraint(equalTo: bottomAnchor),
             ])
-            current = webView
+            // Moving between displays can leave WebKit thinking it's still off screen.
+            webView.setNeedsLayout()
+        }
+
+        public override func didMoveToWindow() {
+            super.didMoveToWindow()
+            webViewLog.notice("host in window \(self.window != nil, privacy: .public), owns web view \(self.webView?.superview === self, privacy: .public)")
+            if window != nil, let webView, webView.superview !== self { claim(webView) }
         }
     }
 }

@@ -88,7 +88,7 @@ struct SettingsView: View {
                     }
                     Picker("Links from other apps open in", selection: $browser.settings.externalLinksSpaceID) {
                         Text("Current space").tag(UUID?.none)
-                        ForEach(browser.spaces) { s in Text(s.name).tag(Optional(s.id)) }
+                        ForEach(browser.regularSpaces) { s in Text(s.name).tag(Optional(s.id)) }
                     }
                 }
 
@@ -114,7 +114,7 @@ struct SettingsView: View {
                 }
 
                 Section("Spaces") {
-                    ForEach(browser.spaces) { space in
+                    ForEach(browser.regularSpaces) { space in
                         SpaceEditorRow(space: space)
                     }
                     Button("Add Space", systemImage: "plus") { browser.addSpace() }
@@ -187,7 +187,7 @@ private struct SpaceEditorRow: View {
             }
         }
         .swipeActions {
-            if browser.spaces.count > 1 {
+            if browser.regularSpaces.count > 1 {
                 Button("Delete", role: .destructive) { browser.deleteSpace(space) }
             }
         }

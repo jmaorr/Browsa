@@ -1,0 +1,4 @@
+# Copy to .dev.vars for running publish.sh with an API token instead of a Wrangler login.
+# The token needs R2 edit access. .dev.vars is git-ignored, so never put the token in this file.
+CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_API_TOKEN=

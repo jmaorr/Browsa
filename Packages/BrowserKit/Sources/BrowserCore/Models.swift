@@ -60,9 +60,12 @@ public final class Space: Identifiable {
     public var today: [BrowserTab]
     public var selectedTabID: UUID?
     public var isSidebarOpen: Bool
+    /// The Private space: shows in the spaces list only while it has tabs, and is never saved.
+    public let isPrivate: Bool
 
     public init(id: UUID = UUID(), name: String, symbol: String = "circle.fill", colorIndex: Int = 0,
-                pinned: [BrowserTab] = [], today: [BrowserTab] = [], selectedTabID: UUID? = nil, isSidebarOpen: Bool = true) {
+                pinned: [BrowserTab] = [], today: [BrowserTab] = [], selectedTabID: UUID? = nil, isSidebarOpen: Bool = true,
+                isPrivate: Bool = false) {
         self.id = id
         self.name = name
         self.symbol = symbol
@@ -71,6 +74,7 @@ public final class Space: Identifiable {
         self.today = today
         self.selectedTabID = selectedTabID
         self.isSidebarOpen = isSidebarOpen
+        self.isPrivate = isPrivate
     }
 
     public var allTabs: [BrowserTab] { pinned + today }
@@ -154,25 +158,6 @@ public enum FilterGroup: String, Codable, CaseIterable, Sendable, Identifiable {
         case .annoyances: "Cookie notices, pop-ups, app banners and widgets"
         }
     }
-
-    /// AdGuard filter IDs (filters.adtidy.org), in iOS-optimised form.
-    public var filterIDs: [Int] {
-        switch self {
-        case .ads: [2, 11]
-        case .privacy: [3, 4]
-        case .annoyances: [18, 19, 20, 21, 22]
-        }
-    }
-
-    public var urls: [URL] {
-        filterIDs.map { URL(string: "https://filters.adtidy.org/ios/filters/\($0)_optimized.txt")! }
-    }
-
-    /// One rule per line. AdGuard serves these lists with CRLF endings, and "\r\n" is a single
-    /// Character in Swift, so splitting on "\n" alone would leave the whole list as one line.
-    public static func rules(inFilterList text: String) -> [String] {
-        text.split(whereSeparator: \.isNewline).map(String.init)
-    }
 }
 
 /// Why a page couldn't load, shown in place of the page.
@@ -234,6 +219,24 @@ public struct LoadError: Equatable, Sendable {
     }
 }
 
+// MARK: - Saved sites
+
+/// A page put aside to read later, from the page menu's Save. A flat list, newest first, like the
+/// saved posts in a social app. No folders.
+public struct SavedSite: Codable, Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public var url: URL
+    public var title: String
+    public var savedAt: Date
+
+    public init(id: UUID = UUID(), url: URL, title: String, savedAt: Date = .now) {
+        self.id = id
+        self.url = url
+        self.title = title
+        self.savedAt = savedAt
+    }
+}
+
 // MARK: - Codable snapshot for persistence
 
 struct TabRecord: Codable {
@@ -251,6 +254,8 @@ struct BrowserSnapshot: Codable {
     var favorites: [Favorite]
     var archive: [TabRecord]
     var settings: BrowserSettings?
+    /// Missing in state saved before Saved Sites existed.
+    var saved: [SavedSite]?
 }
 
 extension BrowserTab {
