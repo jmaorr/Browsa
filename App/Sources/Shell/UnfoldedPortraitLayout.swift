@@ -1,7 +1,7 @@
 import SwiftUI
 import BrowserCore
 
-/// Inner display, portrait: the page gets the whole width and scrolls under a translucent top bar.
+/// Inner display, portrait: the page gets the whole width and scrolls under the status bar.
 ///
 /// - Bottom: `NoGutterBar`, with everything in reach. The top is just the status bar.
 /// - The sidebar slides in over the page and never resizes it. Tap outside it to put it away.
@@ -54,14 +54,6 @@ struct UnfoldedPortraitLayout: View {
         ZStack {
             WebContentView(topObscuredInset: topInset, bottomObscuredInset: BarMetrics.underCapsuleInset)
                 .ignoresSafeArea(.all, edges: .vertical)
-            // The bar's height is the top safe area, which the toolbar sets.
-            VStack(spacing: 0) {
-                Rectangle().fill(.ultraThinMaterial).frame(height: topInset)
-                    .pageMatchedAppearance(browser.currentTab)
-                Spacer(minLength: 0)
-            }
-            .ignoresSafeArea(.container, edges: .top)
-            .allowsHitTesting(false)
             Color.clear
                 .allowsHitTesting(false)
                 .overlay(alignment: .bottom) { NoGutterBar { setSidebar(!isSidebarShown) } }

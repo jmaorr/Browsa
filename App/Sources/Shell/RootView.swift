@@ -147,21 +147,6 @@ extension View {
     }
 }
 
-private struct PageMatchedAppearance: ViewModifier {
-    let tab: BrowserTab?
-    @Environment(\.colorScheme) private var system
-
-    func body(content: Content) -> some View {
-        content.environment(\.colorScheme, tab?.pageBackground.map { $0.isLight ? .light : .dark } ?? system)
-    }
-}
-
-extension View {
-    /// For a bar behind the system's status items, which `pageColoredSurroundings` has flipped.
-    /// Never put this around the web view, or a site's own dark mode would follow the page's colour.
-    func pageMatchedAppearance(_ tab: BrowserTab?) -> some View { modifier(PageMatchedAppearance(tab: tab)) }
-}
-
 private extension CGColor {
     var isLight: Bool {
         var white: CGFloat = 1

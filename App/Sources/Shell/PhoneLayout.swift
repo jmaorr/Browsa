@@ -19,14 +19,6 @@ struct PhoneLayout: View {
         ZStack {
             WebContentView(topObscuredInset: topInset, bottomObscuredInset: BarMetrics.underCapsuleInset)
                 .ignoresSafeArea(.all, edges: .vertical)
-            // The bar's height is the top safe area: the status bar and nothing more.
-            VStack(spacing: 0) {
-                Rectangle().fill(.ultraThinMaterial).frame(height: topInset)
-                    .pageMatchedAppearance(browser.currentTab)
-                Spacer(minLength: 0)
-            }
-            .ignoresSafeArea(.container, edges: .top)
-            .allowsHitTesting(false)
             TabGridOverlay()
             Color.clear
                 .allowsHitTesting(false)

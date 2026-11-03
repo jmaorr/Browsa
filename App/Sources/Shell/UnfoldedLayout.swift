@@ -49,11 +49,6 @@ struct UnfoldedWideLayout: View {
             } content: {
                 if verticalBarEdge == nil {
                     WebContentView(topObscuredInset: topInset, bottomObscuredInset: BarMetrics.underCapsuleInset)
-                        .overlay(alignment: .top) {
-                            Rectangle().fill(.ultraThinMaterial).frame(height: topInset)
-                                .pageMatchedAppearance(browser.currentTab)
-                                .allowsHitTesting(false)
-                        }
                 } else {
                     WebContentView(bottomObscuredInset: space.isSidebarOpen ? BarMetrics.dockedPageInset : BarMetrics.underCapsuleInset)
                 }
