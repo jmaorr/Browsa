@@ -50,6 +50,13 @@ struct SettingsView: View {
         var id: String { rawValue }
     }
 
+    private static var version: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(short) (\(build))"
+    }
+
     var body: some View {
         @Bindable var browser = browser
         NavigationStack {
@@ -122,6 +129,12 @@ struct SettingsView: View {
 
                 Section {
                     Button("Clear History", role: .destructive) { confirmClearHistory = true }
+                }
+
+                Section("About") {
+                    Link("Privacy Policy", destination: URL(string: "https://browsa.app/privacy/")!)
+                    Link("Contact", destination: URL(string: "mailto:hello@orriginal.me")!)
+                    LabeledContent("Version", value: Self.version)
                 }
             }
             .navigationTitle("Settings")
