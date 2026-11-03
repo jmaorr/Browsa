@@ -112,8 +112,9 @@ struct SidebarView: View {
                 else { Image(systemName: "globe") }
             }
             .frame(maxWidth: .infinity, minHeight: 48)
-            .background(selected ? AnyShapeStyle(.thickMaterial) : AnyShapeStyle(.thinMaterial),
+            .background(selected ? AnyShapeStyle(TabRow.selectedFill) : AnyShapeStyle(.thinMaterial),
                         in: .rect(cornerRadius: 12, style: .continuous))
+            .shadow(color: .black.opacity(selected ? TabRow.selectedShadow : 0), radius: 3, y: 1)
         }
         .buttonStyle(.plain)
         .contextMenu { TabMenu(tab: tab) }
@@ -155,6 +156,9 @@ struct TabRow: View {
     static let pitch: CGFloat = 44
     /// The selected background fills the slot, apart from a point above and below.
     private static let height = pitch - 2
+    /// Solid white, or black in dark mode, so the selected tab lifts off the tinted sidebar.
+    static let selectedFill = Color(.systemBackground)
+    static let selectedShadow = 0.08
 
     var body: some View {
         Button { browser.select(tab) } label: {
@@ -166,8 +170,9 @@ struct TabRow: View {
             }
             .padding(.horizontal, 10)
             .frame(minHeight: Self.height)
-            .background(selected ? AnyShapeStyle(.thickMaterial) : AnyShapeStyle(.clear),
+            .background(selected ? AnyShapeStyle(Self.selectedFill) : AnyShapeStyle(.clear),
                         in: .rect(cornerRadius: 10, style: .continuous))
+            .shadow(color: .black.opacity(selected ? Self.selectedShadow : 0), radius: 3, y: 1)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
