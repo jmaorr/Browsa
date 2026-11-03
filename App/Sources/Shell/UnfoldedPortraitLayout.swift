@@ -27,6 +27,9 @@ struct UnfoldedPortraitLayout: View {
                 sidebar.transition(.move(edge: .leading))
             }
         }
+        // Measured outside the stack, whose bar counts as safe area until it has finished hiding.
+        .onGeometryChange(for: CGFloat.self) { BarMetrics.topCornerInset($0) } action: { topInset = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
         // The open sidebar already lists the tabs, so the strip doesn't peek then.
         .onChange(of: isSidebarShown, initial: true) { _, shown in rail.sidebarShowsTabs = shown }
         .onAppear {
@@ -59,8 +62,6 @@ struct UnfoldedPortraitLayout: View {
                 .allowsHitTesting(false)
                 .overlay(alignment: .bottom) { NoGutterBar(bottomInset: bottomInset) { setSidebar(!isSidebarShown) } }
         }
-        .onGeometryChange(for: CGFloat.self) { BarMetrics.topCornerInset($0) } action: { topInset = $0 }
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
     }
 
     private var sidebar: some View {

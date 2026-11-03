@@ -57,9 +57,6 @@ struct UnfoldedWideLayout: View {
                     WebContentView(bottomObscuredInset: space.isSidebarOpen ? BarMetrics.dockedPageInset : BarMetrics.underCapsuleInset)
                 }
             }
-            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { statusInset = $0 }
-            .onGeometryChange(for: CGFloat.self) { BarMetrics.topCornerInset($0) } action: { topInset = $0 }
-            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
             // The keyboard goes over the page without resizing it. WebKit scrolls the field into view.
             .ignoresSafeArea(.keyboard, edges: .bottom)
             .overlay(alignment: .bottom) {
@@ -97,6 +94,10 @@ struct UnfoldedWideLayout: View {
                 toggleSidebar()
             }
         }
+        // Measured outside the stack, whose bar counts as safe area until it has finished hiding.
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { statusInset = $0 }
+        .onGeometryChange(for: CGFloat.self) { BarMetrics.topCornerInset($0) } action: { topInset = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
         .background {
             // Hardware keyboard: Cmd-S toggles the sidebar, like Arc.
             Button("") { toggleSidebar() }.keyboardShortcut("s", modifiers: .command).hidden()
