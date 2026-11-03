@@ -7,3 +7,8 @@ xcuserdata/
 .DS_Store
 .seed-cache/
 .autoconsent/
+.wrangler/
+.dev.vars
+.env
+.env.*
+.claude/
