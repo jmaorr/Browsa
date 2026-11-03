@@ -13,6 +13,7 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
     var isDocked: Bool
     /// Which screen edge the sidebar lives on.
     var edge: HorizontalEdge
+    static var defaultWidth: CGFloat { 288 }
     var width: CGFloat = 288
     var tint: Color
     @ViewBuilder var sidebar: () -> Sidebar

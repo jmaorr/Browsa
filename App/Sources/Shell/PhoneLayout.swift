@@ -54,6 +54,9 @@ struct PhoneLayout: View {
                 BottomBar(sideMargin: 0)
             }
             if !compact {
+                if browser.downloads.isIndicatorVisible {
+                    DownloadProgressButton().glassCircleButton().transition(.opacity)
+                }
                 HStack(spacing: 0) {
                     TabsButton(scrubsTabRail: true).frame(width: 42, height: BarMetrics.capsuleHeight).contentShape(.rect)
                     NewTabButton().frame(width: 42, height: BarMetrics.capsuleHeight).contentShape(.rect)

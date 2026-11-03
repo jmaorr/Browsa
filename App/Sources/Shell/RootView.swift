@@ -31,7 +31,7 @@ struct RootView: View {
             NewTabSheet(engine: browser.suggest,
                         initialText: browser.newTabSheetEditsCurrentTab ? (browser.currentTab?.url?.absoluteString ?? "") : "",
                         morphFrom: browser.newTabSheetEditsCurrentTab ? browser.currentTab?.url : nil,
-                        showsPageActions: !browser.isUnfolded && verticalBarEdge == nil)
+                        showsPageActions: verticalBarEdge == nil)
         }
         .sheet(isPresented: $browser.isSettingsPresented) {
             // Settings keeps the system's control colours.

@@ -3,8 +3,7 @@ import BrowserCore
 
 /// Inner display, portrait: the page gets the whole width and scrolls under a translucent top bar.
 ///
-/// - Top bar: back and forward on the leading side, the page menu on the trailing side.
-/// - Bottom: sidebar button, address capsule, new tab.
+/// - Bottom: `NoGutterBar`, with everything in reach. The top is just the status bar.
 /// - The sidebar slides in over the page and never resizes it. Tap outside it to put it away.
 struct UnfoldedPortraitLayout: View {
     @Environment(BrowserState.self) private var browser
@@ -12,16 +11,12 @@ struct UnfoldedPortraitLayout: View {
     @State private var isSidebarShown = false
     @State private var topInset: CGFloat = 0
 
-    private var compact: Bool { browser.currentTab?.isChromeCompact ?? false }
-
     var body: some View {
         ZStack(alignment: .leading) {
             NavigationStack {
                 page
-                    .toolbar { topBar }
+                    .toolbar(.hidden, for: .navigationBar)
                     .pageColoredSurroundings(browser.currentTab)
-                    .toolbarTitleDisplayMode(.inline)
-                    .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
             }
             if isSidebarShown {
                 Color.black.opacity(0.18)
@@ -69,43 +64,13 @@ struct UnfoldedPortraitLayout: View {
             .allowsHitTesting(false)
             Color.clear
                 .allowsHitTesting(false)
-                .overlay(alignment: .bottom) { bottomBar }
+                .overlay(alignment: .bottom) { NoGutterBar { setSidebar(!isSidebarShown) } }
         }
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
     }
 
-    private var bottomBar: some View {
-        HStack(spacing: 10) {
-            if !compact {
-                Button("Show Sidebar", systemImage: "sidebar.leading") { setSidebar(true) }
-                    .scrubsTabRail()
-                    .glassCircleButton()
-                    .transition(.opacity)
-            }
-            BottomBar(sideMargin: 0)
-            if !compact {
-                NewTabButton()
-                    .glassCircleButton()
-                    .transition(.opacity)
-            }
-        }
-        .frame(maxWidth: BarMetrics.floatingBarMaxWidth)
-        .padding(.horizontal, 16)
-        .animation(Motion.collapse, value: compact)
-        .hiddenWhileKeyboardIsUp()
-    }
-
-    @ToolbarContentBuilder private var topBar: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) { HistoryButton(forward: false) }
-        ToolbarItem(placement: .topBarLeading) { HistoryButton(forward: true) }
-        if browser.downloads.isIndicatorVisible {
-            ToolbarItem(placement: .topBarTrailing) { DownloadProgressButton() }
-        }
-        ToolbarItem(placement: .topBarTrailing) { PageMenu() }
-    }
-
     private var sidebar: some View {
-        SidebarView()
+        SidebarView(showsAddress: false)
             .padding(.vertical, 12)
             // An iPad's status bar runs along the top, under the sidebar.
             .padding(.top, UIDevice.current.userInterfaceIdiom == .pad ? 24 : 0)
@@ -126,5 +91,48 @@ struct UnfoldedPortraitLayout: View {
     private func setSidebar(_ shown: Bool) {
         guard shown != isSidebarShown else { return }
         withAnimation(Motion.spring) { isSidebarShown = shown }
+    }
+}
+
+/// The bottom bar for a big screen with no vertical bar beside the page: the sidebar button and
+/// plus at the edges, in reach of your hands, with the arrows and address between them.
+/// The rest of the page's controls are in the address sheet, as on a phone.
+struct NoGutterBar: View {
+    @Environment(BrowserState.self) private var browser
+    var onToggleSidebar: () -> Void
+
+    private var compact: Bool { browser.currentTab?.isChromeCompact ?? false }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if !compact {
+                Button("Toggle Sidebar", systemImage: "sidebar.leading", action: onToggleSidebar)
+                    .scrubsTabRail()
+                    .glassCircleButton()
+                    .transition(.opacity)
+            }
+            Spacer(minLength: 0)
+            if !compact {
+                HStack(spacing: 0) {
+                    HistoryButton(forward: false).frame(width: 42, height: BarMetrics.capsuleHeight).contentShape(.rect)
+                    HistoryButton(forward: true).frame(width: 42, height: BarMetrics.capsuleHeight).contentShape(.rect)
+                }
+                .labelStyle(.iconOnly)
+                .fontWeight(.medium)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .transition(.opacity)
+            }
+            BottomBar(sideMargin: 0).frame(maxWidth: compact ? nil : BarMetrics.noGutterAddressWidth)
+            Spacer(minLength: 0)
+            if !compact {
+                if browser.downloads.isIndicatorVisible {
+                    DownloadProgressButton().glassCircleButton().transition(.opacity)
+                }
+                NewTabButton().glassCircleButton().transition(.opacity)
+            }
+        }
+        .padding(.horizontal, 16)
+        .animation(Motion.collapse, value: compact)
+        .hiddenWhileKeyboardIsUp()
     }
 }
