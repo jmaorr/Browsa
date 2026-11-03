@@ -56,7 +56,7 @@ poster grid 1.8
 poster gutter 3.6
 
 # The page inside the live layouts section: the wide layout from the sidebar still, the narrow one from the closed still.
-ffmpeg -v error -y -i $R/web-clips/still-open-sidebar.png -vf "crop=1730:1880:862:60,scale=1200:-2" -update 1 $TMP/p.png
+ffmpeg -v error -y -i $R/web-clips/still-open-sidebar.png -vf "crop=1726:1880:866:60,scale=1200:-2" -update 1 $TMP/p.png
 cwebp -quiet -q 78 $TMP/p.png -o $O/page-wide.webp
 ffmpeg -v error -y -i $R/web-clips/still-closed-linear.png -vf "crop=1130:1760:0:0,scale=760:-2" -update 1 $TMP/p.png
 cwebp -quiet -q 78 $TMP/p.png -o $O/page-narrow.webp
