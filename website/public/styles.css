@@ -99,7 +99,9 @@ h1, h2 { margin: 0; font-weight: 600; text-wrap: balance; }
 .device.upright { --r: 6.7cqw; --tl: 6.7cqw; --b: 1.39cqw; --ratio: 2006 / 2852; }
 
 .stage { margin-top: clamp(28px, 3.4vw, 44px); display: grid; justify-items: center; }
-.stage > .device { grid-area: 1 / 1; }
+.stage > .device { grid-area: 1 / 1; align-self: center; }
+/* The other posture keeps its space, so switching doesn't change the page's height. */
+.stage > .device[hidden] { display: block; visibility: hidden; }
 .stage > .wide { width: min(100%, calc((100svh - 96px) * 1.42)); }
 .stage > .tall { width: min(480px, 76vw); }
 /* Waits for the stencil, but never for long if the script doesn't run. */

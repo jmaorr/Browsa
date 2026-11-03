@@ -20,7 +20,7 @@ function sync() {
   syncCycle();
   for (const clip of clips) {
     const held = heroDrawing && heroClips.has(clip);
-    if (!paused && !held && visible.has(clip) && clip.offsetParent !== null) clip.play().catch(() => {});
+    if (!paused && !held && visible.has(clip) && !clip.closest("[hidden]")) clip.play().catch(() => {});
     else clip.pause();
   }
   motionButton.setAttribute("aria-pressed", String(paused));
