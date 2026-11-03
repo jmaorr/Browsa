@@ -42,6 +42,8 @@ struct HistoryButton: View {
 /// While the gallery is up it turns into a tick that closes it, so the gallery needs no Done button.
 struct TabsButton: View {
     @Environment(BrowserState.self) private var browser
+    /// Dragging from it brings out the tab strip, in the app's own bar.
+    var scrubsTabRail = false
 
     var body: some View {
         let open = browser.isTabSwitcherPresented
@@ -49,6 +51,7 @@ struct TabsButton: View {
             Label(open ? "Done" : "Tabs", systemImage: open ? "checkmark" : "square.on.square")
                 .contentTransition(.symbolEffect(.replace))
         }
+        .scrubsTabRail(isEnabled: scrubsTabRail && !open)
         .accessibilityValue(open ? "" : "\(browser.currentSpace.allTabs.count) open")
         .sensoryFeedback(.selection, trigger: open)
     }
@@ -95,6 +98,12 @@ struct DownloadProgressButton: View {
 /// Everything else about the page, in one native menu.
 struct PageMenu: View {
     @Environment(BrowserState.self) private var browser
+    /// In the address sheet, where anything that opens a sheet of its own has to wait for it to go.
+    var closesNewTabSheetFirst = false
+
+    private func presenting(_ action: @escaping @MainActor () -> Void) {
+        if closesNewTabSheetFirst { browser.afterClosingNewTabSheet(action) } else { action() }
+    }
 
     var body: some View {
         let tab = browser.currentTab
@@ -115,8 +124,8 @@ struct PageMenu: View {
                            systemImage: browser.isFavorite(url) ? "star.slash" : "star") {
                         browser.toggleFavoriteForCurrentTab()
                     }
-                    Button("Show Reader", systemImage: "doc.plaintext") { browser.showReader() }
-                    Button("Find on Page", systemImage: "doc.text.magnifyingglass") { browser.findInPage() }
+                    Button("Show Reader", systemImage: "doc.plaintext") { presenting { browser.showReader() } }
+                    Button("Find on Page", systemImage: "doc.text.magnifyingglass") { presenting { browser.findInPage() } }
                     Button(tab.isDesktopSite ? "Request Mobile Site" : "Request Desktop Site",
                            systemImage: tab.isDesktopSite ? "iphone" : "desktopcomputer") { browser.toggleDesktopSite() }
                     Button("Reload", systemImage: "arrow.clockwise") { browser.reload() }
@@ -130,9 +139,9 @@ struct PageMenu: View {
                 }
             }
             Section {
-                Button("Saved", systemImage: "bookmark") { browser.isSavedPresented = true }
-                Button("Downloads", systemImage: "arrow.down.circle") { browser.isDownloadsPresented = true }
-                Button("Settings", systemImage: "gearshape") { browser.isSettingsPresented = true }
+                Button("Saved", systemImage: "bookmark") { presenting { browser.isSavedPresented = true } }
+                Button("Downloads", systemImage: "arrow.down.circle") { presenting { browser.isDownloadsPresented = true } }
+                Button("Settings", systemImage: "gearshape") { presenting { browser.isSettingsPresented = true } }
             }
         } label: {
             Label("More", systemImage: "ellipsis")
@@ -178,7 +187,6 @@ extension View {
     func glassCircleButton() -> some View {
         labelStyle(.iconOnly)
             .fontWeight(.medium)
-            .foregroundStyle(.primary)
             .frame(width: BarMetrics.capsuleHeight, height: BarMetrics.capsuleHeight)
             .contentShape(.circle)
             .glassEffect(.regular.interactive(), in: .circle)

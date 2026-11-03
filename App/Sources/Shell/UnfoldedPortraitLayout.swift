@@ -33,6 +33,10 @@ struct UnfoldedPortraitLayout: View {
         }
         // The open sidebar already lists the tabs, so the strip doesn't peek then.
         .onChange(of: isSidebarShown, initial: true) { _, shown in rail.sidebarShowsTabs = shown }
+        .onAppear {
+            rail.edge = .leading
+            rail.isBesideVerticalBar = false
+        }
         // "Show All Tabs" (⇧⌘\\) means the sidebar here, not the grid.
         .onChange(of: browser.isTabSwitcherPresented) { _, wanted in
             guard wanted else { return }
@@ -66,7 +70,6 @@ struct UnfoldedPortraitLayout: View {
             Color.clear
                 .allowsHitTesting(false)
                 .overlay(alignment: .bottom) { bottomBar }
-                .overlay(alignment: .leading) { TabRailEdge().padding(.bottom, 96) }
         }
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { topInset = $0 }
     }
@@ -75,6 +78,7 @@ struct UnfoldedPortraitLayout: View {
         HStack(spacing: 10) {
             if !compact {
                 Button("Show Sidebar", systemImage: "sidebar.leading") { setSidebar(true) }
+                    .scrubsTabRail()
                     .glassCircleButton()
                     .transition(.opacity)
             }
@@ -85,6 +89,7 @@ struct UnfoldedPortraitLayout: View {
                     .transition(.opacity)
             }
         }
+        .frame(maxWidth: BarMetrics.floatingBarMaxWidth)
         .padding(.horizontal, 16)
         .animation(Motion.collapse, value: compact)
         .hiddenWhileKeyboardIsUp()
@@ -102,6 +107,8 @@ struct UnfoldedPortraitLayout: View {
     private var sidebar: some View {
         SidebarView()
             .padding(.vertical, 12)
+            // An iPad's status bar runs along the top, under the sidebar.
+            .padding(.top, UIDevice.current.userInterfaceIdiom == .pad ? 24 : 0)
             .frame(width: 320)
             .frame(maxHeight: .infinity)
             .ignoresSafeArea(.container, edges: .vertical)

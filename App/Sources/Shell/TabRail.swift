@@ -2,13 +2,14 @@ import SwiftUI
 import BrowserCore
 import Suggest
 
-/// The slim strip of tab icons that grows out of the leading edge of the screen, like a notch:
-/// it's attached to the edge, and its top and bottom flare into the edge with concave curves.
+/// The slim strip of tab icons that grows out of the side of the screen, like a notch: it's
+/// attached to the edge, and its top and bottom flare into the edge with concave curves.
 ///
 /// - **Peek**: appears for ~1.4 s whenever you open or switch tabs (unless the docked sidebar or
 ///   the gallery already shows them), so you always see where you are in the stack.
-/// - **Scrub**: a swipe in from the leading edge brings it out under your finger. Slide up and
-///   down to move the highlight (a haptic tick per tab), let go to switch.
+/// - **Scrub**: it comes out under your finger. Slide up and down to move the highlight (a haptic
+///   tick per tab), let go to switch. The screen's edges belong to back and forward, so it starts
+///   from a button on a phone, and from the page's edge beside the system's vertical bar on the Duo.
 ///
 /// The highlight is computed from the finger's y with plain arithmetic on fixed row sizes, so
 /// there's no per-frame geometry reading.
@@ -19,6 +20,12 @@ final class TabRailController {
     private(set) var highlighted: UUID?
     /// Height of the area the rail is centred in. Set once per layout change.
     var containerHeight: CGFloat = 0
+    /// Where that area starts on screen, since an iPad window can be anywhere.
+    var containerMinY: CGFloat = 0
+    /// Which side the strip comes out of: the side of whatever starts it.
+    var edge: HorizontalEdge = .leading
+    /// Beside the system's vertical bar it comes out of the page's edge, not the screen's.
+    var isBesideVerticalBar = false
     /// True while the docked sidebar already lists the tabs; peeks are skipped then.
     var sidebarShowsTabs = false
 
@@ -62,10 +69,10 @@ final class TabRailController {
         show()
     }
 
-    /// - Parameter y: finger position in the container's coordinate space.
+    /// - Parameter y: finger position on screen.
     func scrub(toY y: CGFloat) {
         guard isScrubbing, !ordered.isEmpty else { return }
-        let top = (containerHeight - railHeight) / 2 + Self.padding
+        let top = containerMinY + (containerHeight - railHeight) / 2 + Self.padding
         var local = y - top
         // Skip over the separator between pinned and today.
         let pinnedSpan = CGFloat(pinned.count) * Self.rowPitch
@@ -126,6 +133,11 @@ struct TabRailView: View {
     @Environment(TabRailController.self) private var rail
     nonisolated static let width: CGFloat = 54
 
+    /// The strip is drawn for the leading edge. This flips it, without mirroring its icons.
+    private var sign: CGFloat { rail.edge == .leading ? 1 : -1 }
+    private var alignment: Alignment { rail.edge == .leading ? .leading : .trailing }
+    private var anchor: UnitPoint { rail.edge == .leading ? .leading : .trailing }
+
     var body: some View {
         let reveal: CGFloat = rail.isShown ? 1 : 0
         VStack(spacing: 0) {
@@ -139,17 +151,18 @@ struct TabRailView: View {
         }
         .padding(.vertical, TabRailController.padding)
         .opacity(Motion.reduced ? reveal : max(0, reveal * 1.6 - 0.3))
-        .scaleEffect(Motion.reduced ? 1 : 0.85 + 0.15 * reveal, anchor: .leading)
-        .offset(x: Motion.reduced ? 0 : (reveal - 1) * 26)
-        .frame(width: Self.width, alignment: .leading)
-        .background(alignment: .leading) {
+        .scaleEffect(Motion.reduced ? 1 : 0.85 + 0.15 * reveal, anchor: anchor)
+        .offset(x: Motion.reduced ? 0 : (reveal - 1) * 26 * sign)
+        .frame(width: Self.width, alignment: alignment)
+        .background(alignment: alignment) {
             EdgeNotchShape(reveal: Motion.reduced ? 1 : reveal, fullWidth: Self.width)
                 .fill(.regularMaterial)
-                .shadow(color: .black.opacity(0.16 * reveal), radius: 10, x: 2)
+                .scaleEffect(x: sign, y: 1)
+                .shadow(color: .black.opacity(0.16 * reveal), radius: 10, x: 2 * sign)
                 .opacity(Motion.reduced ? reveal : 1)   // Reduce Motion: fade in place
         }
         // Flush with the physical edge, even where there's a safe-area inset.
-        .ignoresSafeArea(edges: .horizontal)
+        .ignoresSafeArea(edges: rail.isBesideVerticalBar ? [] : .horizontal)
         .sensoryFeedback(.selection, trigger: rail.isScrubbing ? rail.highlighted : nil)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -163,11 +176,11 @@ struct TabRailView: View {
         }
         .frame(width: 38, height: 38)
         .background(on ? AnyShapeStyle(.fill.secondary) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 11, style: .continuous))
-        .scaleEffect(on ? 1.12 : 1, anchor: .leading)
-        .padding(.leading, 8)
+        .scaleEffect(on ? 1.12 : 1, anchor: anchor)
+        .padding(rail.edge == .leading ? .leading : .trailing, 8)
         .frame(height: TabRailController.rowPitch)
         // Title bubble beside the highlighted icon.
-        .overlay(alignment: .leading) {
+        .overlay(alignment: alignment) {
             if on {
                 Text(tab.displayTitle)
                     .font(.caption.weight(.semibold))
@@ -176,8 +189,8 @@ struct TabRailView: View {
                     .background(.background, in: .rect(cornerRadius: 8, style: .continuous))
                     .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
                     .fixedSize()
-                    .offset(x: 60)
-                    .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .leading)))
+                    .offset(x: 60 * sign)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: anchor)))
             }
         }
         .animation(Motion.snappy, value: on)
@@ -226,7 +239,7 @@ struct EdgeNotchShape: Shape {
     }
 }
 
-/// A thin invisible strip on the leading edge that starts a scrub.
+/// A thin invisible strip on the page's edge beside the vertical bar that starts a scrub.
 struct TabRailEdge: View {
     @Environment(TabRailController.self) private var rail
     @GestureState private var isDragging = false
@@ -238,7 +251,7 @@ struct TabRailEdge: View {
             .frame(maxHeight: .infinity)
             .contentShape(.rect)
             .gesture(
-                DragGesture(minimumDistance: 4, coordinateSpace: .named("browserRoot"))
+                DragGesture(minimumDistance: 4, coordinateSpace: .global)
                     .updating($isDragging) { _, state, _ in state = true }
                     .onChanged { v in
                         if !began { began = true; rail.beginScrub() }
@@ -251,6 +264,43 @@ struct TabRailEdge: View {
             }
             .onDisappear { finish() }
             .accessibilityHidden(true)
+    }
+
+    private func finish() {
+        guard began else { return }
+        began = false
+        rail.commit()
+    }
+}
+
+extension View {
+    /// Dragging from this button brings out the tab strip. Tapping it still does what it did.
+    /// Only for the app's own buttons: one in the system's bars never sees the drag.
+    func scrubsTabRail(isEnabled: Bool = true) -> some View { modifier(ScrubsTabRail(isEnabled: isEnabled)) }
+}
+
+private struct ScrubsTabRail: ViewModifier {
+    let isEnabled: Bool
+    @Environment(TabRailController.self) private var rail
+    @GestureState private var isDragging = false
+    @State private var began = false
+
+    func body(content: Content) -> some View {
+        content
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 12, coordinateSpace: .global)
+                    .updating($isDragging) { _, state, _ in state = true }
+                    .onChanged { v in
+                        guard isEnabled else { return }
+                        if !began { began = true; rail.beginScrub() }
+                        rail.scrub(toY: v.location.y)
+                    }
+            )
+            // Also fires when the system cancels the gesture, which never reaches onEnded.
+            .onChange(of: isDragging) { _, dragging in
+                if !dragging { finish() }
+            }
+            .onDisappear { finish() }
     }
 
     private func finish() {

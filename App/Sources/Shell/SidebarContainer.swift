@@ -5,7 +5,7 @@ import BrowserCore
 /// motion is ours:
 ///
 /// - **Docked**: the sidebar pushes the page aside, and the page becomes an inset rounded card.
-/// - **Hidden**: the page is full-bleed. A swipe in from the leading edge brings out the tab strip.
+/// - **Hidden**: the page is full-bleed. A drag from the sidebar button brings out the tab strip.
 ///
 /// Laying out a web view is slow, so the page never resizes during the animation. It changes size
 /// once, while it's off to the side of its final position, and the motion itself only slides it.
@@ -57,10 +57,6 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
                 .ignoresSafeArea(.all, edges: .vertical)
                 .offset(x: isDocked ? 0 : -(width + 16) * sign)
                 .allowsHitTesting(isDocked)
-        }
-        // Edge swipe while hidden: scrub the tab strip.
-        .overlay(alignment: .leading) {
-            if !isDocked { TabRailEdge() }
         }
         .sensoryFeedback(.impact(weight: .light), trigger: isDocked)
         .onChange(of: isDocked) { _, docked in docked ? dock() : undock() }

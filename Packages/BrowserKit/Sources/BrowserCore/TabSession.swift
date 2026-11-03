@@ -26,9 +26,8 @@ public final class TabSession: NSObject {
         self.webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
 
-        // Off on purpose: the leading-edge swipe belongs to the tab strip (scrub through tabs),
-        // and accidental "back" swipes were a pain. Back lives on the toolbar button instead.
-        webView.allowsBackForwardNavigationGestures = false
+        // The edges belong to back and forward. The tab strip starts from the tabs button.
+        webView.allowsBackForwardNavigationGestures = true
         webView.allowsLinkPreview = true
         webView.isInspectable = true
         webView.navigationDelegate = self

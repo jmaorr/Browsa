@@ -10,6 +10,8 @@ enum BarMetrics {
     static let compactCapsuleDrop: CGFloat = 20
     /// Page space under a floating address capsule: the capsule plus the safe area below it.
     static let underCapsuleInset: CGFloat = 90
+    /// The widest a floating bottom bar gets, on anything bigger than a phone in portrait.
+    static let floatingBarMaxWidth: CGFloat = 640
     /// Page space when the sidebar holds the address, so the last line clears the card's corner.
     static let dockedPageInset: CGFloat = 24
 }

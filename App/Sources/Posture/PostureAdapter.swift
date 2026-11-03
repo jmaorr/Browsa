@@ -33,16 +33,18 @@ enum PostureLog {
     static let logger = Logger(subsystem: "com.orriginal.browsa", category: "posture")
 }
 
-/// Publishes a `Posture` from the size class alone, so the layout changes in step with the display.
+/// Publishes a `Posture` from the size classes alone, so the layout changes in step with the display.
 struct PostureReader<Content: View>: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @ViewBuilder var content: (Posture) -> Content
 
     var posture: Posture {
         #if DEBUG
         if let forced = UITestSupport.forcedUnfolded { return forced ? .unfolded : .folded }
         #endif
-        return sizeClass == .regular ? .unfolded : .folded
+        // A big iPhone on its side is regular width too, but it's still a phone: it's short.
+        return sizeClass == .regular && verticalSizeClass != .compact ? .unfolded : .folded
     }
 
     var body: some View {

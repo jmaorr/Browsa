@@ -5,6 +5,7 @@ import Suggest
 struct RootView: View {
     @Environment(BrowserState.self) private var browser
     @State private var rail = TabRailController()
+    @Environment(\.duoToolbarVerticalEdge) private var verticalBarEdge
     @AppStorage(ReaderView.fullScreenKey) private var readerFullScreen = false
     /// Reader is between its sheet and its full-screen cover.
     @State private var readerSwapping = false
@@ -29,7 +30,8 @@ struct RootView: View {
         .sheet(isPresented: $browser.isNewTabSheetPresented) {
             NewTabSheet(engine: browser.suggest,
                         initialText: browser.newTabSheetEditsCurrentTab ? (browser.currentTab?.url?.absoluteString ?? "") : "",
-                        morphFrom: browser.newTabSheetEditsCurrentTab ? browser.currentTab?.url : nil)
+                        morphFrom: browser.newTabSheetEditsCurrentTab ? browser.currentTab?.url : nil,
+                        showsPageActions: !browser.isUnfolded && verticalBarEdge == nil)
         }
         .sheet(isPresented: $browser.isSettingsPresented) {
             // Settings keeps the system's control colours.
@@ -54,9 +56,11 @@ struct RootView: View {
         .modifier(WebPromptAlert())
         .overlay { ToastOverlay() }
         // Tab icon strip, shared by both postures.
-        .overlay(alignment: .leading) { TabRailView() }
-        .coordinateSpace(.named("browserRoot"))
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rail.containerHeight = $0 }
+        .overlay(alignment: rail.edge == .leading ? .leading : .trailing) { TabRailView() }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+            rail.containerHeight = $0.height
+            rail.containerMinY = $0.minY
+        }
         .onChange(of: browser.currentTab?.id) { rail.currentTabChanged() }
         .onAppear { rail.browser = browser }
         .environment(rail)
