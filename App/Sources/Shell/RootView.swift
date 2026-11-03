@@ -4,7 +4,7 @@ import Suggest
 
 struct RootView: View {
     @Environment(BrowserState.self) private var browser
-    @State private var rail = TabRailController()
+    @Environment(\.duoToolbarVerticalEdge) private var verticalBarEdge
     @AppStorage(ReaderView.fullScreenKey) private var readerFullScreen = false
     /// Reader is between its sheet and its full-screen cover.
     @State private var readerSwapping = false
@@ -21,15 +21,15 @@ struct RootView: View {
             // New pages ask for the desktop site on the inner display, mobile on the outer.
             .onChange(of: posture, initial: true) { _, p in
                 browser.isUnfolded = (p == .unfolded)
-                // A fold can cancel a swipe mid-gesture, which would leave the strip out.
-                rail.reset()
             }
         }
         // One sheet for both layouts, so an open sheet (and its typed text) survives a fold.
         .sheet(isPresented: $browser.isNewTabSheetPresented) {
             NewTabSheet(engine: browser.suggest,
+                        isPrivate: browser.currentSpace.isPrivate,
                         initialText: browser.newTabSheetEditsCurrentTab ? (browser.currentTab?.url?.absoluteString ?? "") : "",
-                        morphFrom: browser.newTabSheetEditsCurrentTab ? browser.currentTab?.url : nil)
+                        morphFrom: browser.newTabSheetEditsCurrentTab ? browser.currentTab?.url : nil,
+                        showsPageActions: verticalBarEdge == nil)
         }
         .sheet(isPresented: $browser.isSettingsPresented) {
             // Settings keeps the system's control colours.
@@ -53,13 +53,6 @@ struct RootView: View {
         // Page dialogs, permission requests and logins, one at a time.
         .modifier(WebPromptAlert())
         .overlay { ToastOverlay() }
-        // Tab icon strip, shared by both postures.
-        .overlay(alignment: .leading) { TabRailView() }
-        .coordinateSpace(.named("browserRoot"))
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rail.containerHeight = $0 }
-        .onChange(of: browser.currentTab?.id) { rail.currentTabChanged() }
-        .onAppear { rail.browser = browser }
-        .environment(rail)
         // Neutral chrome, like Safari. A space's colour only tints the sidebar's background.
         .tint(.primary)
     }
@@ -141,21 +134,6 @@ extension View {
             }
             .toolbarColorScheme(color.map { $0.isLight ? .light : .dark }, for: .navigationBar)
     }
-}
-
-private struct PageMatchedAppearance: ViewModifier {
-    let tab: BrowserTab?
-    @Environment(\.colorScheme) private var system
-
-    func body(content: Content) -> some View {
-        content.environment(\.colorScheme, tab?.pageBackground.map { $0.isLight ? .light : .dark } ?? system)
-    }
-}
-
-extension View {
-    /// For a bar behind the system's status items, which `pageColoredSurroundings` has flipped.
-    /// Never put this around the web view, or a site's own dark mode would follow the page's colour.
-    func pageMatchedAppearance(_ tab: BrowserTab?) -> some View { modifier(PageMatchedAppearance(tab: tab)) }
 }
 
 private extension CGColor {

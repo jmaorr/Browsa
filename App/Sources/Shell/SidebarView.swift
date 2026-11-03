@@ -5,6 +5,8 @@ import Suggest
 /// Arc-style sidebar: address field, pinned tabs grid, "+ New Tab", today's tabs, space switcher.
 struct SidebarView: View {
     @Environment(BrowserState.self) private var browser
+    /// Off when the bottom bar has the address.
+    var showsAddress = true
 
     private let pinnedColumns = [GridItem(.adaptive(minimum: 56), spacing: 8)]
     /// How far a tab travels on arriving from another space. A short move, faded in, reads as one
@@ -14,8 +16,10 @@ struct SidebarView: View {
     var body: some View {
         let space = browser.currentSpace
         VStack(alignment: .leading, spacing: 12) {
-            addressButton
-                .padding(.horizontal, 12)
+            if showsAddress {
+                addressButton
+                    .padding(.horizontal, 12)
+            }
 
             spaceTabs(space)
 

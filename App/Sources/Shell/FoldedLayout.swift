@@ -10,22 +10,22 @@ import Suggest
 /// - The bottom bar is just the address pill, full width. Copy Link lives in the address editor
 ///   (and holding the pill), not in the toolbar.
 ///
-/// On a phone without the vertical bar the same items fall back to the top toolbar.
+/// A phone without the vertical bar has `PhoneLayout` instead.
 struct FoldedLayout: View {
     @Environment(BrowserState.self) private var browser
-    @Environment(TabRailController.self) private var rail
     @Environment(\.duoToolbarVerticalEdge) private var verticalBarEdge
 
     var body: some View {
+        if verticalBarEdge == nil { PhoneLayout() } else { outerDisplay }
+    }
+
+    private var outerDisplay: some View {
         NavigationStack {
             // The bar floats over the page (it doesn't resize it), so collapsing it never reflows the page.
             WebContentView(bottomObscuredInset: BarMetrics.underCapsuleInset)
                 // Edge to edge like Safari: the page runs under the status area and the bar.
-                // Without the vertical bar, the controls are in a top toolbar the page must clear.
-                .ignoresSafeArea(.all, edges: verticalBarEdge == nil ? .bottom : .vertical)
+                .ignoresSafeArea(.all, edges: .vertical)
                 .overlay(alignment: .bottom) { BottomBar().hiddenWhileKeyboardIsUp() }
-                // Leading-edge swipe scrubs through tabs (WebKit's swipe-back is turned off).
-                .overlay(alignment: .leading) { TabRailEdge().padding(.bottom, 96) }
                 // Part of the page, so the system's bars stay above it and keep working.
                 .overlay { TabGridOverlay() }
                 .toolbar { gutter }
@@ -34,11 +34,9 @@ struct FoldedLayout: View {
                 .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
                 .duoVerticalBarPrefersOurItems()
         }
-        .onAppear { rail.sidebarShowsTabs = false }
     }
 
     @ToolbarContentBuilder private var gutter: some ToolbarContent {
-        let lower: ToolbarItemPlacement = verticalBarEdge == nil ? .topBarTrailing : .bottomBar
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: false) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: true) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { PageMenu() }.duoPinnedToVerticalBar()
@@ -46,8 +44,8 @@ struct FoldedLayout: View {
             ToolbarItem(placement: .topBarTrailing) { DownloadProgressButton() }.duoPinnedToVerticalBar()
         }
         // Bottom-bar items land at the far end of the vertical bar, beside your thumb.
-        ToolbarItem(placement: lower) { NewTabButton() }.duoPinnedToVerticalBar()
-        ToolbarItem(placement: lower) { TabsButton() }.duoPinnedToVerticalBar()
+        ToolbarItem(placement: .bottomBar) { NewTabButton() }.duoPinnedToVerticalBar()
+        ToolbarItem(placement: .bottomBar) { TabsButton() }.duoPinnedToVerticalBar()
     }
 }
 
@@ -89,6 +87,8 @@ struct BottomBar: View {
     @Environment(BrowserState.self) private var browser
     /// Space either side of the capsule at full size.
     var sideMargin: CGFloat = 24
+    /// How far the small capsule drops. A resizable iPad window has little room below it.
+    var compactDrop = BarMetrics.compactCapsuleDrop
     @State private var dragX: CGFloat = 0
 
     /// Collapsed to a small centred pill while the page scrolls down (Safari-style).
@@ -101,7 +101,7 @@ struct BottomBar: View {
         // No padding below: like Safari the bar rests right on the safe area, and the small pill
         // drops into it, just above the home indicator.
         .padding(.horizontal, compact ? 0 : sideMargin)
-        .offset(y: compact ? BarMetrics.compactCapsuleDrop : 0)
+        .offset(y: compact ? compactDrop : 0)
         .frame(maxWidth: .infinity)
         .animation(Motion.collapse, value: compact)
         .sensoryFeedback(.selection, trigger: browser.currentTab?.id)
@@ -111,7 +111,8 @@ struct BottomBar: View {
     /// Tap: edit address. Swipe left/right: previous/next tab. Swipe up: tab switcher.
     private var addressPill: some View {
         let tab = browser.currentTab
-        return HStack(spacing: 8) {
+        // The reload button's own frame gives it room, and the address needs every point on a phone.
+        return HStack(spacing: 2) {
             HStack(spacing: 8) {
                 if tab?.isPrivate == true {
                     Image(systemName: "eye.slash").foregroundStyle(.secondary).accessibilityLabel("Private")

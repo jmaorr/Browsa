@@ -108,8 +108,29 @@ import Testing
         #expect(SearchEngine.google.parseSuggestions(Data(body.utf8)) == ["github", "gitlab"])
     }
 
+    @Test func privateTypingNeverAsksRemoteProvider() async {
+        let remote = CountingRemote()
+        let e = SuggestEngine(localProviders: [], remote: remote,
+                              history: InMemoryHistoryIndex([]), favorites: { [] }, openTabs: { [] })
+        var last: SuggestResults?
+        for await r in e.results(for: "you", lastEditWasInsertion: true, includeRemote: false) { last = r }
+        #expect(last?.isComplete == true)
+        #expect(await remote.calls == 0)
+        for await _ in e.results(for: "you", lastEditWasInsertion: true) {}
+        #expect(await remote.calls == 1)
+    }
+
     @Test func defaultSourcesRespectPrivacyChoice() {
         #expect(SuggestEngine.defaultSources(for: .duckDuckGo, language: "en") == [.engine(.duckDuckGo), .wikipedia(language: "en")])
         #expect(SuggestEngine.defaultSources(for: .google, language: "en").count == 3)
+    }
+}
+
+private actor CountingRemote: SuggestionProvider {
+    private(set) var calls = 0
+    nonisolated var isRemote: Bool { true }
+    func suggestions(for query: String, limit: Int) async -> [Suggestion] {
+        calls += 1
+        return []
     }
 }

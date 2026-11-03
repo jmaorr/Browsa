@@ -32,6 +32,10 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Browsa
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Only uses the system's HTTPS, which is exempt, so uploads skip the export compliance question.
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         # Downloads land in Documents/Downloads and show up in the Files app.
         # Audio and picture-in-picture keep going when you leave the app, like Safari.
@@ -46,6 +50,11 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         # Lets the app appear in Settings > Default Browser App once Apple grants the
         # com.apple.developer.web-browser entitlement (request it when you're ready to ship).
         CFBundleURLTypes:
@@ -54,7 +63,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa
-        TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: Browsa
     scheme:
       testTargets:
@@ -71,4 +82,4 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa.uitests
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"

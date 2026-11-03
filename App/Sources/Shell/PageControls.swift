@@ -38,19 +38,52 @@ struct HistoryButton: View {
     }
 }
 
-/// Opens and closes the tab gallery. Holds no count, so it reads the same however many tabs are open.
-/// While the gallery is up it turns into a tick that closes it, so the gallery needs no Done button.
+/// Opens and closes the tab gallery. Hold it for your recent tabs. Holds no count, so it reads the
+/// same however many tabs are open. While the gallery is up it turns into a tick that closes it, so
+/// the gallery needs no Done button.
 struct TabsButton: View {
     @Environment(BrowserState.self) private var browser
 
     var body: some View {
         let open = browser.isTabSwitcherPresented
-        Button { browser.isTabSwitcherPresented.toggle() } label: {
+        Menu {
+            if !open { RecentTabsMenu() }
+        } label: {
             Label(open ? "Done" : "Tabs", systemImage: open ? "checkmark" : "square.on.square")
                 .contentTransition(.symbolEffect(.replace))
+        } primaryAction: {
+            browser.isTabSwitcherPresented.toggle()
         }
         .accessibilityValue(open ? "" : "\(browser.currentSpace.allTabs.count) open")
         .sensoryFeedback(.selection, trigger: open)
+    }
+}
+
+/// What holding a tabs or sidebar button offers: the current tab, then the ones you were just on.
+/// Press, slide to one and let go, like back and forward's history.
+struct RecentTabsMenu: View {
+    @Environment(BrowserState.self) private var browser
+    private static let limit = 6
+
+    var body: some View {
+        let current = browser.currentTab
+        let recent = browser.currentSpace.allTabs.sorted { a, b in
+            if a.id == current?.id { return true }
+            if b.id == current?.id { return false }
+            return a.lastActive > b.lastActive
+        }
+        ForEach(recent.prefix(Self.limit)) { tab in
+            Button {
+                withAnimation(Motion.snappy) { browser.select(tab) }
+            } label: {
+                if tab.id == current?.id {
+                    Label(tab.displayTitle, systemImage: "checkmark")
+                } else {
+                    Text(tab.displayTitle)
+                }
+                if let url = tab.url { Text(URLNormalizer.displayHost(url)) }
+            }
+        }
     }
 }
 
@@ -95,6 +128,12 @@ struct DownloadProgressButton: View {
 /// Everything else about the page, in one native menu.
 struct PageMenu: View {
     @Environment(BrowserState.self) private var browser
+    /// In the address sheet, where anything that opens a sheet of its own has to wait for it to go.
+    var closesNewTabSheetFirst = false
+
+    private func presenting(_ action: @escaping @MainActor () -> Void) {
+        if closesNewTabSheetFirst { browser.afterClosingNewTabSheet(action) } else { action() }
+    }
 
     var body: some View {
         let tab = browser.currentTab
@@ -115,8 +154,8 @@ struct PageMenu: View {
                            systemImage: browser.isFavorite(url) ? "star.slash" : "star") {
                         browser.toggleFavoriteForCurrentTab()
                     }
-                    Button("Show Reader", systemImage: "doc.plaintext") { browser.showReader() }
-                    Button("Find on Page", systemImage: "doc.text.magnifyingglass") { browser.findInPage() }
+                    Button("Show Reader", systemImage: "doc.plaintext") { presenting { browser.showReader() } }
+                    Button("Find on Page", systemImage: "doc.text.magnifyingglass") { presenting { browser.findInPage() } }
                     Button(tab.isDesktopSite ? "Request Mobile Site" : "Request Desktop Site",
                            systemImage: tab.isDesktopSite ? "iphone" : "desktopcomputer") { browser.toggleDesktopSite() }
                     Button("Reload", systemImage: "arrow.clockwise") { browser.reload() }
@@ -130,9 +169,9 @@ struct PageMenu: View {
                 }
             }
             Section {
-                Button("Saved", systemImage: "bookmark") { browser.isSavedPresented = true }
-                Button("Downloads", systemImage: "arrow.down.circle") { browser.isDownloadsPresented = true }
-                Button("Settings", systemImage: "gearshape") { browser.isSettingsPresented = true }
+                Button("Saved", systemImage: "bookmark") { presenting { browser.isSavedPresented = true } }
+                Button("Downloads", systemImage: "arrow.down.circle") { presenting { browser.isDownloadsPresented = true } }
+                Button("Settings", systemImage: "gearshape") { presenting { browser.isSettingsPresented = true } }
             }
         } label: {
             Label("More", systemImage: "ellipsis")
@@ -178,7 +217,6 @@ extension View {
     func glassCircleButton() -> some View {
         labelStyle(.iconOnly)
             .fontWeight(.medium)
-            .foregroundStyle(.primary)
             .frame(width: BarMetrics.capsuleHeight, height: BarMetrics.capsuleHeight)
             .contentShape(.circle)
             .glassEffect(.regular.interactive(), in: .circle)

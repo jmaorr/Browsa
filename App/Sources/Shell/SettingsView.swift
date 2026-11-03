@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var braveKey = ""
     @State private var confirmClearHistory = false
+    @State private var confirmClearWebsiteData = false
 
     private func groupBinding(_ group: FilterGroup) -> Binding<Bool> {
         Binding {
@@ -50,6 +51,13 @@ struct SettingsView: View {
         var id: String { rawValue }
     }
 
+    private static var version: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(short) (\(build))"
+    }
+
     var body: some View {
         @Bindable var browser = browser
         NavigationStack {
@@ -66,7 +74,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Search")
                 } footer: {
-                    Text("Search suggestions send what you type to \(SuggestEngine.defaultSources(for: browser.settings.searchEngine).map(\.displayName).formatted(.list(type: .and))). Favourites, history, open tabs and the built-in list of popular sites are always matched on the device.")
+                    Text("Outside private tabs, search suggestions send what you type to \(SuggestEngine.defaultSources(for: browser.settings.searchEngine).map(\.displayName).formatted(.list(type: .and))). Favourites, history, open tabs and the built-in list of popular sites are always matched on the device.")
                 }
 
                 Section {
@@ -122,6 +130,15 @@ struct SettingsView: View {
 
                 Section {
                     Button("Clear History", role: .destructive) { confirmClearHistory = true }
+                    Button("Clear Cookies and Site Data", role: .destructive) { confirmClearWebsiteData = true }
+                } footer: {
+                    Text("Clearing cookies and site data signs you out of websites.")
+                }
+
+                Section("About") {
+                    Link("Privacy Policy", destination: URL(string: "https://browsa.app/privacy/")!)
+                    Link("Contact", destination: URL(string: "mailto:hello@orriginal.me")!)
+                    LabeledContent("Version", value: Self.version)
                 }
             }
             .navigationTitle("Settings")
@@ -131,6 +148,11 @@ struct SettingsView: View {
             }
             .confirmationDialog("Clear all browsing history?", isPresented: $confirmClearHistory, titleVisibility: .visible) {
                 Button("Clear History", role: .destructive) { Task { await browser.history.clearAll() } }
+            }
+            .confirmationDialog("Clear all cookies and site data?", isPresented: $confirmClearWebsiteData, titleVisibility: .visible) {
+                Button("Clear Cookies and Site Data", role: .destructive) { Task { await browser.clearWebsiteData() } }
+            } message: {
+                Text("This signs you out of websites. Your tabs, history and favourites stay.")
             }
             .onAppear {
                 if case .brave(let key) = browser.settings.searchEngine { braveKey = key }

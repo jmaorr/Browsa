@@ -5,6 +5,17 @@ import WebKit
 import Suggest
 
 extension BrowserState {
+    // MARK: Website data
+
+    /// Forgets cookies and site storage from regular tabs. Private tabs have their own store.
+    public func clearWebsiteData() async {
+        await WKWebsiteDataStore.default().removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
+                                                      modifiedSince: .distantPast)
+        HTTPCookieStorage.shared.removeCookies(since: .distantPast)
+        // The open page still looks signed in until it's loaded again.
+        if currentTab?.isPrivate == false { reload() }
+    }
+
     // MARK: Spaces
 
     public func addSpace() {

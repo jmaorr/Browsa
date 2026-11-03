@@ -7,13 +7,17 @@
   </picture>
 </p>
 
-A native WebKit browser for iPhone Duo, open source under the [MIT license](LICENSE). Use it as it
+A native WebKit browser for iPhone Duo, iPhone and iPad, open source under the [MIT license](LICENSE). Use it as it
 is, or fork it as a starting point for your own browser. See it at [browsa.app](https://browsa.app). It brings Arc's navigation model to iOS:
 
 - **Unfolded (inner display):** a collapsible sidebar with spaces, pinned tabs and today tabs. The
   sidebar toggle and a one-tap **New Tab** sit in the Duo's system vertical bar.
 - **Folded (outer display):** a phone layout with an address pill and an Arc-style **plus** button
   at the bottom. Swipe the pill sideways to switch tabs, or up to see all tabs.
+- **iPhone:** one bottom bar with back, the address capsule, tabs and plus. **iPad** and the Duo's
+  inner portrait use a bottom bar too, with a sidebar on the big screen.
+- **Recent tabs:** press and hold the tabs button, or the sidebar button where the sidebar is the
+  tab list, to jump back to the tabs you were just on. Swipe from the edge to go back and forward.
 - **New-tab sheet:** the keyboard is up right away and favourites appear above it. You get
   suggestions from the first keystroke (favourites, open tabs, history ranked by frecency, a
   bundled list of popular sites and search-engine suggestions), plus inline autocomplete like Safari's.
@@ -63,7 +67,7 @@ open Browsa.xcodeproj
 ```
 
 You need Xcode 27.2 or later and the iOS 27.2 SDK. The app runs on iOS 27.1 or later, on an iPhone
-Duo or its simulator, and on other iPhones, where it uses the folded layout.
+Duo, other iPhones and iPad, or their simulators.
 
 To build your own copy, change `DEVELOPMENT_TEAM` and `bundleIdPrefix` in `project.yml`, and the
 target bundle identifiers below them, then run `xcodegen` again. The `.xcodeproj` is generated and

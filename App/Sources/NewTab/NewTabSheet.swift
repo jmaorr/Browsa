@@ -1,4 +1,5 @@
 import SwiftUI
+import GameController
 import BrowserCore
 import Suggest
 
@@ -17,17 +18,23 @@ struct NewTabSheet: View {
     /// Copy Link shows while the field still holds the page's address, and goes once you type.
     @State private var edited = false
     @State private var copies = 0
+    /// A layout with no room for the page's controls shows them here, under the address.
+    private let showsPageActions: Bool
 
-    init(engine: SuggestEngine, initialText: String, morphFrom: URL? = nil) {
-        _model = State(initialValue: NewTabModel(engine: engine))
+    init(engine: SuggestEngine, isPrivate: Bool, initialText: String, morphFrom: URL? = nil, showsPageActions: Bool = false) {
+        _model = State(initialValue: NewTabModel(engine: engine, isPrivate: isPrivate))
         self.initialText = initialText
         self.morphFrom = morphFrom
+        self.showsPageActions = showsPageActions
         _morphed = State(initialValue: morphFrom == nil)
     }
 
     var body: some View {
         VStack(spacing: 0) {
             header
+            if showsPageActions, let morphFrom, !edited {
+                PageActionsRow(url: morphFrom).transition(.opacity)
+            }
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
@@ -94,6 +101,8 @@ struct NewTabSheet: View {
                 .opacity(morphed ? 1 : 0)
                 .scaleEffect(morphed || Motion.reduced ? 1 : 0.6)
             AddressField(initialText: initialText, inline: model.inline,
+                         // Here for the page's controls, you may not want to type at all.
+                         focusesOnAppear: !(showsPageActions && morphFrom != nil) || GCKeyboard.coalesced != nil,
                          placeholder: "Search, address or command",
                          showsClearButton: morphFrom == nil || edited,
                          onTextChange: { text, inserted in

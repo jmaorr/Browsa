@@ -21,8 +21,6 @@ enum Motion {
     static var snappy: Animation { reduced ? calm : .snappy(duration: 0.28) }
     /// Small UI feedback (favourite star, chips).
     static var bouncy: Animation { reduced ? calm : .bouncy(duration: 0.35, extraBounce: 0.08) }
-    /// Tab strip sliding in and out.
-    static var rail: Animation { reduced ? calm : .interpolatingSpring(mass: 1, stiffness: 380, damping: 32) }
     /// Bottom bar collapsing to the small pill on scroll.
     static var collapse: Animation { reduced ? calm : .interpolatingSpring(mass: 1, stiffness: 300, damping: 26) }
 

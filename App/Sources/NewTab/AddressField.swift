@@ -7,6 +7,8 @@ import Suggest
 struct AddressField: UIViewRepresentable {
     var initialText: String
     var inline: InlineCompletion?
+    /// Raise the keyboard with the sheet. Otherwise it waits for a tap on the field.
+    var focusesOnAppear = true
     var placeholder: String
     /// Off while the field's trailing slot is showing something else.
     var showsClearButton = true
@@ -45,7 +47,7 @@ struct AddressField: UIViewRepresentable {
         // Raise the keyboard the moment the field is in a window, which is the start of the
         // sheet's presentation. UIKit then runs the keyboard animation alongside the sheet, so
         // the two arrive together (as in Safari), instead of the keyboard following it.
-        f.focusOnFirstWindow = true
+        f.focusOnFirstWindow = focusesOnAppear
         return f
     }
 
@@ -66,6 +68,7 @@ struct AddressField: UIViewRepresentable {
         var parent: AddressField
         private var lastEditWasInsertion = true
         private var appliedCompletion: InlineCompletion?
+        private var selectedOnFirstTap = false
 
         init(_ parent: AddressField) { self.parent = parent }
 
@@ -102,6 +105,14 @@ struct AddressField: UIViewRepresentable {
             guard field.markedTextRange == nil else { return }
             appliedCompletion = nil
             parent.onTextChange(field.text ?? "", lastEditWasInsertion)
+        }
+
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            // A tap puts the caret mid-address. Like the keyboard arriving with the sheet, it should
+            // select the lot, so typing replaces it. After the tap has placed its caret.
+            guard !parent.focusesOnAppear, !selectedOnFirstTap else { return }
+            selectedOnFirstTap = true
+            DispatchQueue.main.async { textField.selectAll(nil) }
         }
 
         func textFieldShouldReturn(_ textField: UITextField) -> Bool {

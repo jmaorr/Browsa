@@ -4,15 +4,22 @@ import Suggest
 
 /// Inner display. With the system's vertical bar beside the page there's room for a docked
 /// sidebar; in portrait the system has no vertical bar, and the page gets the whole width.
+/// An iPad has no vertical bar at all, so it goes by the shape of its window.
 struct UnfoldedLayout: View {
     @Environment(\.duoToolbarVerticalEdge) private var verticalBarEdge
+    @State private var isLandscape = false
+
+    private var isWide: Bool {
+        verticalBarEdge != nil || (UIDevice.current.userInterfaceIdiom == .pad && isLandscape)
+    }
 
     var body: some View {
         Group {
-            if verticalBarEdge == nil { UnfoldedPortraitLayout() } else { UnfoldedWideLayout() }
+            if isWide { UnfoldedWideLayout() } else { UnfoldedPortraitLayout() }
         }
+        .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { isLandscape = $0 }
         // Rotating swaps layouts outright, for the same reason PostureReader does.
-        .transaction(value: verticalBarEdge) { t in
+        .transaction(value: isWide) { t in
             t.animation = nil
             t.disablesAnimations = true
         }
@@ -22,40 +29,51 @@ struct UnfoldedLayout: View {
 /// Inner display, wide: Arc-style collapsible sidebar + full-bleed web content.
 /// The Duo's system vertical bar carries the same two groups as on the outer display (back,
 /// forward and page menu up top; new tab and the sidebar button, in the tabs slot, at the bottom).
+/// An iPad has no vertical bar, so they go in `NoGutterBar` at the bottom of the page.
 struct UnfoldedWideLayout: View {
     @Environment(BrowserState.self) private var browser
-    @Environment(TabRailController.self) private var rail
     @Environment(\.duoToolbarVerticalEdge) private var verticalBarEdge
 
     /// Put the sidebar on the edge opposite the system vertical bar so they never stack.
     private var sidebarEdge: HorizontalEdge { verticalBarEdge == .leading ? .trailing : .leading }
+    /// The status bar alone, for the page when the docked sidebar sits under the window's controls.
+    @State private var statusInset: CGFloat = 0
+    @State private var topInset: CGFloat = 0
+    @State private var bottomInset: CGFloat = 0
 
     var body: some View {
         let space = browser.currentSpace
         NavigationStack {
             SidebarContainer(isDocked: space.isSidebarOpen, edge: sidebarEdge,
                              tint: SpacePalette.color(for: space)) {
-                SidebarView()
+                // Clears the status bar or an iPad window's controls.
+                SidebarView(showsAddress: verticalBarEdge != nil).padding(.top, verticalBarEdge == nil ? topInset : 0)
             } content: {
-                WebContentView(bottomObscuredInset: space.isSidebarOpen ? BarMetrics.dockedPageInset : BarMetrics.underCapsuleInset)
+                if verticalBarEdge == nil {
+                    WebContentView(topObscuredInset: space.isSidebarOpen ? statusInset : topInset,
+                                   bottomObscuredInset: BarMetrics.underCapsuleInset)
+                } else {
+                    WebContentView(bottomObscuredInset: space.isSidebarOpen ? BarMetrics.dockedPageInset : BarMetrics.underCapsuleInset)
+                }
             }
             // The keyboard goes over the page without resizing it. WebKit scrolls the field into view.
             .ignoresSafeArea(.keyboard, edges: .bottom)
-            // The sidebar holds the address; with it hidden, the same capsule as the outer display.
             .overlay(alignment: .bottom) {
-                if !space.isSidebarOpen {
+                if verticalBarEdge == nil {
+                    // Across the page, beside the sidebar when it's docked.
+                    NoGutterBar(bottomInset: bottomInset) { toggleSidebar() }
+                        .padding(.leading, space.isSidebarOpen ? SidebarContainer<EmptyView, EmptyView>.defaultWidth : 0)
+                } else if !space.isSidebarOpen {
+                    // The sidebar holds the address; with it hidden, the same capsule as the outer display.
                     BottomBar().frame(maxWidth: 480).hiddenWhileKeyboardIsUp().transition(.opacity)
                 }
             }
-            .toolbar { toolbar }
+            .toolbar { if verticalBarEdge != nil { verticalBar } }
+            .toolbar(verticalBarEdge == nil ? .hidden : .automatic, for: .navigationBar)
             // Docked, the space's tint surrounds the page instead.
             .pageColoredSurroundings(browser.currentTab, isEnabled: !space.isSidebarOpen)
             .toolbarTitleDisplayMode(.inline)
             .duoVerticalBarPrefersOurItems()
-            // The docked sidebar already lists the tabs, so the strip doesn't peek then.
-            .onChange(of: space.isSidebarOpen, initial: true) { _, showing in
-                rail.sidebarShowsTabs = showing
-            }
             // "Show All Tabs" (⇧⌘\\) means the sidebar here, not the grid.
             .onChange(of: browser.isTabSwitcherPresented) { _, wanted in
                 guard wanted else { return }
@@ -63,6 +81,10 @@ struct UnfoldedWideLayout: View {
                 toggleSidebar()
             }
         }
+        // Measured outside the stack, whose bar counts as safe area until it has finished hiding.
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { statusInset = $0 }
+        .onGeometryChange(for: CGFloat.self) { BarMetrics.topCornerInset($0) } action: { topInset = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
         .background {
             // Hardware keyboard: Cmd-S toggles the sidebar, like Arc.
             Button("") { toggleSidebar() }.keyboardShortcut("s", modifiers: .command).hidden()
@@ -79,7 +101,7 @@ struct UnfoldedWideLayout: View {
     /// back, forward and the page menu at the top; new tab and tabs at the bottom. Here the
     /// tabs slot is the sidebar button, because the sidebar is the tab list. Tabs are always
     /// in the same place, whichever way the phone is.
-    @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+    @ToolbarContentBuilder private var verticalBar: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: false) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: true) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { PageMenu() }.duoPinnedToVerticalBar()
@@ -90,10 +112,24 @@ struct UnfoldedWideLayout: View {
         ToolbarItem(placement: .bottomBar) { NewTabButton() }
         .duoPinnedToVerticalBar()
         ToolbarItem(placement: .bottomBar) {
-            Button("Toggle Sidebar", systemImage: "sidebar.leading") { toggleSidebar() }
+            SidebarButton { toggleSidebar() }
                 .sensoryFeedback(.selection, trigger: browser.currentSpace.isSidebarOpen)
+        }.duoPinnedToVerticalBar()
+    }
+}
+
+/// Shows or hides the sidebar, which is the tab list here. Hold it for your recent tabs.
+struct SidebarButton: View {
+    var action: () -> Void
+
+    var body: some View {
+        Menu {
+            RecentTabsMenu()
+        } label: {
+            Label("Toggle Sidebar", systemImage: "sidebar.leading")
+        } primaryAction: {
+            action()
         }
-        .duoPinnedToVerticalBar()
     }
 }
 
