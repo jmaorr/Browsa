@@ -32,7 +32,6 @@ struct UnfoldedLayout: View {
 /// An iPad has no vertical bar, so they go in `NoGutterBar` at the bottom of the page.
 struct UnfoldedWideLayout: View {
     @Environment(BrowserState.self) private var browser
-    @Environment(TabRailController.self) private var rail
     @Environment(\.duoToolbarVerticalEdge) private var verticalBarEdge
 
     /// Put the sidebar on the edge opposite the system vertical bar so they never stack.
@@ -75,18 +74,6 @@ struct UnfoldedWideLayout: View {
             .pageColoredSurroundings(browser.currentTab, isEnabled: !space.isSidebarOpen)
             .toolbarTitleDisplayMode(.inline)
             .duoVerticalBarPrefersOurItems()
-            // The docked sidebar already lists the tabs, so the strip doesn't peek then.
-            .onChange(of: space.isSidebarOpen, initial: true) { _, showing in
-                rail.sidebarShowsTabs = showing
-            }
-            // The page's edge beside the vertical bar starts the strip. An iPad has the sidebar one tap away.
-            .overlay(alignment: verticalBarEdge == .leading ? .leading : .trailing) {
-                if !space.isSidebarOpen, verticalBarEdge != nil { TabRailEdge() }
-            }
-            .onChange(of: verticalBarEdge, initial: true) { _, barEdge in
-                rail.edge = barEdge ?? .leading
-                rail.isBesideVerticalBar = barEdge != nil
-            }
             // "Show All Tabs" (⇧⌘\\) means the sidebar here, not the grid.
             .onChange(of: browser.isTabSwitcherPresented) { _, wanted in
                 guard wanted else { return }
@@ -114,11 +101,6 @@ struct UnfoldedWideLayout: View {
     /// back, forward and the page menu at the top; new tab and tabs at the bottom. Here the
     /// tabs slot is the sidebar button, because the sidebar is the tab list. Tabs are always
     /// in the same place, whichever way the phone is.
-    private var sidebarButton: some View {
-        Button("Toggle Sidebar", systemImage: "sidebar.leading") { toggleSidebar() }
-            .sensoryFeedback(.selection, trigger: browser.currentSpace.isSidebarOpen)
-    }
-
     @ToolbarContentBuilder private var verticalBar: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: false) }.duoPinnedToVerticalBar()
         ToolbarItem(placement: .topBarTrailing) { HistoryButton(forward: true) }.duoPinnedToVerticalBar()
@@ -129,7 +111,25 @@ struct UnfoldedWideLayout: View {
         // Bottom-bar items land at the far end of the vertical bar.
         ToolbarItem(placement: .bottomBar) { NewTabButton() }
         .duoPinnedToVerticalBar()
-        ToolbarItem(placement: .bottomBar) { sidebarButton }.duoPinnedToVerticalBar()
+        ToolbarItem(placement: .bottomBar) {
+            SidebarButton { toggleSidebar() }
+                .sensoryFeedback(.selection, trigger: browser.currentSpace.isSidebarOpen)
+        }.duoPinnedToVerticalBar()
+    }
+}
+
+/// Shows or hides the sidebar, which is the tab list here. Hold it for your recent tabs.
+struct SidebarButton: View {
+    var action: () -> Void
+
+    var body: some View {
+        Menu {
+            RecentTabsMenu()
+        } label: {
+            Label("Toggle Sidebar", systemImage: "sidebar.leading")
+        } primaryAction: {
+            action()
+        }
     }
 }
 

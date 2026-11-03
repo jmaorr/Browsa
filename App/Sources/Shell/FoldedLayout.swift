@@ -13,7 +13,6 @@ import Suggest
 /// A phone without the vertical bar has `PhoneLayout` instead.
 struct FoldedLayout: View {
     @Environment(BrowserState.self) private var browser
-    @Environment(TabRailController.self) private var rail
     @Environment(\.duoToolbarVerticalEdge) private var verticalBarEdge
 
     var body: some View {
@@ -28,20 +27,12 @@ struct FoldedLayout: View {
                 .ignoresSafeArea(.all, edges: .vertical)
                 .overlay(alignment: .bottom) { BottomBar().hiddenWhileKeyboardIsUp() }
                 // Part of the page, so the system's bars stay above it and keep working.
-                .overlay(alignment: verticalBarEdge == .leading ? .leading : .trailing) {
-                    TabRailEdge().padding(.bottom, 96)
-                }
                 .overlay { TabGridOverlay() }
                 .toolbar { gutter }
                 .pageColoredSurroundings(browser.currentTab, galleryIsUp: browser.tabGridCoversPage)
                 .toolbarTitleDisplayMode(.inline)
                 .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
                 .duoVerticalBarPrefersOurItems()
-        }
-        .onAppear { rail.sidebarShowsTabs = false }
-        .onChange(of: verticalBarEdge, initial: true) { _, barEdge in
-            rail.edge = barEdge ?? .trailing
-            rail.isBesideVerticalBar = true
         }
     }
 

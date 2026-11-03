@@ -4,7 +4,6 @@ import Suggest
 
 struct RootView: View {
     @Environment(BrowserState.self) private var browser
-    @State private var rail = TabRailController()
     @Environment(\.duoToolbarVerticalEdge) private var verticalBarEdge
     @AppStorage(ReaderView.fullScreenKey) private var readerFullScreen = false
     /// Reader is between its sheet and its full-screen cover.
@@ -22,8 +21,6 @@ struct RootView: View {
             // New pages ask for the desktop site on the inner display, mobile on the outer.
             .onChange(of: posture, initial: true) { _, p in
                 browser.isUnfolded = (p == .unfolded)
-                // A fold can cancel a swipe mid-gesture, which would leave the strip out.
-                rail.reset()
             }
         }
         // One sheet for both layouts, so an open sheet (and its typed text) survives a fold.
@@ -55,15 +52,6 @@ struct RootView: View {
         // Page dialogs, permission requests and logins, one at a time.
         .modifier(WebPromptAlert())
         .overlay { ToastOverlay() }
-        // Tab icon strip, shared by both postures.
-        .overlay(alignment: rail.edge == .leading ? .leading : .trailing) { TabRailView() }
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
-            rail.containerHeight = $0.height
-            rail.containerMinY = $0.minY
-        }
-        .onChange(of: browser.currentTab?.id) { rail.currentTabChanged() }
-        .onAppear { rail.browser = browser }
-        .environment(rail)
         // Neutral chrome, like Safari. A space's colour only tints the sidebar's background.
         .tint(.primary)
     }

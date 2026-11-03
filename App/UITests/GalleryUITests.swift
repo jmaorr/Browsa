@@ -61,6 +61,24 @@ final class GalleryUITests: XCTestCase {
     }
 }
 
+/// Holding the tabs button lists recent tabs, and picking one switches to it.
+@MainActor
+final class RecentTabsUITests: XCTestCase {
+    func testHoldingTabsButtonSwitchesTab() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "3", "--posture", "folded"]
+        app.launch()
+        let tabs = app.buttons["Tabs"]
+        XCTAssertTrue(tabs.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Tab 3"].waitForExistence(timeout: 5))
+        tabs.press(forDuration: 1)
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Tab 1'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 3))
+        row.tap()
+        XCTAssertTrue(app.staticTexts["Tab 1"].waitForExistence(timeout: 5))
+    }
+}
+
 /// The inner display. Quick sidebar toggles once left the page out of place.
 @MainActor
 final class SidebarUITests: XCTestCase {

@@ -7,7 +7,6 @@ import BrowserCore
 /// - The sidebar slides in over the page and never resizes it. Tap outside it to put it away.
 struct UnfoldedPortraitLayout: View {
     @Environment(BrowserState.self) private var browser
-    @Environment(TabRailController.self) private var rail
     @State private var isSidebarShown = false
     @State private var topInset: CGFloat = 0
     @State private var bottomInset: CGFloat = 0
@@ -30,12 +29,6 @@ struct UnfoldedPortraitLayout: View {
         // Measured outside the stack, whose bar counts as safe area until it has finished hiding.
         .onGeometryChange(for: CGFloat.self) { BarMetrics.topCornerInset($0) } action: { topInset = $0 }
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
-        // The open sidebar already lists the tabs, so the strip doesn't peek then.
-        .onChange(of: isSidebarShown, initial: true) { _, shown in rail.sidebarShowsTabs = shown }
-        .onAppear {
-            rail.edge = .leading
-            rail.isBesideVerticalBar = false
-        }
         // "Show All Tabs" (⇧⌘\\) means the sidebar here, not the grid.
         .onChange(of: browser.isTabSwitcherPresented) { _, wanted in
             guard wanted else { return }
@@ -102,8 +95,7 @@ struct NoGutterBar: View {
     var body: some View {
         HStack(spacing: 8) {
             if !compact {
-                Button("Toggle Sidebar", systemImage: "sidebar.leading", action: onToggleSidebar)
-                    .scrubsTabRail()
+                SidebarButton(action: onToggleSidebar)
                     .glassCircleButton()
                     .transition(.opacity)
             }

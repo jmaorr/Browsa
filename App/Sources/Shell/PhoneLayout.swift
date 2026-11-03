@@ -10,7 +10,6 @@ import Suggest
 /// - The rest of the page's controls are in the address sheet, behind the capsule.
 struct PhoneLayout: View {
     @Environment(BrowserState.self) private var browser
-    @Environment(TabRailController.self) private var rail
     @State private var topInset: CGFloat = 0
     @State private var bottomInset: CGFloat = 0
 
@@ -28,11 +27,6 @@ struct PhoneLayout: View {
         .pageColoredSurroundings(browser.currentTab, galleryIsUp: browser.tabGridCoversPage)
         .onGeometryChange(for: CGFloat.self) { BarMetrics.topCornerInset($0) } action: { topInset = $0 }
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
-        .onAppear {
-            rail.sidebarShowsTabs = false
-            rail.edge = .trailing
-            rail.isBesideVerticalBar = false
-        }
     }
 
     private var bar: some View {
@@ -52,7 +46,7 @@ struct PhoneLayout: View {
                     DownloadProgressButton().glassCircleButton().transition(.opacity)
                 }
                 HStack(spacing: 0) {
-                    TabsButton(scrubsTabRail: true).frame(width: 42, height: BarMetrics.capsuleHeight).contentShape(.rect)
+                    TabsButton().frame(width: 42, height: BarMetrics.capsuleHeight).contentShape(.rect)
                     NewTabButton().frame(width: 42, height: BarMetrics.capsuleHeight).contentShape(.rect)
                 }
                 .labelStyle(.iconOnly)

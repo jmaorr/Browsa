@@ -38,22 +38,52 @@ struct HistoryButton: View {
     }
 }
 
-/// Opens and closes the tab gallery. Holds no count, so it reads the same however many tabs are open.
-/// While the gallery is up it turns into a tick that closes it, so the gallery needs no Done button.
+/// Opens and closes the tab gallery. Hold it for your recent tabs. Holds no count, so it reads the
+/// same however many tabs are open. While the gallery is up it turns into a tick that closes it, so
+/// the gallery needs no Done button.
 struct TabsButton: View {
     @Environment(BrowserState.self) private var browser
-    /// Dragging from it brings out the tab strip, in the app's own bar.
-    var scrubsTabRail = false
 
     var body: some View {
         let open = browser.isTabSwitcherPresented
-        Button { browser.isTabSwitcherPresented.toggle() } label: {
+        Menu {
+            if !open { RecentTabsMenu() }
+        } label: {
             Label(open ? "Done" : "Tabs", systemImage: open ? "checkmark" : "square.on.square")
                 .contentTransition(.symbolEffect(.replace))
+        } primaryAction: {
+            browser.isTabSwitcherPresented.toggle()
         }
-        .scrubsTabRail(isEnabled: scrubsTabRail && !open)
         .accessibilityValue(open ? "" : "\(browser.currentSpace.allTabs.count) open")
         .sensoryFeedback(.selection, trigger: open)
+    }
+}
+
+/// What holding a tabs or sidebar button offers: the current tab, then the ones you were just on.
+/// Press, slide to one and let go, like back and forward's history.
+struct RecentTabsMenu: View {
+    @Environment(BrowserState.self) private var browser
+    private static let limit = 6
+
+    var body: some View {
+        let current = browser.currentTab
+        let recent = browser.currentSpace.allTabs.sorted { a, b in
+            if a.id == current?.id { return true }
+            if b.id == current?.id { return false }
+            return a.lastActive > b.lastActive
+        }
+        ForEach(recent.prefix(Self.limit)) { tab in
+            Button {
+                withAnimation(Motion.snappy) { browser.select(tab) }
+            } label: {
+                if tab.id == current?.id {
+                    Label(tab.displayTitle, systemImage: "checkmark")
+                } else {
+                    Text(tab.displayTitle)
+                }
+                if let url = tab.url { Text(URLNormalizer.displayHost(url)) }
+            }
+        }
     }
 }
 
