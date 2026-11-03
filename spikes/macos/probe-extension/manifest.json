@@ -1,0 +1,61 @@
+{
+  "manifest_version": 3,
+  "name": "Browsa API probe",
+  "version": "1.0",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Probe"
+  },
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "cookies",
+    "alarms",
+    "webNavigation",
+    "declarativeNetRequest",
+    "contextMenus",
+    "nativeMessaging",
+    "unlimitedStorage",
+    "webRequest",
+    "identity",
+    "history",
+    "bookmarks",
+    "downloads",
+    "notifications",
+    "offscreen",
+    "sidePanel",
+    "tabGroups",
+    "debugger",
+    "proxy",
+    "management",
+    "privacy"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "block",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
+  "description": "Reports which extension APIs this browser exposes."
+}
