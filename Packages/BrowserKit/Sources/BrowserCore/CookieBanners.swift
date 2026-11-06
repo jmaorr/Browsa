@@ -46,7 +46,13 @@ public final class CookieBannerHandler: NSObject, WKScriptMessageHandler {
               let webView = message.webView else { return }
         let frame = message.frameInfo
         if let log = Self.log, type != "eval" {
-            let detail = ["cmp", "result", "url", "msg", "details"].compactMap { k in body[k].map { "\(k)=\($0)" } }
+            var detail = ["cmp", "result", "msg", "details"].compactMap { k in body[k].map { "\(k)=\($0)" } }
+            if let state = body["state"] as? [String: Any] {
+                // Where detection got to: lifecycle, attempts, and any consent tools it recognised.
+                detail += ["lifecycle", "findCmpAttempts", "detectedCmps", "detectedPopups"].compactMap { k in
+                    state[k].map { "\(k)=\($0)" }
+                }
+            }
             log("[\(webView.url?.host() ?? "?")\(frame.isMainFrame ? "" : " frame")] \(type) \(detail.joined(separator: " "))")
         }
         switch type {

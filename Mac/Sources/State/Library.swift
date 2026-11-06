@@ -32,6 +32,10 @@ final class Library {
     var globalPrivacyControl: Bool { didSet { Preferences.globalPrivacyControl = globalPrivacyControl; applyBlocking() } }
     /// Forget history, cookies and site data when Browsa quits.
     var clearDataOnQuit: Bool { didSet { Preferences.clearDataOnQuit = clearDataOnQuit } }
+    /// Inspect Element on every page.
+    var developerTools: Bool {
+        didSet { Preferences.developerTools = developerTools; engine.developerToolsEnabled = developerTools }
+    }
     var downloads: [EngineDownload] = []
     var filterStatus = FilterStatus()
     /// Tabs closed this session, newest last, for Shift-Cmd-T. Never private tabs.
@@ -62,6 +66,7 @@ final class Library {
         self.snapshotURL = snapshotURL
         globalPrivacyControl = Preferences.globalPrivacyControl
         clearDataOnQuit = Preferences.clearDataOnQuit
+        developerTools = Preferences.developerTools
         if let snapshotURL, let data = try? Data(contentsOf: snapshotURL),
            let snap = try? JSONDecoder().decode(BrowserSnapshot.self, from: data), !snap.spaces.isEmpty {
             spaces = snap.spaces.map(Space.init)
@@ -77,6 +82,7 @@ final class Library {
             favorites = Self.starterFavorites
         }
         suggest = makeSuggestEngine()
+        engine.developerToolsEnabled = developerTools
         applyBlocking()
         archiveStaleTabs()
     }

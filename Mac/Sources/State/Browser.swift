@@ -411,6 +411,18 @@ enum Preferences {
         set { d.set(newValue, forKey: "clearDataOnQuit") }
     }
 
+    /// Inspect Element in the page's context menu. On in Debug builds.
+    static var developerTools: Bool {
+        get {
+            #if DEBUG
+            d.object(forKey: "developerTools") as? Bool ?? true
+            #else
+            d.bool(forKey: "developerTools")
+            #endif
+        }
+        set { d.set(newValue, forKey: "developerTools") }
+    }
+
     /// Reader text size, shared by every article.
     static var readerScale: Double {
         get { d.object(forKey: "readerScale") as? Double ?? 1 }

@@ -271,8 +271,8 @@ extension WebKitPage: WKUIDelegate {
         return nil
     }
 
-    public func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
-                        initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType) async -> WKPermissionDecision {
+    public func webView(_ webView: WKWebView, decideMediaCapturePermissionsFor origin: WKSecurityOrigin,
+                        initiatedBy frame: WKFrameInfo, type: WKMediaCaptureType) async -> WKPermissionDecision {
         guard let delegate else { return .deny }
         let kind: EnginePermission = switch type {
         case .camera: .camera

@@ -41,6 +41,9 @@ public protocol BrowserEngine: AnyObject {
 
     /// Where downloads are saved.
     var downloadsDirectory: URL { get set }
+
+    /// Developer tools on every page (with `.developerTools`): Inspect Element in the context menu.
+    var developerToolsEnabled: Bool { get set }
 }
 
 public struct EngineInfo: Sendable, Equatable {

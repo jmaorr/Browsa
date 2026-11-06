@@ -15,6 +15,20 @@ let engineLog = Logger(subsystem: "com.orriginal.browsa", category: "webkit")
 public final class WebKitEngine: BrowserEngine {
     public let info: EngineInfo
     public var downloadsDirectory: URL
+    public var developerToolsEnabled = false {
+        didSet {
+            for c in [standardConfiguration, ephemeralConfiguration] { Self.setDeveloperExtras(developerToolsEnabled, on: c) }
+            for page in livePages.values.compactMap(\.page) {
+                Self.setDeveloperExtras(developerToolsEnabled, on: page.webView.configuration)
+            }
+        }
+    }
+
+    /// WebKit only offers Inspect Element in the context menu with this preference on. It has no
+    /// public setter; Safari's Develop menu can inspect Browsa's pages either way (`isInspectable`).
+    private static func setDeveloperExtras(_ on: Bool, on configuration: WKWebViewConfiguration) {
+        configuration.preferences.setValue(on, forKey: "developerExtrasEnabled")
+    }
 
     private let standardConfiguration: WKWebViewConfiguration
     private var ephemeralConfiguration: WKWebViewConfiguration

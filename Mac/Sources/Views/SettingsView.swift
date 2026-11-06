@@ -276,6 +276,14 @@ private struct EngineSettings: View {
                     }
                 }
             }
+            if info.capabilities.contains(.developerTools) {
+                Section {
+                    Toggle("Show Inspect Element in the page menu", isOn: Bindable(browser).developerTools)
+                } footer: {
+                    Text("Opens the Web Inspector from a right-click on any page.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
             Section {
                 Text("Browsa talks to its engine through a small protocol, so another engine, such as Chromium with Chrome extension support, can be added beside WebKit. See docs/engines.md in the repository.")
                     .font(.caption).foregroundStyle(.secondary)

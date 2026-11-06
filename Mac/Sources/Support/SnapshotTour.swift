@@ -88,17 +88,17 @@ struct SnapshotTour {
         firstWindow?.makeKeyAndOrderFront(nil)
         await pause(1)
 
-        // Privacy: Global Privacy Control, and a site whose cookie banner Josh saw on the Mac.
-        browser.newTab(url: URL(string: "https://global-privacy-control.glitch.me/")!)
-        await pause(8)
-        await savePage(browser, "13-gpc")
+        // Cookie banners: sites whose banners weren't declined on the Mac. The page's own consent
+        // buttons go in the report, to write rules from.
         browser.newTab(url: URL(string: "https://www.nytimes.com/")!)
         await pause(12)
         save("14-nytimes")
         await savePage(browser, "14-nytimes-content")
+        await dumpConsentButtons(browser)
         browser.newTab(url: URL(string: "https://www.theguardian.com/international")!)
         await pause(10)
         await savePage(browser, "15-guardian-content")
+        await dumpConsentButtons(browser)
         if let tab = browser.currentTab { browser.close(tab) }
         await pause(1)
 
@@ -152,6 +152,30 @@ struct SnapshotTour {
         } else {
             try? data.write(to: url)
         }
+    }
+
+    /// Buttons that look like consent choices, with their markup and the ancestors that hold them.
+    private func dumpConsentButtons(_ browser: Browser) async {
+        guard let page = browser.currentController?.page else { return }
+        let script = """
+        const re = /reject|decline|accept|agree|manage|preferences|necessary|consent|continue/i;
+        const describe = el => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '')
+          + [...el.attributes].filter(a => a.name.startsWith('data-') || a.name === 'class' || a.name === 'role' || a.name === 'aria-label')
+              .map(a => '[' + a.name + '="' + String(a.value).slice(0, 60) + '"]').join('');
+        const out = [];
+        for (const el of document.querySelectorAll('button, a[role=button], [role=button], input[type=button], input[type=submit]')) {
+          const text = (el.innerText || el.value || '').trim();
+          if (!text || text.length > 40 || !re.test(text)) continue;
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) continue;
+          const chain = [];
+          for (let p = el; p && p !== document.body && chain.length < 8; p = p.parentElement) chain.push(describe(p));
+          out.push('BUTTON "' + text + '": ' + chain.join(' < '));
+        }
+        return out.slice(0, 25).join('\\n') || 'no consent-like buttons';
+        """
+        let result = (try? await page.evaluate(script, inWorld: "browsa.tour")) as? String
+        note("consent buttons on \(browser.currentTab?.url?.host() ?? "?"):\n\(result ?? "script failed")")
     }
 
     private func pause(_ seconds: Double) async {
