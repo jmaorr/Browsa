@@ -10,7 +10,7 @@ enum SpacePalette {
     /// Private is a neutral grey.
     @MainActor static func color(for space: Space) -> Color { space.isPrivate ? .gray : color(space.colorIndex) }
     /// How strongly a space tints the sidebar background. The tint never reaches icons or the page.
-    static let surfaceOpacity = 0.10
+    static func surfaceOpacity(_ scheme: ColorScheme) -> Double { scheme == .dark ? 0.10 : 0.06 }
 
     /// Symbols offered for a space.
     static let symbols = ["house.fill", "briefcase.fill", "book.fill", "gamecontroller.fill", "cart.fill", "paintpalette.fill",
@@ -97,7 +97,7 @@ struct FaviconView: View {
             } else {
                 Text((letter ?? host).prefix(1).uppercased())
                     .font(.system(size: size * 0.6, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary.opacity(0.7))
                     .frame(width: size, height: size)
                     .background(.quaternary, in: .rect(cornerRadius: size * 0.26, style: .continuous))
             }

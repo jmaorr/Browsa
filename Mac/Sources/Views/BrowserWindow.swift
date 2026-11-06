@@ -6,6 +6,7 @@ import BrowserCore
 struct BrowserWindow: View {
     @Environment(Browser.self) private var browser
     @State private var dragStartWidth: CGFloat?
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         @Bindable var browser = browser
@@ -57,7 +58,7 @@ struct BrowserWindow: View {
         ZStack {
             WindowMaterial(material: .sidebar)
             SpacePalette.color(for: browser.currentSpace)
-                .opacity(SpacePalette.surfaceOpacity)
+                .opacity(SpacePalette.surfaceOpacity(colorScheme))
                 .animation(Motion.spring, value: browser.selectedSpaceID)
         }
         .ignoresSafeArea()
@@ -92,7 +93,7 @@ struct BrowserWindow: View {
                     .background {
                         ZStack {
                             WindowMaterial(material: .popover)
-                            SpacePalette.color(for: browser.currentSpace).opacity(SpacePalette.surfaceOpacity)
+                            SpacePalette.color(for: browser.currentSpace).opacity(SpacePalette.surfaceOpacity(colorScheme))
                         }
                     }
                     .clipShape(.rect(cornerRadius: 12, style: .continuous))

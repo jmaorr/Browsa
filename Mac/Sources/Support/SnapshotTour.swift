@@ -2,6 +2,7 @@
 import AppKit
 import SwiftUI
 import BrowserEngine
+import Suggest
 
 /// Debug only: with BROWSA_SNAPSHOT=<folder> set, walks through the main screens and saves a PNG of
 /// the window at each step, then quits. For checking layouts on a Mac nobody is looking at.
@@ -14,6 +15,10 @@ struct SnapshotTour {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         await pause(3)
         guard let browser = delegate.browser else { return }
+        // Fetch the favourites' icons first, so the shots show them rather than letters.
+        for fav in browser.favorites {
+            _ = try? await URLSession.shared.data(from: URL(string: "https://icons.duckduckgo.com/ip3/\(URLNormalizer.displayHost(fav.url)).ico")!)
+        }
         save("1-launch")
 
         browser.newTab(url: URL(string: "https://www.apple.com")!)
@@ -43,17 +48,6 @@ struct SnapshotTour {
         save("6-second-space")
         withAnimation(Motion.spring) { browser.selectAdjacentSpace(-1) }
 
-        withAnimation(Motion.spring) { browser.toggleSidebar() }
-        await pause(1)
-        save("7-sidebar-hidden")
-        await savePage(browser, "7-page-content")
-        withAnimation(Motion.peek) { browser.isSidebarPeeking = true }
-        await pause(1)
-        save("8-sidebar-peeking")
-        browser.isSidebarPeeking = false
-        withAnimation(Motion.spring) { browser.toggleSidebar() }
-        await pause(1)
-
         // The same screens in light mode.
         NSApp.appearance = NSAppearance(named: .aqua)
         await pause(1)
@@ -66,6 +60,19 @@ struct SnapshotTour {
         await pause(2)
         save("10-light-command-bar")
         browser.commandBar = nil
+        NSApp.appearance = nil
+        await pause(1)
+
+        withAnimation(Motion.spring) { browser.toggleSidebar() }
+        await pause(1)
+        save("7-sidebar-hidden")
+        await savePage(browser, "7-page-content")
+        withAnimation(Motion.peek) { browser.isSidebarPeeking = true }
+        await pause(1)
+        save("8-sidebar-peeking")
+        browser.isSidebarPeeking = false
+        withAnimation(Motion.spring) { browser.toggleSidebar() }
+        await pause(1)
 
         browser.saveNow()
         NSApp.terminate(nil)

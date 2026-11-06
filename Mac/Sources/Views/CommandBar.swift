@@ -20,7 +20,9 @@ final class CommandBarModel {
     var rows: [Suggestion] {
         if isTyping {
             guard let r = results else { return [] }
-            return r.local + (r.primary.map { [$0] } ?? []) + r.remote
+            let primary = r.primary.map { [$0] } ?? []
+            // Without an inline completion, Return searches, so that row leads, like Arc.
+            return r.inline == nil ? primary + r.local + r.remote : r.local + primary + r.remote
         }
         guard let zero else { return [] }
         let rows = zero.recentTabs.map(Self.row(for:)) + zero.topSites
@@ -244,7 +246,7 @@ private struct SuggestionRow: View {
         case .entity: Image(systemName: "book.closed").foregroundStyle(.secondary)
         case .archived: Image(systemName: "archivebox").foregroundStyle(.secondary)
         default:
-            if let url = suggestion.url { FaviconView(url: url, size: 18, chip: true) }
+            if let url = suggestion.url { FaviconView(url: url, size: 18, chip: true, letter: suggestion.title) }
             else { Image(systemName: "globe").foregroundStyle(.secondary) }
         }
     }
