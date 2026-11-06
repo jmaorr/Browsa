@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import BrowserCore
 import BrowserEngine
 import Suggest
@@ -29,6 +30,7 @@ extension Browser {
 
     func navigate(to url: URL, replacing: Bool, source: Frecency.VisitSource) {
         if replacing, let tab = currentTab {
+            if isReaderShowing { closeReader() }
             controller(for: tab).load(url, source: source)
         } else {
             newTab(url: url, source: source)
@@ -51,6 +53,9 @@ extension Browser {
                 out.append(BrowserCommand(id: "copy-link", title: "Copy Link", subtitle: url.absoluteString, keywords: ["url", "share"]))
                 out.append(BrowserCommand(id: "reload", title: "Reload Page", keywords: ["refresh"]))
                 out.append(BrowserCommand(id: "find", title: "Find on Page", keywords: ["search", "text"]))
+                out.append(BrowserCommand(id: "reader", title: isReaderShowing ? "Hide Reader" : "Show Reader",
+                                          keywords: ["article", "reading", "clean"]))
+                out.append(BrowserCommand(id: "tab-window", title: "Move Tab to New Window", keywords: ["window", "detach"]))
                 out.append(BrowserCommand(id: "zoom-in", title: "Zoom In", keywords: ["bigger", "larger", "text size"]))
                 out.append(BrowserCommand(id: "zoom-out", title: "Zoom Out", keywords: ["smaller", "text size"]))
                 out.append(BrowserCommand(id: "zoom-reset", title: "Actual Size", keywords: ["zoom", "reset"]))
@@ -69,6 +74,7 @@ extension Browser {
             out.append(BrowserCommand(id: "reopen", title: "Reopen Closed Tab", subtitle: last.displayTitle, keywords: ["undo", "restore"]))
         }
         out.append(BrowserCommand(id: "sidebar", title: isSidebarDocked ? "Hide Sidebar" : "Show Sidebar", keywords: ["toggle"]))
+        out.append(BrowserCommand(id: "new-window", title: "New Window", keywords: ["window"]))
         out.append(BrowserCommand(id: "private", title: "New Private Tab", keywords: ["incognito"]))
         if let p = privateSpace {
             out.append(BrowserCommand(id: "close-private", title: "Close Private Tabs", subtitle: "\(p.allTabs.count) tabs",
@@ -95,6 +101,9 @@ extension Browser {
         case "copy-link": copyCurrentLink()
         case "reload": reload()
         case "find": showFind()
+        case "reader": toggleReader()
+        case "tab-window": if let t = currentTab { openInNewWindow(t) }
+        case "new-window": library.openWindow()
         case "zoom-in": zoom(1)
         case "zoom-out": zoom(-1)
         case "zoom-reset": zoom(0)
@@ -102,7 +111,7 @@ extension Browser {
         case "share": shareCurrentPage()
         case "close-others": if let t = currentTab { closeOtherTabs(than: t) }
         case "reopen": reopenClosedTab()
-        case "sidebar": toggleSidebar()
+        case "sidebar": withAnimation(Motion.dock) { toggleSidebar() }
         case "private": newTab(url: nil, isPrivate: true); showCommandBar(.editCurrent)
         case "close-private": closePrivateSpace()
         case "new-space": addSpace()
@@ -126,7 +135,10 @@ extension Browser {
 
     // MARK: Page actions
 
-    func goBack() { currentController?.page.goBack() }
+    func goBack() {
+        if isReaderShowing { closeReader(); return }
+        currentController?.page.goBack()
+    }
     func goForward() { currentController?.page.goForward() }
 
     func reload() {
@@ -140,11 +152,12 @@ extension Browser {
 
     /// Cmd-+ / Cmd-- / Cmd-0. Remembered per site.
     func zoom(_ direction: Int) {
+        if isReaderShowing { reader?.zoom(by: direction); return }
         guard engine.info.capabilities.contains(.pageZoom), currentTab?.url != nil else { return }
         currentController?.zoom(by: direction)
     }
 
-    var currentZoom: Double { currentTab.flatMap { controllers[$0.id]?.page.zoom } ?? 1 }
+    var currentZoom: Double { currentTab.flatMap { library.existingController(for: $0)?.page.zoom } ?? 1 }
 
     func copyCurrentLink() {
         guard let url = currentTab?.url else { return }
@@ -172,15 +185,10 @@ extension Browser {
         }
     }
 
-    func toggleSidebar() {
-        isSidebarDocked.toggle()
-        isSidebarPeeking = false
-    }
-
     // MARK: Find
 
     func showFind() {
-        guard currentTab?.url != nil else { return }
+        guard currentTab?.url != nil, !isReaderShowing else { return }
         if find == nil { find = FindState() }
         findFocusRequest = UUID()
     }

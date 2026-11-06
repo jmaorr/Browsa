@@ -45,8 +45,4 @@ extension Browser {
         mine.forEach { $0.1.resume(returning: .cancel) }
         if activePrompt == nil { activePrompt = promptQueue.first?.0 }
     }
-
-    func forgetPermissions(for host: String) {
-        settings.sitePermissions[host] = nil
-    }
 }

@@ -18,6 +18,8 @@ public final class WebKitEngine: BrowserEngine {
 
     private let standardConfiguration: WKWebViewConfiguration
     private var ephemeralConfiguration: WKWebViewConfiguration
+    /// For pages the app renders (Reader): no storage, no JavaScript, no rules or scripts.
+    private let staticConfiguration: WKWebViewConfiguration
     private var ruleLists: [WKContentRuleList] = []
     private var blocking = BlockingConfiguration(isEnabled: false, ruleGroups: [], allowlist: [], declineCookieBanners: false)
     /// Pages that are alive, to reach their content controllers and map script messages back.
@@ -35,6 +37,8 @@ public final class WebKitEngine: BrowserEngine {
         info = EngineInfo(id: "webkit", name: "WebKit", version: "macOS \(os.majorVersion).\(os.minorVersion)", capabilities: caps)
         standardConfiguration = Self.makeConfiguration(store: .default())
         ephemeralConfiguration = Self.makeConfiguration(store: .nonPersistent())
+        staticConfiguration = Self.makeConfiguration(store: .nonPersistent())
+        staticConfiguration.defaultWebpagePreferences.allowsContentJavaScript = false
         downloads.engine = self
     }
 
@@ -57,6 +61,12 @@ public final class WebKitEngine: BrowserEngine {
     // MARK: Pages
 
     public func makePage(options: PageOptions, delegate: any EnginePageDelegate) -> any EnginePage {
+        if !options.allowsJavaScript {
+            let page = WebKitPage(configuration: staticConfiguration, engine: self, profile: .ephemeral)
+            page.delegate = delegate
+            if let url = options.url { page.load(url) }
+            return page
+        }
         let configuration = options.profile == .ephemeral ? ephemeralConfiguration : standardConfiguration
         let page = WebKitPage(configuration: configuration, engine: self, profile: options.profile)
         page.delegate = delegate
@@ -141,7 +151,24 @@ public final class WebKitEngine: BrowserEngine {
             }
             controller.add(handler, contentWorld: CookieBannerHandler.world, name: CookieBannerHandler.messageName)
         }
+        if blocking.globalPrivacyControl {
+            controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,
+                                                  forMainFrameOnly: false, in: .page))
+        }
     }
+
+    /// Global Privacy Control: sites that honour it treat the visitor as opted out of the sale or
+    /// sharing of their data. Defined on the page's own Navigator so the page's scripts see it.
+    private static let globalPrivacyControlScript = """
+    (() => {
+      try {
+        if ('globalPrivacyControl' in Navigator.prototype) return;
+        Object.defineProperty(Navigator.prototype, 'globalPrivacyControl', {
+          get() { return true }, configurable: true, enumerable: true
+        });
+      } catch (e) {}
+    })();
+    """
 
     /// Restored tabs wait for the rule lists, so they can't load unblocked at launch.
     private func afterRules(_ work: @escaping () -> Void) {

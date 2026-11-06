@@ -64,6 +64,8 @@ public final class WebKitPage: NSObject, EnginePage {
 
     public func load(_ url: URL) { webView.load(URLRequest(url: url)) }
 
+    public func loadHTML(_ html: String, baseURL: URL?) { webView.loadHTMLString(html, baseURL: baseURL) }
+
     public func reload() {
         if webView.url != nil { webView.reload() }
         else if let url = state.url { load(url) }

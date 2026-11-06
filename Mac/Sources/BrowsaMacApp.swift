@@ -6,42 +6,72 @@ import BrowserCore
 @main
 struct BrowsaMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    /// WebKit is the only engine for now. Another one plugs in here (see docs/engines.md).
-    @State private var browser = BrowsaMacApp.makeBrowser()
-
-    private static func makeBrowser() -> Browser {
-        #if DEBUG
-        // The snapshot tour starts from a fresh state and leaves the real one alone.
-        if ProcessInfo.processInfo.environment["BROWSA_SNAPSHOT"] != nil {
-            return Browser(engine: WebKitEngine(), history: HistoryStore(fileURL: nil), snapshotURL: nil)
-        }
-        #endif
-        return Browser(engine: WebKitEngine())
-    }
 
     var body: some Scene {
-        Window("Browsa", id: "main") {
-            BrowserWindow()
-                .environment(browser)
-                .frame(minWidth: 640, minHeight: 420)
-                .onOpenURL { browser.openExternal($0) }
-                .onAppear { appDelegate.browser = browser }
+        WindowGroup(id: "browser") {
+            WindowRoot(library: appDelegate.library)
         }
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 1280, height: 820)
-        .commands { BrowserCommands(browser: browser) }
+        .commands { BrowserCommands(library: appDelegate.library) }
 
         Settings {
             SettingsView()
-                .environment(browser)
+                .environment(appDelegate.library)
         }
     }
 }
 
+/// One window: makes its `Browser` when it appears and lets it go when it closes.
+private struct WindowRoot: View {
+    let library: Library
+    @State private var browser: Browser?
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Group {
+            if let browser {
+                BrowserWindow()
+                    .environment(browser)
+                    .focusedSceneValue(\.browser, browser)
+            } else {
+                Color.clear
+            }
+        }
+        .frame(minWidth: 640, minHeight: 420)
+        .onAppear {
+            library.openWindowAction = { [openWindow] in openWindow(id: "browser") }
+            if browser == nil { browser = Browser(library: library) }
+        }
+        .onDisappear {
+            if let browser { library.unregister(browser) }
+        }
+    }
+}
+
+extension FocusedValues {
+    /// The browser in the key window, for the menu bar.
+    @Entry var browser: Browser?
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    weak var browser: Browser?
+    /// WebKit is the only engine for now. Another one plugs in here (see docs/engines.md).
+    lazy var library = AppDelegate.makeLibrary()
+    /// The window in use, for the debug tour.
+    var browser: Browser? { library.activeWindow }
+    private var isClearingForQuit = false
+
+    private static func makeLibrary() -> Library {
+        #if DEBUG
+        // The snapshot tour starts from a fresh state and leaves the real one alone.
+        if ProcessInfo.processInfo.environment["BROWSA_SNAPSHOT"] != nil {
+            return Library(engine: WebKitEngine(), history: HistoryStore(fileURL: nil), snapshotURL: nil)
+        }
+        #endif
+        return Library(engine: WebKitEngine())
+    }
     private var keyMonitor: Any?
     private var archiveTimer: Timer?
 
@@ -57,17 +87,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         #endif
         archiveTimer = Timer.scheduledTimer(withTimeInterval: 30 * 60, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.browser?.archiveStaleTabs() }
+            MainActor.assumeIsolated { self?.library.archiveStaleTabs() }
         }
     }
 
     private func handle(_ event: NSEvent) -> Bool {
-        guard let browser else { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let key = event.charactersIgnoringModifiers ?? ""
         // Sheets, the settings window and other windows keep their own keys.
         guard let window = event.window, window.attachedSheet == nil,
-              !(window.identifier?.rawValue.contains("Settings") ?? false) else { return false }
+              let browser = library.window(for: window) else { return false }
         if flags == .command, key == "=" { browser.zoom(1); return true }
         if flags == .command, key == "w" {
             if browser.commandBar != nil { browser.commandBar = nil; return true }
@@ -79,6 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if flags.isEmpty, event.keyCode == 53 {   // Escape
             if browser.find != nil { browser.closeFind(); return true }
+            if browser.isReaderShowing, browser.commandBar == nil { browser.closeReader(); return true }
             if browser.currentTab?.isLoading == true, browser.commandBar == nil { browser.stopLoading(); return false }
         }
         return false
@@ -86,11 +116,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    /// Links from other apps, when Browsa is the default browser. Handled here so they open as
+    /// tabs in the window in use rather than in a new window.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls { library.openExternal(url) }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard library.clearDataOnQuit, !isClearingForQuit else { return .terminateNow }
+        // Clearing is asynchronous; quit once it's done (or after a few seconds regardless).
+        isClearingForQuit = true
+        Task { @MainActor in
+            await library.clearHistory()
+            await library.clearWebsiteData()
+            replyToQuit()
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            replyToQuit()
+        }
+        return .terminateLater
+    }
+
+    private var hasRepliedToQuit = false
+
+    private func replyToQuit() {
+        guard !hasRepliedToQuit else { return }
+        hasRepliedToQuit = true
+        NSApp.reply(toApplicationShouldTerminate: true)
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
-        browser?.saveNow()
+        library.saveNow()
     }
 
     func applicationDidResignActive(_ notification: Notification) {
-        browser?.saveNow()
+        library.saveNow()
     }
 }

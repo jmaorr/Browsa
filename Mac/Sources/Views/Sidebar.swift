@@ -30,7 +30,7 @@ struct Sidebar: View {
             // The traffic lights sit here when docked. Floating, they're hidden.
             Spacer(minLength: isFloating ? 0 : 76)
             SidebarIconButton(symbol: "sidebar.left", help: browser.isSidebarDocked ? "Hide Sidebar (⌘S)" : "Keep Sidebar Open (⌘S)") {
-                withAnimation(Motion.spring) { browser.toggleSidebar() }
+                withAnimation(Motion.dock) { browser.toggleSidebar() }
             }
             SidebarIconButton(symbol: "chevron.left", help: "Back (⌘[)", enabled: browser.currentTab?.canGoBack == true) { browser.goBack() }
             SidebarIconButton(symbol: "chevron.right", help: "Forward (⌘])", enabled: browser.currentTab?.canGoForward == true) { browser.goForward() }

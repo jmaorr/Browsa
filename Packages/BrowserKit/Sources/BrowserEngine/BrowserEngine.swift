@@ -96,11 +96,15 @@ public struct PageOptions: Sendable {
     public var url: URL?
     /// What `EnginePage.sessionState()` returned for this tab earlier.
     public var sessionState: Data?
+    /// Off for pages the app renders itself, like Reader, so nothing on them can run.
+    public var allowsJavaScript: Bool
 
-    public init(profile: BrowsingProfile = .standard, url: URL? = nil, sessionState: Data? = nil) {
+    public init(profile: BrowsingProfile = .standard, url: URL? = nil, sessionState: Data? = nil,
+                allowsJavaScript: Bool = true) {
         self.profile = profile
         self.url = url
         self.sessionState = sessionState
+        self.allowsJavaScript = allowsJavaScript
     }
 }
 
@@ -112,12 +116,16 @@ public struct BlockingConfiguration: Sendable, Equatable {
     /// Hosts where nothing is blocked.
     public var allowlist: Set<String>
     public var declineCookieBanners: Bool
+    /// Tell sites not to sell or share data (Global Privacy Control, `navigator.globalPrivacyControl`).
+    public var globalPrivacyControl: Bool
 
-    public init(isEnabled: Bool, ruleGroups: Set<String>, allowlist: Set<String>, declineCookieBanners: Bool) {
+    public init(isEnabled: Bool, ruleGroups: Set<String>, allowlist: Set<String>, declineCookieBanners: Bool,
+                globalPrivacyControl: Bool = false) {
         self.isEnabled = isEnabled
         self.ruleGroups = ruleGroups
         self.allowlist = allowlist
         self.declineCookieBanners = declineCookieBanners
+        self.globalPrivacyControl = globalPrivacyControl
     }
 }
 
@@ -134,6 +142,8 @@ public protocol EnginePage: AnyObject {
     var delegate: (any EnginePageDelegate)? { get set }
 
     func load(_ url: URL)
+    /// Shows HTML the app made (Reader). Relative links resolve against `baseURL`.
+    func loadHTML(_ html: String, baseURL: URL?)
     func reload()
     /// Reloads without the cache, and asks the navigation policy again.
     func reloadFromOrigin()

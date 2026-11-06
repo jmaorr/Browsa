@@ -13,3 +13,4 @@ xcuserdata/
 .env.*
 .claude/
 Mac/Info.plist
+Mac/Browsa.entitlements

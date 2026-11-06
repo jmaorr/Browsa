@@ -105,7 +105,7 @@ struct ArchiveSheet: View {
             HStack {
                 Text("Archived Tabs").font(.headline)
                 Spacer()
-                Button("Clear All") { browser.archive.removeAll(); browser.scheduleSave() }
+                Button("Clear All") { browser.library.clearArchive() }
                     .disabled(browser.archive.isEmpty)
                 Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
             }

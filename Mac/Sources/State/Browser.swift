@@ -4,30 +4,16 @@ import BrowserCore
 import BrowserEngine
 import Suggest
 
-/// Everything one Browsa window shows: spaces, tabs, favourites, and the transient UI around them.
-///
-/// Engine-neutral: pages come from `engine`, and nothing here knows it's WebKit.
+/// One Browsa window: which space and tab it shows, and the transient UI around them.
+/// Spaces, tabs, favourites and settings live in the shared `Library`.
 @MainActor @Observable
 final class Browser {
-    var spaces: [Space]
+    let library: Library
     var selectedSpaceID: UUID
-    /// Shared across spaces, like Arc's favourites row.
-    var favorites: [Favorite]
-    var archive: [BrowserTab] = []
-    var settings = BrowserSettings() {
-        didSet {
-            guard settings != oldValue else { return }
-            if settings.searchEngine != oldValue.searchEngine || settings.remoteSuggestions != oldValue.remoteSuggestions {
-                suggest = makeSuggestEngine()
-            }
-            if settings.blockContent != oldValue.blockContent || settings.filterGroups != oldValue.filterGroups
-                || settings.declineCookieBanners != oldValue.declineCookieBanners
-                || settings.blockingDisabledHosts != oldValue.blockingDisabledHosts {
-                applyBlocking()
-            }
-            scheduleSave()
-        }
-    }
+    /// The tab this window shows in each space it has visited. Two windows never show the same tab.
+    private var tabSelection: [UUID: UUID] = [:]
+    /// The AppKit window, for focusing and for matching key events to this browser.
+    @ObservationIgnored weak var nsWindow: NSWindow?
 
     // MARK: Transient UI state
 
@@ -37,6 +23,8 @@ final class Browser {
     var isSidebarDocked: Bool { didSet { Preferences.sidebarDocked = isSidebarDocked } }
     /// The undocked sidebar is showing over the page.
     var isSidebarPeeking = false
+    /// True while the sidebar docks or hides. The page keeps one size meanwhile and resizes once.
+    private(set) var isSidebarMoving = false
     var sidebarWidth: CGFloat { didSet { Preferences.sidebarWidth = sidebarWidth } }
     /// Find on page, when the find bar is open.
     var find: FindState?
@@ -44,92 +32,122 @@ final class Browser {
     var findFocusRequest: UUID?
     var toast: String?
     var activePrompt: Prompt?
-    var downloads: [EngineDownload] = []
+    /// Reader, when it's showing over the current tab.
+    var reader: ReaderSession?
     var isDownloadsPresented = false
     var isArchivePresented = false
-    var filterStatus = FilterStatus()
     /// When and which way the space last changed, so tab lists cascade in from that side.
     private(set) var lastSpaceSwitch: SpaceSwitch?
-    /// Tabs closed this session, newest last, for Shift-Cmd-T. Never private tabs.
-    private(set) var recentlyClosed: [BrowserTab] = []
 
-    let engine: any BrowserEngine
-    let history: HistoryStore
-    @ObservationIgnored private(set) var suggest: SuggestEngine!
-    /// Live pages, by tab. The least recently used are unloaded past `capacity`.
-    @ObservationIgnored private(set) var controllers: [UUID: TabController] = [:]
-    @ObservationIgnored private var lru: [UUID] = []
-    @ObservationIgnored private let capacity = 24
-    @ObservationIgnored private let snapshotURL: URL?
-    @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var toastTask: Task<Void, Never>?
-    @ObservationIgnored private var blockingTask: Task<Void, Never>?
+    @ObservationIgnored private var sidebarMoveTask: Task<Void, Never>?
     @ObservationIgnored var promptQueue: [(Prompt, CheckedContinuation<EngineDialogResponse, Never>)] = []
-    /// Kept so state written by a newer build round-trips; the Mac doesn't show Saved yet.
-    @ObservationIgnored private var savedSites: [SavedSite] = []
     @ObservationIgnored private var spaceBeforePrivate: UUID?
     @ObservationIgnored var lastCookieToastURL: URL?
 
-    init(engine: any BrowserEngine,
-         history: HistoryStore = HistoryStore(fileURL: HistoryStore.defaultFileURL()),
-         snapshotURL: URL? = Browser.defaultSnapshotURL()) {
-        self.engine = engine
-        self.history = history
-        self.snapshotURL = snapshotURL
+    init(library: Library) {
+        self.library = library
         isSidebarDocked = Preferences.sidebarDocked
         sidebarWidth = Preferences.sidebarWidth
-        if let snapshotURL, let data = try? Data(contentsOf: snapshotURL),
-           let snap = try? JSONDecoder().decode(BrowserSnapshot.self, from: data), !snap.spaces.isEmpty {
-            spaces = snap.spaces.map(Space.init)
-            selectedSpaceID = snap.selectedSpaceID ?? snap.spaces[0].id
-            favorites = snap.favorites
-            archive = snap.archive.map(BrowserTab.init)
-            savedSites = snap.saved ?? []
-            if let s = snap.settings { settings = s }
-        } else {
-            let personal = Space(name: "Personal", symbol: "house.fill", colorIndex: 0)
-            spaces = [personal, Space(name: "Work", symbol: "briefcase.fill", colorIndex: 1)]
-            selectedSpaceID = personal.id
-            favorites = Self.starterFavorites
+        let request = library.takeWindowRequest()
+        let isFirst = library.windows.isEmpty
+        let launch = library.regularSpaces.first { $0.id == library.launchSpaceID } ?? library.regularSpaces[0]
+        let nearby = library.activeWindow.map { $0.currentSpace }.flatMap { $0.isPrivate ? nil : $0 }
+        selectedSpaceID = (isFirst ? launch : nearby ?? launch).id
+        library.register(self)
+
+        switch request {
+        case .tab(let tab):
+            if let space = library.space(containing: tab) {
+                library.window(showing: tab)?.moveOff(tab, in: space)
+                select(tab)
+            }
+        case .url(let url):
+            newTab(url: url)
+        case .privateTab:
+            newTab(url: nil, isPrivate: true)
+            commandBar = .editCurrent
+        case nil:
+            if isFirst {
+                // The first window picks up where Browsa left off.
+                resolveSelection(in: currentSpace)
+            } else {
+                commandBar = .newTab
+            }
         }
-        suggest = makeSuggestEngine()
-        applyBlocking()
-        archiveStaleTabs()
     }
 
-    private static let starterFavorites: [Favorite] = [
-        ("https://www.youtube.com", "YouTube"), ("https://github.com", "GitHub"),
-        ("https://en.wikipedia.org", "Wikipedia"), ("https://www.apple.com", "Apple"),
-    ].enumerated().map { i, f in Favorite(url: URL(string: f.0)!, title: f.1, order: i) }
+    // MARK: Shared state, as this window sees it
 
-    static func defaultSnapshotURL() -> URL {
-        URL.applicationSupportDirectory.appending(path: "Browser/state.json")
+    var spaces: [Space] { library.spaces }
+    var regularSpaces: [Space] { library.regularSpaces }
+    var privateSpace: Space? { library.privateSpace }
+    var favorites: [Favorite] { library.favorites }
+    var sortedFavorites: [Favorite] { library.sortedFavorites }
+    var archive: [BrowserTab] { library.archive }
+    var settings: BrowserSettings {
+        get { library.settings }
+        set { library.settings = newValue }
     }
+    var downloads: [EngineDownload] { library.downloads }
+    var filterStatus: FilterStatus { library.filterStatus }
+    var recentlyClosed: [BrowserTab] { library.recentlyClosed }
+    var engine: any BrowserEngine { library.engine }
+    var history: HistoryStore { library.history }
+    var suggest: SuggestEngine { library.suggest }
+
+    func space(containing tab: BrowserTab) -> Space? { library.space(containing: tab) }
+    func controller(for tab: BrowserTab) -> TabController { library.controller(for: tab) }
+    func isFavorite(_ url: URL) -> Bool { library.isFavorite(url) }
+    func addFavorite(url: URL, title: String) { library.addFavorite(url: url, title: title) }
+    func removeFavorite(_ fav: Favorite) { library.removeFavorite(fav) }
+    func moveFavorite(_ fav: Favorite, before target: Favorite?) { library.moveFavorite(fav, before: target) }
+    func togglePinned(_ tab: BrowserTab) { library.togglePinned(tab) }
+    func move(_ tab: BrowserTab, to space: Space) { library.move(tab, to: space) }
+    func move(_ tab: BrowserTab, before target: BrowserTab?, pinned: Bool) {
+        library.move(tab, before: target, pinned: pinned, fallback: currentSpace)
+    }
+    func deleteSpace(_ space: Space) { library.deleteSpace(space) }
+    func closePrivateSpace() { library.closePrivateSpace() }
+    func forgetPermissions(for host: String) { library.forgetPermissions(for: host) }
+    func updateFilters(force: Bool) async { await library.updateFilters(force: force) }
+    func scheduleSave() { library.scheduleSave() }
+    func saveNow() { library.saveNow() }
 
     // MARK: Selection
 
-    var currentSpace: Space { spaces.first { $0.id == selectedSpaceID } ?? spaces[0] }
-    var currentTab: BrowserTab? { currentSpace.selectedTab }
-    var currentController: TabController? { currentTab.map(controller(for:)) }
-    var regularSpaces: [Space] { spaces.filter { !$0.isPrivate } }
-    var privateSpace: Space? { spaces.first { $0.isPrivate } }
+    var currentSpace: Space { spaces.first { $0.id == selectedSpaceID } ?? regularSpaces[0] }
 
-    func space(containing tab: BrowserTab) -> Space? {
-        spaces.first { $0.allTabs.contains { $0.id == tab.id } }
+    var currentTab: BrowserTab? {
+        let space = currentSpace
+        guard let id = tabSelection[space.id] else { return nil }
+        return space.allTabs.first { $0.id == id }
     }
 
+    var currentController: TabController? { currentTab.map(controller(for:)) }
+
+    /// The tab this window shows (or last showed) in a space.
+    func selectedTabID(in space: Space) -> UUID? { tabSelection[space.id] }
+
+    /// Shows a tab. If another window already shows it, that window comes forward instead, like Arc.
     func select(_ tab: BrowserTab) {
-        if let space = space(containing: tab) {
-            if space.id != selectedSpaceID { selectSpace(space) }
-            space.selectedTabID = tab.id
+        if let other = library.window(showing: tab), other !== self {
+            other.nsWindow?.makeKeyAndOrderFront(nil)
+            return
         }
+        guard let space = space(containing: tab) else { return }
+        if space.id != selectedSpaceID { selectSpace(space, resolving: false) }
+        setSelection(tab, in: space)
         tab.lastActive = .now
         find = nil
-        controllers[tab.id]?.recoverIfNeeded()
+        reader = nil
+        library.existingController(for: tab)?.recoverIfNeeded()
         scheduleSave()
     }
 
-    func selectSpace(_ space: Space) {
+    func selectSpace(_ space: Space) { selectSpace(space, resolving: true) }
+
+    private func selectSpace(_ space: Space, resolving: Bool) {
         guard space.id != selectedSpaceID else { return }
         if space.isPrivate, !currentSpace.isPrivate { spaceBeforePrivate = selectedSpaceID }
         if let from = spaces.firstIndex(where: { $0.id == selectedSpaceID }),
@@ -137,9 +155,61 @@ final class Browser {
             lastSpaceSwitch = SpaceSwitch(at: .now, forward: to > from)
         }
         selectedSpaceID = space.id
+        if resolving { resolveSelection(in: space) }
         find = nil
+        reader = nil
         toast = nil
         scheduleSave()
+    }
+
+    /// First visit to a space in this window: show the tab the space last had, unless another window has it.
+    private func resolveSelection(in space: Space) {
+        guard tabSelection[space.id] == nil, let tab = space.selectedTab, library.window(showing: tab) == nil else { return }
+        tabSelection[space.id] = tab.id
+    }
+
+    private func setSelection(_ tab: BrowserTab?, in space: Space) {
+        tabSelection[space.id] = tab?.id
+        // Remembered with the space, for the next launch.
+        space.selectedTabID = tab?.id
+    }
+
+    /// `tab` is going away from this window (closed, moved, or opened in another window).
+    /// Arc moves to the tab below, then above.
+    func moveOff(_ tab: BrowserTab, in space: Space) {
+        guard tabSelection[space.id] == tab.id else { return }
+        if selectedSpaceID == space.id { find = nil; reader = nil }
+        guard !tab.isPinned, let i = space.today.firstIndex(where: { $0.id == tab.id }) else {
+            // Leaving a pinned tab only unloads it, like Arc.
+            setSelection(nil, in: space)
+            return
+        }
+        let elsewhere = Set(library.windows.filter { $0 !== self }.compactMap { $0.currentTab?.id })
+        let free = { (t: BrowserTab) in !elsewhere.contains(t.id) && t.id != tab.id }
+        let next = space.today[(i + 1)...].first(where: free)
+            ?? space.today[..<i].reversed().first(where: free)
+            ?? space.pinned.last(where: free)
+        setSelection(next, in: space)
+    }
+
+    /// A tab this window showed was dragged into another space.
+    func tabLeft(_ tab: BrowserTab, space: Space) {
+        guard tabSelection[space.id] == tab.id else { return }
+        let elsewhere = Set(library.windows.filter { $0 !== self }.compactMap { $0.currentTab?.id })
+        setSelection(space.allTabs.first { !elsewhere.contains($0.id) }, in: space)
+    }
+
+    /// The space this window shows was deleted or closed.
+    func leaveSpace() {
+        tabSelection[selectedSpaceID] = nil
+        let back = regularSpaces.first { $0.id == spaceBeforePrivate && $0.id != selectedSpaceID }
+            ?? regularSpaces.first { $0.id != selectedSpaceID } ?? regularSpaces[0]
+        lastSpaceSwitch = SpaceSwitch(at: .now, forward: false)
+        selectedSpaceID = back.id
+        spaceBeforePrivate = nil
+        resolveSelection(in: back)
+        find = nil
+        reader = nil
     }
 
     /// Pinned then today: the order the sidebar shows and Cmd-1…9 count.
@@ -170,90 +240,14 @@ final class Browser {
         if spaces.indices.contains(n - 1) { selectSpace(spaces[n - 1]) }
     }
 
-    // MARK: Pages
-
-    /// The live page for a tab, made (and restored) on first use.
-    func controller(for tab: BrowserTab) -> TabController {
-        touch(tab.id)
-        if let c = controllers[tab.id] { return c }
-        let c = TabController(tab: tab, browser: self) { delegate in
-            engine.makePage(options: PageOptions(profile: tab.isPrivate ? .ephemeral : .standard,
-                                                 url: tab.url, sessionState: tab.interactionState),
-                            delegate: delegate)
-        }
-        controllers[tab.id] = c
-        evictIfNeeded(keeping: tab.id)
-        return c
-    }
-
-    /// Registers a page the engine made for a popup.
-    func adopt(_ controller: TabController) {
-        controllers[controller.tab.id] = controller
-        touch(controller.tab.id)
-        evictIfNeeded(keeping: controller.tab.id)
-    }
-
-    private func touch(_ id: UUID) {
-        lru.removeAll { $0 == id }
-        lru.append(id)
-    }
-
-    private func evictIfNeeded(keeping id: UUID) {
-        while lru.count > capacity, let victim = lru.first(where: { $0 != id && $0 != currentTab?.id }) {
-            unload(victim)
-        }
-    }
-
-    /// Saves a page's back/forward list onto its tab and lets the page go.
-    private func unload(_ id: UUID) {
-        if let c = controllers[id] {
-            c.freeze()
-            c.page.close()
-        }
-        controllers[id] = nil
-        lru.removeAll { $0 == id }
-    }
-
     // MARK: Opening tabs
 
     @discardableResult
     func newTab(url: URL?, in space: Space? = nil, isPrivate: Bool = false,
                 source: Frecency.VisitSource = .typed, select shouldSelect: Bool = true) -> BrowserTab {
-        let requested = space ?? currentSpace
-        let wantsPrivate = isPrivate || requested.isPrivate
-        let target = wantsPrivate ? openPrivateSpace() : requested
-        let tab = BrowserTab(url: nil, isPrivate: wantsPrivate)
-        target.today.insert(tab, at: 0)
+        let tab = library.insertTab(url: url, in: space ?? currentSpace, isPrivate: isPrivate, source: source)
         if shouldSelect { select(tab) }
-        if let url {
-            let c = controller(for: tab)
-            c.load(url, source: source)
-        }
-        scheduleSave()
         return tab
-    }
-
-    /// Cmd-click on a link: a new today tab just under the one it came from.
-    func openInNewTab(_ url: URL, from opener: BrowserTab, foreground: Bool) {
-        let space = space(containing: opener) ?? currentSpace
-        let tab = BrowserTab(url: nil, isPrivate: opener.isPrivate)
-        let after = space.today.firstIndex { $0.id == opener.id }.map { $0 + 1 } ?? 0
-        space.today.insert(tab, at: after)
-        controller(for: tab).load(url, source: .link)
-        if foreground { select(tab) } else if let current = currentTab { touch(current.id) }
-        scheduleSave()
-    }
-
-    /// A page opened a window. It becomes a tab right after its opener.
-    func openPopup(from opener: BrowserTab, page: any EnginePage, url: URL?) -> TabController {
-        let space = space(containing: opener) ?? currentSpace
-        let tab = BrowserTab(url: url, isPrivate: opener.isPrivate)
-        let after = space.today.firstIndex { $0.id == opener.id }.map { $0 + 1 } ?? 0
-        space.today.insert(tab, at: after)
-        let c = TabController(tab: tab, browser: self) { _ in page }
-        adopt(c)
-        select(tab)
-        return c
     }
 
     /// A link from another app (when Browsa is the default browser).
@@ -274,32 +268,14 @@ final class Browser {
         }
     }
 
+    /// Moves a tab out into a window of its own.
+    func openInNewWindow(_ tab: BrowserTab) {
+        library.openWindow(.tab(tab))
+    }
+
     // MARK: Closing
 
-    func close(_ tab: BrowserTab) {
-        cancelPrompts(for: tab.id)
-        if !tab.isPrivate, !tab.isPinned, tab.url != nil {
-            controllers[tab.id]?.freeze()
-            recentlyClosed.append(tab)
-            if recentlyClosed.count > 30 { recentlyClosed.removeFirst() }
-        }
-        for space in spaces {
-            if let i = space.today.firstIndex(where: { $0.id == tab.id }) {
-                space.today.remove(at: i)
-                if space.selectedTabID == tab.id {
-                    // Arc moves to the tab below, then above.
-                    let next = space.today.indices.contains(i) ? space.today[i] : (space.today.last ?? space.pinned.last)
-                    space.selectedTabID = next?.id
-                }
-            } else if tab.isPinned, space.selectedTabID == tab.id {
-                // Closing a pinned tab only unloads it, like Arc.
-                space.selectedTabID = nil
-            }
-        }
-        unload(tab.id)
-        if let p = privateSpace, p.allTabs.isEmpty { closePrivateSpace() }
-        scheduleSave()
-    }
+    func close(_ tab: BrowserTab) { library.close(tab) }
 
     func closeOtherTabs(than keep: BrowserTab) {
         for t in currentSpace.today where t.id != keep.id { close(t) }
@@ -311,158 +287,39 @@ final class Browser {
     }
 
     func reopenClosedTab() {
-        guard let tab = recentlyClosed.popLast() else { return }
+        guard let tab = library.popRecentlyClosed() else { return }
         tab.lastActive = .now
         let target = currentSpace.isPrivate ? regularSpaces[0] : currentSpace
         target.today.insert(tab, at: 0)
         select(tab)
     }
 
-    // MARK: Organising
-
-    func togglePinned(_ tab: BrowserTab) {
-        guard !tab.isPrivate, let space = space(containing: tab) else { return }
-        if tab.isPinned {
-            space.pinned.removeAll { $0.id == tab.id }
-            space.today.insert(tab, at: 0)
-        } else {
-            space.today.removeAll { $0.id == tab.id }
-            space.pinned.append(tab)
-        }
-        tab.isPinned.toggle()
-        scheduleSave()
-    }
-
-    /// Drag and drop in the sidebar: `tab` lands just before `target` (or at the end of the section).
-    func move(_ tab: BrowserTab, before target: BrowserTab?, pinned: Bool) {
-        guard let from = space(containing: tab), !(tab.isPrivate && pinned) else { return }
-        let to = target.flatMap(space(containing:)) ?? currentSpace
-        guard from.isPrivate == to.isPrivate else { return }
-        from.pinned.removeAll { $0.id == tab.id }
-        from.today.removeAll { $0.id == tab.id }
-        tab.isPinned = pinned
-        if pinned {
-            let i = target.flatMap { t in to.pinned.firstIndex { $0.id == t.id } } ?? to.pinned.endIndex
-            to.pinned.insert(tab, at: i)
-        } else {
-            let i = target.flatMap { t in to.today.firstIndex { $0.id == t.id } } ?? to.today.endIndex
-            to.today.insert(tab, at: i)
-        }
-        if from.selectedTabID == tab.id, from.id != to.id { from.selectedTabID = from.today.first?.id ?? from.pinned.first?.id }
-        scheduleSave()
-    }
-
-    func move(_ tab: BrowserTab, to space: Space) {
-        guard let from = self.space(containing: tab), from.id != space.id, !space.isPrivate, !tab.isPrivate else { return }
-        from.pinned.removeAll { $0.id == tab.id }
-        from.today.removeAll { $0.id == tab.id }
-        if from.selectedTabID == tab.id { from.selectedTabID = from.today.first?.id ?? from.pinned.first?.id }
-        tab.isPinned = false
-        space.today.insert(tab, at: 0)
-        scheduleSave()
-    }
-
-    // MARK: Favourites
-
-    func isFavorite(_ url: URL) -> Bool {
-        let key = URLNormalizer.key(for: url)
-        return favorites.contains { URLNormalizer.key(for: $0.url) == key }
-    }
-
-    func addFavorite(url: URL, title: String) {
-        guard !isFavorite(url) else { return }
-        favorites.append(Favorite(url: url, title: title, order: (favorites.map(\.order).max() ?? -1) + 1))
-        Task { await history.setBookmarked(url, true) }
-        scheduleSave()
-    }
-
-    func removeFavorite(_ fav: Favorite) {
-        favorites.removeAll { $0.id == fav.id }
-        Task { await history.setBookmarked(fav.url, false) }
-        scheduleSave()
-    }
-
-    func moveFavorite(_ fav: Favorite, before target: Favorite?) {
-        var sorted = favorites.sorted { $0.order < $1.order }
-        sorted.removeAll { $0.id == fav.id }
-        let i = target.flatMap { t in sorted.firstIndex { $0.id == t.id } } ?? sorted.endIndex
-        sorted.insert(fav, at: i)
-        for j in sorted.indices { sorted[j].order = j }
-        favorites = sorted
-        scheduleSave()
-    }
-
-    var sortedFavorites: [Favorite] { favorites.sorted { $0.order < $1.order } }
-
     // MARK: Spaces
 
     func addSpace() {
-        let used = Set(spaces.map(\.colorIndex))
-        let color = (0..<SpacePalette.colors.count).first { !used.contains($0) } ?? spaces.count
-        let space = Space(name: "Space \(regularSpaces.count + 1)", symbol: "circle.fill", colorIndex: color)
-        spaces.insert(space, at: spaces.firstIndex { $0.isPrivate } ?? spaces.endIndex)
-        selectSpace(space)
-        scheduleSave()
-    }
-
-    func deleteSpace(_ space: Space) {
-        if space.isPrivate { closePrivateSpace(); return }
-        guard regularSpaces.count > 1, let i = spaces.firstIndex(where: { $0.id == space.id }) else { return }
-        space.allTabs.forEach { unload($0.id) }
-        spaces.remove(at: i)
-        if selectedSpaceID == space.id { selectedSpaceID = regularSpaces[0].id }
-        if settings.externalLinksSpaceID == space.id { settings.externalLinksSpaceID = nil }
-        scheduleSave()
-    }
-
-    private func openPrivateSpace() -> Space {
-        if let privateSpace { return privateSpace }
-        if !currentSpace.isPrivate { spaceBeforePrivate = selectedSpaceID }
-        let space = Space(name: "Private", symbol: "eye.slash", colorIndex: 0, isPrivate: true)
-        spaces.append(space)
-        return space
-    }
-
-    /// Closes every private tab, which removes the Private space and throws its cookies away.
-    func closePrivateSpace() {
-        guard let space = privateSpace else { return }
-        for tab in space.allTabs {
-            cancelPrompts(for: tab.id)
-            unload(tab.id)
-        }
-        if selectedSpaceID == space.id {
-            let back = regularSpaces.first { $0.id == spaceBeforePrivate } ?? regularSpaces[0]
-            lastSpaceSwitch = SpaceSwitch(at: .now, forward: false)
-            selectedSpaceID = back.id
-        }
-        spaces.removeAll { $0.id == space.id }
-        engine.resetEphemeralProfile()
-        spaceBeforePrivate = nil
-        scheduleSave()
+        selectSpace(library.addSpace())
     }
 
     // MARK: Archive
 
-    /// Today tabs left alone for longer than the setting go to the archive, like Arc.
-    func archiveStaleTabs(now: Date = .now) {
-        for space in spaces where !space.isPrivate {
-            let stale = space.today.filter {
-                $0.id != space.selectedTabID && now.timeIntervalSince($0.lastActive) > settings.archiveAfterHours * 3600
-            }
-            guard !stale.isEmpty else { continue }
-            space.today.removeAll { t in stale.contains { $0.id == t.id } }
-            for t in stale { controllers[t.id]?.freeze(); unload(t.id) }
-            archive.insert(contentsOf: stale, at: 0)
-        }
-        archive = Array(archive.prefix(500))
-        scheduleSave()
+    func restoreFromArchive(_ tab: BrowserTab) {
+        library.takeFromArchive(tab, into: currentSpace.isPrivate ? regularSpaces[0] : currentSpace)
+        select(tab)
     }
 
-    func restoreFromArchive(_ tab: BrowserTab) {
-        archive.removeAll { $0.id == tab.id }
-        tab.lastActive = .now
-        (currentSpace.isPrivate ? regularSpaces[0] : currentSpace).today.insert(tab, at: 0)
-        select(tab)
+    // MARK: Sidebar
+
+    func toggleSidebar() {
+        // The page holds its width while the sidebar moves, then resizes once (see PageHost).
+        sidebarMoveTask?.cancel()
+        isSidebarMoving = true
+        sidebarMoveTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(Int(Motion.dockDuration * 1000) + 40))
+            guard !Task.isCancelled else { return }
+            self?.isSidebarMoving = false
+        }
+        isSidebarDocked.toggle()
+        isSidebarPeeking = false
     }
 
     // MARK: Toast
@@ -479,38 +336,6 @@ final class Browser {
 
     // MARK: Blocking
 
-    func applyBlocking() {
-        let s = settings
-        let config = BlockingConfiguration(isEnabled: s.blockContent, ruleGroups: Set(s.filterGroups.map(\.rawValue)),
-                                           allowlist: s.blockingDisabledHosts, declineCookieBanners: s.declineCookieBanners)
-        blockingTask?.cancel()
-        blockingTask = Task { [weak self] in
-            guard let self else { return }
-            await engine.applyBlocking(config)
-            refreshFilterStatus()
-            if s.blockContent, !filterStatus.isUpdating { await updateFilters(force: false) }
-        }
-    }
-
-    func updateFilters(force: Bool) async {
-        guard !filterStatus.isUpdating else { return }
-        filterStatus.isUpdating = true
-        filterStatus.error = nil
-        do {
-            _ = try await engine.updateBlockingRules(force: force)
-        } catch {
-            filterStatus.error = "Couldn't update filters. \(error.localizedDescription)"
-        }
-        filterStatus.isUpdating = false
-        refreshFilterStatus()
-    }
-
-    private func refreshFilterStatus() {
-        let meta = ContentBlocker.shared.metadata
-        filterStatus.lastUpdated = meta.lastUpdated
-        filterStatus.ruleCount = settings.filterGroups.reduce(0) { $0 + (meta.ruleCounts[$1.rawValue] ?? 0) }
-    }
-
     var blockingDisabledForCurrentSite: Bool { settings.blockingDisabled(for: currentTab?.url?.host()) }
 
     func toggleBlockingForCurrentSite() {
@@ -524,68 +349,14 @@ final class Browser {
             showToast("Blockers off for \(site)")
         }
         Task { @MainActor in
-            await blockingTask?.value
+            await library.blockingApplied()
             controller(for: tab).page.reload()
         }
     }
 
     func clearWebsiteData() async {
-        await engine.clearWebsiteData(for: .standard)
-        if currentTab?.isPrivate == false { currentController?.page.reload() }
+        await library.clearWebsiteData()
         showToast("Website data cleared")
-    }
-
-    // MARK: Suggestions
-
-    private func makeSuggestEngine() -> SuggestEngine {
-        SuggestEngine(
-            history: history,
-            favorites: { [weak self] in await MainActor.run { self?.favorites ?? [] } },
-            openTabs: { [weak self] in
-                await MainActor.run {
-                    guard let self else { return [] }
-                    let inPrivate = self.currentSpace.isPrivate
-                    return self.spaces.flatMap(\.allTabs)
-                        .filter { $0.url != nil && $0.id != self.currentTab?.id && (inPrivate || !$0.isPrivate) }
-                        .sorted { $0.lastActive > $1.lastActive }
-                        .map { OpenTabSnapshot(id: $0.id, url: $0.url!, title: $0.title) }
-                }
-            },
-            searchEngine: settings.searchEngine,
-            remoteSuggestionsEnabled: settings.remoteSuggestions,
-            extraProviders: [
-                CommandProvider(commands: { [weak self] in await MainActor.run { self?.availableCommands() ?? [] } }),
-                ArchivedTabsProvider(tabs: { [weak self] in
-                    await MainActor.run {
-                        (self?.archive ?? []).compactMap { t in t.url.map { OpenTabSnapshot(id: t.id, url: $0, title: t.title) } }
-                    }
-                }),
-            ])
-    }
-
-    // MARK: Persistence
-
-    func scheduleSave() {
-        guard snapshotURL != nil else { return }
-        saveTask?.cancel()
-        saveTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1))
-            guard !Task.isCancelled else { return }
-            self?.saveNow()
-        }
-    }
-
-    func saveNow() {
-        guard let snapshotURL else { return }
-        for c in controllers.values { c.freeze() }
-        let selected = currentSpace.isPrivate ? (spaceBeforePrivate ?? regularSpaces.first?.id) : selectedSpaceID
-        let snap = BrowserSnapshot(spaces: regularSpaces.map(\.record), selectedSpaceID: selected,
-                                   favorites: favorites, archive: archive.map(\.record), settings: settings,
-                                   saved: savedSites)
-        guard let data = try? JSONEncoder().encode(snap) else { return }
-        try? FileManager.default.createDirectory(at: snapshotURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: snapshotURL, options: .atomic)
-        Task { await history.saveNow() }
     }
 }
 
@@ -608,7 +379,14 @@ struct FindState: Equatable {
     var found: Bool?
 }
 
-/// Window preferences that aren't part of the synced browser state.
+/// What a new window should show first.
+enum WindowRequest {
+    case tab(BrowserTab)
+    case url(URL)
+    case privateTab
+}
+
+/// Preferences that aren't part of the synced browser state.
 enum Preferences {
     private static var d: UserDefaults { .standard }
 
@@ -620,6 +398,23 @@ enum Preferences {
     static var sidebarWidth: CGFloat {
         get { (d.object(forKey: "sidebarWidth") as? Double).map { CGFloat($0) } ?? 260 }
         set { d.set(Double(newValue), forKey: "sidebarWidth") }
+    }
+
+    /// On by default: asking sites not to sell or share your data costs nothing.
+    static var globalPrivacyControl: Bool {
+        get { d.object(forKey: "globalPrivacyControl") as? Bool ?? true }
+        set { d.set(newValue, forKey: "globalPrivacyControl") }
+    }
+
+    static var clearDataOnQuit: Bool {
+        get { d.bool(forKey: "clearDataOnQuit") }
+        set { d.set(newValue, forKey: "clearDataOnQuit") }
+    }
+
+    /// Reader text size, shared by every article.
+    static var readerScale: Double {
+        get { d.object(forKey: "readerScale") as? Double ?? 1 }
+        set { d.set(newValue, forKey: "readerScale") }
     }
 
     /// Page zoom per site, like Safari remembers it.

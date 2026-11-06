@@ -19,7 +19,7 @@ struct SpaceTabs: View {
                     .dropDestination(for: String.self) { items, _ in return drop(items, before: nil, pinned: true) }
 
                 ForEach(Array(space.pinned.enumerated()), id: \.element.id) { i, tab in
-                    TabRow(tab: tab, selected: tab.id == space.selectedTabID)
+                    TabRow(tab: tab, selected: tab.id == browser.selectedTabID(in: space))
                         .spaceCascade(index: i, spaceSwitch: browser.lastSpaceSwitch)
                 }
 
@@ -31,7 +31,7 @@ struct SpaceTabs: View {
                 NewTabRow()
 
                 ForEach(Array(space.today.enumerated()), id: \.element.id) { i, tab in
-                    TabRow(tab: tab, selected: tab.id == space.selectedTabID)
+                    TabRow(tab: tab, selected: tab.id == browser.selectedTabID(in: space))
                         .spaceCascade(index: i + space.pinned.count + 1, spaceSwitch: browser.lastSpaceSwitch)
                 }
 
@@ -223,6 +223,7 @@ struct TabMenu: View {
                 browser.newTab(url: url, in: browser.space(containing: tab), source: .link)
             }
         }
+        Button("Open in New Window", systemImage: "macwindow.badge.plus") { browser.openInNewWindow(tab) }
         if !tab.isPrivate, browser.regularSpaces.count > 1 {
             Menu("Move to Space") {
                 ForEach(browser.regularSpaces.filter { $0.id != browser.space(containing: tab)?.id }) { s in
@@ -282,7 +283,7 @@ struct DownloadsList: View {
             HStack {
                 Text("Downloads").font(.headline)
                 Spacer()
-                Button("Clear") { browser.downloads.removeAll { $0.status != .running } }
+                Button("Clear") { browser.library.downloads.removeAll { $0.status != .running } }
                     .disabled(!browser.downloads.contains { $0.status != .running })
             }
             .padding(12)

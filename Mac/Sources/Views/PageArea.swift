@@ -10,22 +10,37 @@ struct PageArea: View {
     var body: some View {
         ZStack {
             if let tab = browser.currentTab {
-                let controller = browser.controller(for: tab)
-                PageHost(view: controller.page.view, focusesPage: browser.commandBar == nil && browser.find == nil)
-                if let error = tab.loadError {
+                let focuses = browser.commandBar == nil && browser.find == nil
+                if browser.isReaderShowing, let reader = browser.reader {
+                    PageHost(view: reader.page.view, focusesPage: focuses, holdsWidth: browser.isSidebarMoving)
+                } else {
+                    PageHost(view: browser.controller(for: tab).page.view, focusesPage: focuses,
+                             holdsWidth: browser.isSidebarMoving)
+                }
+                if let error = tab.loadError, !browser.isReaderShowing {
                     ErrorPage(error: error)
                 }
             } else {
                 EmptyPage()
             }
         }
-        .background(Color(nsColor: .textBackgroundColor))
-        .clipShape(.rect(cornerRadius: 10, style: .continuous))
+        .clipShape(.rect(cornerRadius: PageCard.radius, style: .continuous))
+        // The shadow belongs to a plain shape behind the page. On the page itself it would be
+        // redrawn offscreen every frame while the page resizes.
+        .background {
+            RoundedRectangle(cornerRadius: PageCard.radius, style: .continuous)
+                .fill(Color(nsColor: .textBackgroundColor))
+                .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+        }
         .overlay(alignment: .top) {
             if let tab = browser.currentTab { ProgressLine(tab: tab) }
         }
         .overlay(alignment: .topTrailing) {
-            if browser.find != nil {
+            if browser.isReaderShowing {
+                ReaderControls()
+                    .padding(10)
+                    .transition(.opacity)
+            } else if browser.find != nil {
                 FindBar()
                     .padding(10)
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -46,26 +61,65 @@ struct PageArea: View {
         }
         .animation(Motion.snappy, value: browser.toast)
         .animation(Motion.snappy, value: browser.find != nil)
-        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+        .animation(Motion.snappy, value: browser.isReaderShowing)
+    }
+}
+
+/// The page card's shape and its distance from the window edge.
+enum PageCard {
+    static let radius: CGFloat = 9
+    static let inset: CGFloat = 6
+}
+
+/// Reader's text size and a way out, floating over the article.
+private struct ReaderControls: View {
+    @Environment(Browser.self) private var browser
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button { browser.zoom(-1) } label: { Image(systemName: "textformat.size.smaller") }
+                .help("Smaller Text (⌘-)")
+            Button { browser.zoom(1) } label: { Image(systemName: "textformat.size.larger") }
+                .help("Larger Text (⌘+)")
+            Divider().frame(height: 14)
+            Button { browser.closeReader() } label: { Image(systemName: "doc.plaintext.fill") }
+                .help("Hide Reader (⇧⌘R)")
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .frame(height: 30)
+        .background(PanelFill(), in: .capsule)
+        .overlay(Capsule().strokeBorder(.primary.opacity(0.1)))
+        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
     }
 }
 
 /// Holds the current page's view. Switching tabs swaps the view inside, so pages aren't rebuilt.
+///
+/// While the sidebar docks or hides (`holdsWidth`), the page keeps the widest size it will have and
+/// the card clips it, so the web view lays out once instead of on every frame of the animation.
 struct PageHost: NSViewRepresentable {
     let view: NSView
     let focusesPage: Bool
+    var holdsWidth = false
 
     func makeNSView(context: Context) -> Container { Container() }
 
     func updateNSView(_ container: Container, context: Context) {
         container.show(view, focus: focusesPage)
+        container.holdsWidth = holdsWidth
     }
 
     final class Container: NSView {
+        var holdsWidth = false {
+            didSet { if holdsWidth != oldValue { needsLayout = true } }
+        }
+
         override init(frame: NSRect) {
             super.init(frame: frame)
             wantsLayer = true
-            layer?.cornerRadius = 10
+            layer?.cornerRadius = PageCard.radius
             layer?.cornerCurve = .continuous
             layer?.masksToBounds = true
         }
@@ -76,16 +130,29 @@ struct PageHost: NSViewRepresentable {
             if page.superview !== self {
                 subviews.forEach { $0.removeFromSuperview() }
                 page.removeFromSuperview()
-                page.translatesAutoresizingMaskIntoConstraints = false
+                page.translatesAutoresizingMaskIntoConstraints = true
+                page.autoresizingMask = []
                 addSubview(page)
-                NSLayoutConstraint.activate([
-                    page.leadingAnchor.constraint(equalTo: leadingAnchor),
-                    page.trailingAnchor.constraint(equalTo: trailingAnchor),
-                    page.topAnchor.constraint(equalTo: topAnchor),
-                    page.bottomAnchor.constraint(equalTo: bottomAnchor),
-                ])
+                layoutPage()
                 if focus { focusPage(page) }
             }
+        }
+
+        override func layout() {
+            super.layout()
+            layoutPage()
+        }
+
+        /// Pinned to the leading edge, so the page moves with the card's edge and the far side is
+        /// clipped rather than squeezed.
+        private func layoutPage() {
+            guard let page = subviews.first else { return }
+            var width = bounds.width
+            if holdsWidth, let window {
+                width = max(width, window.contentLayoutRect.width - PageCard.inset * 2)
+            }
+            let frame = NSRect(x: 0, y: 0, width: width, height: bounds.height)
+            if page.frame != frame { page.frame = frame }
         }
 
         /// Keys go to the page after a tab switch, so Space scrolls and arrows work straight away.

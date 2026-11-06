@@ -19,10 +19,9 @@ struct BrowserWindow: View {
                     .transition(.move(edge: .leading).combined(with: .opacity))
             }
             PageArea()
-                .padding(.top, 8)
-                .padding(.bottom, 8)
-                .padding(.trailing, 8)
-                .padding(.leading, docked ? 0 : 8)
+                .padding(.vertical, PageCard.inset)
+                .padding(.trailing, PageCard.inset)
+                .padding(.leading, docked ? 0 : PageCard.inset)
         }
         .background { background }
         .overlay(alignment: .leading) {
@@ -36,9 +35,12 @@ struct BrowserWindow: View {
             }
         }
         .animation(Motion.snappy, value: browser.commandBar)
-        .animation(Motion.spring, value: browser.isSidebarDocked)
+        .animation(Motion.dock, value: browser.isSidebarDocked)
         .ignoresSafeArea()
         .background(WindowAccessor { window in configure(window) })
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
+            if let window = note.object as? NSWindow, window === browser.nsWindow { browser.library.markActive(browser) }
+        }
         .sheet(item: Binding(
             get: { browser.activePrompt },
             // Dismissed without a button (Esc): answer it, so the page isn't left waiting.
@@ -114,6 +116,11 @@ struct BrowserWindow: View {
     }
 
     private func configure(_ window: NSWindow) {
+        if browser.nsWindow !== window {
+            browser.nsWindow = window
+            // Each window keeps its own place; SwiftUI restores the frames.
+            window.tabbingMode = .disallowed
+        }
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = false

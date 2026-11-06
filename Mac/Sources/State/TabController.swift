@@ -10,16 +10,18 @@ import Suggest
 final class TabController: EnginePageDelegate {
     let tab: BrowserTab
     private(set) var page: (any EnginePage)!
-    private weak var browser: Browser?
+    private weak var library: Library?
+    /// The window showing this tab, if any.
+    private var window: Browser? { library?.window(showing: tab) }
     /// How the next finished load should count in history.
     private var pendingSource: Frecency.VisitSource?
     /// The page's process died while it was out of sight. Reload when it's shown again.
     private var needsRecovery = false
     private var lastTermination: Date?
 
-    init(tab: BrowserTab, browser: Browser, makePage: (TabController) -> any EnginePage) {
+    init(tab: BrowserTab, library: Library, makePage: (TabController) -> any EnginePage) {
         self.tab = tab
-        self.browser = browser
+        self.library = library
         page = makePage(self)
         page.delegate = self
         if let host = tab.url?.host() { page.zoom = Preferences.zoom(for: host) }
@@ -84,15 +86,15 @@ final class TabController: EnginePageDelegate {
         }
         page.zoom = next
         if let host = tab.url?.host() { Preferences.setZoom(next, for: host) }
-        browser?.showToast(direction == 0 ? "Actual Size" : "Zoom \(Int((next * 100).rounded()))%")
+        window?.showToast(direction == 0 ? "Actual Size" : "Zoom \(Int((next * 100).rounded()))%")
     }
 
     // MARK: EnginePageDelegate
 
     func page(_ page: any EnginePage, decide request: NavigationRequest) async -> NavigationDecision {
-        guard let browser else { return .allow }
+        guard let library else { return .allow }
         if request.wantsNewTab {
-            browser.openInNewTab(request.url, from: tab, foreground: request.wantsForeground)
+            library.openInNewTab(request.url, from: tab, foreground: request.wantsForeground)
             return .cancel
         }
         let scheme = request.url.scheme?.lowercased() ?? ""
@@ -101,8 +103,8 @@ final class TabController: EnginePageDelegate {
             NSWorkspace.shared.open(request.url)
             return .cancel
         }
-        if request.isMainFrame, browser.settings.cleanLinks, request.method == "GET",
-           !browser.settings.blockingDisabled(for: request.url.host()),
+        if request.isMainFrame, library.settings.cleanLinks, request.method == "GET",
+           !library.settings.blockingDisabled(for: request.url.host()),
            let clean = LinkCleaner.clean(request.url) {
             return .redirect(clean)
         }
@@ -111,7 +113,7 @@ final class TabController: EnginePageDelegate {
 
     func page(_ page: any EnginePage, didCommit url: URL?) {
         tab.loadError = nil
-        browser?.cancelPrompts(for: tab.id)
+        library?.windows.forEach { $0.cancelPrompts(for: tab.id) }
         if let host = url?.host() {
             let z = Preferences.zoom(for: host)
             if abs(page.zoom - z) > 0.001 { page.zoom = z }
@@ -119,8 +121,8 @@ final class TabController: EnginePageDelegate {
     }
 
     func page(_ page: any EnginePage, didFinish url: URL, title: String) {
-        browser?.scheduleSave()
-        guard !tab.isPrivate, let history = browser?.history else { pendingSource = nil; return }
+        library?.scheduleSave()
+        guard !tab.isPrivate, let history = library?.history else { pendingSource = nil; return }
         let source = pendingSource ?? .link
         pendingSource = nil
         Task { await history.recordVisit(url: url, title: title, source: source) }
@@ -132,7 +134,7 @@ final class TabController: EnginePageDelegate {
     }
 
     func pageContentProcessDidTerminate(_ page: any EnginePage) {
-        guard browser?.currentTab?.id == tab.id else { needsRecovery = true; return }
+        guard window != nil else { needsRecovery = true; return }
         // Dying again straight after a reload is the page itself; reloading would loop.
         let diedRecently = lastTermination.map { Date().timeIntervalSince($0) < 10 } ?? false
         lastTermination = .now
@@ -145,25 +147,27 @@ final class TabController: EnginePageDelegate {
     }
 
     func page(_ page: any EnginePage, openedPopup popup: any EnginePage, url: URL?) -> (any EnginePageDelegate)? {
-        browser?.openPopup(from: tab, page: popup, url: url)
+        library?.openPopup(from: tab, page: popup, url: url)
     }
 
     func pageDidRequestClose(_ page: any EnginePage) {
-        browser?.close(tab)
+        library?.close(tab)
     }
 
     func page(_ page: any EnginePage, show dialog: EngineDialog) async -> EngineDialogResponse {
-        guard let browser else { return .cancel }
-        return await browser.ask(.dialog(dialog), from: tab)
+        guard let window else { return .cancel }
+        return await window.ask(.dialog(dialog), from: tab)
     }
 
     func page(_ page: any EnginePage, requestPermission permission: EnginePermission, host: String) async -> Bool {
-        guard let browser else { return false }
-        if let saved = browser.settings.sitePermissions[host]?[permission.rawValue] { return saved }
-        let answer = await browser.ask(.permission(permission, host: host), from: tab)
-        guard answer != .cancel || browser.currentTab?.id == tab.id else { return false }
+        guard let library else { return false }
+        if let saved = library.settings.sitePermissions[host]?[permission.rawValue] { return saved }
+        guard let window else { return false }
+        let answer = await window.ask(.permission(permission, host: host), from: tab)
+        // Cancelled because the tab went away: don't remember a "no" the user never gave.
+        guard answer != .cancel || window.currentTab?.id == tab.id else { return false }
         let granted = answer == .ok
-        browser.settings.sitePermissions[host, default: [:]][permission.rawValue] = granted
+        library.settings.sitePermissions[host, default: [:]][permission.rawValue] = granted
         return granted
     }
 
@@ -179,13 +183,13 @@ final class TabController: EnginePageDelegate {
     }
 
     func page(_ page: any EnginePage, didStartDownload download: EngineDownload) {
-        guard let browser else { return }
-        browser.downloads.insert(download, at: 0)
-        browser.showToast("Downloading \(download.filename)")
+        guard let library else { return }
+        library.downloads.insert(download, at: 0)
+        (window ?? library.activeWindow)?.showToast("Downloading \(download.filename)")
     }
 
     func pageDidDeclineCookieBanner(_ page: any EnginePage) {
-        guard let browser, browser.currentTab?.id == tab.id, let url = page.state.url,
+        guard let browser = window, let url = page.state.url,
               browser.lastCookieToastURL != url else { return }
         browser.lastCookieToastURL = url
         browser.showToast("Cookie banner declined")

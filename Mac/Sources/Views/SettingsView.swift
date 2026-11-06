@@ -19,7 +19,7 @@ struct SettingsView: View {
 }
 
 private struct GeneralSettings: View {
-    @Environment(Browser.self) private var browser
+    @Environment(Library.self) private var browser
     @State private var isDefault = false
 
     var body: some View {
@@ -77,7 +77,7 @@ private struct GeneralSettings: View {
 }
 
 private struct SpacesSettings: View {
-    @Environment(Browser.self) private var browser
+    @Environment(Library.self) private var browser
 
     var body: some View {
         Form {
@@ -97,7 +97,7 @@ private struct SpacesSettings: View {
 }
 
 private struct SpaceEditor: View {
-    @Environment(Browser.self) private var browser
+    @Environment(Library.self) private var browser
     @Bindable var space: Space
 
     var body: some View {
@@ -134,7 +134,7 @@ private struct SpaceEditor: View {
 }
 
 private struct PrivacySettings: View {
-    @Environment(Browser.self) private var browser
+    @Environment(Library.self) private var browser
     @State private var clearing = false
 
     var body: some View {
@@ -176,6 +176,13 @@ private struct PrivacySettings: View {
                 }
                 Toggle("Decline cookie banners", isOn: $browser.settings.declineCookieBanners)
                 Toggle("Remove tracking from links", isOn: $browser.settings.cleanLinks)
+                Toggle(isOn: $browser.globalPrivacyControl) {
+                    VStack(alignment: .leading) {
+                        Text("Ask sites not to sell or share my data")
+                        Text("Sends Global Privacy Control, which sites in California, Colorado and elsewhere must honour.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
             }
             if !browser.settings.blockingDisabledHosts.isEmpty {
                 Section("Blockers off for") {
@@ -206,16 +213,21 @@ private struct PrivacySettings: View {
                 }
             }
             Section {
-                Button("Clear History…", role: .destructive) {
-                    Task { await browser.history.clearAll(); browser.showToast("History cleared") }
+                Toggle("Clear history and website data when Browsa quits", isOn: $browser.clearDataOnQuit)
+                Button("Clear History", role: .destructive) {
+                    Task { await browser.clearHistory(); browser.activeWindow?.showToast("History cleared") }
                 }
                 Button(clearing ? "Clearing…" : "Clear Cookies and Website Data", role: .destructive) {
                     clearing = true
-                    Task { await browser.clearWebsiteData(); clearing = false }
+                    Task {
+                        await browser.clearWebsiteData()
+                        clearing = false
+                        browser.activeWindow?.showToast("Website data cleared")
+                    }
                 }
                 .disabled(clearing)
             } footer: {
-                Text("Signs you out of websites in your spaces. Private tabs keep nothing anyway.")
+                Text("Clearing website data signs you out of websites in your spaces. Private tabs keep nothing anyway.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -232,7 +244,7 @@ private struct PrivacySettings: View {
 
 /// Which web engine Browsa is running on, and what it can do.
 private struct EngineSettings: View {
-    @Environment(Browser.self) private var browser
+    @Environment(Library.self) private var browser
 
     private let features: [(EngineCapabilities, String)] = [
         (.contentBlocking, "Ad and tracker blocking"),
