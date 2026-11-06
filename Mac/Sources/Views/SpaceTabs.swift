@@ -67,7 +67,7 @@ private struct SpaceHeader: View {
             Image(systemName: space.symbol)
                 .font(.system(size: 11, weight: .semibold))
             Text(space.name)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 13, weight: .bold))
             Spacer()
             if space.isPrivate {
                 Button("Close All") { withAnimation(Motion.spring) { browser.closePrivateSpace() } }

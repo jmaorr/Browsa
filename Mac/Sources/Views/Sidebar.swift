@@ -113,7 +113,7 @@ struct AddressPill: View {
             if tab?.isPrivate == true {
                 Image(systemName: "eye.slash").foregroundStyle(.secondary)
             } else if let url = tab?.url, url.scheme == "https" {
-                Image(systemName: "lock.fill").font(.system(size: 10)).foregroundStyle(.secondary)
+                Image(systemName: "lock.fill").font(.system(size: 10, weight: .semibold)).foregroundStyle(.primary.opacity(0.55))
             }
             Text(tab?.url.map(URLNormalizer.displayHost) ?? "Search or enter address")
                 .lineLimit(1)
@@ -190,7 +190,7 @@ struct FavoriteTile: View {
     }
 
     var body: some View {
-        FaviconView(url: favorite.url, size: 20, chip: true)
+        FaviconView(url: favorite.url, size: 20, chip: true, letter: favorite.customName ?? favorite.title)
             .frame(maxWidth: .infinity, minHeight: 42)
             .background(isCurrent ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(hovering ? 0.09 : 0.05)),
                         in: .rect(cornerRadius: 10, style: .continuous))

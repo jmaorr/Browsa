@@ -82,6 +82,8 @@ struct FaviconView: View {
     var size: CGFloat = 16
     /// A light tile behind the icon, so dark logos (GitHub, Apple) show on dark tints.
     var chip = false
+    /// Shown until the icon loads. Defaults to the host's first letter.
+    var letter: String?
 
     private var host: String { URLNormalizer.displayHost(url) }
 
@@ -93,7 +95,7 @@ struct FaviconView: View {
                     .background(chip ? AnyShapeStyle(Color.white.opacity(0.92)) : AnyShapeStyle(.clear),
                                 in: .rect(cornerRadius: size * 0.28, style: .continuous))
             } else {
-                Text(host.prefix(1).uppercased())
+                Text((letter ?? host).prefix(1).uppercased())
                     .font(.system(size: size * 0.6, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
                     .frame(width: size, height: size)
@@ -109,6 +111,13 @@ struct FaviconView: View {
 struct SelectedFill: ShapeStyle {
     func resolve(in environment: EnvironmentValues) -> Color {
         environment.colorScheme == .dark ? Color.white.opacity(0.14) : Color.white.opacity(0.88)
+    }
+}
+
+/// The opaque surface of floating panels (command bar, toasts, find), in the window's appearance.
+struct PanelFill: ShapeStyle {
+    func resolve(in environment: EnvironmentValues) -> Color {
+        environment.colorScheme == .dark ? Color(white: 0.17) : Color(white: 0.985)
     }
 }
 

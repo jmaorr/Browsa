@@ -137,10 +137,12 @@ struct CommandBar: View {
 
             if let model, !model.rows.isEmpty {
                 // With nothing picked, the row Return would open shows as selected, like Arc.
-                let target = model.highlighted ?? (model.isTyping ? model.submitAction(fieldText: fieldText).flatMap { a in
+                // The field shows the inline completion too, so Return's target includes it.
+                let shown = model.inline.map { $0.typed == fieldText ? $0.fullText : fieldText } ?? fieldText
+                let target = model.highlighted ?? (model.isTyping ? model.submitAction(fieldText: shown).flatMap { a in
                     model.rows.firstIndex { $0.action == a }
                 } : nil)
-                Divider()
+                Divider().opacity(0.6)
                 ScrollView {
                     VStack(spacing: 2) {
                         if !model.isTyping {
@@ -161,9 +163,9 @@ struct CommandBar: View {
             }
         }
         .frame(maxWidth: 640)
-        // A solid layer under the glass keeps text legible over any page.
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.82), in: .rect(cornerRadius: 16, style: .continuous))
-        .glassEffect(.regular, in: .rect(cornerRadius: 16, style: .continuous))
+        // Solid rather than glass: glass picks dark or light text from the page behind it, which made
+        // the rows unreadable in dark mode over a white page.
+        .background(PanelFill(), in: .rect(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.primary.opacity(0.1)))
         .shadow(color: .black.opacity(0.18), radius: 24, y: 10)
     }
