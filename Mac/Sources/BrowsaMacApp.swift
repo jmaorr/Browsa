@@ -82,6 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { self?.handle(event) ?? false } ? nil : event
         }
         #if DEBUG
+        // What the cookie-banner decliner finds on each page, in Xcode's console (filter "autoconsent").
+        CookieBannerHandler.log = { print("[autoconsent] \($0)") }
         if let dir = ProcessInfo.processInfo.environment["BROWSA_SNAPSHOT"] {
             Task { @MainActor in await SnapshotTour(directory: URL(fileURLWithPath: dir), delegate: self).run() }
         }
