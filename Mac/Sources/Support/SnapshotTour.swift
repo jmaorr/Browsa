@@ -14,8 +14,16 @@ struct SnapshotTour {
 
     func run() async {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        await pause(3)
-        guard let browser = delegate.browser else { return }
+        // Wait for the first window, and say so (and quit) if it never comes, rather than hang.
+        var waited = 0.0
+        while delegate.browser == nil, waited < 20 { await pause(0.5); waited += 0.5 }
+        await pause(2)
+        guard let browser = delegate.browser else {
+            note("no browser window after 20s; windows: \(NSApp.windows.map { $0.className })")
+            NSApp.terminate(nil)
+            return
+        }
+        note("tour started after \(waited)s")
         let library = delegate.library
         CookieBannerHandler.log = { note($0) }
         // Fetch the favourites' icons first, so the shots show them rather than letters.
