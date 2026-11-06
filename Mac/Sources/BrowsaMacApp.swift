@@ -40,6 +40,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             MainActor.assumeIsolated { self?.handle(event) ?? false } ? nil : event
         }
+        #if DEBUG
+        if let dir = ProcessInfo.processInfo.environment["BROWSA_SNAPSHOT"] {
+            Task { @MainActor in await SnapshotTour(directory: URL(fileURLWithPath: dir), delegate: self).run() }
+        }
+        #endif
         archiveTimer = Timer.scheduledTimer(withTimeInterval: 30 * 60, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.browser?.archiveStaleTabs() }
         }

@@ -159,7 +159,7 @@ struct FavoritesGrid: View {
                 }
             }
             .dropDestination(for: String.self) { items, _ in
-                dropOnGrid(items, before: nil)
+                return dropOnGrid(items, before: nil)
             }
         }
     }

@@ -16,7 +16,7 @@ struct SpaceTabs: View {
                 SpaceHeader(space: space)
                     .padding(.bottom, 4)
                     // Dropping a tab on the space's name pins it.
-                    .dropDestination(for: String.self) { items, _ in drop(items, before: nil, pinned: true) }
+                    .dropDestination(for: String.self) { items, _ in return drop(items, before: nil, pinned: true) }
 
                 ForEach(Array(space.pinned.enumerated()), id: \.element.id) { i, tab in
                     TabRow(tab: tab, selected: tab.id == space.selectedTabID)
@@ -25,7 +25,7 @@ struct SpaceTabs: View {
 
                 if !space.isPrivate {
                     TodayDivider(space: space)
-                        .dropDestination(for: String.self) { items, _ in drop(items, before: space.today.first, pinned: false) }
+                        .dropDestination(for: String.self) { items, _ in return drop(items, before: space.today.first, pinned: false) }
                 }
 
                 NewTabRow()
@@ -38,7 +38,7 @@ struct SpaceTabs: View {
                 // Room to drop below the last tab.
                 Color.clear.frame(height: 40)
                     .contentShape(.rect)
-                    .dropDestination(for: String.self) { items, _ in drop(items, before: nil, pinned: false) }
+                    .dropDestination(for: String.self) { items, _ in return drop(items, before: nil, pinned: false) }
             }
             .padding(.horizontal, 10)
             .id(space.id)
