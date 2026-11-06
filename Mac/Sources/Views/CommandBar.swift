@@ -23,7 +23,12 @@ final class CommandBarModel {
             return r.local + (r.primary.map { [$0] } ?? []) + r.remote
         }
         guard let zero else { return [] }
-        return zero.recentTabs.map(Self.row(for:)) + zero.topSites
+        let rows = zero.recentTabs.map(Self.row(for:)) + zero.topSites
+        // Nothing open or visited yet: offer the favourites, so the bar never opens empty.
+        return rows.isEmpty ? zero.favorites.map {
+            Suggestion(kind: .favorite, title: $0.title.isEmpty ? $0.displayName : $0.title,
+                       subtitle: URLNormalizer.displayHost($0.url), action: .open($0.url), score: 0)
+        } : rows
     }
 
     static func row(for t: OpenTabSnapshot) -> Suggestion {
@@ -146,7 +151,7 @@ struct CommandBar: View {
                 ScrollView {
                     VStack(spacing: 2) {
                         if !model.isTyping {
-                            sectionLabel("Jump back in")
+                            sectionLabel(model.rows.first?.kind == .favorite ? "Favourites" : "Jump back in")
                         }
                         ForEach(Array(model.rows.enumerated()), id: \.element.id) { i, row in
                             SuggestionRow(suggestion: row, highlighted: target == i,
@@ -239,7 +244,7 @@ private struct SuggestionRow: View {
         case .entity: Image(systemName: "book.closed").foregroundStyle(.secondary)
         case .archived: Image(systemName: "archivebox").foregroundStyle(.secondary)
         default:
-            if let url = suggestion.url { FaviconView(url: url, size: 18) }
+            if let url = suggestion.url { FaviconView(url: url, size: 18, chip: true) }
             else { Image(systemName: "globe").foregroundStyle(.secondary) }
         }
     }

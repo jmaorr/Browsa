@@ -54,6 +54,19 @@ struct SnapshotTour {
         withAnimation(Motion.spring) { browser.toggleSidebar() }
         await pause(1)
 
+        // The same screens in light mode.
+        NSApp.appearance = NSAppearance(named: .aqua)
+        await pause(1)
+        save("9-light")
+        browser.showCommandBar(.newTab)
+        await pause(1)
+        if let editor = window?.firstResponder as? NSTextView {
+            editor.insertText("wiki", replacementRange: editor.selectedRange())
+        }
+        await pause(2)
+        save("10-light-command-bar")
+        browser.commandBar = nil
+
         browser.saveNow()
         NSApp.terminate(nil)
     }

@@ -42,7 +42,7 @@ struct Sidebar: View {
         }
         .padding(.horizontal, 8)
         .frame(height: isFloating ? 36 : 28)
-        .padding(.top, isFloating ? 0 : 4)
+        .padding(.top, isFloating ? 0 : 1)
         .contentShape(.rect)
         .gesture(WindowDragGesture())
     }
