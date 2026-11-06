@@ -7,6 +7,8 @@ let package = Package(
     products: [
         .library(name: "BrowserCore", targets: ["BrowserCore"]),
         .library(name: "Suggest", targets: ["Suggest"]),
+        .library(name: "BrowserEngine", targets: ["BrowserEngine"]),
+        .library(name: "WebKitEngine", targets: ["WebKitEngine"]),
     ],
     targets: [
         // Pure Swift + Foundation. No UIKit/WebKit so it can be unit-tested anywhere.
@@ -31,5 +33,12 @@ let package = Package(
             ]
         ),
         .testTarget(name: "BrowserCoreTests", dependencies: ["BrowserCore"]),
+
+        // The engine-neutral page API the Mac app is written against. No WebKit here, so a
+        // Chromium (CEF) engine can sit beside WebKit later. See docs/engines.md.
+        .target(name: "BrowserEngine"),
+
+        // WKWebView behind BrowserEngine. macOS for now; iOS still uses BrowserCore's TabSession.
+        .target(name: "WebKitEngine", dependencies: ["BrowserEngine", "BrowserCore"]),
     ]
 )

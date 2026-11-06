@@ -239,44 +239,55 @@ public struct SavedSite: Codable, Identifiable, Equatable, Sendable {
 
 // MARK: - Codable snapshot for persistence
 
-struct TabRecord: Codable {
-    var id: UUID, url: URL?, title: String, isPinned: Bool, lastActive: Date, interactionState: Data?
+/// The saved form of a tab. Shared by the iOS and Mac apps, so the formats can sync later.
+public struct TabRecord: Codable, Sendable {
+    public var id: UUID, url: URL?, title: String, isPinned: Bool, lastActive: Date, interactionState: Data?
 }
 
-struct SpaceRecord: Codable {
-    var id: UUID, name: String, symbol: String, colorIndex: Int
-    var pinned: [TabRecord], today: [TabRecord], selectedTabID: UUID?, isSidebarOpen: Bool
+public struct SpaceRecord: Codable, Sendable {
+    public var id: UUID, name: String, symbol: String, colorIndex: Int
+    public var pinned: [TabRecord], today: [TabRecord], selectedTabID: UUID?, isSidebarOpen: Bool
 }
 
-struct BrowserSnapshot: Codable {
-    var spaces: [SpaceRecord]
-    var selectedSpaceID: UUID?
-    var favorites: [Favorite]
-    var archive: [TabRecord]
-    var settings: BrowserSettings?
+public struct BrowserSnapshot: Codable, Sendable {
+    public var spaces: [SpaceRecord]
+    public var selectedSpaceID: UUID?
+    public var favorites: [Favorite]
+    public var archive: [TabRecord]
+    public var settings: BrowserSettings?
     /// Missing in state saved before Saved Sites existed.
-    var saved: [SavedSite]?
+    public var saved: [SavedSite]?
+
+    public init(spaces: [SpaceRecord], selectedSpaceID: UUID?, favorites: [Favorite], archive: [TabRecord],
+                settings: BrowserSettings?, saved: [SavedSite]?) {
+        self.spaces = spaces
+        self.selectedSpaceID = selectedSpaceID
+        self.favorites = favorites
+        self.archive = archive
+        self.settings = settings
+        self.saved = saved
+    }
 }
 
 extension BrowserTab {
-    var record: TabRecord {
+    public var record: TabRecord {
         TabRecord(id: id, url: url, title: title, isPinned: isPinned, lastActive: lastActive,
                   interactionState: interactionState)
     }
-    convenience init(_ r: TabRecord) {
+    public convenience init(_ r: TabRecord) {
         self.init(id: r.id, url: r.url, title: r.title, isPinned: r.isPinned,
                   lastActive: r.lastActive, interactionState: r.interactionState)
     }
 }
 
 extension Space {
-    var record: SpaceRecord {
+    public var record: SpaceRecord {
         SpaceRecord(id: id, name: name, symbol: symbol, colorIndex: colorIndex,
                     pinned: pinned.map(\.record),
                     today: today.filter { !$0.isPrivate }.map(\.record),
                     selectedTabID: selectedTabID, isSidebarOpen: isSidebarOpen)
     }
-    convenience init(_ r: SpaceRecord) {
+    public convenience init(_ r: SpaceRecord) {
         self.init(id: r.id, name: r.name, symbol: r.symbol, colorIndex: r.colorIndex,
                   pinned: r.pinned.map(BrowserTab.init), today: r.today.map(BrowserTab.init),
                   selectedTabID: r.selectedTabID, isSidebarOpen: r.isSidebarOpen)
