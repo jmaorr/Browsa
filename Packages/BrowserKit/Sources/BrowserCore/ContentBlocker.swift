@@ -1,4 +1,4 @@
-#if os(iOS)
+#if canImport(WebKit)
 import Foundation
 import WebKit
 
@@ -18,25 +18,25 @@ import WebKit
 /// Sites the user switched blocking off for get one extra "ignore-previous-rules" rule at the end
 /// of every list. Until the first download finishes, a small bundled starter list is used.
 @MainActor
-final class ContentBlocker {
-    static let shared = ContentBlocker()
+public final class ContentBlocker {
+    public static let shared = ContentBlocker()
     /// Where `tools/filter-rules` publishes. Change this if you host your own.
-    static let rulesBaseURL = URL(string: "https://rules.browsa.app/v1/")!
+    public static let rulesBaseURL = URL(string: "https://rules.browsa.app/v1/")!
 
     private let store = WKContentRuleListStore.default()!
     private let directory = URL.applicationSupportDirectory.appending(path: "Filters", directoryHint: .isDirectory)
     private let refreshInterval: TimeInterval = 4 * 24 * 3600
     private let metadataKey = "duo.filters.metadata"
 
-    struct Metadata: Codable {
-        var lastUpdated: Date?
-        var lastChecked: Date?
+    public struct Metadata: Codable, Sendable {
+        public var lastUpdated: Date?
+        public var lastChecked: Date?
         /// The published rules' version, so an unchanged one isn't downloaded again.
-        var version: String?
-        var ruleCounts: [String: Int] = [:]
+        public var version: String?
+        public var ruleCounts: [String: Int] = [:]
     }
 
-    var metadata: Metadata {
+    public internal(set) var metadata: Metadata {
         get {
             UserDefaults.standard.data(forKey: metadataKey)
                 .flatMap { try? JSONDecoder().decode(Metadata.self, from: $0) } ?? Metadata()
@@ -44,7 +44,7 @@ final class ContentBlocker {
         set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: metadataKey) }
     }
 
-    var needsUpdate: Bool {
+    public var needsUpdate: Bool {
         // No rules at all means the last download was unusable, so don't wait out the interval.
         guard let last = metadata.lastChecked ?? metadata.lastUpdated, metadata.ruleCounts.values.contains(where: { $0 > 0 }) else { return true }
         return Date().timeIntervalSince(last) > refreshInterval
@@ -54,7 +54,7 @@ final class ContentBlocker {
 
     /// Compiled lists for the chosen groups, with `allowlist` hosts exempt. Falls back to the
     /// bundled starter list when nothing has been downloaded yet.
-    func lists(for groups: Set<FilterGroup>, allowlist: Set<String>) async -> [WKContentRuleList] {
+    public func lists(for groups: Set<FilterGroup>, allowlist: Set<String>) async -> [WKContentRuleList] {
         var out: [WKContentRuleList] = []
         var wanted: Set<String> = []
         for group in FilterGroup.allCases where groups.contains(group) {
@@ -126,7 +126,7 @@ final class ContentBlocker {
     }
 
     /// Downloads every group's rules if a newer version is published. Returns rule counts per group.
-    func update(groups: Set<FilterGroup>) async throws -> [FilterGroup: Int] {
+    public func update(groups: Set<FilterGroup>) async throws -> [FilterGroup: Int] {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let manifest = try JSONDecoder().decode(Manifest.self, from: await download("manifest.json"))
         let chosen = FilterGroup.allCases.filter(groups.contains)
@@ -169,6 +169,16 @@ private struct StableHash {
     }
 }
 
+/// Progress and results of the filter lists, for Settings.
+public struct FilterStatus: Equatable, Sendable {
+    public var isUpdating = false
+    public var lastUpdated: Date?
+    public var ruleCount = 0
+    public var error: String?
+    public init() {}
+}
+
+#if os(iOS)
 extension WebViewPool {
     /// Every distinct content controller: the two shared configurations plus any popup's own.
     var allContentControllers: [WKUserContentController] {
@@ -186,14 +196,6 @@ extension WebViewPool {
         }
         markContentRulesReady()
     }
-}
-
-/// Progress and results of the filter lists, for Settings.
-public struct FilterStatus: Equatable, Sendable {
-    public var isUpdating = false
-    public var lastUpdated: Date?
-    public var ruleCount = 0
-    public var error: String?
 }
 
 extension BrowserState {
@@ -256,4 +258,5 @@ extension BrowserState {
         settings.blockingDisabled(for: currentTab?.url?.host())
     }
 }
+#endif
 #endif

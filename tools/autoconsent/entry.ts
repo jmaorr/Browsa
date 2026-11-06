@@ -16,8 +16,14 @@ declare global {
 }
 
 if (!window.autoconsentReceiveMessage) {
+    // Config goes to initialize(), not the constructor: given a config, the constructor initializes
+    // before it has made its DOM actions, and in WebKit (where the root element already exists at
+    // document start) the prehide step then throws and autoconsent never looks for a banner.
+    // Without one it sends an "init" message first, which the app ignores.
     const consent = new AutoConsent(
         async (message) => { window.webkit.messageHandlers.autoconsent.postMessage(message); },
+    );
+    consent.initialize(
         {
             enabled: true,
             autoAction: 'optOut',

@@ -1,4 +1,4 @@
-#if os(iOS)
+#if canImport(WebKit)
 import Foundation
 import WebKit
 
@@ -11,17 +11,21 @@ import WebKit
 /// Some consent managers can only be answered from the page's own JavaScript; for those the script
 /// asks the app (an "eval" message), which runs that step in the page world and replies.
 @MainActor
-final class CookieBannerHandler: NSObject, WKScriptMessageHandler {
-    static let world = WKContentWorld.world(name: "duo.autoconsent")
-    static let messageName = "autoconsent"
-    weak var browser: BrowserState?
+public final class CookieBannerHandler: NSObject, WKScriptMessageHandler {
+    public static let world = WKContentWorld.world(name: "duo.autoconsent")
+    public static let messageName = "autoconsent"
+    /// Called when a banner was declined on a page, for a quiet confirmation.
+    private let onDeclined: @MainActor (WKWebView) -> Void
 
-    init(browser: BrowserState) {
-        self.browser = browser
+    /// Debug builds can watch what autoconsent sees (detections, opt-out results, errors).
+    public static var log: (@MainActor (String) -> Void)?
+
+    public init(onDeclined: @escaping @MainActor (WKWebView) -> Void) {
+        self.onDeclined = onDeclined
     }
 
     /// The bundled script, wrapped so it does nothing on sites the user switched blockers off for.
-    static func script(skipping hosts: Set<String>) -> WKUserScript? {
+    public static func script(skipping hosts: Set<String>) -> WKUserScript? {
         guard let bundle = bundledSource else { return nil }
         let skip = (try? JSONEncoder().encode(hosts.sorted())).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
         let source = """
@@ -37,10 +41,20 @@ final class CookieBannerHandler: NSObject, WKScriptMessageHandler {
     private static let bundledSource: String? = Bundle.module.url(forResource: "autoconsent", withExtension: "js")
         .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
 
-    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+    public func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any], let type = body["type"] as? String,
               let webView = message.webView else { return }
         let frame = message.frameInfo
+        if let log = Self.log, type != "eval" {
+            var detail = ["cmp", "result", "msg", "details"].compactMap { k in body[k].map { "\(k)=\($0)" } }
+            if let state = body["state"] as? [String: Any] {
+                // Where detection got to: lifecycle, attempts, and any consent tools it recognised.
+                detail += ["lifecycle", "findCmpAttempts", "detectedCmps", "detectedPopups"].compactMap { k in
+                    state[k].map { "\(k)=\($0)" }
+                }
+            }
+            log("[\(webView.url?.host() ?? "?")\(frame.isMainFrame ? "" : " frame")] \(type) \(detail.joined(separator: " "))")
+        }
         switch type {
         case "eval":
             guard let id = body["id"] as? String, let code = body["code"] as? String else { return }
@@ -55,7 +69,7 @@ final class CookieBannerHandler: NSObject, WKScriptMessageHandler {
             }
         case "optOutResult":
             if body["result"] as? Bool == true, body["scheduleSelfTest"] as? Bool != true {
-                browser?.cookieBannerDeclined(in: webView)
+                onDeclined(webView)
             }
         default:
             break
@@ -63,6 +77,7 @@ final class CookieBannerHandler: NSObject, WKScriptMessageHandler {
     }
 }
 
+#if os(iOS)
 extension WebViewPool {
     /// Installs (or removes) the cookie-banner script and its message handler everywhere.
     func setAutoconsent(enabled: Bool, skipping hosts: Set<String>, browser: BrowserState) {
@@ -73,7 +88,7 @@ extension WebViewPool {
             c.removeScriptMessageHandler(forName: CookieBannerHandler.messageName, contentWorld: CookieBannerHandler.world)
             guard let script else { continue }
             c.addUserScript(script)
-            c.add(CookieBannerHandler(browser: browser), contentWorld: CookieBannerHandler.world,
+            c.add(CookieBannerHandler { [weak browser] in browser?.cookieBannerDeclined(in: $0) }, contentWorld: CookieBannerHandler.world,
                   name: CookieBannerHandler.messageName)
         }
     }
@@ -89,4 +104,5 @@ extension BrowserState {
         showToast("Cookie banner declined")
     }
 }
+#endif
 #endif
