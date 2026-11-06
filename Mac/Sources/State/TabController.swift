@@ -45,10 +45,11 @@ final class TabController: EnginePageDelegate {
         guard let s = page?.state else { return }
         if let url = s.url, tab.url != url { tab.url = url }
         if !s.title.isEmpty, tab.title != s.title { tab.title = s.title }
-        tab.estimatedProgress = s.progress
-        tab.isLoading = s.isLoading
-        tab.canGoBack = s.canGoBack
-        tab.canGoForward = s.canGoForward
+        // Only real changes, so views watching the tab don't redraw for nothing.
+        if tab.estimatedProgress != s.progress { tab.estimatedProgress = s.progress }
+        if tab.isLoading != s.isLoading { tab.isLoading = s.isLoading }
+        if tab.canGoBack != s.canGoBack { tab.canGoBack = s.canGoBack }
+        if tab.canGoForward != s.canGoForward { tab.canGoForward = s.canGoForward }
     }
 
     func load(_ url: URL, source: Frecency.VisitSource) {

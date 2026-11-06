@@ -91,7 +91,10 @@ Packages/BrowserKit/
   Sources/Suggest/         pure Swift: providers, ranking, frecency, inline completion, seed list
   Sources/BrowserCore/     WKWebView sessions + pool, tabs/spaces model, history store, persistence,
                            content blocking, Reader
+  Sources/BrowserEngine/   the engine-neutral page API the Mac app uses (see docs/engines.md)
+  Sources/WebKitEngine/    WKWebView behind BrowserEngine (macOS)
   Tests/                   Swift Testing suites for BrowserCore and the suggest engine
+Mac/Sources/               Browsa for Mac: State/ (spaces, tabs, pages), Views/ (sidebar, command bar)
 App/UITests/               UI tests that drive the real app on a simulator
 tools/build_seed.py        rebuilds the seed list from Chrome UX Report top lists (see below)
 tools/seed_curated.json    brand names, typed aliases (yt, gh, gmail), allow and deny lists
@@ -152,6 +155,32 @@ Good places to start if you'd like to extend it:
 - Drag and drop of links and favourites between the sidebar and other apps
 - CloudKit sync and a separate login profile for each space
 - Storing history in SQLite with full-text search (GRDB + FTS5) instead of JSON, once history gets big
+
+## Browsa for Mac
+
+`BrowsaMac` is a second target in the same project: an Arc-style window for macOS 26 or later.
+
+```sh
+xcodegen && open Browsa.xcodeproj   # then pick the BrowsaMac scheme and Run
+```
+
+- **Sidebar.** Back, forward and reload beside the traffic lights, the address (click it or press
+  ⌘L), favourites shared by every space, then the space's pinned tabs and Today. Drag tabs to
+  reorder, onto the space name to pin, onto favourites to add one, or onto a space's dot to move
+  them. Swipe sideways with two fingers over the sidebar to change space. Drag its edge to resize.
+  ⌘S hides it, and it slides back over the page when the pointer reaches the window's left edge.
+- **Command bar.** ⌘T (or ⌘K) opens a floating field with the same suggestions, inline completion
+  and commands as the iPhone app. ⌘L opens it on the current address.
+- **Keyboard.** ⌘+ / ⌘- / ⌘0 zoom (remembered per site), ⌘W close tab, ⇧⌘T reopen, ⌘[ ⌘] back
+  and forward, ⌘R reload, ⌥⌘R reload without cache, ⌘. stop, ⌘F find, ⌘G and ⇧⌘G next and
+  previous match, ⌘D favourite, ⇧⌘D pin, ⇧⌘C copy link, ⌘1 to ⌘9 tabs, ⌃⇥ and ⇧⌘] next tab,
+  ⌃1 to ⌃9 and ⌥⌘← ⌥⌘→ spaces, ⇧⌘N private tab, ⌥⌘J downloads, ⌘Y archived tabs.
+  Cmd-click a link to open it in the background, Shift-Cmd-click to open it in front.
+- **Engine.** The Mac app is written against `BrowserEngine`, a small engine-neutral API, with
+  WebKit as the only implementation. See [docs/engines.md](docs/engines.md) for how a Chromium
+  engine (and Chrome extensions) could be added.
+- **Passkeys.** WKWebView only runs passkeys and security keys in apps Apple has granted the web
+  browser entitlement. Until then sites fall back to passwords and codes.
 
 ## UI tests
 

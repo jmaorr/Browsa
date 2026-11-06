@@ -13,6 +13,8 @@ struct BrowserCommands: Commands {
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             Button("Open Location…") { browser.showCommandBar(.editCurrent) }
                 .keyboardShortcut("l")
+            Button("Command Bar") { browser.showCommandBar(.newTab) }
+                .keyboardShortcut("k")
             Divider()
             Button("Close Tab") { if let t = browser.currentTab { withAnimation(Motion.snappy) { browser.close(t) } } }
                 .keyboardShortcut("w")
@@ -101,10 +103,12 @@ struct BrowserCommands: Commands {
             Button(browser.currentTab?.isPinned == true ? "Unpin Tab" : "Pin Tab") {
                 if let t = browser.currentTab { withAnimation(Motion.snappy) { browser.togglePinned(t) } }
             }
-            .keyboardShortcut("d")
+            .keyboardShortcut("d", modifiers: [.command, .shift])
             .disabled(browser.currentTab == nil || browser.currentTab?.isPrivate == true)
-            Button("Add to Favourites") { browser.toggleFavoriteForCurrentTab() }
-                .keyboardShortcut("d", modifiers: [.command, .shift])
+            Button(browser.currentTab?.url.map { browser.isFavorite($0) } == true ? "Remove from Favourites" : "Add to Favourites") {
+                browser.toggleFavoriteForCurrentTab()
+            }
+                .keyboardShortcut("d")
                 .disabled(browser.currentTab?.url == nil)
             Button("Close Other Tabs") { if let t = browser.currentTab { browser.closeOtherTabs(than: t) } }
                 .keyboardShortcut("w", modifiers: [.command, .option])
@@ -135,7 +139,7 @@ struct BrowserCommands: Commands {
 
         CommandGroup(before: .windowList) {
             Button("Downloads") { browser.isDownloadsPresented.toggle() }
-                .keyboardShortcut("l", modifiers: [.command, .option])
+                .keyboardShortcut("j", modifiers: [.command, .option])
             Divider()
         }
     }

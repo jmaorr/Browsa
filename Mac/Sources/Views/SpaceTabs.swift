@@ -266,7 +266,7 @@ struct DownloadsButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
         .opacity(browser.downloads.isEmpty ? 0.5 : 1)
-        .help("Downloads (⌥⌘L)")
+        .help("Downloads (⌥⌘J)")
         .popover(isPresented: $browser.isDownloadsPresented, arrowEdge: .top) {
             DownloadsList()
                 .environment(browser)

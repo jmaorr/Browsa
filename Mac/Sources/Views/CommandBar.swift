@@ -271,6 +271,7 @@ struct CommandField: NSViewRepresentable {
         field.lineBreakMode = .byTruncatingTail
         field.cell?.usesSingleLineMode = true
         field.delegate = context.coordinator
+        context.coordinator.parent = self
         context.coordinator.typed = initialText
         return field
     }
