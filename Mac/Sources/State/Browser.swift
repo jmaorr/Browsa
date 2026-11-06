@@ -609,7 +609,7 @@ struct FindState: Equatable {
 
 /// Window preferences that aren't part of the synced browser state.
 enum Preferences {
-    private static let d = UserDefaults.standard
+    private static var d: UserDefaults { .standard }
 
     static var sidebarDocked: Bool {
         get { d.object(forKey: "sidebarDocked") as? Bool ?? true }
