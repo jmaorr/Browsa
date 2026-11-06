@@ -92,7 +92,7 @@ struct CommandBar: View {
     var body: some View {
         ZStack(alignment: .top) {
             // Click outside to dismiss.
-            Color.black.opacity(0.08)
+            Color.black.opacity(0.18)
                 .contentShape(.rect)
                 .onTapGesture { close() }
 
@@ -136,6 +136,10 @@ struct CommandBar: View {
             .padding(.vertical, 14)
 
             if let model, !model.rows.isEmpty {
+                // With nothing picked, the row Return would open shows as selected, like Arc.
+                let target = model.highlighted ?? (model.isTyping ? model.submitAction(fieldText: fieldText).flatMap { a in
+                    model.rows.firstIndex { $0.action == a }
+                } : nil)
                 Divider()
                 ScrollView {
                     VStack(spacing: 2) {
@@ -143,7 +147,7 @@ struct CommandBar: View {
                             sectionLabel("Jump back in")
                         }
                         ForEach(Array(model.rows.enumerated()), id: \.element.id) { i, row in
-                            SuggestionRow(suggestion: row, highlighted: model.highlighted == i,
+                            SuggestionRow(suggestion: row, highlighted: target == i,
                                           inSearch: model.isTyping)
                                 .onTapGesture { perform(row.action) }
                                 .onHover { if $0 { model.highlight(i) } }
@@ -157,7 +161,10 @@ struct CommandBar: View {
             }
         }
         .frame(maxWidth: 640)
+        // A solid layer under the glass keeps text legible over any page.
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.82), in: .rect(cornerRadius: 16, style: .continuous))
         .glassEffect(.regular, in: .rect(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.primary.opacity(0.1)))
         .shadow(color: .black.opacity(0.18), radius: 24, y: 10)
     }
 

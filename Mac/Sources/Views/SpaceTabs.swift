@@ -174,7 +174,7 @@ struct TabRow: View {
         .frame(height: 34)
         .background {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(selected ? AnyShapeStyle(.background.opacity(0.9)) : AnyShapeStyle(.primary.opacity(hovering ? 0.06 : 0)))
+                .fill(selected ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(hovering ? 0.06 : 0)))
                 .shadow(color: .black.opacity(selected ? 0.08 : 0), radius: 1.5, y: 1)
         }
         .contentShape(.rect)

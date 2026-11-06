@@ -36,7 +36,9 @@ struct PageArea: View {
                 Text(toast)
                     .font(.callout)
                     .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Color(nsColor: .windowBackgroundColor).opacity(0.85), in: .capsule)
                     .glassEffect(.regular, in: .capsule)
+                    .overlay(Capsule().strokeBorder(.primary.opacity(0.1)))
                     .padding(.bottom, 16)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .id(toast)
@@ -202,6 +204,7 @@ private struct FindBar: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 12)
         .frame(height: 34)
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.85), in: .capsule)
         .glassEffect(.regular, in: .capsule)
         .onAppear { focused = true }
         .onChange(of: browser.findFocusRequest) { focused = true }

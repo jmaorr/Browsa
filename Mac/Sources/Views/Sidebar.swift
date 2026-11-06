@@ -27,7 +27,8 @@ struct Sidebar: View {
     /// Room for the traffic lights, then back, forward and reload, like Arc.
     private var topRow: some View {
         HStack(spacing: 2) {
-            Spacer(minLength: 76)
+            // The traffic lights sit here when docked. Floating, they're hidden.
+            Spacer(minLength: isFloating ? 0 : 76)
             SidebarIconButton(symbol: "sidebar.left", help: browser.isSidebarDocked ? "Hide Sidebar (⌘S)" : "Keep Sidebar Open (⌘S)") {
                 withAnimation(Motion.spring) { browser.toggleSidebar() }
             }
@@ -40,7 +41,8 @@ struct Sidebar: View {
             }
         }
         .padding(.horizontal, 8)
-        .frame(height: 38)
+        .frame(height: isFloating ? 36 : 28)
+        .padding(.top, isFloating ? 0 : 4)
         .contentShape(.rect)
         .gesture(WindowDragGesture())
     }
@@ -111,7 +113,7 @@ struct AddressPill: View {
             if tab?.isPrivate == true {
                 Image(systemName: "eye.slash").foregroundStyle(.secondary)
             } else if let url = tab?.url, url.scheme == "https" {
-                Image(systemName: "lock.fill").font(.system(size: 10)).foregroundStyle(.tertiary)
+                Image(systemName: "lock.fill").font(.system(size: 10)).foregroundStyle(.secondary)
             }
             Text(tab?.url.map(URLNormalizer.displayHost) ?? "Search or enter address")
                 .lineLimit(1)
@@ -188,9 +190,9 @@ struct FavoriteTile: View {
     }
 
     var body: some View {
-        FaviconView(url: favorite.url, size: 20)
+        FaviconView(url: favorite.url, size: 20, chip: true)
             .frame(maxWidth: .infinity, minHeight: 42)
-            .background(isCurrent ? AnyShapeStyle(.background.opacity(0.85)) : AnyShapeStyle(.primary.opacity(hovering ? 0.09 : 0.05)),
+            .background(isCurrent ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(hovering ? 0.09 : 0.05)),
                         in: .rect(cornerRadius: 10, style: .continuous))
             .shadow(color: .black.opacity(isCurrent ? 0.08 : 0), radius: 2, y: 1)
             .contentShape(.rect)

@@ -117,7 +117,7 @@ struct BrowserWindow: View {
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = false
         // The traffic lights live in the sidebar, so they go when it does.
-        let showLights = browser.isSidebarDocked || browser.isSidebarPeeking
+        let showLights = browser.isSidebarDocked
         for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
             window.standardWindowButton(kind)?.isHidden = !showLights
         }

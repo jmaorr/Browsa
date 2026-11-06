@@ -80,6 +80,8 @@ extension AnyTransition {
 struct FaviconView: View {
     let url: URL
     var size: CGFloat = 16
+    /// A light tile behind the icon, so dark logos (GitHub, Apple) show on dark tints.
+    var chip = false
 
     private var host: String { URLNormalizer.displayHost(url) }
 
@@ -87,6 +89,9 @@ struct FaviconView: View {
         AsyncImage(url: URL(string: "https://icons.duckduckgo.com/ip3/\(host).ico")) { phase in
             if let image = phase.image {
                 image.resizable().interpolation(.high).scaledToFit()
+                    .padding(chip ? size * 0.12 : 0)
+                    .background(chip ? AnyShapeStyle(Color.white.opacity(0.92)) : AnyShapeStyle(.clear),
+                                in: .rect(cornerRadius: size * 0.28, style: .continuous))
             } else {
                 Text(host.prefix(1).uppercased())
                     .font(.system(size: size * 0.6, weight: .semibold, design: .rounded))
@@ -96,6 +101,14 @@ struct FaviconView: View {
             }
         }
         .frame(width: size, height: size)
+    }
+}
+
+/// The raised look of the selected tab or favourite: a light pill in light mode, a lifted
+/// translucent one in dark mode, never darker than the sidebar.
+struct SelectedFill: ShapeStyle {
+    func resolve(in environment: EnvironmentValues) -> Color {
+        environment.colorScheme == .dark ? Color.white.opacity(0.14) : Color.white.opacity(0.88)
     }
 }
 

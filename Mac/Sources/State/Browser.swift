@@ -98,8 +98,8 @@ final class Browser {
     }
 
     private static let starterFavorites: [Favorite] = [
-        ("https://mail.google.com", "Gmail"), ("https://calendar.google.com", "Calendar"),
         ("https://www.youtube.com", "YouTube"), ("https://github.com", "GitHub"),
+        ("https://en.wikipedia.org", "Wikipedia"), ("https://www.apple.com", "Apple"),
     ].enumerated().map { i, f in Favorite(url: URL(string: f.0)!, title: f.1, order: i) }
 
     static func defaultSnapshotURL() -> URL {
@@ -138,6 +138,7 @@ final class Browser {
         }
         selectedSpaceID = space.id
         find = nil
+        toast = nil
         scheduleSave()
     }
 
