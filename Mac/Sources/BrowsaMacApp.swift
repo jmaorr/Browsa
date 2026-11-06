@@ -1,12 +1,23 @@
 import SwiftUI
 import AppKit
 import WebKitEngine
+import BrowserCore
 
 @main
 struct BrowsaMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     /// WebKit is the only engine for now. Another one plugs in here (see docs/engines.md).
-    @State private var browser = Browser(engine: WebKitEngine())
+    @State private var browser = BrowsaMacApp.makeBrowser()
+
+    private static func makeBrowser() -> Browser {
+        #if DEBUG
+        // The snapshot tour starts from a fresh state and leaves the real one alone.
+        if ProcessInfo.processInfo.environment["BROWSA_SNAPSHOT"] != nil {
+            return Browser(engine: WebKitEngine(), history: HistoryStore(fileURL: nil), snapshotURL: nil)
+        }
+        #endif
+        return Browser(engine: WebKitEngine())
+    }
 
     var body: some Scene {
         Window("Browsa", id: "main") {
