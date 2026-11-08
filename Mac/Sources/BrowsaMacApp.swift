@@ -86,6 +86,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let dir = ProcessInfo.processInfo.environment["BROWSA_EXT_COMPAT_CHECK"] {
             Task { @MainActor in await ExtensionCompatCheck(directory: URL(fileURLWithPath: dir), delegate: self).run() }
         }
+        if let dir = ProcessInfo.processInfo.environment["BROWSA_PILL_CHECK"] {
+            Task { @MainActor in await PillCheck(directory: URL(fileURLWithPath: dir), delegate: self).run() }
+        }
         if let dir = ProcessInfo.processInfo.environment["BROWSA_DROP_CHECK"] {
             Task { @MainActor in await DropCheck(directory: URL(fileURLWithPath: dir), delegate: self).run() }
         }

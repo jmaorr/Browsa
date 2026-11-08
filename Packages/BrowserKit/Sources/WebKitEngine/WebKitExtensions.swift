@@ -221,6 +221,13 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
 
     // MARK: Actions
 
+    func actionState(extensionID: String, for page: WebKitPage?) -> EngineActionState? {
+        guard let context = contexts[extensionID], let action = context.action(for: page) else { return nil }
+        let icon = action.icon(for: CGSize(width: 16, height: 16))?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        return EngineActionState(label: action.label, badgeText: action.badgeText, hasUnreadBadge: action.hasUnreadBadgeText,
+                                 isEnabled: action.isEnabled, icon: icon)
+    }
+
     func performAction(extensionID: String, for page: WebKitPage?, anchor: NSView?) {
         guard let context = contexts[extensionID] else { return }
         popupAnchor = anchor
@@ -346,6 +353,11 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
     private static func noNativeMessaging(_ name: String?) -> NSError {
         NSError(domain: "Browsa.Extensions", code: 1,
                 userInfo: [NSLocalizedDescriptionKey: "Browsa can't reach the app \(name ?? "") from an extension yet."])
+    }
+
+    func webExtensionController(_ controller: WKWebExtensionController, didUpdate action: WKWebExtension.Action,
+                                forExtensionContext context: WKWebExtensionContext) {
+        host?.extensionActionsDidChange()
     }
 
     func webExtensionController(_ controller: WKWebExtensionController, presentActionPopup action: WKWebExtension.Action,

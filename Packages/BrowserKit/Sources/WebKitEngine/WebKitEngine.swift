@@ -180,6 +180,11 @@ public final class WebKitEngine: BrowserEngine {
         if #available(macOS 15.4, *) { webExtensions?.performAction(extensionID: extensionID, for: page as? WebKitPage, anchor: anchor) }
     }
 
+    public func extensionActionState(extensionID: String, for page: (any EnginePage)?) -> EngineActionState? {
+        if #available(macOS 15.4, *) { return webExtensions?.actionState(extensionID: extensionID, for: page as? WebKitPage) }
+        return nil
+    }
+
     public func pageDidBecomeActive(_ page: any EnginePage) {
         guard #available(macOS 15.4, *), let page = page as? WebKitPage else { return }
         webExtensions?.pageActivated(page)
