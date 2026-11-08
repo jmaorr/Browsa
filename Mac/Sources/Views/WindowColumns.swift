@@ -181,8 +181,11 @@ final class ColumnsSplitView: NSSplitView {
 
 /// The page, with the gap above and below it. The dividers make the gaps at its sides.
 private struct PageColumn: View {
+    @Environment(Browser.self) private var browser
+
     var body: some View {
         PageArea()
+            .background(PageCardMarker(browser: browser))
             .padding(.vertical, PageCard.inset)
     }
 }

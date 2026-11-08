@@ -22,6 +22,12 @@ struct BrowserWindow: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             }
         }
+        .overlay {
+            if let phase = browser.intro, phase < .sidebar {
+                IntroOverlay(phase: phase)
+                    .transition(.identity)
+            }
+        }
         .animation(Motion.snappy, value: browser.commandBar)
         .animation(Motion.dock, value: browser.isSidebarDocked)
         .ignoresSafeArea()
@@ -47,9 +53,11 @@ struct BrowserWindow: View {
     private var background: some View {
         ZStack {
             WindowMaterial(material: .sidebar)
+            // Neutral until the intro reaches the sidebar, then the tint comes in.
             SpacePalette.color(for: browser.currentSpace)
-                .opacity(SpacePalette.surfaceOpacity(colorScheme))
+                .opacity(browser.isIntroHoldingSidebar ? 0 : SpacePalette.surfaceOpacity(colorScheme))
                 .animation(Motion.spring, value: browser.selectedSpaceID)
+                .animation(.easeInOut(duration: 0.5), value: browser.isIntroHoldingSidebar)
         }
         .ignoresSafeArea()
     }

@@ -44,6 +44,11 @@ final class Browser {
     /// The right-hand panel each space last showed. It pushes the page over, never covers it.
     private var panels: [UUID: String] = [:]
     var panelWidth: CGFloat { didSet { Preferences.panelWidth = panelWidth } }
+    /// The first-launch intro's current phase, while it plays.
+    var intro: IntroPhase?
+    @ObservationIgnored var introTask: Task<Void, Never>?
+    /// The page card's view, so the intro can settle exactly onto it.
+    @ObservationIgnored weak var pageCardView: NSView?
 
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     @ObservationIgnored private var sidebarMoveTask: Task<Void, Never>?
@@ -76,8 +81,12 @@ final class Browser {
             commandBar = .editCurrent
         case nil:
             if isFirst {
-                // The first window picks up where Browsa left off.
+                // The first window picks up where Browsa left off. The very first launch says hello.
                 resolveSelection(in: currentSpace)
+                let env = ProcessInfo.processInfo.environment
+                if env["BROWSA_WELCOME"] == "1" || (!Preferences.hasSeenWelcome && env["BROWSA_SNAPSHOT"] == nil) {
+                    openWelcome(playingIntro: true)
+                }
             } else {
                 commandBar = .newTab
             }
@@ -399,6 +408,12 @@ enum WindowRequest {
 /// Preferences that aren't part of the synced browser state.
 enum Preferences {
     private static var d: UserDefaults { .standard }
+
+    /// Set once the welcome tab has opened, so the intro plays on first launch only.
+    static var hasSeenWelcome: Bool {
+        get { d.bool(forKey: "hasSeenWelcome") }
+        set { d.set(newValue, forKey: "hasSeenWelcome") }
+    }
 
     static var panelWidth: CGFloat {
         get { (d.object(forKey: "panelWidth") as? Double).map { CGFloat($0) } ?? 320 }

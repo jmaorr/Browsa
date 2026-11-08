@@ -9,7 +9,9 @@ struct PageArea: View {
 
     var body: some View {
         ZStack {
-            if let tab = browser.currentTab {
+            if browser.currentTab.map({ Welcome.isWelcome($0.url) }) == true {
+                WelcomePage()
+            } else if let tab = browser.currentTab {
                 let focuses = browser.commandBar == nil && browser.find == nil
                 if browser.isReaderShowing, let reader = browser.reader {
                     PageHost(view: reader.page.view, focusesPage: focuses, holdsWidth: browser.isSidebarMoving)

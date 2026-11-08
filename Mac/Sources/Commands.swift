@@ -163,6 +163,11 @@ struct BrowserCommands: Commands {
                 .disabled(library.privateSpace == nil)
         }
 
+        CommandGroup(replacing: .help) {
+            Button("Welcome to Browsa") { browser?.openWelcome(playingIntro: true) }
+                .disabled(browser == nil)
+        }
+
         CommandGroup(before: .windowList) {
             Button("Downloads") { browser?.isDownloadsPresented.toggle() }
                 .keyboardShortcut("j", modifiers: [.command, .option])
