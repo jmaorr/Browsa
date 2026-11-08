@@ -73,15 +73,15 @@ float3 colour(float2 position, float2 size, float t) {
     return half4(half3(orb::colour(position, size, time)), 1.0h);
 }
 
-/// A glow of orb colour that rises from the bottom edge and falls away as `progress` runs 0 to 1.
+/// A warm glow of orb colour that swells up from the bottom edge and sinks back as `progress` runs 0 to 1.
 /// Premultiplied, so it lays over whatever is behind it.
 [[ stitchable ]] half4 orbGlow(float2 position, half4 color, float2 size, float time, float progress) {
     float3 c = orb::colour(position, size, time);
     float y = 1.0 - position.y / size.y;                       // 0 at the bottom edge
-    float reach = mix(0.04, 0.6, smoothstep(0.0, 0.5, progress));
+    float rise = smoothstep(0.0, 0.45, progress), sink = smoothstep(0.5, 1.0, progress);
+    float reach = mix(0.08, 0.55, rise) * (1.0 - 0.5 * sink);   // swells up, then sinks back down
     float edge = 0.35 + 0.08 * sin(position.x / size.x * 6.2832 * 1.5 + time * 2.0);
-    float a = 1.0 - smoothstep(reach * edge * 2.0, reach * (edge * 2.0 + 0.35), y);
-    a *= 1.0 - smoothstep(0.45, 1.0, progress);
-    a *= 0.9;
+    float a = 1.0 - smoothstep(reach * edge * 2.0, reach * (edge * 2.0 + 0.5), y);
+    a *= rise * (1.0 - sink) * 0.8;
     return half4(half3(c * a), half(a));
 }

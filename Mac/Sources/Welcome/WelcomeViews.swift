@@ -57,7 +57,7 @@ struct WelcomePage: View {
                     GeometryReader { proxy in
                         Rectangle()
                             .colorEffect(ShaderLibrary.orbGlow(.float2(proxy.size), .float(t + 4),
-                                                               .float(min(1, t / 0.9))))
+                                                               .float(min(1, t / IntroPhase.glowDuration))))
                     }
                 }
                 .allowsHitTesting(false)
@@ -154,7 +154,7 @@ private struct WelcomeArrival: ViewModifier {
             .opacity(shown ? 1 : 0)
             .offset(y: shown || Motion.reduced ? 0 : distance)
             .scaleEffect(shown || Motion.reduced ? 1 : 0.98)
-            .animation(shown ? Motion.spring.delay(0.18 + Double(index) * 0.06) : nil, value: shown)
+            .animation(shown ? (Motion.reduced ? Motion.spring : .smooth(duration: 0.9)).delay(0.6 + Double(index) * 0.1) : nil, value: shown)
     }
 }
 
