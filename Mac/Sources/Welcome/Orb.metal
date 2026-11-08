@@ -30,17 +30,17 @@ float3 ramp(float x) {
     return mix(c5, c6, x - 5.0);
 }
 
-/// Two counter-turning vortices, like the icon's orb, stirred over a diagonal sweep.
+/// Two vortices, like the icon's orb, over a diagonal sweep that rolls through them.
 float field(float2 p, float t) {
     // Rushes at first, then eases as the bands stretch out.
-    float roll = 2.6 * (1.0 - exp(-t * 0.55)) + 0.25 * sin(t * 0.4);
+    float roll = 1.6 * (1.0 - exp(-t * 0.6)) + 0.12 * t;
     float2 c1 = float2(-0.42 + 0.06 * sin(t * 0.3), 0.08 * cos(t * 0.27));
     float2 c2 = float2(0.40 + 0.05 * cos(t * 0.33), -0.06 + 0.05 * sin(t * 0.31));
-    p = swirl(p, float2(0.0), 0.6 * sin(roll * 0.5), 1.4);
-    p = swirl(p, c1, 2.6 + 1.6 * roll, 0.42);
-    p = swirl(p, c2, -2.2 - 1.4 * roll, 0.48);
+    p = swirl(p, float2(0.0), 0.25 * sin(roll * 0.7), 1.4);
+    p = swirl(p, c1, 2.4 + 0.35 * roll, 0.42);
+    p = swirl(p, c2, -2.0 - 0.3 * roll, 0.48);
     float a = length(p - c1), b = length(p - c2);
-    return 0.55 * smoothstep(0.75, 0.0, min(a, b * 1.05)) + 0.45 * (0.5 + 0.5 * sin(p.x * 1.7 - p.y * 2.3 + 0.8));
+    return 0.55 * smoothstep(0.75, 0.0, min(a, b * 1.05)) + 0.45 * (0.5 + 0.5 * sin(p.x * 1.7 - p.y * 2.3 + 0.8 - roll * 1.8));
 }
 
 /// The orb's colour at a point, lit like polished metal. Scales with the view's height.
