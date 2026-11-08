@@ -30,6 +30,12 @@ float3 ramp(float x) {
     return mix(c5, c6, x - 5.0);
 }
 
+/// A smooth minimum, so the two vortices' rings meet without a seam.
+float smin(float a, float b, float k) {
+    float h = saturate(0.5 + 0.5 * (b - a) / k);
+    return mix(b, a, h) - k * h * (1.0 - h);
+}
+
 /// Two vortices, like the icon's orb, over a diagonal sweep that rolls through them.
 float field(float2 p, float t) {
     // Rushes at first, then eases as the bands stretch out.
@@ -40,7 +46,7 @@ float field(float2 p, float t) {
     p = swirl(p, c1, 2.4 + 0.35 * roll, 0.42);
     p = swirl(p, c2, -2.0 - 0.3 * roll, 0.48);
     float a = length(p - c1), b = length(p - c2);
-    return 0.55 * smoothstep(0.75, 0.0, min(a, b * 1.05)) + 0.45 * (0.5 + 0.5 * sin(p.x * 1.7 - p.y * 2.3 + 0.8 - roll * 1.8));
+    return 0.55 * smoothstep(0.75, 0.0, smin(a, b * 1.05, 0.3)) + 0.45 * (0.5 + 0.5 * sin(p.x * 1.7 - p.y * 2.3 + 0.8 - roll * 1.8));
 }
 
 /// The orb's colour at a point, lit like polished metal. Scales with the view's height.
@@ -57,7 +63,7 @@ float3 colour(float2 position, float2 size, float t) {
     c *= 0.75 + 0.35 * diffuse;
     c += float3(1.0, 0.93, 0.8) * spec * 0.35;
     // Steep creases go darker, like the seams between the orb's bands.
-    return c * (1.0 - 0.35 * smoothstep(4.0, 14.0, length(g)));
+    return c * (1.0 - 0.35 * smoothstep(6.0, 22.0, length(g)));
 }
 
 } // namespace orb
