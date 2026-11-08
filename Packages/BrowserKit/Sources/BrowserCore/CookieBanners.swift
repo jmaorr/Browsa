@@ -17,9 +17,6 @@ public final class CookieBannerHandler: NSObject, WKScriptMessageHandler {
     /// Called when a banner was declined on a page, for a quiet confirmation.
     private let onDeclined: @MainActor (WKWebView) -> Void
 
-    /// Debug builds can watch what autoconsent sees (detections, opt-out results, errors).
-    public static var log: (@MainActor (String) -> Void)?
-
     public init(onDeclined: @escaping @MainActor (WKWebView) -> Void) {
         self.onDeclined = onDeclined
     }
@@ -45,16 +42,6 @@ public final class CookieBannerHandler: NSObject, WKScriptMessageHandler {
         guard let body = message.body as? [String: Any], let type = body["type"] as? String,
               let webView = message.webView else { return }
         let frame = message.frameInfo
-        if let log = Self.log, type != "eval" {
-            var detail = ["cmp", "result", "msg", "details"].compactMap { k in body[k].map { "\(k)=\($0)" } }
-            if let state = body["state"] as? [String: Any] {
-                // Where detection got to: lifecycle, attempts, and any consent tools it recognised.
-                detail += ["lifecycle", "findCmpAttempts", "detectedCmps", "detectedPopups"].compactMap { k in
-                    state[k].map { "\(k)=\($0)" }
-                }
-            }
-            log("[\(webView.url?.host() ?? "?")\(frame.isMainFrame ? "" : " frame")] \(type) \(detail.joined(separator: " "))")
-        }
         switch type {
         case "eval":
             guard let id = body["id"] as? String, let code = body["code"] as? String else { return }
