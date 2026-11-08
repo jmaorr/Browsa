@@ -11,7 +11,7 @@ public final class WebKitPage: NSObject, EnginePage {
     public weak var delegate: (any EnginePageDelegate)?
     let webView: BrowsaWebView
     let profile: BrowsingProfile
-    private weak var engine: WebKitEngine?
+    private(set) weak var engine: WebKitEngine?
     private var observations: [NSKeyValueObservation] = []
 
     public var view: NSView { webView }
@@ -113,7 +113,8 @@ public final class WebKitPage: NSObject, EnginePage {
     }
 
     public func evaluate(_ body: String, inWorld world: String) async throws -> Any? {
-        try await webView.callAsyncJavaScript(body, arguments: [:], in: nil, contentWorld: .world(name: world))
+        // "page" is the page's own world, where its scripts and globals live.
+        try await webView.callAsyncJavaScript(body, arguments: [:], in: nil, contentWorld: world == "page" ? .page : .world(name: world))
     }
 
     public func snapshot() async -> CGImage? {
@@ -188,11 +189,13 @@ extension WebKitPage: WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         delegate?.page(self, didCommit: webView.url)
+        engine?.extensionPageChanged(self)
     }
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard let url = webView.url else { return }
         delegate?.page(self, didFinish: url, title: webView.title ?? "")
+        engine?.extensionPageChanged(self)
     }
 
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {

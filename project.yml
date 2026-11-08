@@ -89,11 +89,17 @@ targets:
         product: BrowserEngine
       - package: BrowserKit
         product: WebKitEngine
+      - package: BrowserKit
+        product: Extensibility
     entitlements:
       path: Mac/Browsa.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
+        # The agent endpoint, on 127.0.0.1 only.
+        com.apple.security.network.server: true
+        # Unpacked extension folders the user picks stay readable across launches.
+        com.apple.security.files.bookmarks.app-scope: true
         com.apple.security.files.downloads.read-write: true
         com.apple.security.files.user-selected.read-write: true
         com.apple.security.device.camera: true

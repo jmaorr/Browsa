@@ -3,6 +3,7 @@ import AppKit
 import BrowserCore
 import BrowserEngine
 import Suggest
+import Extensibility
 
 /// Browsa > Settings (Cmd-,).
 struct SettingsView: View {
@@ -11,6 +12,8 @@ struct SettingsView: View {
             GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }
             SpacesSettings().tabItem { Label("Spaces", systemImage: "square.stack") }
             PrivacySettings().tabItem { Label("Privacy", systemImage: "hand.raised") }
+            ExtensionSettings().tabItem { Label("Extensions", systemImage: "puzzlepiece.extension") }
+            AgentSettings().tabItem { Label("Agents", systemImage: "sparkles") }
             EngineSettings().tabItem { Label("Engine", systemImage: "cpu") }
         }
         .frame(width: 520)
@@ -276,6 +279,17 @@ private struct EngineSettings: View {
                     }
                 }
             }
+            if info.capabilities.contains(.webExtensions) {
+                Section {
+                    Toggle("Use installed Safari extensions", isOn: Bindable(browser).useSafariExtensions)
+                    ForEach(browser.extensions) { ext in
+                        LabeledContent(ext.name, value: ext.version)
+                    }
+                } footer: {
+                    Text("Runs the Safari web extensions that apps on this Mac include, such as 1Password for Safari.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
             if info.capabilities.contains(.developerTools) {
                 Section {
                     Toggle("Show Inspect Element in the page menu", isOn: Bindable(browser).developerTools)
@@ -292,3 +306,163 @@ private struct EngineSettings: View {
         .formStyle(.grouped)
     }
 }
+
+// MARK: - Extensions
+
+/// Safari extensions from apps, plus ones added from the Chrome Web Store, Firefox Add-ons or a folder.
+private struct ExtensionSettings: View {
+    @Environment(Library.self) private var library
+    @State private var link = ""
+    @State private var preview: Library.ExtensionPreview?
+    @State private var problem: String?
+    @State private var working = false
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Use Safari extensions from apps on this Mac", isOn: Bindable(library).useSafariExtensions)
+            } footer: {
+                Text("Password managers like 1Password, Bitwarden and Proton Pass ship a Safari extension inside their app. Install the app and it shows up here.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Add from a store") {
+                HStack {
+                    TextField("Chrome Web Store or Firefox Add-ons link", text: $link)
+                        .onSubmit(fetch)
+                    Button(working ? "Getting…" : "Add…", action: fetch).disabled(link.isEmpty || working)
+                }
+                Button("Add Unpacked Folder…", action: pickFolder)
+                if let problem { Text(problem).font(.caption).foregroundStyle(.red) }
+            }
+            Section("Added") {
+                if library.extensionCatalog.items.isEmpty {
+                    Text("Nothing added yet.").foregroundStyle(.secondary)
+                }
+                ForEach(library.extensionCatalog.items) { item in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(item.name)
+                            Text("\(item.source.label) · \(item.version)").font(.caption).foregroundStyle(.secondary)
+                            if let pending = item.pendingUpdate {
+                                Button("Update to \(pending.version) (asks for more)") { library.approveUpdate(id: item.id) }
+                                    .controlSize(.small)
+                            }
+                        }
+                        Spacer()
+                        Toggle("", isOn: Binding(get: { item.isEnabled }, set: { library.setExtension(item.id, enabled: $0) }))
+                            .labelsHidden()
+                        Button(role: .destructive) { library.removeExtension(id: item.id) } label: { Image(systemName: "trash") }
+                            .buttonStyle(.borderless)
+                    }
+                }
+                Button("Check for Updates") { Task { await library.updateExtensions(force: true) } }
+            }
+            Section("Running now") {
+                ForEach(library.extensions) { ext in LabeledContent(ext.name, value: ext.version) }
+            }
+        }
+        .formStyle(.grouped)
+        .sheet(item: $preview) { p in
+            AddExtensionSheet(preview: p) { library.install(p); preview = nil; link = "" } cancel: { preview = nil }
+        }
+    }
+
+    private func fetch() {
+        working = true
+        problem = nil
+        Task {
+            defer { working = false }
+            do { preview = try await library.previewExtension(link: link) }
+            catch { problem = error.localizedDescription }
+        }
+    }
+
+    private func pickFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.message = "Choose a folder with a manifest.json"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do { preview = try library.previewExtension(folder: url) }
+        catch { problem = "That folder has no extension manifest." }
+    }
+}
+
+/// What an extension will be able to do, in plain words, before it runs.
+private struct AddExtensionSheet: View {
+    let preview: Library.ExtensionPreview
+    let add: () -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Add \(preview.item.name)?").font(.headline)
+            Text("\(preview.item.source.label) · version \(preview.item.version)").font(.caption).foregroundStyle(.secondary)
+            if !preview.permissionLines.isEmpty {
+                Text("It will be able to:").font(.callout)
+                ForEach(preview.permissionLines, id: \.self) { Label($0, systemImage: "checkmark.shield").font(.callout) }
+            }
+            if preview.item.source.isFromStore {
+                Text("Browsa keeps it up to date, and asks again if an update wants more.").font(.caption).foregroundStyle(.secondary)
+            }
+            HStack {
+                Spacer()
+                Button("Not Now", action: cancel).keyboardShortcut(.cancelAction)
+                Button("Add Extension", action: add).keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 380)
+    }
+}
+
+// MARK: - Agents
+
+/// Coding agents over MCP: on or off, how to connect, which sites they may act on.
+private struct AgentSettings: View {
+    @Environment(Library.self) private var library
+    private var agents: AgentBridge { library.agents }
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Let coding agents use Browsa", isOn: Bindable(agents).isEnabled)
+                if agents.isEnabled {
+                    LabeledContent("Status", value: agents.problem ?? (agents.isRunning ? "Ready on port \(AgentBridge.port)" : "Starting…"))
+                }
+            } footer: {
+                Text("Agents such as Claude Code, Codex and Cursor connect over MCP from this Mac only. They open pages in an Agent space you can watch, read and resolve your notes, and ask before acting on a site for the first time.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if agents.isEnabled {
+                Section("Connect Claude Code") {
+                    Text(agents.claudeCodeCommand).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                    Button("Copy Command") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(agents.claudeCodeCommand, forType: .string)
+                    }
+                }
+                Section("Other agents") {
+                    LabeledContent("URL", value: "http://127.0.0.1:\(AgentBridge.port)/mcp")
+                    LabeledContent("Header") {
+                        Text("Authorization: Bearer \(agents.token)").font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                    }
+                }
+                Section {
+                    if agents.trustedHosts.isEmpty { Text("None yet. Localhost never asks.").foregroundStyle(.secondary) }
+                    ForEach(agents.trustedHosts.sorted(), id: \.self) { host in
+                        HStack {
+                            Text(host)
+                            Spacer()
+                            Button("Forget") { agents.forget(host: host) }.buttonStyle(.borderless)
+                        }
+                    }
+                } header: {
+                    Text("Sites agents may act on")
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+

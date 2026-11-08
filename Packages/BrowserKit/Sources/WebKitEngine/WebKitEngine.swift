@@ -41,6 +41,10 @@ public final class WebKitEngine: BrowserEngine {
     private var rulesReady = false
     private var waitingForRules: [() -> Void] = []
     let downloads = DownloadBridge()
+    /// `WebKitExtensions` on macOS 15.4 and later. Typed loosely: stored properties can't be gated by OS version.
+    private let extensionSupport: AnyObject?
+    @available(macOS 15.4, *)
+    var webExtensions: WebKitExtensions? { extensionSupport as? WebKitExtensions }
 
     public init(downloadsDirectory: URL = URL.downloadsDirectory) {
         self.downloadsDirectory = downloadsDirectory
@@ -48,9 +52,19 @@ public final class WebKitEngine: BrowserEngine {
         var caps: EngineCapabilities = [.contentBlocking, .isolatedScripts, .sessionRestore, .pageZoom, .findInPage, .developerTools]
         // WebKit only runs passkeys for apps Apple has granted the web browser entitlement.
         if Bundle.main.object(forInfoDictionaryKey: "BrowsaHasBrowserEntitlement") as? Bool == true { caps.insert(.passkeys) }
-        info = EngineInfo(id: "webkit", name: "WebKit", version: "macOS \(os.majorVersion).\(os.minorVersion)", capabilities: caps)
         standardConfiguration = Self.makeConfiguration(store: .default())
         ephemeralConfiguration = Self.makeConfiguration(store: .nonPersistent())
+        // Extensions only reach web views made from a configuration that already has the controller.
+        if #available(macOS 15.4, *) {
+            let ext = WebKitExtensions()
+            standardConfiguration.webExtensionController = ext.controller
+            ephemeralConfiguration.webExtensionController = ext.controller
+            extensionSupport = ext
+            caps.insert(.webExtensions)
+        } else {
+            extensionSupport = nil
+        }
+        info = EngineInfo(id: "webkit", name: "WebKit", version: "macOS \(os.majorVersion).\(os.minorVersion)", capabilities: caps)
         staticConfiguration = Self.makeConfiguration(store: .nonPersistent())
         staticConfiguration.defaultWebpagePreferences.allowsContentJavaScript = false
         downloads.engine = self
@@ -81,7 +95,10 @@ public final class WebKitEngine: BrowserEngine {
             if let url = options.url { page.load(url) }
             return page
         }
-        let configuration = options.profile == .ephemeral ? ephemeralConfiguration : standardConfiguration
+        var configuration = options.profile == .ephemeral ? ephemeralConfiguration : standardConfiguration
+        if #available(macOS 15.4, *), let url = options.url, let own = webExtensions?.configuration(for: url) {
+            configuration = own
+        }
         let page = WebKitPage(configuration: configuration, engine: self, profile: options.profile)
         page.delegate = delegate
         register(page)
@@ -110,10 +127,55 @@ public final class WebKitEngine: BrowserEngine {
         livePages = livePages.filter { $0.value.page != nil }
         // A popup can bring its own content controller; give it the current rules and scripts.
         install(on: page.webView.configuration.userContentController)
+        if #available(macOS 15.4, *) { webExtensions?.pageOpened(page) }
     }
 
     func unregister(_ page: WebKitPage) {
         livePages[ObjectIdentifier(page.webView)] = nil
+        if #available(macOS 15.4, *) { webExtensions?.pageClosed(page) }
+    }
+
+    func extensionPageChanged(_ page: WebKitPage) {
+        if #available(macOS 15.4, *) { webExtensions?.pageChanged(page) }
+    }
+
+    // MARK: Extensions
+
+    public var extensions: [EngineExtension] {
+        if #available(macOS 15.4, *) { return webExtensions?.loaded ?? [] }
+        return []
+    }
+
+    public var extensionHost: (any EngineExtensionHost)? {
+        get {
+            if #available(macOS 15.4, *) { return webExtensions?.host }
+            return nil
+        }
+        set {
+            if #available(macOS 15.4, *) { webExtensions?.host = newValue }
+        }
+    }
+
+    public func loadInstalledExtensions() async -> [String] {
+        await loadInstalledExtensions(folders: [], includeApps: true)
+    }
+
+    public func loadInstalledExtensions(folders: [ExtensionFolder], includeApps: Bool) async -> [String] {
+        guard #available(macOS 15.4, *), let ext = webExtensions else { return ["needs macOS 15.4"] }
+        return await ext.loadInstalled(folders: folders, includeApps: includeApps)
+    }
+
+    public func unloadExtensions() {
+        if #available(macOS 15.4, *) { webExtensions?.unloadAll() }
+    }
+
+    public func performAction(extensionID: String, for page: (any EnginePage)?, anchor: NSView?) {
+        if #available(macOS 15.4, *) { webExtensions?.performAction(extensionID: extensionID, for: page as? WebKitPage, anchor: anchor) }
+    }
+
+    public func pageDidBecomeActive(_ page: any EnginePage) {
+        guard #available(macOS 15.4, *), let page = page as? WebKitPage else { return }
+        webExtensions?.pageActivated(page)
     }
 
     func page(for webView: WKWebView) -> WebKitPage? { livePages[ObjectIdentifier(webView)]?.page }

@@ -3,12 +3,15 @@ import Observation
 import BrowserCore
 import BrowserEngine
 import Suggest
+import SwiftUI
 
 /// One Browsa window: which space and tab it shows, and the transient UI around them.
 /// Spaces, tabs, favourites and settings live in the shared `Library`.
 @MainActor @Observable
 final class Browser {
     let library: Library
+    /// Stable for the window's life, for extensions.
+    let id = UUID()
     var selectedSpaceID: UUID
     /// The tab this window shows in each space it has visited. Two windows never show the same tab.
     private var tabSelection: [UUID: UUID] = [:]
@@ -38,6 +41,9 @@ final class Browser {
     var isArchivePresented = false
     /// When and which way the space last changed, so tab lists cascade in from that side.
     private(set) var lastSpaceSwitch: SpaceSwitch?
+    /// The right-hand panel each space last showed. It pushes the page over, never covers it.
+    private var panels: [UUID: String] = [:]
+    var panelWidth: CGFloat { didSet { Preferences.panelWidth = panelWidth } }
 
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     @ObservationIgnored private var sidebarMoveTask: Task<Void, Never>?
@@ -49,6 +55,7 @@ final class Browser {
         self.library = library
         isSidebarDocked = Preferences.sidebarDocked
         sidebarWidth = Preferences.sidebarWidth
+        panelWidth = Preferences.panelWidth
         let request = library.takeWindowRequest()
         let isFirst = library.windows.isEmpty
         let launch = library.regularSpaces.first { $0.id == library.launchSpaceID } ?? library.regularSpaces[0]
@@ -172,6 +179,7 @@ final class Browser {
         tabSelection[space.id] = tab?.id
         // Remembered with the space, for the next launch.
         space.selectedTabID = tab?.id
+        if let tab, let c = library.existingController(for: tab) { engine.pageDidBecomeActive(c.page) }
     }
 
     /// `tab` is going away from this window (closed, moved, or opened in another window).
@@ -367,6 +375,8 @@ enum CommandBarMode: Equatable {
     case newTab
     /// Cmd-L or a click on the address: replaces the current page.
     case editCurrent
+    /// Cmd-K: tools and commands first, the web only as a fallback.
+    case commands
 }
 
 struct SpaceSwitch: Equatable {
@@ -390,6 +400,11 @@ enum WindowRequest {
 enum Preferences {
     private static var d: UserDefaults { .standard }
 
+    static var panelWidth: CGFloat {
+        get { (d.object(forKey: "panelWidth") as? Double).map { CGFloat($0) } ?? 320 }
+        set { d.set(Double(newValue), forKey: "panelWidth") }
+    }
+
     static var sidebarDocked: Bool {
         get { d.object(forKey: "sidebarDocked") as? Bool ?? true }
         set { d.set(newValue, forKey: "sidebarDocked") }
@@ -409,6 +424,18 @@ enum Preferences {
     static var clearDataOnQuit: Bool {
         get { d.bool(forKey: "clearDataOnQuit") }
         set { d.set(newValue, forKey: "clearDataOnQuit") }
+    }
+
+    /// Safari web extensions installed on this Mac (1Password for Safari and the like). On in Debug builds.
+    static var useSafariExtensions: Bool {
+        get {
+            #if DEBUG
+            d.object(forKey: "useSafariExtensions") as? Bool ?? true
+            #else
+            d.bool(forKey: "useSafariExtensions")
+            #endif
+        }
+        set { d.set(newValue, forKey: "useSafariExtensions") }
     }
 
     /// Inspect Element in the page's context menu. On in Debug builds.
@@ -438,5 +465,37 @@ enum Preferences {
         var all = d.dictionary(forKey: "siteZoom") ?? [:]
         all[host] = abs(zoom - 1) < 0.01 ? nil : zoom
         d.set(all, forKey: "siteZoom")
+    }
+}
+
+// MARK: - Right panel
+
+extension Browser {
+    /// The tool showing in the right-hand panel, by `Tool.id`, for this space.
+    var panel: String? {
+        get { panels[selectedSpaceID] }
+        set {
+            panels[selectedSpaceID] = newValue
+            if let newValue { Preferences.lastPanelTool = newValue }
+        }
+    }
+
+    /// ⌥⌘S: shows the tool this window last had (Notes the first time), or hides the panel.
+    func togglePanel() {
+        withAnimation(Motion.dock) {
+            panel = panel == nil ? (library.workbench.tool(Preferences.lastPanelTool)?.id ?? "notes") : nil
+        }
+    }
+
+    /// Opens a tool in the panel, or hides the panel if that tool is already showing.
+    func showPanel(_ id: String, toggles: Bool = false) {
+        withAnimation(Motion.dock) { panel = toggles && panel == id ? nil : id }
+    }
+}
+
+extension Preferences {
+    static var lastPanelTool: String {
+        get { UserDefaults.standard.string(forKey: "lastPanelTool") ?? "notes" }
+        set { UserDefaults.standard.set(newValue, forKey: "lastPanelTool") }
     }
 }

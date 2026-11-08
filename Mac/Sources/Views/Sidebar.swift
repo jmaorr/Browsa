@@ -1,5 +1,6 @@
 import SwiftUI
 import BrowserCore
+import BrowserEngine
 import Suggest
 
 /// Arc-style sidebar: navigation, address, favourites, then the current space's pinned and today
@@ -17,6 +18,8 @@ struct Sidebar: View {
             FavoritesGrid()
                 .padding(.horizontal, 10)
             SpaceTabs()
+            ToolSections()
+                .padding(.horizontal, 10)
             bottomRow
                 .padding(.horizontal, 10)
                 .padding(.bottom, 8)
@@ -38,6 +41,11 @@ struct Sidebar: View {
                 SidebarIconButton(symbol: "xmark", help: "Stop (⌘.)") { browser.stopLoading() }
             } else {
                 SidebarIconButton(symbol: "arrow.clockwise", help: "Reload (⌘R)", enabled: browser.currentTab?.url != nil) { browser.reload() }
+            }
+            Spacer(minLength: 0)
+            ExtensionButtons()
+            SidebarIconButton(symbol: "sidebar.right", help: browser.panel == nil ? "Show Panel (⌥⌘S)" : "Hide Panel (⌥⌘S)") {
+                browser.togglePanel()
             }
         }
         .padding(.horizontal, 8)
@@ -96,6 +104,54 @@ struct SidebarIconButton: View {
         .disabled(!enabled)
         .onHover { hovering = $0 }
         .help(help)
+    }
+}
+
+// MARK: - Extensions
+
+/// A button per extension with a toolbar action. Clicking runs the action; a popup opens under the button.
+struct ExtensionButtons: View {
+    @Environment(Browser.self) private var browser
+
+    var body: some View {
+        ForEach(browser.library.extensions.filter(\.hasAction)) { ext in
+            ExtensionButton(ext: ext) { anchor in
+                browser.engine.performAction(extensionID: ext.id, for: browser.currentController?.page, anchor: anchor)
+            }
+            .frame(width: 28, height: 26)
+            .help(ext.name)
+        }
+    }
+}
+
+/// An AppKit button, so the popup has a view to anchor to.
+private struct ExtensionButton: NSViewRepresentable {
+    let ext: EngineExtension
+    let action: (NSView) -> Void
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton(image: image, target: context.coordinator, action: #selector(Coordinator.click(_:)))
+        button.isBordered = false
+        button.imageScaling = .scaleProportionallyDown
+        return button
+    }
+
+    func updateNSView(_ button: NSButton, context: Context) {
+        context.coordinator.action = action
+        button.image = image
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(action: action) }
+
+    private var image: NSImage {
+        if let icon = ext.icon { return NSImage(cgImage: icon, size: NSSize(width: 16, height: 16)) }
+        return NSImage(systemSymbolName: "puzzlepiece.extension", accessibilityDescription: ext.name) ?? NSImage()
+    }
+
+    @MainActor final class Coordinator: NSObject {
+        var action: (NSView) -> Void
+        init(action: @escaping (NSView) -> Void) { self.action = action }
+        @objc func click(_ sender: NSButton) { action(sender) }
     }
 }
 
@@ -282,3 +338,57 @@ struct SpaceSwitcher: View {
         .animation(Motion.snappy, value: browser.selectedSpaceID)
     }
 }
+
+// MARK: - Tool sections
+
+/// Sections tools put under the tabs (Radar's dev servers, say). Each one folds away, and
+/// right-click removes it. The order is the user's.
+struct ToolSections: View {
+    @Environment(Browser.self) private var browser
+    @AppStorage("collapsedToolSections") private var collapsedRaw = ""
+
+    private var collapsed: Set<String> { Set(collapsedRaw.split(separator: ",").map(String.init)) }
+
+    var body: some View {
+        let tools = browser.library.workbench.sidebarTools
+        if !tools.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(tools) { tool in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Button { toggle(tool.id) } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: tool.symbol).font(.system(size: 10, weight: .semibold))
+                                Text(tool.title.uppercased()).font(.system(size: 10, weight: .semibold)).tracking(0.6)
+                                if tool.stage == .preview { PreviewBadge() }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .rotationEffect(.degrees(collapsed.contains(tool.id) ? -90 : 0))
+                            }
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .frame(height: 22)
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            if tool.panel != nil { Button("Open in Panel") { browser.showPanel(tool.id) } }
+                            Button("Remove from Sidebar") { browser.library.workbench.toggleSidebar(tool.id) }
+                        }
+                        if !collapsed.contains(tool.id), let view = tool.sidebar {
+                            view().transition(.opacity)
+                        }
+                    }
+                }
+            }
+            .animation(Motion.snappy, value: collapsedRaw)
+        }
+    }
+
+    private func toggle(_ id: String) {
+        var set = collapsed
+        if set.contains(id) { set.remove(id) } else { set.insert(id) }
+        collapsedRaw = set.sorted().joined(separator: ",")
+    }
+}
+

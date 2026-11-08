@@ -8,6 +8,8 @@ struct Prompt: Identifiable, Equatable {
     enum Kind: Equatable {
         case dialog(EngineDialog)
         case permission(EnginePermission, host: String)
+        /// A connected coding agent wants to act on a site for the first time.
+        case agent(caller: String, action: String, host: String)
     }
 
     let id = UUID()
@@ -22,6 +24,15 @@ extension Browser {
         guard tab.id == currentTab?.id else { return .cancel }
         return await withCheckedContinuation { cont in
             let prompt = Prompt(kind: kind, tabID: tab.id)
+            promptQueue.append((prompt, cont))
+            if activePrompt == nil { activePrompt = promptQueue.first?.0 }
+        }
+    }
+
+    /// Asks on behalf of an agent, whatever tab is showing: agents aren't a page, so they wait for no tab.
+    func askForAgent(_ kind: Prompt.Kind) async -> EngineDialogResponse {
+        await withCheckedContinuation { cont in
+            let prompt = Prompt(kind: kind, tabID: UUID())
             promptQueue.append((prompt, cont))
             if activePrompt == nil { activePrompt = promptQueue.first?.0 }
         }
