@@ -5,34 +5,12 @@ import BrowserCore
 /// The window: sidebar and page on the space's tinted material, the command bar on top.
 struct BrowserWindow: View {
     @Environment(Browser.self) private var browser
-    @State private var dragStartWidth: CGFloat?
-    @State private var panelDragStartWidth: CGFloat?
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         @Bindable var browser = browser
         let docked = browser.isSidebarDocked
-        HStack(spacing: 0) {
-            if docked {
-                Sidebar()
-                    .frame(width: browser.sidebarWidth)
-                    .overlay(alignment: .trailing) { resizeHandle }
-                    .transition(.move(edge: .leading).combined(with: .opacity))
-            }
-            PageArea()
-                .padding(.vertical, PageCard.inset)
-                .padding(.trailing, PageCard.inset)
-                .padding(.leading, docked ? 0 : PageCard.inset)
-            if let panel = browser.panel {
-                RightPanel(toolID: panel)
-                    .frame(width: browser.panelWidth)
-                    .padding(.vertical, PageCard.inset)
-                    .padding(.trailing, PageCard.inset)
-                    .overlay(alignment: .leading) { panelResizeHandle }
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
-        }
-        .animation(Motion.dock, value: browser.panel)
+        WindowColumns(browser: browser, sidebarDocked: docked, panelOpen: browser.panel != nil)
         .background { background }
         .overlay(alignment: .leading) {
             if !docked { peekingSidebar }
@@ -74,39 +52,6 @@ struct BrowserWindow: View {
                 .animation(Motion.spring, value: browser.selectedSpaceID)
         }
         .ignoresSafeArea()
-    }
-
-    private var resizeHandle: some View {
-        Color.clear
-            .frame(width: 8)
-            .contentShape(.rect)
-            .pointerStyle(.columnResize)
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        let start = dragStartWidth ?? browser.sidebarWidth
-                        dragStartWidth = start
-                        browser.sidebarWidth = min(420, max(200, start + value.translation.width))
-                    }
-                    .onEnded { _ in dragStartWidth = nil })
-            .offset(x: 4)
-    }
-
-    /// Dragging the panel's left edge. The page narrows to match; it's never covered.
-    private var panelResizeHandle: some View {
-        Color.clear
-            .frame(width: 8)
-            .contentShape(.rect)
-            .pointerStyle(.columnResize)
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        let start = panelDragStartWidth ?? browser.panelWidth
-                        panelDragStartWidth = start
-                        browser.panelWidth = min(560, max(240, start - value.translation.width))
-                    }
-                    .onEnded { _ in panelDragStartWidth = nil })
-            .offset(x: -7)
     }
 
     /// With the sidebar hidden, pointing at the window's left edge slides it over the page, like Arc.
