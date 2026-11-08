@@ -44,10 +44,7 @@ let package = Package(
 
         // Extensions, plugins, Margin notes and the agent (MCP) toolbox. Foundation only, no
         // engine, so it's testable on its own. See docs/extensibility.md.
-        .target(
-            name: "Extensibility",
-            resources: [.copy("Resources/browsa-chrome-shim.js")]
-        ),
+        .target(name: "Extensibility"),
         .testTarget(name: "ExtensibilityTests", dependencies: ["Extensibility"]),
     ]
 )

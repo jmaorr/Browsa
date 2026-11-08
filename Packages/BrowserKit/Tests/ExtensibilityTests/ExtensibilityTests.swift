@@ -90,24 +90,6 @@ import Testing
         #expect(r?.params["text"]?.string == "3")
         #expect(PluginRequest(message: ["method": "nope"]) == nil)
     }
-
-    @Test func shimsAChromeExtension() throws {
-        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let manifest = #"{"manifest_version":3,"name":"X","version":"1","background":{"service_worker":"bg.js"},"action":{"default_popup":"popup.html"}}"#
-        try manifest.write(to: dir.appending(path: "manifest.json"), atomically: true, encoding: .utf8)
-        try "<html><head><title>x</title></head></html>".write(to: dir.appending(path: "popup.html"), atomically: true, encoding: .utf8)
-        try ChromeCompatibility.prepare(folder: dir)
-        try ChromeCompatibility.prepare(folder: dir) // twice is harmless
-        let m = try ExtensionManifest(data: Data(contentsOf: dir.appending(path: "manifest.json")))
-        #expect(m.background == .serviceWorker(path: "browsa-background.js", isModule: false))
-        let entry = try String(contentsOf: dir.appending(path: "browsa-background.js"), encoding: .utf8)
-        #expect(entry.contains("importScripts('/browsa-chrome-shim.js', '/bg.js')"))
-        let popup = try String(contentsOf: dir.appending(path: "popup.html"), encoding: .utf8)
-        #expect(popup.components(separatedBy: "browsa-chrome-shim.js").count == 2)
-        #expect(FileManager.default.fileExists(atPath: dir.appending(path: "browsa-chrome-shim.js").path(percentEncoded: false)))
-    }
 }
 
 @MainActor @Suite struct MarginTests {

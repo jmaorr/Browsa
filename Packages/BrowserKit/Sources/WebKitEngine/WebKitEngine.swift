@@ -173,13 +173,6 @@ public final class WebKitEngine: BrowserEngine {
         if #available(macOS 15.4, *) { webExtensions?.performAction(extensionID: extensionID, for: page as? WebKitPage, anchor: anchor) }
     }
 
-    #if DEBUG
-    public func debugExtensionBackground(_ extensionID: String, _ body: String) async -> String {
-        guard #available(macOS 15.4, *), let ext = webExtensions else { return "unavailable" }
-        return await ext.debugBackground(extensionID: extensionID, body)
-    }
-    #endif
-
     public func pageDidBecomeActive(_ page: any EnginePage) {
         guard #available(macOS 15.4, *), let page = page as? WebKitPage else { return }
         webExtensions?.pageActivated(page)

@@ -124,11 +124,10 @@ final class Library {
         Task {
             // Extensions expect a browser window to exist when they start (chrome.windows.getCurrent).
             while windows.isEmpty { try? await Task.sleep(for: .milliseconds(100)) }
-            let problems = await engine.loadInstalledExtensions(folders: folders, includeApps: useSafariExtensions)
+            // What couldn't load is in the engine's log.
+            _ = await engine.loadInstalledExtensions(folders: folders, includeApps: useSafariExtensions)
             extensions = engine.extensions
             BuiltInTools.sync(extensions: extensions, in: workbench)
-            if !problems.isEmpty { print("[extensions] " + problems.joined(separator: "\n[extensions] ")) }
-            print("[extensions] loaded: \(extensions.map { "\($0.name) \($0.version)" })")
         }
     }
 

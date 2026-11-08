@@ -3,11 +3,11 @@ import AppKit
 import WebKit
 import BrowserEngine
 
-/// Safari web extensions the user already has (inside apps like 1Password for Safari), run by
-/// WebKit's WKWebExtensionController. Native messages go to the Chrome-style host the
-/// extension's app installs (see `NativeHost`).
+/// Web extensions run by WebKit's WKWebExtensionController: Safari extensions inside the user's
+/// apps, and unpacked folders (store installs and ones the user picked).
 ///
-/// Spike: every extension gets all the permissions it asks for, plus every site.
+/// Extensions get the permissions they ask for: the user saw them on the add sheet, or, for
+/// Safari extensions, when they installed the app. Per-site prompts come later.
 @available(macOS 15.4, *)
 @MainActor
 final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
@@ -16,8 +16,6 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
     private(set) var loaded: [EngineExtension] = []
     private var contexts: [String: WKWebExtensionContext] = [:]
     private var windows: [UUID: ExtensionWindow] = [:]
-    /// Extensions loaded from a folder rather than an app. They get no native messaging.
-    private var unpacked: Set<String> = []
     /// Where the popup of the button being clicked should appear.
     private weak var popupAnchor: NSView?
 
@@ -58,16 +56,8 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
 
     func loadInstalled(folders: [ExtensionFolder] = [], includeApps: Bool = true) async -> [String] {
         var (bundles, problems) = includeApps ? Self.installedBundles() : ([], [])
-        let env = ProcessInfo.processInfo.environment
-        if env["BROWSA_ONLY_EXT_FOLDERS"] != nil { bundles = [] }
-        // Unpacked extensions: Browsa's store installs, folders the user picked, and (for testing)
-        // BROWSA_EXT_FOLDERS, a colon-separated list of paths.
-        var unpackedFolders = folders
-        for path in (env["BROWSA_EXT_FOLDERS"] ?? "").split(separator: ":").map(String.init) where !path.isEmpty {
-            let url = URL(fileURLWithPath: path, isDirectory: true)
-            unpackedFolders.append(ExtensionFolder(id: "unpacked." + url.lastPathComponent, url: url))
-        }
-        for folder in unpackedFolders {
+        // Unpacked extensions: Browsa's store installs and folders the user picked.
+        for folder in folders {
             let id = folder.id
             guard contexts[id] == nil else { continue }
             do {
@@ -78,7 +68,6 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
                 grantEverything(context)
                 try controller.load(context)
                 contexts[id] = context
-                unpacked.insert(id)
                 loaded.append(describe(ext, context: context, id: id))
                 problems += (ext.errors + context.errors).map { "\(id): \($0.localizedDescription)" }
             } catch {
@@ -145,28 +134,8 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
     func performAction(extensionID: String, for page: WebKitPage?, anchor: NSView?) {
         guard let context = contexts[extensionID] else { return }
         popupAnchor = anchor
-        let action = context.action(for: page)
-        print("[ext] nativeMessaging status=\(context.permissionStatus(for: .nativeMessaging).rawValue) granted=\(context.grantedPermissions.keys.map(\.rawValue).sorted())")
-        print("[ext] perform \(extensionID): presentsPopup=\(action?.presentsPopup as Any) label=\(action?.label ?? "-") enabled=\(action?.isEnabled as Any) errors=\(context.errors.map { e in "\(e.localizedDescription) \((e as NSError).userInfo)" }) tab=\(page.map { context.webExtension.displayName ?? "" + ($0.webView.url?.absoluteString ?? "") } ?? "nil")")
         context.performAction(for: page)
     }
-
-    #if DEBUG
-    /// Spike diagnostics: runs JavaScript in an extension's background page (WebKit private API).
-    func debugBackground(extensionID: String, _ body: String) async -> String {
-        guard let context = contexts[extensionID] else { return "no context" }
-        let sel = NSSelectorFromString("_backgroundWebView")
-        guard context.responds(to: sel), let web = context.perform(sel)?.takeUnretainedValue() as? WKWebView else {
-            return "no background web view"
-        }
-        do {
-            let r = try await web.callAsyncJavaScript(body, arguments: [:], in: nil, contentWorld: .page)
-            return "url=\(web.url?.absoluteString ?? "-") result=\(String(describing: r))"
-        } catch {
-            return "url=\(web.url?.absoluteString ?? "-") error=\(error)"
-        }
-    }
-    #endif
 
     /// Extension pages (popups aside) only load in web views made from their extension's configuration.
     func configuration(for url: URL) -> WKWebViewConfiguration? {
@@ -245,70 +214,27 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         completionHandler(matchPatterns, nil)
     }
 
-    // Native messaging. WebKit's own route (to the handler inside the extension's app extension) answers
-    // "Native messaging is not supported" for extensions from other apps, so Browsa runs the
-    // Chrome-style native messaging host the app installs instead, the way Chrome does.
+    // Native messaging. WebKit only routes it to the handler inside an extension's own app, and
+    // refuses it for extensions in a third-party browser, so there's nothing to forward to yet.
+    // Browsa plugins will message the app itself here (host "app.browsa", see PluginRequest).
 
     func webExtensionController(_ controller: WKWebExtensionController, sendMessage message: Any, toApplicationWithIdentifier applicationIdentifier: String?,
                                 for extensionContext: WKWebExtensionContext, replyHandler: @escaping (Any?, (any Error)?) -> Void) {
-        print("[ext] sendMessage app=\(applicationIdentifier ?? "nil") \(NativeHost.describe(message))")
-        if unpacked.contains(extensionContext.uniqueIdentifier) {
-            replyHandler(nil, NativeHost.missing(applicationIdentifier))
-            return
-        }
-        guard let host = NativeHost(name: applicationIdentifier, origin: extensionContext.baseURL) else {
-            replyHandler(nil, NativeHost.missing(applicationIdentifier))
-            return
-        }
-        var replied = false
-        host.onMessage = { reply in
-            guard !replied else { return }
-            replied = true
-            print("[ext] sendMessage reply \(NativeHost.describe(reply))")
-            replyHandler(reply, nil)
-            host.stop()
-        }
-        host.onExit = { status, stderr in
-            print("[ext] native host exited \(status) stderr=\(stderr.prefix(400))")
-            if !replied { replied = true; replyHandler(nil, NativeHost.exited(status)) }
-        }
-        host.start()
-        host.send(message)
+        replyHandler(nil, Self.noNativeMessaging(applicationIdentifier))
     }
 
     func webExtensionController(_ controller: WKWebExtensionController, connectUsing port: WKWebExtension.MessagePort,
                                 for extensionContext: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
-        print("[ext] connect app=\(port.applicationIdentifier ?? "nil")")
-        if unpacked.contains(extensionContext.uniqueIdentifier) {
-            completionHandler(NativeHost.missing(port.applicationIdentifier))
-            return
-        }
-        guard let host = NativeHost(name: port.applicationIdentifier, origin: extensionContext.baseURL) else {
-            completionHandler(NativeHost.missing(port.applicationIdentifier))
-            return
-        }
-        host.onMessage = { reply in
-            print("[ext] port <- host \(NativeHost.describe(reply))")
-            port.sendMessage(reply) { error in if let error { print("[ext] port send failed \(error)") } }
-        }
-        host.onExit = { status, stderr in
-            print("[ext] native host exited \(status) stderr=\(stderr.prefix(400))")
-            port.disconnect(throwing: NativeHost.exited(status))
-        }
-        port.messageHandler = { message, error in
-            if let message {
-                print("[ext] port -> host \(NativeHost.describe(message))")
-                host.send(message)
-            }
-        }
-        port.disconnectHandler = { _ in host.stop() }
-        host.start()
-        completionHandler(nil)
+        completionHandler(Self.noNativeMessaging(port.applicationIdentifier))
+    }
+
+    private static func noNativeMessaging(_ name: String?) -> NSError {
+        NSError(domain: "Browsa.Extensions", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Browsa can't reach the app \(name ?? "") from an extension yet."])
     }
 
     func webExtensionController(_ controller: WKWebExtensionController, presentActionPopup action: WKWebExtension.Action,
                                 for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
-        print("[ext] presentActionPopup popover=\(action.popupPopover != nil) anchor=\(popupAnchor != nil)")
         guard let popover = action.popupPopover,
               let anchor = popupAnchor ?? NSApp.keyWindow?.contentView else {
             completionHandler(nil)
@@ -317,97 +243,6 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         popover.behavior = .transient
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
         completionHandler(nil)
-    }
-}
-
-/// A Chrome-style native messaging host: a helper app that installs a manifest naming itself, and
-/// talks over stdin/stdout with each message as a 32-bit length then JSON.
-@MainActor
-final class NativeHost {
-    var onMessage: (Any) -> Void = { _ in }
-    var onExit: (Int32, String) -> Void = { _, _ in }
-    private let process = Process()
-    private let input = Pipe(), output = Pipe(), errors = Pipe()
-    private var buffer = Data()
-
-    /// Spike: hosts are found by name in Chrome's manifest folder, with 1Password's built in when
-    /// the sandbox hides that folder.
-    init?(name: String?, origin: URL) {
-        guard let name, let path = Self.executable(for: name) else { return nil }
-        process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = [origin.absoluteString]
-        process.standardInput = input
-        process.standardOutput = output
-        process.standardError = errors
-    }
-
-    static func executable(for name: String) -> String? {
-        let manifest = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Library/Application Support/Google/Chrome/NativeMessagingHosts/\(name).json")
-        if let data = try? Data(contentsOf: manifest),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let path = json["path"] as? String {
-            return path
-        }
-        if name == "com.1password.1password" {
-            return "/Applications/1Password.app/Contents/Library/LoginItems/1Password Browser Helper.app/Contents/MacOS/1Password-BrowserSupport"
-        }
-        return nil
-    }
-
-    func start() {
-        output.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            Task { @MainActor in self?.received(data) }
-        }
-        process.terminationHandler = { [weak self] p in
-            let status = p.terminationStatus
-            Task { @MainActor in
-                guard let self else { return }
-                let stderr = String(data: self.errors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                self.onExit(status, stderr)
-            }
-        }
-        do { try process.run() } catch {
-            print("[ext] native host failed to start: \(error)")
-            onExit(-1, error.localizedDescription)
-        }
-    }
-
-    func send(_ message: Any) {
-        guard process.isRunning, JSONSerialization.isValidJSONObject(message) || message is String,
-              let json = try? JSONSerialization.data(withJSONObject: message, options: [.fragmentsAllowed]) else { return }
-        var length = UInt32(json.count).littleEndian
-        try? input.fileHandleForWriting.write(contentsOf: Data(bytes: &length, count: 4) + json)
-    }
-
-    func stop() {
-        output.fileHandleForReading.readabilityHandler = nil
-        if process.isRunning { process.terminate() }
-    }
-
-    private func received(_ data: Data) {
-        buffer.append(data)
-        while buffer.count >= 4 {
-            let length = Int(buffer.prefix(4).withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }.littleEndian)
-            guard buffer.count >= 4 + length else { return }
-            let body = buffer.subdata(in: buffer.startIndex + 4 ..< buffer.startIndex + 4 + length)
-            buffer.removeFirst(4 + length)
-            if let message = try? JSONSerialization.jsonObject(with: body, options: [.fragmentsAllowed]) { onMessage(message) }
-        }
-    }
-
-    static func describe(_ message: Any) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: message, options: [.fragmentsAllowed]),
-              let text = String(data: data, encoding: .utf8) else { return String(describing: message).prefix(300).description }
-        return String(text.prefix(300))
-    }
-
-    static func missing(_ name: String?) -> NSError {
-        NSError(domain: "Browsa", code: 1, userInfo: [NSLocalizedDescriptionKey: "No native messaging host named \(name ?? "nil")"])
-    }
-
-    static func exited(_ status: Int32) -> NSError {
-        NSError(domain: "Browsa", code: 2, userInfo: [NSLocalizedDescriptionKey: "Native messaging host exited (\(status))"])
     }
 }
 

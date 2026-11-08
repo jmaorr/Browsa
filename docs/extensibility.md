@@ -18,7 +18,6 @@ Three ways in, all free, all running inside WebKit:
 | --- | --- |
 | Store links, update checks, CRX unpacking | `Packages/BrowserKit/Sources/Extensibility/ExtensionSources.swift` |
 | Installed list, installer, updater | `.../Extensibility/ExtensionCatalog.swift`, `Mac/Sources/State/Library+Extensions.swift` |
-| Chrome API gaps on WebKit | `.../Extensibility/ChromeCompatibility.swift`, `Resources/browsa-chrome-shim.js` |
 | Manifest and the `browsa` block | `.../Extensibility/ExtensionManifest.swift` |
 | Margin notes | `.../Extensibility/Margin.swift`, `Mac/Sources/Views/RightPanel.swift` |
 | MCP toolbox (transport-free) | `.../Extensibility/AgentToolbox.swift` |
@@ -71,8 +70,7 @@ refuses requests that carry a web page's Origin.
   third-party browsers, not Safari, and has been reported to Apple. Extensions that only use content
   scripts work; password-manager inline menus don't yet.
 - **No API wrapping.** Wrapping `chrome.*` in a JS Proxy stops runtime messages reaching the
-  background, so the compatibility script only aliases `browser` to `chrome`. Missing APIs have to
-  be filled natively.
+  background, so Chrome APIs WebKit lacks have to be filled natively, not from script.
 
 ## Password managers
 

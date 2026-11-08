@@ -226,7 +226,6 @@ public final class ExtensionInstaller {
         defer { try? fm.removeItem(at: zipFile) }
         try await unzip(zipFile, folder)
         guard fm.fileExists(atPath: folder.appending(path: "manifest.json").path(percentEncoded: false)) else { throw Failure.noManifest }
-        if case .chromeWebStore = source { try ChromeCompatibility.prepare(folder: folder) }
         return folder
     }
 }
