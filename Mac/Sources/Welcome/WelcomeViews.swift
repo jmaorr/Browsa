@@ -1,8 +1,9 @@
 import SwiftUI
 import AppKit
 
-/// The intro's first three phases, over the whole window: the orb, the wash to the page colour, and
-/// that colour settling onto the page card. It ends exactly on the real card, then steps aside.
+/// The intro's first two phases, over the whole window: the orb, then a slow wash to the page colour
+/// while the frame closes in on the page card. The orb stays still in the window and the closing
+/// frame clips it. It ends exactly on the real card, then steps aside.
 struct IntroOverlay: View {
     @Environment(Browser.self) private var browser
     let phase: IntroPhase
@@ -11,24 +12,24 @@ struct IntroOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             let full = CGRect(origin: .zero, size: proxy.size)
-            let settled = phase >= .settle
+            let settling = phase >= .settle
             let card = browser.pageCardFrame() ?? full.insetBy(dx: PageCard.inset, dy: PageCard.inset)
-            let rect = settled ? card : full
-            ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: settled ? PageCard.radius : 0, style: .continuous)
-                    .fill(Color(nsColor: .textBackgroundColor))
+            let rect = settling ? card : full
+            ZStack {
+                TimelineView(.animation) { context in
+                    Rectangle()
+                        .colorEffect(ShaderLibrary.orbFill(.float2(proxy.size),
+                                                           .float(context.date.timeIntervalSince(start))))
+                }
+                Color(nsColor: .textBackgroundColor)
+                    .opacity(settling ? 1 : 0)
+                    .animation(.easeInOut(duration: IntroPhase.washDuration), value: settling)
+            }
+            .mask(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: settling ? PageCard.radius : 0, style: .continuous)
                     .frame(width: rect.width, height: rect.height)
                     .offset(x: rect.minX, y: rect.minY)
-                    .animation(Motion.reduced ? nil : .smooth(duration: 0.6), value: settled)
-                if phase <= .white {
-                    TimelineView(.animation) { context in
-                        Rectangle()
-                            .colorEffect(ShaderLibrary.orbFill(.float2(proxy.size),
-                                                               .float(context.date.timeIntervalSince(start))))
-                    }
-                    .opacity(phase == .fill ? 1 : 0)
-                    .animation(.easeInOut(duration: 0.5), value: phase)
-                }
+                    .animation(.easeInOut(duration: IntroPhase.settleDuration), value: settling)
             }
         }
         .ignoresSafeArea()

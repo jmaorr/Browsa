@@ -9,14 +9,13 @@ enum Welcome {
 }
 
 /// The first-launch intro, in order. It plays on the real window, so nothing is swapped at the end:
-/// the orb fills the window, washes out to the page colour, the colour settles into the page card,
-/// the sidebar arrives, then a glow in the welcome tab brings up its cards.
+/// the orb fills the window, then slowly washes out to the page colour while closing in on the page
+/// card, the sidebar arrives, then a glow in the welcome tab brings up its cards.
 enum IntroPhase: Int, Comparable {
     /// The orb fills the window, edge to edge under the traffic lights.
     case fill
-    /// It washes out to the page colour.
-    case white
-    /// The page colour shrinks into the page card, leaving the window frame neutral.
+    /// A slow wash to the page colour while the frame closes in on the page card, leaving the
+    /// window around it neutral.
     case settle
     /// The frame takes the space's tint and the sidebar's contents come in.
     case sidebar
@@ -26,7 +25,10 @@ enum IntroPhase: Int, Comparable {
     static func < (a: IntroPhase, b: IntroPhase) -> Bool { a.rawValue < b.rawValue }
 
     /// When each phase starts, in seconds from the beginning; `nil` is the end.
-    static let timeline: [(IntroPhase?, Double)] = [(.white, 1.6), (.settle, 2.1), (.sidebar, 2.75), (.glow, 3.45), (nil, 4.7)]
+    static let timeline: [(IntroPhase?, Double)] = [(.settle, 1.6), (.sidebar, 3.1), (.glow, 3.8), (nil, 5.1)]
+    /// How long the frame takes to close in on the page card, and the wash to reach the page colour.
+    static let settleDuration = 1.5
+    static let washDuration = 1.3
 }
 
 extension Browser {
