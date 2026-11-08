@@ -130,7 +130,12 @@ struct TabIcon: View {
     var size: CGFloat = 16
 
     var body: some View {
-        if let url = tab.url {
+        if Welcome.isWelcome(tab.url) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: size, height: size)
+        } else if let url = tab.url {
             FaviconView(url: url, size: size)
         } else {
             Image(systemName: tab.isPrivate ? "eye.slash" : "globe")

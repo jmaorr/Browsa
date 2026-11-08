@@ -13,16 +13,22 @@ struct Sidebar: View {
     var body: some View {
         VStack(spacing: 10) {
             topRow
+                .introArrival(0)
             AddressPill()
                 .padding(.horizontal, 10)
+                .introArrival(1)
             FavoritesGrid()
                 .padding(.horizontal, 10)
+                .introArrival(2)
             SpaceTabs()
+                .introArrival(3)
             ToolSections()
                 .padding(.horizontal, 10)
+                .introArrival(4)
             bottomRow
                 .padding(.horizontal, 10)
                 .padding(.bottom, 8)
+                .introArrival(5)
         }
         .background { SpaceSwipeArea { browser.selectAdjacentSpace($0) } }
     }
@@ -165,17 +171,18 @@ struct AddressPill: View {
     var body: some View {
         let tab = browser.currentTab
         let zoom = browser.currentZoom
+        let isWelcome = Welcome.isWelcome(tab?.url)
         HStack(spacing: 8) {
             if tab?.isPrivate == true {
                 Image(systemName: "eye.slash").foregroundStyle(.secondary)
             } else if let url = tab?.url, url.scheme == "https" {
                 Image(systemName: "lock.fill").font(.system(size: 10, weight: .semibold)).foregroundStyle(.primary.opacity(0.55))
             }
-            Text(tab?.url.map(URLNormalizer.displayHost) ?? "Search or enter address")
+            Text(isWelcome ? "Welcome to Browsa" : tab?.url.map(URLNormalizer.displayHost) ?? "Search or enter address")
                 .lineLimit(1)
                 .foregroundStyle(tab?.url == nil ? .secondary : .primary)
             Spacer(minLength: 0)
-            if hovering, tab?.url != nil {
+            if hovering, tab?.url != nil, !isWelcome {
                 Button { browser.copyCurrentLink() } label: { Image(systemName: "link") }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
