@@ -9,6 +9,7 @@ let package = Package(
         .library(name: "Suggest", targets: ["Suggest"]),
         .library(name: "BrowserEngine", targets: ["BrowserEngine"]),
         .library(name: "WebKitEngine", targets: ["WebKitEngine"]),
+        .library(name: "Extensibility", targets: ["Extensibility"]),
     ],
     targets: [
         // Pure Swift + Foundation. No UIKit/WebKit so it can be unit-tested anywhere.
@@ -40,5 +41,13 @@ let package = Package(
 
         // WKWebView behind BrowserEngine. macOS for now; iOS still uses BrowserCore's TabSession.
         .target(name: "WebKitEngine", dependencies: ["BrowserEngine", "BrowserCore"]),
+
+        // Extensions, plugins, Margin notes and the agent (MCP) toolbox. Foundation only, no
+        // engine, so it's testable on its own. See docs/extensibility.md.
+        .target(
+            name: "Extensibility",
+            resources: [.copy("Resources/browsa-chrome-shim.js")]
+        ),
+        .testTarget(name: "ExtensibilityTests", dependencies: ["Extensibility"]),
     ]
 )

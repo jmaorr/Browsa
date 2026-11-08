@@ -56,17 +56,22 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         return (found, problems)
     }
 
-    func loadInstalled() async -> [String] {
-        var (bundles, problems) = Self.installedBundles()
+    func loadInstalled(folders: [ExtensionFolder] = [], includeApps: Bool = true) async -> [String] {
+        var (bundles, problems) = includeApps ? Self.installedBundles() : ([], [])
         let env = ProcessInfo.processInfo.environment
         if env["BROWSA_ONLY_EXT_FOLDERS"] != nil { bundles = [] }
-        // Spike: unpacked extension folders (Chrome or Safari format), e.g. a Chrome Web Store download.
+        // Unpacked extensions: Browsa's store installs, folders the user picked, and (for testing)
+        // BROWSA_EXT_FOLDERS, a colon-separated list of paths.
+        var unpackedFolders = folders
         for path in (env["BROWSA_EXT_FOLDERS"] ?? "").split(separator: ":").map(String.init) where !path.isEmpty {
             let url = URL(fileURLWithPath: path, isDirectory: true)
-            let id = "unpacked." + url.lastPathComponent
+            unpackedFolders.append(ExtensionFolder(id: "unpacked." + url.lastPathComponent, url: url))
+        }
+        for folder in unpackedFolders {
+            let id = folder.id
             guard contexts[id] == nil else { continue }
             do {
-                let ext = try await WKWebExtension(resourceBaseURL: url)
+                let ext = try await WKWebExtension(resourceBaseURL: folder.url)
                 let context = WKWebExtensionContext(for: ext)
                 context.uniqueIdentifier = id
                 context.isInspectable = true
@@ -74,9 +79,7 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
                 try controller.load(context)
                 contexts[id] = context
                 unpacked.insert(id)
-                let icon = ext.icon(for: CGSize(width: 32, height: 32))?.cgImage(forProposedRect: nil, context: nil, hints: nil)
-                loaded.append(EngineExtension(id: id, name: ext.displayName ?? id, version: ext.version ?? "",
-                                              icon: icon, hasAction: context.action(for: nil) != nil))
+                loaded.append(describe(ext, context: context, id: id))
                 problems += (ext.errors + context.errors).map { "\(id): \($0.localizedDescription)" }
             } catch {
                 problems.append("\(id): \(error)")
@@ -92,9 +95,7 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
                 grantEverything(context)
                 try controller.load(context)
                 contexts[id] = context
-                let icon = ext.icon(for: CGSize(width: 32, height: 32))?.cgImage(forProposedRect: nil, context: nil, hints: nil)
-                loaded.append(EngineExtension(id: id, name: ext.displayName ?? id, version: ext.version ?? "",
-                                              icon: icon, hasAction: context.action(for: nil) != nil))
+                loaded.append(describe(ext, context: context, id: id))
                 problems += (ext.errors + context.errors).map { "\(id): \($0.localizedDescription)" }
                 engineLog.info("extension loaded: \(id, privacy: .public)")
             } catch {
@@ -111,6 +112,17 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         }
         if let focused = currentWindows().first { controller.didFocusWindow(focused) }
         return problems
+    }
+
+    /// The toolbar and Settings entry for a loaded extension, with its side panel page if it has one.
+    private func describe(_ ext: WKWebExtension, context: WKWebExtensionContext, id: String) -> EngineExtension {
+        let icon = ext.icon(for: CGSize(width: 32, height: 32))?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        let manifest = ext.manifest
+        let panelPath = ((manifest["side_panel"] as? [String: Any])?["default_path"] as? String)
+            ?? ((manifest["sidebar_action"] as? [String: Any])?["default_panel"] as? String)
+        let panelURL = panelPath.map { context.baseURL.appending(path: $0.hasPrefix("/") ? String($0.dropFirst()) : $0) }
+        return EngineExtension(id: id, name: ext.displayName ?? id, version: ext.version ?? "",
+                               icon: icon, hasAction: context.action(for: nil) != nil, panelURL: panelURL)
     }
 
     private func grantEverything(_ context: WKWebExtensionContext) {

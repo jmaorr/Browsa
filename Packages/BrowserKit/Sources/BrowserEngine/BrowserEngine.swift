@@ -53,6 +53,9 @@ public protocol BrowserEngine: AnyObject {
     var extensionHost: (any EngineExtensionHost)? { get set }
     /// Finds and starts the extensions installed on this machine. Returns what couldn't load, for logs.
     func loadInstalledExtensions() async -> [String]
+    /// Unpacked extensions in `folders` (Browsa's store installs, folders the user picked), and with
+    /// `includeApps` the Safari extensions inside installed apps.
+    func loadInstalledExtensions(folders: [ExtensionFolder], includeApps: Bool) async -> [String]
     /// Stops every extension.
     func unloadExtensions()
     /// The extension's toolbar button was clicked. Its popup, if it has one, appears at `anchor`.
@@ -65,6 +68,10 @@ public extension BrowserEngine {
     var extensions: [EngineExtension] { [] }
     var extensionHost: (any EngineExtensionHost)? { get { nil } set {} }
     func loadInstalledExtensions() async -> [String] { [] }
+    func loadInstalledExtensions(folders: [ExtensionFolder], includeApps: Bool) async -> [String] {
+        guard includeApps else { return [] }
+        return await loadInstalledExtensions()
+    }
     func unloadExtensions() {}
     func performAction(extensionID: String, for page: (any EnginePage)?, anchor: PlatformView?) {}
     func pageDidBecomeActive(_ page: any EnginePage) {}
@@ -81,13 +88,28 @@ public struct EngineExtension: Identifiable {
     public let icon: CGImage?
     /// It has a toolbar button (a browser action).
     public let hasAction: Bool
+    /// A page for Browsa's right panel (Chrome's side panel, Firefox's sidebar), if it has one.
+    public let panelURL: URL?
 
-    public init(id: String, name: String, version: String, icon: CGImage?, hasAction: Bool) {
+    public init(id: String, name: String, version: String, icon: CGImage?, hasAction: Bool, panelURL: URL? = nil) {
         self.id = id
         self.name = name
         self.version = version
         self.icon = icon
         self.hasAction = hasAction
+        self.panelURL = panelURL
+    }
+}
+
+/// An unpacked extension for the engine to load: a folder with a manifest.json.
+public struct ExtensionFolder: Sendable, Hashable {
+    /// Stable id, e.g. "chrome:<extension id>". The engine uses it as the extension's unique identifier.
+    public let id: String
+    public let url: URL
+
+    public init(id: String, url: URL) {
+        self.id = id
+        self.url = url
     }
 }
 
@@ -244,6 +266,7 @@ public protocol EnginePage: AnyObject {
     func sessionState() -> Data?
 
     /// Runs a script body (it may `return` and `await`) in an isolated world, out of the page's reach.
+    /// The world named "page" is the page's own, for developer tools on your own sites.
     func evaluate(_ body: String, inWorld world: String) async throws -> Any?
 
     /// A picture of the visible page.

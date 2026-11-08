@@ -157,8 +157,12 @@ public final class WebKitEngine: BrowserEngine {
     }
 
     public func loadInstalledExtensions() async -> [String] {
+        await loadInstalledExtensions(folders: [], includeApps: true)
+    }
+
+    public func loadInstalledExtensions(folders: [ExtensionFolder], includeApps: Bool) async -> [String] {
         guard #available(macOS 15.4, *), let ext = webExtensions else { return ["needs macOS 15.4"] }
-        return await ext.loadInstalled()
+        return await ext.loadInstalled(folders: folders, includeApps: includeApps)
     }
 
     public func unloadExtensions() {

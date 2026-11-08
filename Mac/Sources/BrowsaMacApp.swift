@@ -92,8 +92,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         #endif
         archiveTimer = Timer.scheduledTimer(withTimeInterval: 30 * 60, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.library.archiveStaleTabs() }
+            MainActor.assumeIsolated {
+                guard let library = self?.library else { return }
+                library.archiveStaleTabs()
+                // Each extension is checked at most once every 20 hours.
+                Task { await library.updateExtensions() }
+            }
         }
+        Task { await library.updateExtensions() }
     }
 
     private func handle(_ event: NSEvent) -> Bool {
@@ -153,6 +159,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         library.saveNow()
+        library.margin.saveNow()
+        library.agents.stop()
     }
 
     func applicationDidResignActive(_ notification: Notification) {

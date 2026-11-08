@@ -6,6 +6,7 @@ import BrowserCore
 struct BrowserWindow: View {
     @Environment(Browser.self) private var browser
     @State private var dragStartWidth: CGFloat?
+    @State private var panelDragStartWidth: CGFloat?
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -22,7 +23,16 @@ struct BrowserWindow: View {
                 .padding(.vertical, PageCard.inset)
                 .padding(.trailing, PageCard.inset)
                 .padding(.leading, docked ? 0 : PageCard.inset)
+            if let panel = browser.panel {
+                RightPanel(kind: panel)
+                    .frame(width: browser.panelWidth)
+                    .padding(.vertical, PageCard.inset)
+                    .padding(.trailing, PageCard.inset)
+                    .overlay(alignment: .leading) { panelResizeHandle }
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
+        .animation(Motion.dock, value: browser.panel)
         .background { background }
         .overlay(alignment: .leading) {
             if !docked { peekingSidebar }
@@ -80,6 +90,23 @@ struct BrowserWindow: View {
                     }
                     .onEnded { _ in dragStartWidth = nil })
             .offset(x: 4)
+    }
+
+    /// Dragging the panel's left edge. The page narrows to match; it's never covered.
+    private var panelResizeHandle: some View {
+        Color.clear
+            .frame(width: 8)
+            .contentShape(.rect)
+            .pointerStyle(.columnResize)
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        let start = panelDragStartWidth ?? browser.panelWidth
+                        panelDragStartWidth = start
+                        browser.panelWidth = min(560, max(240, start - value.translation.width))
+                    }
+                    .onEnded { _ in panelDragStartWidth = nil })
+            .offset(x: -7)
     }
 
     /// With the sidebar hidden, pointing at the window's left edge slides it over the page, like Arc.

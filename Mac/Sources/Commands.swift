@@ -63,6 +63,14 @@ struct BrowserCommands: Commands {
             }
             .keyboardShortcut("s")
             .disabled(browser == nil)
+            Button(browser?.panel == nil ? "Show Panel" : "Hide Panel") { browser?.togglePanel() }
+                .keyboardShortcut("s", modifiers: [.command, .option])
+                .disabled(browser == nil)
+            Button("Notes") { browser?.togglePanel(.margin) }
+                .keyboardShortcut("m", modifiers: [.command, .shift])
+                .disabled(browser == nil)
+            Button("Agents") { browser?.togglePanel(.agents) }
+                .disabled(browser == nil)
         }
 
         CommandGroup(before: .toolbar) {

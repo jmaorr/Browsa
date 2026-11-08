@@ -1,0 +1,161 @@
+import Foundation
+import Testing
+@testable import Extensibility
+
+@Suite struct SourceTests {
+    @Test func recognisesStoreLinks() {
+        #expect(ExtensionSource(link: "https://chromewebstore.google.com/detail/ublock-origin-lite/ddkjiahejlhfcafbddmgiahcphecmpfh")
+                == .chromeWebStore(id: "ddkjiahejlhfcafbddmgiahcphecmpfh"))
+        #expect(ExtensionSource(link: "ddkjiahejlhfcafbddmgiahcphecmpfh") == .chromeWebStore(id: "ddkjiahejlhfcafbddmgiahcphecmpfh"))
+        #expect(ExtensionSource(link: "https://addons.mozilla.org/en-US/firefox/addon/darkreader/") == .firefoxAddons(slug: "darkreader"))
+        #expect(ExtensionSource(link: "https://example.com/detail/x") == nil)
+    }
+
+    @Test func escapesTheInnerQueryOfAnUpdateCheck() {
+        let url = ChromeWebStore.updateCheckURL(ids: ["abc"]).absoluteString
+        #expect(url.contains("x=id%3Dabc%26uc"))
+        #expect(url.contains("response=updatecheck"))
+    }
+
+    @Test func comparesVersions() {
+        #expect(isVersion("1.2.10", newerThan: "1.2.9"))
+        #expect(!isVersion("1.2", newerThan: "1.2.0"))
+        #expect(isVersion("2", newerThan: "1.99.99"))
+    }
+}
+
+@Suite struct PackageTests {
+    @Test func readsTheUpdateManifest() {
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gupdate xmlns="http://www.google.com/update2/response" protocol="2.0">
+          <app appid="abc" status="ok">
+            <updatecheck codebase="https://example.com/abc.crx" version="1.4.2" hash_sha256="ff" status="ok"/>
+          </app>
+          <app appid="gone" status="error-unknownApplication"/>
+        </gupdate>
+        """
+        let r = UpdateManifestParser.parse(Data(xml.utf8))
+        #expect(r == [StoreRelease(id: "abc", version: "1.4.2", downloadURL: URL(string: "https://example.com/abc.crx")!, sha256: "ff")])
+    }
+
+    @Test func unwrapsCRX3() throws {
+        let zip: [UInt8] = [0x50, 0x4B, 0x03, 0x04, 1, 2, 3]
+        let header: [UInt8] = [9, 9, 9, 9, 9]
+        var crx = Array("Cr24".utf8) + [3, 0, 0, 0] + [UInt8(header.count), 0, 0, 0] + header
+        crx += zip
+        #expect(try CRX.zipPayload(of: Data(crx)) == Data(zip))
+        #expect(try CRX.zipPayload(of: Data(zip)) == Data(zip))
+        #expect(throws: CRX.Failure.notACRX) { try CRX.zipPayload(of: Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])) }
+    }
+
+    @Test func readsAFirefoxRelease() throws {
+        let json = """
+        {"slug":"darkreader","current_version":{"version":"4.9.99","file":{"url":"https://addons.mozilla.org/x.xpi","hash":"sha256:abcd"}}}
+        """
+        let r = try FirefoxAddons.release(from: Data(json.utf8))
+        #expect(r.version == "4.9.99")
+        #expect(r.sha256 == "abcd")
+    }
+}
+
+@Suite struct ManifestTests {
+    @Test func readsPermissionsPanelAndBrowsaBlock() throws {
+        let json = """
+        {
+          "manifest_version": 3, "name": "Radar", "version": "1.0",
+          "permissions": ["storage", "tabs"], "host_permissions": ["http://localhost/*"],
+          "side_panel": {"default_path": "panel.html"},
+          "background": {"service_worker": "bg.js", "type": "module"},
+          "browsa": {
+            "sidebar": {"page": "radar.html", "title": "Dev servers"},
+            "commands": [{"id": "open", "title": "Open dev server"}],
+            "agentTools": [{"name": "dev_servers", "description": "List servers"}, {"name": "bad name!"}]
+          }
+        }
+        """
+        let m = try ExtensionManifest(data: Data(json.utf8))
+        #expect(m.permissions == ["storage", "tabs"])
+        #expect(m.hostPermissions == ["http://localhost/*"])
+        #expect(m.panelPath == "panel.html")
+        #expect(m.background == .serviceWorker(path: "bg.js", isModule: true))
+        #expect(m.browsa?.agentTools.map(\.name) == ["dev_servers"])
+        #expect(m.allPermissions.contains("browsa.sidebar"))
+        #expect(m.allPermissions.contains("browsa.agentTools"))
+    }
+
+    @Test func pluginRequests() {
+        let r = PluginRequest(message: ["method": "badge.set", "params": ["text": "3"]])
+        #expect(r?.method == .setBadge)
+        #expect(r?.params["text"]?.string == "3")
+        #expect(PluginRequest(message: ["method": "nope"]) == nil)
+    }
+
+    @Test func shimsAChromeExtension() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let manifest = #"{"manifest_version":3,"name":"X","version":"1","background":{"service_worker":"bg.js"},"action":{"default_popup":"popup.html"}}"#
+        try manifest.write(to: dir.appending(path: "manifest.json"), atomically: true, encoding: .utf8)
+        try "<html><head><title>x</title></head></html>".write(to: dir.appending(path: "popup.html"), atomically: true, encoding: .utf8)
+        try ChromeCompatibility.prepare(folder: dir)
+        try ChromeCompatibility.prepare(folder: dir) // twice is harmless
+        let m = try ExtensionManifest(data: Data(contentsOf: dir.appending(path: "manifest.json")))
+        #expect(m.background == .serviceWorker(path: "browsa-background.js", isModule: false))
+        let entry = try String(contentsOf: dir.appending(path: "browsa-background.js"), encoding: .utf8)
+        #expect(entry.contains("importScripts('/browsa-chrome-shim.js', '/bg.js')"))
+        let popup = try String(contentsOf: dir.appending(path: "popup.html"), encoding: .utf8)
+        #expect(popup.components(separatedBy: "browsa-chrome-shim.js").count == 2)
+        #expect(FileManager.default.fileExists(atPath: dir.appending(path: "browsa-chrome-shim.js").path(percentEncoded: false)))
+    }
+}
+
+@MainActor @Suite struct MarginTests {
+    @Test func matchesPagesLoosely() {
+        #expect(MarginStore.pageKey(URL(string: "https://www.Example.com/a/?utm=1#top")!) == "https://example.com/a")
+        // On localhost the query is part of what's being reviewed.
+        #expect(MarginStore.pageKey(URL(string: "http://localhost:4322/x?step=2")!) == "http://localhost:4322/x?step=2")
+    }
+
+    @Test func agentsResolveNotes() {
+        let store = MarginStore(fileURL: nil)
+        let url = URL(string: "http://localhost:4322/library")!
+        let note = store.add(MarginNote(url: url, pageTitle: "Library", anchor: .init(quote: "Featured"), body: "Card sits 14px low"))
+        #expect(store.openNotes(under: "http://localhost:4322").count == 1)
+        store.resolve(note.id, by: .agent("Claude Code"), comment: "Fixed the badge margin")
+        #expect(store.openNotes().isEmpty)
+        #expect(store.notes(on: url).first?.replies.first?.author == .agent("Claude Code"))
+        #expect(store.markdown(for: url).contains("- [x] Card sits 14px low"))
+    }
+}
+
+@MainActor @Suite struct ToolboxTests {
+    func call(_ box: AgentToolbox, _ json: String) async throws -> JSONValue {
+        let data = try #require(await box.handle(Data(json.utf8)))
+        return try JSONValue(data: data)
+    }
+
+    @Test func initializeListAndCall() async throws {
+        let box = AgentToolbox(serverVersion: "1.0")
+        box.register(AgentTool(name: "echo", title: "Echo", description: "Says it back", readOnly: true) { args, caller in
+            .text("\(caller.name): \(args["text"]?.string ?? "")")
+        })
+        let hello = try await call(box, #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","clientInfo":{"name":"Claude Code","version":"2"}}}"#)
+        #expect(hello["result"]?["serverInfo"]?["name"]?.string == "Browsa")
+        #expect(await box.handle(Data(#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#.utf8)) == nil)
+        let list = try await call(box, #"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#)
+        #expect(list["result"]?["tools"]?.array?.first?["name"]?.string == "echo")
+        let out = try await call(box, #"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"echo","arguments":{"text":"hi"}}}"#)
+        #expect(out["result"]?["content"]?.array?.first?["text"]?.string == "Claude Code: hi")
+        let missing = try await call(box, #"{"jsonrpc":"2.0","id":4,"method":"nope"}"#)
+        #expect(missing["error"]?["code"]?.int == -32601)
+    }
+
+    @Test func refusedToolsReportIt() async throws {
+        let box = AgentToolbox(serverVersion: "1.0")
+        box.register(AgentTool(name: "click", title: "Click", description: "", readOnly: false) { _, _ in .text("clicked") })
+        box.authorize = { _, _, _ in false }
+        let out = try await call(box, #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"click"}}"#)
+        #expect(out["result"]?["isError"]?.bool == true)
+    }
+}

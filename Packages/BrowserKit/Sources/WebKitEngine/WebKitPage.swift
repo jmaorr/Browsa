@@ -113,7 +113,8 @@ public final class WebKitPage: NSObject, EnginePage {
     }
 
     public func evaluate(_ body: String, inWorld world: String) async throws -> Any? {
-        try await webView.callAsyncJavaScript(body, arguments: [:], in: nil, contentWorld: .world(name: world))
+        // "page" is the page's own world, where its scripts and globals live.
+        try await webView.callAsyncJavaScript(body, arguments: [:], in: nil, contentWorld: world == "page" ? .page : .world(name: world))
     }
 
     public func snapshot() async -> CGImage? {

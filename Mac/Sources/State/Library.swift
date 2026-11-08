@@ -3,6 +3,7 @@ import Observation
 import BrowserCore
 import BrowserEngine
 import Suggest
+import Extensibility
 
 /// Everything the windows share: spaces, tabs, favourites, settings, live pages and downloads.
 /// Each window is a `Browser` looking into it with its own space and tab.
@@ -42,6 +43,13 @@ final class Library {
     }
     /// The extensions running now, for the toolbar.
     private(set) var extensions: [EngineExtension] = []
+    /// Extensions added from the Chrome Web Store, Firefox Add-ons or a folder (Safari ones come from apps).
+    let extensionCatalog: ExtensionCatalog
+    @ObservationIgnored let extensionInstaller: ExtensionInstaller
+    /// Notes pinned to pages, which agents read too.
+    let margin: MarginStore
+    /// Coding agents over MCP. Made after everything else, since it reaches back into the library.
+    @ObservationIgnored private(set) var agents: AgentBridge!
     var downloads: [EngineDownload] = []
     var filterStatus = FilterStatus()
     /// Tabs closed this session, newest last, for Shift-Cmd-T. Never private tabs.
@@ -74,6 +82,12 @@ final class Library {
         clearDataOnQuit = Preferences.clearDataOnQuit
         developerTools = Preferences.developerTools
         useSafariExtensions = Preferences.useSafariExtensions
+        let support = snapshotURL?.deletingLastPathComponent()
+        extensionCatalog = ExtensionCatalog(fileURL: support?.appending(path: "extensions.json"))
+        extensionInstaller = ExtensionInstaller(
+            root: (support ?? FileManager.default.temporaryDirectory).appending(path: "Extensions"),
+            fetch: Library.fetch, unzip: Library.unzip)
+        margin = MarginStore(fileURL: support?.appending(path: "margin.json"))
         if let snapshotURL, let data = try? Data(contentsOf: snapshotURL),
            let snap = try? JSONDecoder().decode(BrowserSnapshot.self, from: data), !snap.spaces.isEmpty {
             spaces = snap.spaces.map(Space.init)
@@ -94,16 +108,19 @@ final class Library {
         archiveStaleTabs()
         engine.extensionHost = self
         reloadExtensions()
+        agents = AgentBridge(library: self)
     }
 
     func reloadExtensions() {
         engine.unloadExtensions()
         extensions = []
-        guard useSafariExtensions, engine.info.capabilities.contains(.webExtensions) else { return }
+        guard engine.info.capabilities.contains(.webExtensions) else { return }
+        let folders = extensionFolders()
+        guard useSafariExtensions || !folders.isEmpty else { return }
         Task {
             // Extensions expect a browser window to exist when they start (chrome.windows.getCurrent).
             while windows.isEmpty { try? await Task.sleep(for: .milliseconds(100)) }
-            let problems = await engine.loadInstalledExtensions()
+            let problems = await engine.loadInstalledExtensions(folders: folders, includeApps: useSafariExtensions)
             extensions = engine.extensions
             if !problems.isEmpty { print("[extensions] " + problems.joined(separator: "\n[extensions] ")) }
             print("[extensions] loaded: \(extensions.map { "\($0.name) \($0.version)" })")

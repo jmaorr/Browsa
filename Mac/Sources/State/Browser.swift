@@ -40,6 +40,9 @@ final class Browser {
     var isArchivePresented = false
     /// When and which way the space last changed, so tab lists cascade in from that side.
     private(set) var lastSpaceSwitch: SpaceSwitch?
+    /// The right-hand panel each space last showed. It pushes the page over, never covers it.
+    private var panels: [UUID: PanelKind] = [:]
+    var panelWidth: CGFloat { didSet { Preferences.panelWidth = panelWidth } }
 
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     @ObservationIgnored private var sidebarMoveTask: Task<Void, Never>?
@@ -51,6 +54,7 @@ final class Browser {
         self.library = library
         isSidebarDocked = Preferences.sidebarDocked
         sidebarWidth = Preferences.sidebarWidth
+        panelWidth = Preferences.panelWidth
         let request = library.takeWindowRequest()
         let isFirst = library.windows.isEmpty
         let launch = library.regularSpaces.first { $0.id == library.launchSpaceID } ?? library.regularSpaces[0]
@@ -393,6 +397,11 @@ enum WindowRequest {
 enum Preferences {
     private static var d: UserDefaults { .standard }
 
+    static var panelWidth: CGFloat {
+        get { (d.object(forKey: "panelWidth") as? Double).map { CGFloat($0) } ?? 320 }
+        set { d.set(Double(newValue), forKey: "panelWidth") }
+    }
+
     static var sidebarDocked: Bool {
         get { d.object(forKey: "sidebarDocked") as? Bool ?? true }
         set { d.set(newValue, forKey: "sidebarDocked") }
@@ -454,4 +463,37 @@ enum Preferences {
         all[host] = abs(zoom - 1) < 0.01 ? nil : zoom
         d.set(all, forKey: "siteZoom")
     }
+}
+
+// MARK: - Right panel
+
+/// What the right-hand panel shows: Browsa's own tools, or an extension's side panel.
+enum PanelKind: Hashable {
+    case margin
+    case agents
+    case extensionPanel(id: String)
+}
+
+extension Browser {
+    var panel: PanelKind? {
+        get { panels[selectedSpaceID] }
+        set { panels[selectedSpaceID] = newValue }
+    }
+
+    /// Cmd-Option-S: shows the panel this space last had, or Margin.
+    func togglePanel(_ kind: PanelKind? = nil) {
+        if let kind {
+            panel = panel == kind ? nil : kind
+        } else {
+            panel = panel == nil ? (lastPanel ?? .margin) : nil
+        }
+        if let panel { lastPanel = panel }
+    }
+
+    private var lastPanel: PanelKind? {
+        get { panels[Self.lastPanelKey] }
+        set { panels[Self.lastPanelKey] = newValue }
+    }
+
+    private static let lastPanelKey = UUID(uuidString: "00000000-0000-0000-0000-00000000BA9E")!
 }
