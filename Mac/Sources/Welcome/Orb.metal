@@ -2,63 +2,75 @@
 #include <SwiftUI/SwiftUI_Metal.h>
 using namespace metal;
 
-// The Browsa orb as a live shader: slow domain-warped noise mapped onto the orb's own colours.
+// The Browsa orb as a live shader: a metallic roll of two vortices in the orb's own colours.
 // The same maths runs in the web prototype, so a tweak there carries straight over.
 
 namespace orb {
 
-float hash(float2 p) { return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453); }
-
-float noise(float2 p) {
-    float2 i = floor(p), f = fract(p);
-    float2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + float2(1, 0)), u.x),
-               mix(hash(i + float2(0, 1)), hash(i + float2(1, 1)), u.x), u.y);
+/// Turns the plane around `c`, most at the centre and fading with distance, so the middle of each
+/// vortex moves fast and its outer bands lag and stretch.
+float2 swirl(float2 p, float2 c, float a, float rad) {
+    float2 d = p - c;
+    float k = a * exp(-dot(d, d) / (rad * rad));
+    float cs = cos(k), sn = sin(k);
+    return c + float2(cs * d.x - sn * d.y, sn * d.x + cs * d.y);
 }
 
-float fbm(float2 p) {
-    float v = 0.0, a = 0.5;
-    const float2x2 m = float2x2(1.6, 1.2, -1.2, 1.6);
-    for (int i = 0; i < 4; i++) { v += a * noise(p); p = m * p; a *= 0.5; }
-    return v;
-}
-
-/// Oxblood, red-orange, orange, amber, yellow, a touch of lime: the orb artwork's ramp.
+/// Oxblood, red, orange, amber, yellow, a green kick, and a hint of cyan at the very top.
 float3 ramp(float x) {
-    const float3 c0 = float3(.62, .10, .04), c1 = float3(.83, .17, .05), c2 = float3(.94, .36, .02),
-                 c3 = float3(.95, .63, .02), c4 = float3(.92, .84, .04), c5 = float3(.68, .86, .10);
-    x = clamp(x, 0.0, 1.0) * 5.0;
+    const float3 c0 = float3(.55, .06, .03), c1 = float3(.86, .16, .04), c2 = float3(.95, .38, .02),
+                 c3 = float3(.96, .62, .03), c4 = float3(.93, .83, .05), c5 = float3(.55, .85, .12),
+                 c6 = float3(.35, .78, .85);
+    x = clamp(x, 0.0, 1.0) * 6.0;
     if (x < 1.0) return mix(c0, c1, x);
     if (x < 2.0) return mix(c1, c2, x - 1.0);
     if (x < 3.0) return mix(c2, c3, x - 2.0);
     if (x < 4.0) return mix(c3, c4, x - 3.0);
-    return mix(c4, c5, x - 4.0);
+    if (x < 5.0) return mix(c4, c5, x - 4.0);
+    return mix(c5, c6, x - 5.0);
 }
 
-/// The orb's colour at a point. `uv` is in units of the view's height, so it scales with the window.
-float3 colour(float2 uv, float t) {
-    float2 q = float2(fbm(uv * 0.7 + float2(0.0, t * 0.06)), fbm(uv * 0.7 + float2(5.2, 1.3) - t * 0.045));
-    float2 r = float2(fbm(uv * 0.8 + 2.4 * q + float2(1.7, 9.2) + t * 0.09),
-                      fbm(uv * 0.8 + 2.4 * q + float2(8.3, 2.8) - t * 0.075));
-    float f = fbm(uv * 0.6 + 2.8 * r);
-    // Spread across the ramp, then fold into soft rings like the orb's lobes.
-    float x = smoothstep(0.40, 0.72, f);
-    float ring = 0.5 + 0.5 * sin(x * 7.0 + q.x * 4.0 - t * 0.4);
-    float3 c = ramp(mix(x, ring, 0.22) * 0.9);
-    return mix(c, float3(1.0, 0.95, 0.84), smoothstep(0.9, 1.0, x * ring) * 0.35);
+/// Two counter-turning vortices, like the icon's orb, stirred over a diagonal sweep.
+float field(float2 p, float t) {
+    // Rushes at first, then eases as the bands stretch out.
+    float roll = 2.6 * (1.0 - exp(-t * 0.55)) + 0.25 * sin(t * 0.4);
+    float2 c1 = float2(-0.42 + 0.06 * sin(t * 0.3), 0.08 * cos(t * 0.27));
+    float2 c2 = float2(0.40 + 0.05 * cos(t * 0.33), -0.06 + 0.05 * sin(t * 0.31));
+    p = swirl(p, float2(0.0), 0.6 * sin(roll * 0.5), 1.4);
+    p = swirl(p, c1, 2.6 + 1.6 * roll, 0.42);
+    p = swirl(p, c2, -2.2 - 1.4 * roll, 0.48);
+    float a = length(p - c1), b = length(p - c2);
+    return 0.55 * smoothstep(0.75, 0.0, min(a, b * 1.05)) + 0.45 * (0.5 + 0.5 * sin(p.x * 1.7 - p.y * 2.3 + 0.8));
+}
+
+/// The orb's colour at a point, lit like polished metal. Scales with the view's height.
+float3 colour(float2 position, float2 size, float t) {
+    float2 p = (position - 0.5 * size) / size.y;
+    float e = 1.5 / size.y;
+    float v = field(p, t);
+    float2 g = float2(field(p + float2(e, 0), t) - v, field(p + float2(0, e), t) - v) / e;
+    float3 n = normalize(float3(-g * 0.06, 1.0));
+    float3 c = ramp(v * 0.84 + 0.02);
+    const float3 light = normalize(float3(-0.4, -0.5, 0.75));
+    float diffuse = saturate(dot(n, light));
+    float spec = pow(saturate(dot(reflect(-light, n), float3(0, 0, 1))), 24.0);
+    c *= 0.75 + 0.35 * diffuse;
+    c += float3(1.0, 0.93, 0.8) * spec * 0.35;
+    // Steep creases go darker, like the seams between the orb's bands.
+    return c * (1.0 - 0.35 * smoothstep(4.0, 14.0, length(g)));
 }
 
 } // namespace orb
 
 /// Fills the view edge to edge with the moving orb.
 [[ stitchable ]] half4 orbFill(float2 position, half4 color, float2 size, float time) {
-    return half4(half3(orb::colour(position / size.y, time)), 1.0h);
+    return half4(half3(orb::colour(position, size, time)), 1.0h);
 }
 
 /// A glow of orb colour that rises from the bottom edge and falls away as `progress` runs 0 to 1.
 /// Premultiplied, so it lays over whatever is behind it.
 [[ stitchable ]] half4 orbGlow(float2 position, half4 color, float2 size, float time, float progress) {
-    float3 c = orb::colour(position / size.y, time);
+    float3 c = orb::colour(position, size, time);
     float y = 1.0 - position.y / size.y;                       // 0 at the bottom edge
     float reach = mix(0.04, 0.6, smoothstep(0.0, 0.5, progress));
     float edge = 0.35 + 0.08 * sin(position.x / size.x * 6.2832 * 1.5 + time * 2.0);
