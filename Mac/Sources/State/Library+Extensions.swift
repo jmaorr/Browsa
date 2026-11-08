@@ -61,7 +61,7 @@ extension Library {
     /// An unpacked extension folder the user picked, e.g. one they're building.
     func previewExtension(folder: URL) throws -> ExtensionPreview {
         let manifest = try ExtensionManifest(data: Data(contentsOf: folder.appending(path: "manifest.json")))
-        let item = InstalledExtension(source: .folder(folder.path(percentEncoded: false)), name: manifest.localizedName(in: folder),
+        let item = InstalledExtension(source: .folder(path: folder.path(percentEncoded: false)), name: manifest.localizedName(in: folder),
                                       version: manifest.version, folderPath: nil,
                                       folderBookmark: try? folder.bookmarkData(options: .withSecurityScope),
                                       permissions: manifest.allPermissions)
