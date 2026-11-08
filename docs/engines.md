@@ -55,10 +55,9 @@ We spiked a Chromium engine on the prebuilt [Chromium Embedded Framework](https:
 So Browsa owning its own tabs and UI on Chromium means building Chromium (or CEF with patches)
 from source, like Arc, Brave and Edge. That's parked until it's worth a dedicated build machine.
 
-We also tried Chrome extensions on WebKit (`WKWebExtension`). Most of the plumbing works, but in a
-third-party app WebKit stops an extension's background a few seconds after a page loads an
-extension frame or file (Safari is unaffected; reported to Apple). Password managers' inline menus
-are extension frames, so they don't work there yet. Content-script extensions are fine.
+Chrome extensions run on WebKit (`WKWebExtension`) instead, with a few workarounds for gaps and
+WebKit bugs in third-party browsers; 1Password's Chrome extension works there. See
+[web-extensions.md](web-extensions.md).
 
 If someone does take up a Chromium engine, the mapping is: each `CefBrowser` is an `EnginePage`;
 `CefRequestHandler.OnBeforeBrowse` → `page(_:decide:)`, `CefLifeSpanHandler.OnBeforePopup` →

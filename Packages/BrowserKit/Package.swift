@@ -40,7 +40,11 @@ let package = Package(
         .target(name: "BrowserEngine"),
 
         // WKWebView behind BrowserEngine. macOS for now; iOS still uses BrowserCore's TabSession.
-        .target(name: "WebKitEngine", dependencies: ["BrowserEngine", "BrowserCore"]),
+        .target(
+            name: "WebKitEngine",
+            dependencies: ["BrowserEngine", "BrowserCore"],
+            resources: [.copy("Resources/extension-compat.js"), .copy("Resources/extension-diagnostics.js")]
+        ),
 
         // Extensions, plugins, Margin notes and the agent (MCP) toolbox. Foundation only, no
         // engine, so it's testable on its own. See docs/extensibility.md.

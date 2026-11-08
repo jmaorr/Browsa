@@ -1,6 +1,7 @@
 #if os(macOS)
 import AppKit
 import WebKit
+import CryptoKit
 import BrowserEngine
 
 /// Web extensions run by WebKit's WKWebExtensionController: Safari extensions inside the user's
@@ -11,7 +12,13 @@ import BrowserEngine
 @available(macOS 15.4, *)
 @MainActor
 final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
-    let controller = WKWebExtensionController()
+    let controller: WKWebExtensionController = {
+        // An extension's background has no window, so WebKit treats its process as inactive and can
+        // pause it mid-task. Extension web views are never paused (see also startKeepAlive).
+        let configuration = WKWebExtensionController.Configuration.default()
+        configuration.webViewConfiguration?.preferences.inactiveSchedulingPolicy = .none
+        return WKWebExtensionController(configuration: configuration)
+    }()
     weak var host: (any EngineExtensionHost)?
     private(set) var loaded: [EngineExtension] = []
     private var contexts: [String: WKWebExtensionContext] = [:]
@@ -61,23 +68,36 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             let id = folder.id
             guard contexts[id] == nil else { continue }
             do {
-                let ext = try await WKWebExtension(resourceBaseURL: folder.url)
+                // Chrome extensions run from a copy with Browsa's compat script in front of the background.
+                let url = try ExtensionCompat.prepare(folder.url, id: id,
+                                                      in: URL.applicationSupportDirectory.appending(path: "Extensions (WebKit)"))
+                let ext = try await WKWebExtension(resourceBaseURL: url)
                 let context = WKWebExtensionContext(for: ext)
                 context.uniqueIdentifier = id
+                // The same address every launch, so restored tabs showing the extension's pages still work.
+                context.baseURL = Self.stableBaseURL(for: id)
                 context.isInspectable = true
                 grantEverything(context)
                 try controller.load(context)
                 contexts[id] = context
+                startKeepAlive(context, folder: url)
                 loaded.append(describe(ext, context: context, id: id))
                 problems += (ext.errors + context.errors).map { "\(id): \($0.localizedDescription)" }
             } catch {
                 problems.append("\(id): \(error)")
             }
         }
+        // A Safari-app extension is skipped when the same extension came from a store or folder: the
+        // Safari copy expects to reach its desktop app, which Browsa can't connect it to.
+        let unpackedNames = Set(loaded.map { Self.comparableName($0.name) })
         for url in bundles {
             guard let bundle = Bundle(url: url), let id = bundle.bundleIdentifier, contexts[id] == nil else { continue }
             do {
                 let ext = try await WKWebExtension(appExtensionBundle: bundle)
+                if unpackedNames.contains(Self.comparableName(ext.displayName ?? "")) {
+                    engineLog.info("extension: skipped the Safari copy of \(ext.displayName ?? id, privacy: .public); the store version is in use")
+                    continue
+                }
                 let context = WKWebExtensionContext(for: ext)
                 context.uniqueIdentifier = id
                 context.isInspectable = true
@@ -104,6 +124,12 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
     }
 
     /// The toolbar and Settings entry for a loaded extension, with its side panel page if it has one.
+    /// "1Password – Password Manager" and "1Password" compare equal: the name up to any dash or colon.
+    static func comparableName(_ name: String) -> String {
+        let head = name.split(whereSeparator: { "–—-:|".contains($0) }).first.map(String.init) ?? name
+        return head.trimmingCharacters(in: .whitespaces).lowercased()
+    }
+
     private func describe(_ ext: WKWebExtension, context: WKWebExtensionContext, id: String) -> EngineExtension {
         let icon = ext.icon(for: CGSize(width: 32, height: 32))?.cgImage(forProposedRect: nil, context: nil, hints: nil)
         let manifest = ext.manifest
@@ -112,6 +138,57 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         let panelURL = panelPath.map { context.baseURL.appending(path: $0.hasPrefix("/") ? String($0.dropFirst()) : $0) }
         return EngineExtension(id: id, name: ext.displayName ?? id, version: ext.version ?? "",
                                icon: icon, hasAction: context.action(for: nil) != nil, panelURL: panelURL)
+    }
+
+    /// Hidden pages keeping backgrounds awake, by extension id.
+    private var keepAlives: [String: WKWebView] = [:]
+    private var keepAliveTimers: [String: Timer] = [:]
+    private var keepAliveLastPing: [String: Date] = [:]
+
+    /// WebKit runs all of an extension's web content in one process and pauses that process once none of
+    /// its pages are in use. A service worker isn't a web view, so `inactiveSchedulingPolicy` doesn't
+    /// cover it: 1Password's background froze for minutes after sign-in with the popup closed. A hidden
+    /// extension page that's never paused keeps the process running. It also pings the background every
+    /// 20 s, since WebKit unloads a background that gets no events for 30 s (dropping its sync socket).
+    private func startKeepAlive(_ context: WKWebExtensionContext, folder: URL) {
+        let id = context.uniqueIdentifier
+        guard FileManager.default.fileExists(atPath: folder.appending(path: ExtensionCompat.keepAlivePage).path(percentEncoded: false)),
+              let configuration = context.webViewConfiguration else { return }
+        configuration.preferences.inactiveSchedulingPolicy = .none
+        let web = WKWebView(frame: .zero, configuration: configuration)
+        web.load(URLRequest(url: context.baseURL.appending(path: ExtensionCompat.keepAlivePage)))
+        keepAlives[id] = web
+        keepAliveLastPing[id] = Date()
+        keepAliveTimers[id]?.invalidate()
+        keepAliveTimers[id] = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self, weak web] _ in
+            MainActor.assumeIsolated {
+                guard let self, let web else { return }
+                // A slow answer means the extension's process was paused.
+                let sent = Date()
+                let gap = sent.timeIntervalSince(self.keepAliveLastPing[id] ?? sent)
+                self.keepAliveLastPing[id] = sent
+                web.evaluateJavaScript("typeof ping === 'function' ? ping() : 0") { _, error in
+                    let took = Date().timeIntervalSince(sent)
+                    #if DEBUG
+                    if took > 2 || gap > 30 || error != nil {
+                        print("[ext] keep-alive \(id): answered after \(String(format: "%.1f", took)) s, \(String(format: "%.0f", gap)) s since last\(error.map { ", error \($0.localizedDescription)" } ?? "")")
+                    }
+                    #endif
+                }
+            }
+        }
+        #if DEBUG
+        print("[ext] keep-alive page started for \(id)")
+        #endif
+    }
+
+    /// webkit-extension://<uuid>/ derived from the extension's id.
+    static func stableBaseURL(for id: String) -> URL {
+        var bytes = Array(SHA256.hash(data: Data(id.utf8)).prefix(16))
+        bytes[6] = (bytes[6] & 0x0F) | 0x50
+        bytes[8] = (bytes[8] & 0x3F) | 0x80
+        let uuid = NSUUID(uuidBytes: bytes) as UUID
+        return URL(string: "webkit-extension://\(uuid.uuidString.lowercased())/")!
     }
 
     private func grantEverything(_ context: WKWebExtensionContext) {
@@ -196,6 +273,17 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         completionHandler(page as? WebKitPage, nil)
     }
 
+    /// Browsa has no extension popup windows: a new window's tabs open as tabs in the window in use.
+    func webExtensionController(_ controller: WKWebExtensionController, openNewWindowUsing configuration: WKWebExtension.WindowConfiguration,
+                                for extensionContext: WKWebExtensionContext,
+                                completionHandler: @escaping ((any WKWebExtensionWindow)?, (any Error)?) -> Void) {
+        let windowID = host?.extensionWindows.first?.id
+        for url in configuration.tabURLs {
+            _ = host?.openExtensionTab(url: url, windowID: windowID, active: true)
+        }
+        completionHandler(currentWindows().first, nil)
+    }
+
     func webExtensionController(_ controller: WKWebExtensionController, promptForPermissions permissions: Set<WKWebExtension.Permission>,
                                 in tab: (any WKWebExtensionTab)?, for extensionContext: WKWebExtensionContext,
                                 completionHandler: @escaping (Set<WKWebExtension.Permission>, Date?) -> Void) {
@@ -220,11 +308,25 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
 
     func webExtensionController(_ controller: WKWebExtensionController, sendMessage message: Any, toApplicationWithIdentifier applicationIdentifier: String?,
                                 for extensionContext: WKWebExtensionContext, replyHandler: @escaping (Any?, (any Error)?) -> Void) {
+        #if DEBUG
+        // The compat diagnostics (BROWSA_EXT_DIAGNOSTICS) log through native messaging to "browsa.log".
+        if applicationIdentifier == "browsa.log" {
+            print("[ext-log] \(Date().timeIntervalSince1970) \((message as? [String: Any])?["line"] ?? message)")
+            replyHandler(nil, nil)
+            return
+        }
+        #endif
         replyHandler(nil, Self.noNativeMessaging(applicationIdentifier))
     }
 
     func webExtensionController(_ controller: WKWebExtensionController, connectUsing port: WKWebExtension.MessagePort,
                                 for extensionContext: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
+        // Browsa's own names, answered in-process: no helper app is started.
+        if port.applicationIdentifier == ExtensionWebSocket.portName {
+            ExtensionWebSocket.accept(port, for: extensionContext)
+            completionHandler(nil)
+            return
+        }
         completionHandler(Self.noNativeMessaging(port.applicationIdentifier))
     }
 

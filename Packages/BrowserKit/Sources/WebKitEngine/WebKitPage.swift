@@ -153,11 +153,16 @@ extension WebKitPage: WKNavigationDelegate {
         default: .other
         }
         let flags = navigationAction.modifierFlags
-        let newTab = kind == .link && (flags.contains(.command) || navigationAction.buttonNumber == 2)
+        var newTab = kind == .link && (flags.contains(.command) || navigationAction.buttonNumber == 2)
+        // An extension's page (its own web view setup) leaving for the web, e.g. 1Password's Sign In: the
+        // web page goes in a normal tab, so it gets Browsa's usual web view.
+        let fromExtension = webView.url?.scheme == "webkit-extension" && (navigationAction.targetFrame?.isMainFrame ?? true)
+            && (url.scheme == "http" || url.scheme == "https")
+        if fromExtension { newTab = true }
         let request = NavigationRequest(url: url, kind: kind,
                                         isMainFrame: navigationAction.targetFrame?.isMainFrame ?? true,
                                         method: navigationAction.request.httpMethod ?? "GET",
-                                        wantsNewTab: newTab, wantsForeground: newTab && flags.contains(.shift))
+                                        wantsNewTab: newTab, wantsForeground: newTab && (flags.contains(.shift) || fromExtension))
         guard let delegate else { return (.allow, preferences) }
         switch await delegate.page(self, decide: request) {
         case .allow:

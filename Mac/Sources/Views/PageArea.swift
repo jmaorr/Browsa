@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import BrowserCore
 import BrowserEngine
+import Extensibility
 
 /// The page, as a card inset into the window, with its progress line, error page, find bar and toasts.
 struct PageArea: View {
@@ -36,6 +37,9 @@ struct PageArea: View {
         }
         .overlay(alignment: .top) {
             if let tab = browser.currentTab { ProgressLine(tab: tab) }
+        }
+        .overlay(alignment: .top) {
+            if let url = browser.currentTab?.url, !browser.isReaderShowing { StoreInstallBanner(pageURL: url).padding(.top, 10) }
         }
         .overlay(alignment: .topTrailing) {
             if browser.isReaderShowing {
@@ -278,5 +282,54 @@ private struct FindBar: View {
         .shadow(color: .black.opacity(0.15), radius: 8, y: 3)
         .onAppear { focused = true }
         .onChange(of: browser.findFocusRequest) { focused = true }
+    }
+}
+
+
+/// On a Chrome Web Store or Firefox Add-ons page, which only offer to install into their own browser:
+/// the same add flow as Settings > Extensions, from the page.
+private struct StoreInstallBanner: View {
+    let pageURL: URL
+    @Environment(Browser.self) private var browser
+    @State private var preview: Library.ExtensionPreview?
+    @State private var working = false
+    @State private var problem: String?
+
+    private var source: ExtensionSource? {
+        guard let host = pageURL.host()?.lowercased(),
+              host == "chromewebstore.google.com" || host == "chrome.google.com" || host == "addons.mozilla.org" else { return nil }
+        return ExtensionSource(link: pageURL.absoluteString)
+    }
+
+    var body: some View {
+        if let source, !browser.library.extensionCatalog.items.contains(where: { $0.source == source }) {
+            HStack(spacing: 8) {
+                Image(systemName: "puzzlepiece.extension")
+                Text(problem ?? "This page only installs into its own browser.")
+                    .foregroundStyle(problem == nil ? Color.secondary : Color.red)
+                Button(working ? "Getting…" : "Add to Browsa…", action: fetch)
+                    .disabled(working)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            }
+            .font(.callout)
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(PanelFill(), in: .capsule)
+            .overlay(Capsule().strokeBorder(.primary.opacity(0.1)))
+            .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+            .sheet(item: $preview) { p in
+                AddExtensionSheet(preview: p) { browser.library.install(p); preview = nil } cancel: { preview = nil }
+            }
+        }
+    }
+
+    private func fetch() {
+        working = true
+        problem = nil
+        Task {
+            do { preview = try await browser.library.previewExtension(link: pageURL.absoluteString) }
+            catch { problem = "Couldn't get it: \(error.localizedDescription)" }
+            working = false
+        }
     }
 }
