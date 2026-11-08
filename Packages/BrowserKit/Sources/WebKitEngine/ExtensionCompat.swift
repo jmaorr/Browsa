@@ -39,7 +39,7 @@ enum ExtensionCompat {
         if let files = fm.enumerator(at: target, includingPropertiesForKeys: nil) {
             for case let file as URL in files where file.pathExtension.lowercased() == "html" {
                 guard var html = try? String(contentsOf: file, encoding: .utf8), !html.contains(compatFile) else { continue }
-                let tag = "<script src=\"/\(compatFile)\"></script>"
+                let tag = preludes.map { "<script src=\"/\($0)\"></script>" }.joined()
                 if let head = html.range(of: "<head[^>]*>", options: [.regularExpression, .caseInsensitive]) {
                     html.insert(contentsOf: tag, at: head.upperBound)
                 } else {

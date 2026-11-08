@@ -55,7 +55,11 @@ tabs showing their pages still work. A Safari-app extension (1Password for Safar
 store version of the same extension is installed: the Safari copy expects to reach its desktop app,
 which Browsa can't connect it to.
 
-6. **Chrome user agent inside extensions.** These are Chrome builds, and some decide what they run in
+6. **Chrome constants and helpers on existing namespaces.** `offscreen.Reason`,
+   `scripting.ExecutionWorld`, `runtime.getContexts`, `tabs.TAB_ID_NONE` and `windows.WINDOW_ID_*`, which
+   extensions read at startup.
+
+7. **Chrome user agent inside extensions.** These are Chrome builds, and some decide what they run in
    from `navigator.userAgent` (Bitwarden's device type is null without " Chrome/", and its background
    throws). Inside the extension only (background and its own pages), the user agent says Chrome;
    websites still see Browsa's. The compat script is also loaded into the extension's own HTML pages
@@ -75,9 +79,18 @@ Installed from the Chrome Web Store through Browsa's own add flow and checked wi
 | uBlock Origin Lite | 2026.1103 | ✅ | ✅ | Blocks ad and tracker scripts (googlesyndication, google-analytics) | ✅ Works |
 | Dark Reader | 4.9.135 | ✅ | ✅ | Pages go dark | ✅ Works |
 | Paper Snapshot | 0.4.13 | ✅ | button, no popup | The button starts its element picker ("click to start") | ✅ Works; pasting into Paper not tried |
-| Google Translate | 2.0.18 | ✅ | ✅ | Says page translation is "built into Chrome"; selection translation not tried | ⚠️ Partial |
-| Bitwarden | 2026.10.2 | ✅ after the user-agent fix | ❌ stays on a spinner | Not reached | ❌ Popup doesn't finish loading |
+| Google Translate | 2.0.18 | ✅ | ✅ | Says page translation is "built into Chrome". The selected-text bubble didn't appear for a scripted selection (it may need a real mouse) | ⚠️ Partial, needs a hands-on try |
+| Bitwarden | 2026.10.2 | ✅ after the user-agent fix | ❌ stays on a spinner, no errors logged | Its in-page autofill script connects on every page | ❌ Popup doesn't finish loading |
 | Proton Pass | 1.43.0 | ✅ | ❌ "having difficulties activating" | Not reached | ❌ Popup can't reach its background |
+
+Open leads for the two that don't work yet:
+
+- **Bitwarden.** No error in the popup or background. It opens a `session` port to the background and
+  then waits. Next: attach Safari's Web Inspector to the popup and background (they're inspectable in
+  Debug builds) and see what it's waiting on.
+- **Proton Pass.** The popup's extension API is there when the page loads (Browsa's diagnostics log
+  through it), but Proton's own code replaces `chrome` afterwards and its activation message never
+  reaches the background. Proton logs nothing. Next: the same, with Web Inspector.
 
 The first launch after installing can be slow (Dashlane's and Dark Reader's popups were still loading
 after 8 s on the first run, fine on the next).

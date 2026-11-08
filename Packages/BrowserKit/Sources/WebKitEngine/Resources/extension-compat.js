@@ -50,7 +50,7 @@
       download: unsupported('downloads.download'), search: resolves([]), open: unsupported('downloads.open'),
       onCreated: event(), onChanged: event(), onErased: event(), onDeterminingFilename: event(),
     }),
-    offscreen: () => ({ createDocument: unsupported('offscreen'), closeDocument: resolves(undefined), hasDocument: resolves(false) }),
+    offscreen: () => ({ createDocument: unsupported('offscreen'), closeDocument: resolves(undefined), hasDocument: resolves(false), Reason: offscreenReasons }),
     sidePanel: () => ({ setOptions: resolves(undefined), setPanelBehavior: resolves(undefined), open: unsupported('sidePanel.open'), getOptions: resolves({}) }),
     identity: () => ({ launchWebAuthFlow: unsupported('identity.launchWebAuthFlow'), getRedirectURL: (p = '') => `https://${chrome.runtime.id}.chromiumapp.org/${p}`, onSignInChanged: event() }),
     contentSettings: () => ({}),
@@ -68,6 +68,17 @@
     permissions: ['onAdded', 'onRemoved'],
     commands: ['onCommand'],
   };
+  const offscreenReasons = Object.fromEntries(['TESTING', 'AUDIO_PLAYBACK', 'IFRAME_SCRIPTING', 'DOM_SCRAPING', 'BLOBS', 'DOM_PARSER',
+    'USER_MEDIA', 'DISPLAY_MEDIA', 'WEB_RTC', 'CLIPBOARD', 'LOCAL_STORAGE', 'WORKERS', 'BATTERY_STATUS', 'MATCH_MEDIA', 'GEOLOCATION'].map(r => [r, r]));
+  // Constants and small helpers Chrome has on namespaces WebKit does provide. Extensions read some of
+  // them at startup (chrome.offscreen.Reason.CLIPBOARD, chrome.scripting.ExecutionWorld.MAIN).
+  const extras = {
+    runtime: { getContexts: () => Promise.resolve([]) },
+    scripting: { ExecutionWorld: { ISOLATED: 'ISOLATED', MAIN: 'MAIN' } },
+    tabs: { TAB_ID_NONE: -1, TAB_INDEX_NONE: -1 },
+    windows: { WINDOW_ID_NONE: -1, WINDOW_ID_CURRENT: -2 },
+    offscreen: { Reason: offscreenReasons },
+  };
   const missing = [];
   for (const root of roots) {
     for (const [name, make] of Object.entries(namespaces)) {
@@ -82,6 +93,16 @@
       for (const name of names) {
         if (target[name] === undefined) {
           try { target[name] = event(); missing.push(`${ns}.${name}`); } catch (e) {}
+        }
+      }
+    }
+    for (const [ns, values] of Object.entries(extras)) {
+      const target = root[ns];
+      if (!target) continue;
+      keep(target);
+      for (const [name, value] of Object.entries(values)) {
+        if (target[name] === undefined) {
+          try { target[name] = value; missing.push(`${ns}.${name}`); } catch (e) {}
         }
       }
     }

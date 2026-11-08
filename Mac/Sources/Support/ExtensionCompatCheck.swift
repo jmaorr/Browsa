@@ -40,7 +40,7 @@ struct ExtensionCompatCheck {
             let slug = ext.name.lowercased().filter { $0.isLetter || $0.isNumber }.prefix(20)
             guard let popup = ext.popup else { note("[\(ext.name)] no popup"); continue }
             guard let page = library.openExtensionTab(url: popup, windowID: nil, active: true) else { note("[\(ext.name)] couldn't open popup"); continue }
-            await pause(8)
+            await pause(ProcessInfo.processInfo.environment["BROWSA_EXT_COMPAT_POPUP_WAIT"].flatMap(Double.init) ?? 8)
             let summary = await evaluate(page, """
             (() => {
               const text = (document.body && document.body.innerText || '').replace(/\\s+/g, ' ').trim();
@@ -50,6 +50,16 @@ struct ExtensionCompatCheck {
             })()
             """)
             note("[\(ext.name)] popup \(popup.lastPathComponent): \(summary)")
+            note("[\(ext.name)] missing here: \(await evaluate(page, """
+            (() => { if (!globalThis.chrome) return 'no chrome global';
+              return JSON.stringify(["alarms.clear", "alarms.clearAll", "alarms.create", "alarms.get", "alarms.onAlarm", "commands.getAll", "contextMenus.create", "contextMenus.remove", "contextMenus.removeAll", "extension.getBackgroundPage", "extension.getViews", "i18n.getMessage", "i18n.getUILanguage", "management.getSelf", "notifications.clear", "notifications.create", "notifications.onButtonClicked", "notifications.onClicked", "offscreen.Reason.CLIPBOARD", "offscreen.Reason.LOCAL", "offscreen.closeDocument", "offscreen.createDocument", "offscreen.hasDocument", "permissions.contains", "permissions.request", "privacy.services.autofillAddressEnabled", "privacy.services.autofillCreditCardEnabled", "privacy.services.passwordSavingEnabled", "runtime.MessageSender", "runtime.connect", "runtime.connectNative", "runtime.getContexts", "runtime.getManifest", "runtime.getPlatformInfo", "runtime.getURL", "runtime.id", "runtime.lastError", "runtime.onConnect", "runtime.onMessage", "runtime.reload", "runtime.sendMessage", "runtime.sendNativeMessage", "scripting.ExecutionWorld.ISOLATED", "scripting.ExecutionWorld.MAIN", "scripting.executeScript", "scripting.insertCSS", "scripting.registerContentScripts", "scripting.unregisterContentScripts", "sidePanel.open", "sidePanel.setOptions", "storage.local", "storage.local.get", "storage.managed", "storage.managed.get", "storage.onChanged", "storage.session", "storage.sync", "tabs.TAB", "tabs.Tab", "tabs.captureVisibleTab", "tabs.create", "tabs.executeScript", "tabs.get", "tabs.getCurrent", "tabs.onActivated", "tabs.onCreated", "tabs.onRemoved", "tabs.onUpdated", "tabs.query", "tabs.remove", "tabs.sendMessage", "tabs.update", "webNavigation.getAllFrames", "webNavigation.getFrame", "webNavigation.onCommitted", "webNavigation.onErrorOccurred", "webRequest.onAuthRequired", "windows.WINDOW", "windows.create", "windows.get", "windows.getAll", "windows.getCurrent", "windows.onRemoved", "windows.remove", "windows.update"].filter(p => p.split('.').reduce((o, k) => o == null ? undefined : o[k], chrome) === undefined)); })()
+            """))")
+            note("[\(ext.name)] popup messaging: \(await evaluate(page, """
+            Promise.race([
+              Promise.resolve().then(() => chrome.runtime.sendMessage({ type: 'PING', name: 'browsa-probe' })).then(r => 'reply ' + JSON.stringify(r), e => 'error ' + (e && e.message)),
+              new Promise(r => setTimeout(() => r('no answer in 3 s'), 3000))
+            ]).then(r => r + ' | browser.runtime: ' + typeof (globalThis.browser && browser.runtime) + ' | lastError path ok')
+            """))")
             await saveImage(await page.snapshot(), "popup-\(slug)")
             library.closeExtensionTab(page)
         }
@@ -79,6 +89,15 @@ struct ExtensionCompatCheck {
               document.body.append(t); t.focus(); t.value = 'This are a sentence with a error in it.'; t.dispatchEvent(new Event('input', { bubbles: true }));
               setTimeout(() => r(JSON.stringify({ grammarly: [...document.querySelectorAll('grammarly-extension, grammarly-desktop-integration, [data-grammarly-shadow-root], [data-gr-ext-installed]')].map(e => e.tagName.toLowerCase()).slice(0, 5),
                 attrs: [...document.body.attributes, ...document.documentElement.attributes].map(a => a.name).filter(n => /gr|translate|grammar/i.test(n)) })), 8000);
+            })
+            """),
+            ("translate selection", "https://de.wikipedia.org/wiki/Webbrowser", """
+            new Promise(r => {
+              const p = document.querySelector('#mw-content-text p:not(.mw-empty-elt)'); const range = document.createRange();
+              range.selectNodeContents(p); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+              const rect = p.getBoundingClientRect();
+              for (const type of ['mousedown', 'mouseup']) p.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: rect.left + 20, clientY: rect.top + 10 }));
+              setTimeout(() => r(JSON.stringify({ selected: String(sel).length, bubble: [...document.querySelectorAll('[id^="gtx"], [class*="gtx"]')].map(e => e.tagName.toLowerCase() + '#' + e.id).slice(0, 5) })), 4000);
             })
             """),
         ]
