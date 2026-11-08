@@ -11,7 +11,7 @@ public final class WebKitPage: NSObject, EnginePage {
     public weak var delegate: (any EnginePageDelegate)?
     let webView: BrowsaWebView
     let profile: BrowsingProfile
-    private weak var engine: WebKitEngine?
+    private(set) weak var engine: WebKitEngine?
     private var observations: [NSKeyValueObservation] = []
 
     public var view: NSView { webView }
@@ -158,7 +158,11 @@ extension WebKitPage: WKNavigationDelegate {
                                         method: navigationAction.request.httpMethod ?? "GET",
                                         wantsNewTab: newTab, wantsForeground: newTab && flags.contains(.shift))
         guard let delegate else { return (.allow, preferences) }
-        switch await delegate.page(self, decide: request) {
+        let decision = await delegate.page(self, decide: request)
+        #if DEBUG
+        if url.scheme == "webkit-extension" { print("[ext] navigation \(url.absoluteString) -> \(decision)") }
+        #endif
+        switch decision {
         case .allow:
             return (.allow, preferences)
         case .cancel:
@@ -188,14 +192,19 @@ extension WebKitPage: WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         delegate?.page(self, didCommit: webView.url)
+        engine?.extensionPageChanged(self)
     }
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard let url = webView.url else { return }
         delegate?.page(self, didFinish: url, title: webView.title ?? "")
+        engine?.extensionPageChanged(self)
     }
 
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
+        #if DEBUG
+        if webView.url?.scheme == "webkit-extension" || (error as NSError).userInfo[NSURLErrorFailingURLStringErrorKey].map({ "\($0)".hasPrefix("webkit-extension") }) == true { print("[ext] provisional failure \(error)") }
+        #endif
         report(error)
     }
 
