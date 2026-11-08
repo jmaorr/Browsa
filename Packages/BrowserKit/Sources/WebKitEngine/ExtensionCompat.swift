@@ -34,6 +34,20 @@ enum ExtensionCompat {
         }
         #endif
 
+        // The extension's own pages (popup, options, onboarding) get the compat script too: they use the
+        // same missing APIs and user-agent checks as the background.
+        if let files = fm.enumerator(at: target, includingPropertiesForKeys: nil) {
+            for case let file as URL in files where file.pathExtension.lowercased() == "html" {
+                guard var html = try? String(contentsOf: file, encoding: .utf8), !html.contains(compatFile) else { continue }
+                let tag = "<script src=\"/\(compatFile)\"></script>"
+                if let head = html.range(of: "<head[^>]*>", options: [.regularExpression, .caseInsensitive]) {
+                    html.insert(contentsOf: tag, at: head.upperBound)
+                } else {
+                    html = tag + html
+                }
+                try? html.write(to: file, atomically: true, encoding: .utf8)
+            }
+        }
         // A hidden extension page Browsa keeps open (see WebKitExtensions.startKeepAlive). Its script is a
         // separate file because extension pages may not run inline scripts.
         if manifest["background"] != nil {

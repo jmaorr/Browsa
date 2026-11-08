@@ -55,6 +55,33 @@ tabs showing their pages still work. A Safari-app extension (1Password for Safar
 store version of the same extension is installed: the Safari copy expects to reach its desktop app,
 which Browsa can't connect it to.
 
+6. **Chrome user agent inside extensions.** These are Chrome builds, and some decide what they run in
+   from `navigator.userAgent` (Bitwarden's device type is null without " Chrome/", and its background
+   throws). Inside the extension only (background and its own pages), the user agent says Chrome;
+   websites still see Browsa's. The compat script is also loaded into the extension's own HTML pages
+   (popup, options), which use the same missing APIs.
+
+## Compatibility (2026-11-09)
+
+Installed from the Chrome Web Store through Browsa's own add flow and checked with the debug harness
+(`BROWSA_EXT_COMPAT_CHECK`, see `Mac/Sources/Support/ExtensionCompatCheck.swift`). Nobody was signed in.
+
+| Extension | Version | Background | Popup | Core feature | Status |
+|---|---|---|---|---|---|
+| 1Password | 8.12.44.33 | ✅ | ✅ | Sign-in, sync, fill, passkeys (tested signed in) | ✅ Works |
+| LastPass | 4.157.0 | ✅ | ✅ log-in screen | Its field icons appear on login pages | ✅ Ready for sign-in |
+| Dashlane | 6.2645.0 | ✅ | ✅ log-in screen | Marks login forms (`data-dashlane-rid`) | ✅ Ready for sign-in |
+| Grammarly | 14.1345.0 | ✅ | ✅ sign-up screen | Attaches to text areas (`grammarly-extension`) | ✅ Ready for sign-in |
+| uBlock Origin Lite | 2026.1103 | ✅ | ✅ | Blocks ad and tracker scripts (googlesyndication, google-analytics) | ✅ Works |
+| Dark Reader | 4.9.135 | ✅ | ✅ | Pages go dark | ✅ Works |
+| Paper Snapshot | 0.4.13 | ✅ | button, no popup | The button starts its element picker ("click to start") | ✅ Works; pasting into Paper not tried |
+| Google Translate | 2.0.18 | ✅ | ✅ | Says page translation is "built into Chrome"; selection translation not tried | ⚠️ Partial |
+| Bitwarden | 2026.10.2 | ✅ after the user-agent fix | ❌ stays on a spinner | Not reached | ❌ Popup doesn't finish loading |
+| Proton Pass | 1.43.0 | ✅ | ❌ "having difficulties activating" | Not reached | ❌ Popup can't reach its background |
+
+The first launch after installing can be slow (Dashlane's and Dark Reader's popups were still loading
+after 8 s on the first run, fine on the next).
+
 ## Not supported
 
 - **Desktop-app connections** (1Password's or Bitwarden's app unlock, native messaging in general).

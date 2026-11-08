@@ -4,7 +4,8 @@
   if (typeof window !== 'undefined' || globalThis.__browsaDiagnostics) return;
   globalThis.__browsaDiagnostics = true;
   const t0 = Date.now();
-  const say = (l) => { try { const r = chrome.runtime.sendNativeMessage('browsa.log', { line: 'BG ' + l }); if (r && r.catch) r.catch(() => {}); } catch (e) {} };
+  const who = (() => { try { return chrome.runtime.getManifest().name.replace(/__MSG_(\w+)__/, (m, k) => chrome.i18n.getMessage(k) || chrome.runtime.id).slice(0, 30); } catch (e) { return '?'; } })();
+  const say = (l) => { try { const r = chrome.runtime.sendNativeMessage('browsa.log', { line: 'BG[' + who + '] ' + l }); if (r && r.catch) r.catch(() => {}); } catch (e) {} };
   say('started; filled in: ' + (globalThis.__browsaCompatMissing || []).join(' '));
   let last = Date.now();
   setInterval(() => {

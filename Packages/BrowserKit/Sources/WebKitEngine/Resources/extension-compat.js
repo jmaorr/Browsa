@@ -94,6 +94,16 @@
   }
   globalThis.__browsaCompatMissing = missing;
 
+  // These are Chrome builds of the extensions, and some decide what they're running in from the user
+  // agent (Bitwarden's device type is null without " Chrome/", and its background throws). Inside the
+  // extension only, the user agent says Chrome; websites still see Browsa's own.
+  const ua = globalThis.navigator && navigator.userAgent;
+  if (ua && !ua.includes(' Chrome/')) {
+    const chromeUA = ua.replace(/ Version\/[\d.]+/, '').replace(/ Safari\/[\d.]+/, '') + ' Chrome/142.0.0.0 Safari/537.36';
+    try { Object.defineProperty(Object.getPrototypeOf(navigator), 'userAgent', { get: () => chromeUA, configurable: true }); } catch (e) {}
+    try { Object.defineProperty(Object.getPrototypeOf(navigator), 'vendor', { get: () => 'Google Inc.', configurable: true }); } catch (e) {}
+  }
+
   if (!isWorker) return;
 
   // navigator.locks, inside the worker. WebKit's own goes over IPC to a lock registry that can reject

@@ -45,6 +45,13 @@ public final class WebKitEngine: BrowserEngine {
     private let extensionSupport: AnyObject?
     @available(macOS 15.4, *)
     var webExtensions: WebKitExtensions? { extensionSupport as? WebKitExtensions }
+    #if DEBUG
+    /// Debug checks: each loaded extension's id, name, popup page and manifest.
+    public func debugExtensionPopups() -> [(id: String, name: String, popup: URL?, manifest: [String: Any], errors: [String])] {
+        if #available(macOS 15.4, *) { return webExtensions?.debugPopups() ?? [] }
+        return []
+    }
+    #endif
 
     public init(downloadsDirectory: URL = URL.downloadsDirectory) {
         self.downloadsDirectory = downloadsDirectory
