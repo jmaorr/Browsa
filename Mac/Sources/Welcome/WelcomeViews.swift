@@ -8,6 +8,7 @@ struct IntroOverlay: View {
     @Environment(Browser.self) private var browser
     let phase: IntroPhase
     @State private var start = Date.now
+    @State private var helloShown = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -21,6 +22,15 @@ struct IntroOverlay: View {
                         .colorEffect(ShaderLibrary.orbFill(.float2(proxy.size),
                                                            .float(context.date.timeIntervalSince(start))))
                 }
+                // The title blurs in over the orb, then goes with it in the wash.
+                Text("Welcome to Browsa")
+                    .font(.system(size: 60, weight: .semibold))
+                    .tracking(-2)
+                    .foregroundStyle(.white)
+                    .shadow(color: Color(red: 0.47, green: 0.08, blue: 0).opacity(0.25), radius: 15, y: 2)
+                    .blur(radius: helloShown ? 0 : 24)
+                    .opacity(helloShown ? 1 : 0)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
                 Color(nsColor: .textBackgroundColor)
                     .opacity(settling ? 1 : 0)
                     .animation(.easeInOut(duration: IntroPhase.washDuration), value: settling)
@@ -35,6 +45,7 @@ struct IntroOverlay: View {
         .ignoresSafeArea()
         .contentShape(.rect)
         .onTapGesture { browser.skipIntro() }
+        .onAppear { withAnimation(.easeOut(duration: 1.2).delay(0.15)) { helloShown = true } }
         .accessibilityLabel("Welcome to Browsa")
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Skips the introduction")
@@ -72,16 +83,10 @@ struct WelcomePage: View {
 
     private var content: some View {
         VStack(spacing: 28) {
-            VStack(spacing: 8) {
-                Text("Welcome to Browsa")
-                    .font(.system(size: 34, weight: .semibold))
-                    .tracking(-0.8)
-                    .welcomeArrival(0, shown: shown, distance: 10)
-                Text("A calmer way to keep the web open.")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .welcomeArrival(1, shown: shown, distance: 10)
-            }
+            Text("Beautiful Browsing Unlocked")
+                .font(.system(size: 34, weight: .semibold))
+                .tracking(-0.8)
+                .welcomeArrival(1, shown: shown, distance: 10)
             LazyVGrid(columns: [GridItem(.fixed(270), spacing: 14), GridItem(.fixed(270), spacing: 14)], spacing: 14) {
                 WelcomeCard(title: "Open anything", detail: "Search, type an address or jump to a tab you already have.",
                             keys: "⌘T") { browser.showCommandBar(.newTab) }
