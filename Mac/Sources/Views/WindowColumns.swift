@@ -58,9 +58,13 @@ final class ColumnsController: NSSplitViewController {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     private static func host<V: View>(_ view: V, _ browser: Browser) -> NSViewController {
-        let host = NSHostingController(rootView: view.environment(browser).environment(browser.library))
+        let host = NSHostingController(rootView: view.environment(browser).environment(browser.library)
+            .ignoresSafeArea())
         // The split view sets the frames; SwiftUI mustn't add size constraints of its own.
         host.sizingOptions = []
+        // Each hosting view would otherwise inset its content by the transparent title bar, which
+        // pushes the columns down and leaves a gap above the traffic-light row.
+        host.safeAreaRegions = []
         host.view.wantsLayer = true
         host.view.layer?.backgroundColor = .clear
         return host

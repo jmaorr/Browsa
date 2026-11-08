@@ -50,9 +50,6 @@ struct Sidebar: View {
             }
             Spacer(minLength: 0)
             ExtensionButtons()
-            SidebarIconButton(symbol: "sidebar.right", help: browser.panel == nil ? "Show Panel (⌥⌘S)" : "Hide Panel (⌥⌘S)") {
-                browser.togglePanel()
-            }
         }
         .padding(.horizontal, 8)
         .frame(height: isFloating ? 36 : 28)
