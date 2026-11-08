@@ -25,7 +25,7 @@ enum IntroPhase: Int, Comparable {
     static func < (a: IntroPhase, b: IntroPhase) -> Bool { a.rawValue < b.rawValue }
 
     /// When each phase starts, in seconds from the beginning; `nil` is the end.
-    static let timeline: [(IntroPhase?, Double)] = [(.settle, 1.6), (.sidebar, 4.2), (.glow, 4.9), (nil, 7.8)]
+    static let timeline: [(IntroPhase?, Double)] = [(.settle, 1.6), (.sidebar, 4.2), (.glow, 4.5), (nil, 7.4)]
     /// How long the frame takes to close in on the page card, and the wash to reach the page colour.
     static let settleDuration = 2.6
     static let washDuration = 2.4
