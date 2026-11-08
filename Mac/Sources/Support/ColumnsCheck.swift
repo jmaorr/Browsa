@@ -36,6 +36,22 @@ struct ColumnsCheck {
             save(window, "1-\(name)")
             if browser.panel == nil { browser.showPanel("notes"); await pause(1) }
         }
+        // Cmd-S: the sidebar hides and comes back, with the panel open, plain and right after a drag.
+        for round in ["panel open", "after a drag", "quick double"] {
+            if round == "after a drag", split.subviews.count >= 3 {
+                let x = split.subviews[2].frame.minX - split.dividerThickness / 2
+                await drag(window, split, from: NSPoint(x: x, y: split.bounds.midY), by: -40, label: "pre-toggle drag")
+                await pause(0.5)
+            }
+            browser.toggleSidebar()
+            if round == "quick double" { await pause(0.1); browser.toggleSidebar(); await pause(0.1); browser.toggleSidebar() }
+            var trace: [String] = []
+            for _ in 0..<8 { await pause(0.1); trace.append("\(Int(split.subviews[0].frame.width))\(split.isSubviewCollapsed(split.subviews[0]) ? "c" : "")") }
+            note("toggle (\(round)): docked=\(browser.isSidebarDocked) sidebar widths over 0.8 s: \(trace.joined(separator: " ")) -> \(frames(split))")
+            browser.toggleSidebar()
+            await pause(1)
+            note("toggle back (\(round)): docked=\(browser.isSidebarDocked) -> \(frames(split))")
+        }
         // The sidebar's divider still works.
         let sx = split.subviews[0].frame.maxX + split.dividerThickness / 2
         await drag(window, split, from: NSPoint(x: sx, y: split.bounds.midY), by: 60, label: "sidebar")
