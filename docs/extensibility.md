@@ -64,6 +64,16 @@ Tools: `tabs_list`, `tab_open`, `page_navigate`, `page_read`, `page_screenshot`,
 changes a page until resumed. The endpoint listens on 127.0.0.1 only, needs the bearer token, and
 refuses requests that carry a web page's Origin.
 
+## WebKit limits to design around
+
+- **Extension frames.** When a page loads an extension's frame or file (an inline menu, an injected
+  iframe), WebKit stops that extension's background a few seconds later. This only happens in
+  third-party browsers, not Safari, and has been reported to Apple. Extensions that only use content
+  scripts work; password-manager inline menus don't yet.
+- **No API wrapping.** Wrapping `chrome.*` in a JS Proxy stops runtime messages reaching the
+  background, so the compatibility script only aliases `browser` to `chrome`. Missing APIs have to
+  be filled natively.
+
 ## Password managers
 
 Native messaging from an extension to a desktop app (how 1Password's Chrome extension talks to the
