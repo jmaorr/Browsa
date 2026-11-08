@@ -50,7 +50,7 @@
       download: unsupported('downloads.download'), search: resolves([]), open: unsupported('downloads.open'),
       onCreated: event(), onChanged: event(), onErased: event(), onDeterminingFilename: event(),
     }),
-    offscreen: () => ({ createDocument: unsupported('offscreen'), closeDocument: resolves(undefined), hasDocument: resolves(false) }),
+    offscreen: () => ({ createDocument: unsupported('offscreen'), closeDocument: resolves(undefined), hasDocument: resolves(false), Reason: offscreenReasons }),
     sidePanel: () => ({ setOptions: resolves(undefined), setPanelBehavior: resolves(undefined), open: unsupported('sidePanel.open'), getOptions: resolves({}) }),
     identity: () => ({ launchWebAuthFlow: unsupported('identity.launchWebAuthFlow'), getRedirectURL: (p = '') => `https://${chrome.runtime.id}.chromiumapp.org/${p}`, onSignInChanged: event() }),
     contentSettings: () => ({}),
@@ -67,6 +67,17 @@
     alarms: ['onAlarm'],
     permissions: ['onAdded', 'onRemoved'],
     commands: ['onCommand'],
+  };
+  const offscreenReasons = Object.fromEntries(['TESTING', 'AUDIO_PLAYBACK', 'IFRAME_SCRIPTING', 'DOM_SCRAPING', 'BLOBS', 'DOM_PARSER',
+    'USER_MEDIA', 'DISPLAY_MEDIA', 'WEB_RTC', 'CLIPBOARD', 'LOCAL_STORAGE', 'WORKERS', 'BATTERY_STATUS', 'MATCH_MEDIA', 'GEOLOCATION'].map(r => [r, r]));
+  // Constants and small helpers Chrome has on namespaces WebKit does provide. Extensions read some of
+  // them at startup (chrome.offscreen.Reason.CLIPBOARD, chrome.scripting.ExecutionWorld.MAIN).
+  const extras = {
+    runtime: { getContexts: () => Promise.resolve([]) },
+    scripting: { ExecutionWorld: { ISOLATED: 'ISOLATED', MAIN: 'MAIN' } },
+    tabs: { TAB_ID_NONE: -1, TAB_INDEX_NONE: -1 },
+    windows: { WINDOW_ID_NONE: -1, WINDOW_ID_CURRENT: -2 },
+    offscreen: { Reason: offscreenReasons },
   };
   const missing = [];
   for (const root of roots) {
@@ -85,6 +96,16 @@
         }
       }
     }
+    for (const [ns, values] of Object.entries(extras)) {
+      const target = root[ns];
+      if (!target) continue;
+      keep(target);
+      for (const [name, value] of Object.entries(values)) {
+        if (target[name] === undefined) {
+          try { target[name] = value; missing.push(`${ns}.${name}`); } catch (e) {}
+        }
+      }
+    }
     if (root.storage && root.storage.managed === undefined) {
       try {
         keep(root.storage).managed = { get: resolves({}), getBytesInUse: resolves(0), onChanged: event() };
@@ -93,6 +114,16 @@
     }
   }
   globalThis.__browsaCompatMissing = missing;
+
+  // These are Chrome builds of the extensions, and some decide what they're running in from the user
+  // agent (Bitwarden's device type is null without " Chrome/", and its background throws). Inside the
+  // extension only, the user agent says Chrome; websites still see Browsa's own.
+  const ua = globalThis.navigator && navigator.userAgent;
+  if (ua && !ua.includes(' Chrome/')) {
+    const chromeUA = ua.replace(/ Version\/[\d.]+/, '').replace(/ Safari\/[\d.]+/, '') + ' Chrome/142.0.0.0 Safari/537.36';
+    try { Object.defineProperty(Object.getPrototypeOf(navigator), 'userAgent', { get: () => chromeUA, configurable: true }); } catch (e) {}
+    try { Object.defineProperty(Object.getPrototypeOf(navigator), 'vendor', { get: () => 'Google Inc.', configurable: true }); } catch (e) {}
+  }
 
   if (!isWorker) return;
 

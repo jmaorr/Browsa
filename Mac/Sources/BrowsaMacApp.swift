@@ -82,6 +82,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { self?.handle(event) ?? false } ? nil : event
         }
         #if DEBUG
+        if let dir = ProcessInfo.processInfo.environment["BROWSA_EXT_COMPAT_CHECK"] {
+            Task { @MainActor in await ExtensionCompatCheck(directory: URL(fileURLWithPath: dir), delegate: self).run() }
+        }
         if let dir = ProcessInfo.processInfo.environment["BROWSA_SNAPSHOT"] {
             Task { @MainActor in await SnapshotTour(directory: URL(fileURLWithPath: dir), delegate: self).run() }
         }

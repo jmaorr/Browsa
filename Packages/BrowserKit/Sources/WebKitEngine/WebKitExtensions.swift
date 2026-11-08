@@ -140,6 +140,19 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
                                icon: icon, hasAction: context.action(for: nil) != nil, panelURL: panelURL)
     }
 
+    #if DEBUG
+    /// Debug checks: each loaded extension's popup page, and its manifest.
+    func debugPopups() -> [(id: String, name: String, popup: URL?, manifest: [String: Any], errors: [String])] {
+        contexts.map { id, context in
+            let m = context.webExtension.manifest
+            let action = (m["action"] as? [String: Any]) ?? (m["browser_action"] as? [String: Any])
+            let popup = (action?["default_popup"] as? String).map { context.baseURL.appending(path: $0.hasPrefix("/") ? String($0.dropFirst()) : $0) }
+            let errors = (context.webExtension.errors + context.errors).map { "\($0.localizedDescription) \((($0 as NSError).userInfo[NSDebugDescriptionErrorKey] as? String) ?? "")" }
+            return (id, context.webExtension.displayName ?? id, popup, m, errors)
+        }
+    }
+    #endif
+
     /// Hidden pages keeping backgrounds awake, by extension id.
     private var keepAlives: [String: WKWebView] = [:]
     private var keepAliveTimers: [String: Timer] = [:]
