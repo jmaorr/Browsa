@@ -322,14 +322,20 @@ private struct ExtensionSettings: View {
             Section {
                 Toggle("Use Safari extensions from apps on this Mac", isOn: Bindable(library).useSafariExtensions)
             } footer: {
-                Text("Password managers like 1Password, Bitwarden and Proton Pass ship a Safari extension inside their app. Install the app and it shows up here.")
+                Text("Password managers like 1Password, Bitwarden and Proton Pass ship a Safari extension inside their app. In Browsa these can't reach their desktop app, so sign-in may not work: add the Chrome Web Store version instead. When both are added, Browsa uses the store one.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Add from a store") {
                 HStack {
-                    TextField("Chrome Web Store or Firefox Add-ons link", text: $link)
+                    // In a grouped form an HStack'd TextField puts its title in the label column and can
+                    // shrink the field itself to nothing, so the title goes in the prompt.
+                    TextField("Link", text: $link, prompt: Text("Chrome Web Store or Firefox Add-ons link"))
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .frame(minWidth: 260, maxWidth: .infinity)
                         .onSubmit(fetch)
-                    Button(working ? "Getting…" : "Add…", action: fetch).disabled(link.isEmpty || working)
+                    Button(working ? "Getting…" : "Add…", action: fetch)
+                        .disabled(link.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || working)
                 }
                 Button("Add Unpacked Folder…", action: pickFolder)
                 if let problem { Text(problem).font(.caption).foregroundStyle(.red) }
@@ -372,7 +378,7 @@ private struct ExtensionSettings: View {
         problem = nil
         Task {
             defer { working = false }
-            do { preview = try await library.previewExtension(link: link) }
+            do { preview = try await library.previewExtension(link: link.trimmingCharacters(in: .whitespacesAndNewlines)) }
             catch { problem = error.localizedDescription }
         }
     }
@@ -389,7 +395,7 @@ private struct ExtensionSettings: View {
 }
 
 /// What an extension will be able to do, in plain words, before it runs.
-private struct AddExtensionSheet: View {
+struct AddExtensionSheet: View {
     let preview: Library.ExtensionPreview
     let add: () -> Void
     let cancel: () -> Void
