@@ -5,6 +5,7 @@ options:
   bundleIdPrefix: com.orriginal
   deploymentTarget:
     iOS: "27.1"
+    macOS: "26.0"
   xcodeVersion: "27.2"
   createIntermediateGroups: true
 settings:
@@ -71,6 +72,63 @@ targets:
       testTargets:
         - package: BrowserKit/SuggestTests
         - BrowsaUITests
+  # Browsa for Mac: an Arc-style window on the engine-neutral BrowserEngine API (WebKit for now).
+  BrowsaMac:
+    type: application
+    platform: macOS
+    sources:
+      - Mac/Sources
+      - Mac/Resources
+      - App/Browsa.icon
+    dependencies:
+      - package: BrowserKit
+        product: BrowserCore
+      - package: BrowserKit
+        product: Suggest
+      - package: BrowserKit
+        product: BrowserEngine
+      - package: BrowserKit
+        product: WebKitEngine
+    entitlements:
+      path: Mac/Browsa.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.files.downloads.read-write: true
+        com.apple.security.files.user-selected.read-write: true
+        com.apple.security.device.camera: true
+        com.apple.security.device.audio-input: true
+        com.apple.security.personal-information.location: true
+    info:
+      path: Mac/Info.plist
+      properties:
+        CFBundleDisplayName: Browsa
+        CFBundleName: Browsa
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
+        ITSAppUsesNonExemptEncryption: false
+        NSCameraUsageDescription: Websites you allow can use the camera, for example for video calls.
+        NSMicrophoneUsageDescription: Websites you allow can use the microphone, for example for video calls.
+        NSLocationUsageDescription: Websites you allow can see your location, for example to show nearby places.
+        # Lets Browsa be picked as the default web browser in System Settings > Desktop & Dock.
+        CFBundleURLTypes:
+          - CFBundleURLName: Web
+            CFBundleURLSchemes: [http, https]
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: HTML document
+            CFBundleTypeRole: Viewer
+            LSItemContentTypes: [public.html, public.xhtml]
+    settings:
+      base:
+        PRODUCT_NAME: Browsa
+        # Same ID as the iPhone app, so the two can be one universal purchase.
+        PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: Browsa
+        ENABLE_HARDENED_RUNTIME: true
+        COMBINE_HIDPI_IMAGES: true
   BrowsaUITests:
     type: bundle.ui-testing
     platform: iOS
