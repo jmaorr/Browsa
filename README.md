@@ -177,8 +177,8 @@ xcodegen && open Browsa.xcodeproj   # then pick the BrowsaMac scheme and Run
   ⌃1 to ⌃9 and ⌥⌘← ⌥⌘→ spaces, ⇧⌘N private tab, ⌥⌘J downloads, ⌘Y archived tabs.
   Cmd-click a link to open it in the background, Shift-Cmd-click to open it in front.
 - **Engine.** The Mac app is written against `BrowserEngine`, a small engine-neutral API, with
-  WebKit as the only implementation. See [docs/engines.md](docs/engines.md) for how a Chromium
-  engine (and Chrome extensions) could be added.
+  WebKit as the only implementation. See [docs/engines.md](docs/engines.md) for what we learned
+  trying Chromium and Chrome extensions.
 - **Passkeys.** WKWebView only runs passkeys and security keys in apps Apple has granted the web
   browser entitlement. Until then sites fall back to passwords and codes.
 

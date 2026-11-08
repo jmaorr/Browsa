@@ -14,7 +14,7 @@ BrowserEngine              protocols + value types, no WebKit
    ▲  implemented by
    │
 WebKitEngine               WKWebView, content rule lists, autoconsent      (today)
-ChromiumEngine             CEF or a Chromium content embedder               (someday)
+ChromiumEngine             a self-built Chromium/CEF                        (parked)
 ```
 
 ## The API
@@ -33,34 +33,39 @@ ChromiumEngine             CEF or a Chromium content embedder               (som
 
 The app gates features on capabilities, never on the engine's id. Settings > Engine lists them.
 
-## Adding a Chromium engine
+## Chromium: what we tried (November 2026)
 
-The realistic route is the [Chromium Embedded Framework](https://bitbucket.org/chromiumembedded/cef)
-(CEF), which is what most third-party Chromium browsers on the Mac embed.
+We spiked a Chromium engine on the prebuilt [Chromium Embedded Framework](https://bitbucket.org/chromiumembedded/cef)
+(CEF 156) to get Chrome extensions such as 1Password. The findings, so nobody repeats them blind:
 
-1. Add a `ChromiumEngine` target that wraps CEF and conforms to `BrowserEngine`. Each
-   `CefBrowser` becomes an `EnginePage`; its `NSView` is the page's `view`.
-2. Map CEF's handlers onto the delegate: `CefRequestHandler.OnBeforeBrowse` →
-   `page(_:decide:)`, `CefLifeSpanHandler.OnBeforePopup` → `page(_:openedPopup:url:)`,
-   `CefJSDialogHandler` → `page(_:show:)`, `CefDownloadHandler` → `EngineDownload`,
-   `CefDisplayHandler` → `PageState`.
-3. Profiles: a `CefRequestContext` with a cache path for `.standard`, an in-memory one for
-   `.ephemeral`.
-4. Blocking: translate the same AdGuard lists into Chromium's declarativeNetRequest rules (or
-   block in `OnBeforeResourceLoad`), keyed by the same rule group names.
-5. Session restore: CEF has no equivalent of WebKit's `interactionState`, so `sessionState()`
-   would hold the URL and the back/forward list as JSON and replay them.
-6. Extensions: CEF's extension support is partial (Chrome Web Store installs, MV3 service
-   workers and many `chrome.*` APIs are missing). Full Chrome extension support means building on
-   Chromium's own `content` layer instead, a much bigger project (this is what Arc, Brave and
-   Edge do). Either way it would report `.chromeExtensions`.
-7. In `BrowsaMacApp`, choose the engine at launch, e.g. from a setting.
+- **Alloy style** (CEF's embeddable view) has no extension system.
+- **Chrome style** has real Chrome extensions and the Web Store, and 1Password's Chrome extension
+  worked unmodified. But CEF only creates Chrome-style pages in its own top-level windows, and
+  allows one per window:
+  - moving a Chrome-style page's view into Browsa's window draws fine, but real mouse and
+    keyboard input is lost inside Chrome;
+  - using CEF's window as Browsa's window caps it at one page, ever ("Cannot add multiple
+    Chrome style BrowserViews");
+  - one CEF window per tab, swapped in place, takes input but crashed inside CEF on switching.
+- **Media.** Prebuilt CEF plays VP9/AV1 and Widevine, but not H.264, AAC or HEVC. Those need a
+  CEF build from source with proprietary codecs.
+- **Cost.** About 340 MB, outside the Mac App Store, roughly 2x Chrome's memory with one window
+  per tab.
 
-Things to know before starting:
+So Browsa owning its own tabs and UI on Chromium means building Chromium (or CEF with patches)
+from source, like Arc, Brave and Edge. That's parked until it's worth a dedicated build machine.
 
-- **Size and distribution.** CEF adds roughly 200–300 MB and several helper apps. It can't go
-  through the Mac App Store's sandbox easily, so a Chromium build would ship as a separate,
-  directly downloaded, notarised app (with Sparkle for updates).
+We also tried Chrome extensions on WebKit (`WKWebExtension`). Most of the plumbing works, but in a
+third-party app WebKit stops an extension's background a few seconds after a page loads an
+extension frame or file (Safari is unaffected; reported to Apple). Password managers' inline menus
+are extension frames, so they don't work there yet. Content-script extensions are fine.
+
+If someone does take up a Chromium engine, the mapping is: each `CefBrowser` is an `EnginePage`;
+`CefRequestHandler.OnBeforeBrowse` → `page(_:decide:)`, `CefLifeSpanHandler.OnBeforePopup` →
+`page(_:openedPopup:url:)`, `CefJSDialogHandler` → `page(_:show:)`, `CefDownloadHandler` →
+`EngineDownload`, `CefDisplayHandler` → `PageState`; a `CefRequestContext` per profile; AdGuard
+lists as declarativeNetRequest rules; `sessionState()` as JSON of the back/forward list.
+
 - **iOS.** Apple only allows other engines on iOS in the EU, under separate entitlements, so the
   iPhone app stays on WebKit.
 - **Licences.** Chromium and CEF are BSD-licensed, compatible with the app's MIT licence.
