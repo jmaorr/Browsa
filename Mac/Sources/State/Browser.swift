@@ -3,6 +3,7 @@ import Observation
 import BrowserCore
 import BrowserEngine
 import Suggest
+import SwiftUI
 
 /// One Browsa window: which space and tab it shows, and the transient UI around them.
 /// Spaces, tabs, favourites and settings live in the shared `Library`.
@@ -41,7 +42,7 @@ final class Browser {
     /// When and which way the space last changed, so tab lists cascade in from that side.
     private(set) var lastSpaceSwitch: SpaceSwitch?
     /// The right-hand panel each space last showed. It pushes the page over, never covers it.
-    private var panels: [UUID: PanelKind] = [:]
+    private var panels: [UUID: String] = [:]
     var panelWidth: CGFloat { didSet { Preferences.panelWidth = panelWidth } }
 
     @ObservationIgnored private var toastTask: Task<Void, Never>?
@@ -374,6 +375,8 @@ enum CommandBarMode: Equatable {
     case newTab
     /// Cmd-L or a click on the address: replaces the current page.
     case editCurrent
+    /// Cmd-K: tools and commands first, the web only as a fallback.
+    case commands
 }
 
 struct SpaceSwitch: Equatable {
@@ -467,33 +470,32 @@ enum Preferences {
 
 // MARK: - Right panel
 
-/// What the right-hand panel shows: Browsa's own tools, or an extension's side panel.
-enum PanelKind: Hashable {
-    case margin
-    case agents
-    case extensionPanel(id: String)
+extension Browser {
+    /// The tool showing in the right-hand panel, by `Tool.id`, for this space.
+    var panel: String? {
+        get { panels[selectedSpaceID] }
+        set {
+            panels[selectedSpaceID] = newValue
+            if let newValue { Preferences.lastPanelTool = newValue }
+        }
+    }
+
+    /// ⌥⌘S: shows the tool this window last had (Notes the first time), or hides the panel.
+    func togglePanel() {
+        withAnimation(Motion.dock) {
+            panel = panel == nil ? (library.workbench.tool(Preferences.lastPanelTool)?.id ?? "notes") : nil
+        }
+    }
+
+    /// Opens a tool in the panel, or hides the panel if that tool is already showing.
+    func showPanel(_ id: String, toggles: Bool = false) {
+        withAnimation(Motion.dock) { panel = toggles && panel == id ? nil : id }
+    }
 }
 
-extension Browser {
-    var panel: PanelKind? {
-        get { panels[selectedSpaceID] }
-        set { panels[selectedSpaceID] = newValue }
+extension Preferences {
+    static var lastPanelTool: String {
+        get { UserDefaults.standard.string(forKey: "lastPanelTool") ?? "notes" }
+        set { UserDefaults.standard.set(newValue, forKey: "lastPanelTool") }
     }
-
-    /// Cmd-Option-S: shows the panel this space last had, or Margin.
-    func togglePanel(_ kind: PanelKind? = nil) {
-        if let kind {
-            panel = panel == kind ? nil : kind
-        } else {
-            panel = panel == nil ? (lastPanel ?? .margin) : nil
-        }
-        if let panel { lastPanel = panel }
-    }
-
-    private var lastPanel: PanelKind? {
-        get { panels[Self.lastPanelKey] }
-        set { panels[Self.lastPanelKey] = newValue }
-    }
-
-    private static let lastPanelKey = UUID(uuidString: "00000000-0000-0000-0000-00000000BA9E")!
 }

@@ -23,7 +23,7 @@ struct BrowserCommands: Commands {
             .keyboardShortcut("n", modifiers: [.command, .shift])
             Button("Open Location…") { newTab(.editCurrent) }
                 .keyboardShortcut("l")
-            Button("Command Bar") { newTab(.newTab) }
+            Button("Commands and Tools") { newTab(.commands) }
                 .keyboardShortcut("k")
             Divider()
             Button("Close Tab") { if let browser, let tab { withAnimation(Motion.snappy) { browser.close(tab) } } }
@@ -66,10 +66,8 @@ struct BrowserCommands: Commands {
             Button(browser?.panel == nil ? "Show Panel" : "Hide Panel") { browser?.togglePanel() }
                 .keyboardShortcut("s", modifiers: [.command, .option])
                 .disabled(browser == nil)
-            Button("Notes") { browser?.togglePanel(.margin) }
+            Button("Notes") { browser?.showPanel("notes", toggles: true) }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
-                .disabled(browser == nil)
-            Button("Agents") { browser?.togglePanel(.agents) }
                 .disabled(browser == nil)
         }
 

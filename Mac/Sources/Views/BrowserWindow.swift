@@ -24,7 +24,7 @@ struct BrowserWindow: View {
                 .padding(.trailing, PageCard.inset)
                 .padding(.leading, docked ? 0 : PageCard.inset)
             if let panel = browser.panel {
-                RightPanel(kind: panel)
+                RightPanel(toolID: panel)
                     .frame(width: browser.panelWidth)
                     .padding(.vertical, PageCard.inset)
                     .padding(.trailing, PageCard.inset)

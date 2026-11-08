@@ -18,6 +18,8 @@ struct Sidebar: View {
             FavoritesGrid()
                 .padding(.horizontal, 10)
             SpaceTabs()
+            ToolSections()
+                .padding(.horizontal, 10)
             bottomRow
                 .padding(.horizontal, 10)
                 .padding(.bottom, 8)
@@ -42,6 +44,9 @@ struct Sidebar: View {
             }
             Spacer(minLength: 0)
             ExtensionButtons()
+            SidebarIconButton(symbol: "sidebar.right", help: browser.panel == nil ? "Show Panel (⌥⌘S)" : "Hide Panel (⌥⌘S)") {
+                browser.togglePanel()
+            }
         }
         .padding(.horizontal, 8)
         .frame(height: isFloating ? 36 : 28)
@@ -333,3 +338,57 @@ struct SpaceSwitcher: View {
         .animation(Motion.snappy, value: browser.selectedSpaceID)
     }
 }
+
+// MARK: - Tool sections
+
+/// Sections tools put under the tabs (Radar's dev servers, say). Each one folds away, and
+/// right-click removes it. The order is the user's.
+struct ToolSections: View {
+    @Environment(Browser.self) private var browser
+    @AppStorage("collapsedToolSections") private var collapsedRaw = ""
+
+    private var collapsed: Set<String> { Set(collapsedRaw.split(separator: ",").map(String.init)) }
+
+    var body: some View {
+        let tools = browser.library.workbench.sidebarTools
+        if !tools.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(tools) { tool in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Button { toggle(tool.id) } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: tool.symbol).font(.system(size: 10, weight: .semibold))
+                                Text(tool.title.uppercased()).font(.system(size: 10, weight: .semibold)).tracking(0.6)
+                                if tool.stage == .preview { PreviewBadge() }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .rotationEffect(.degrees(collapsed.contains(tool.id) ? -90 : 0))
+                            }
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .frame(height: 22)
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            if tool.panel != nil { Button("Open in Panel") { browser.showPanel(tool.id) } }
+                            Button("Remove from Sidebar") { browser.library.workbench.toggleSidebar(tool.id) }
+                        }
+                        if !collapsed.contains(tool.id), let view = tool.sidebar {
+                            view().transition(.opacity)
+                        }
+                    }
+                }
+            }
+            .animation(Motion.snappy, value: collapsedRaw)
+        }
+    }
+
+    private func toggle(_ id: String) {
+        var set = collapsed
+        if set.contains(id) { set.remove(id) } else { set.insert(id) }
+        collapsedRaw = set.sorted().joined(separator: ",")
+    }
+}
+

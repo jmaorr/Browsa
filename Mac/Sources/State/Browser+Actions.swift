@@ -89,12 +89,42 @@ extension Browser {
         }
         out.append(BrowserCommand(id: "archive", title: "Show Archive", subtitle: "\(archive.count) archived tabs", keywords: ["history", "closed"]))
         out.append(BrowserCommand(id: "settings", title: "Settings", keywords: ["preferences", "search engine"]))
+        out.append(BrowserCommand(id: "panel", title: panel == nil ? "Show Panel" : "Hide Panel", keywords: ["right", "side", "tools"]))
+        // Tools add their own: "Open Radar", "Stop All Agents"…
+        for (tool, command) in library.workbench.commands {
+            out.append(BrowserCommand(id: Workbench.commandID(tool, command), title: command.title,
+                                      subtitle: command.subtitle, keywords: command.keywords + [tool.title]))
+        }
         return out
     }
 
+    /// The icon a command row shows: the tool's own, or a generic one.
+    func symbol(forCommand id: String) -> String {
+        if id.hasPrefix("tool:") {
+            let parts = id.split(separator: ":", maxSplits: 2).map(String.init)
+            if parts.count == 3, let entry = library.workbench.commands.first(where: { $0.tool.id == parts[1] && $0.command.id == parts[2] }) {
+                return entry.command.symbol ?? entry.tool.symbol
+            }
+        }
+        return Self.commandSymbols[id.split(separator: ":").first.map(String.init) ?? id] ?? "command"
+    }
+
+    private static let commandSymbols: [String: String] = [
+        "pin": "pin", "favourite": "star", "close": "xmark", "copy-link": "link", "reload": "arrow.clockwise",
+        "find": "text.magnifyingglass", "reader": "doc.plaintext", "tab-window": "macwindow.badge.plus",
+        "new-window": "macwindow", "zoom-in": "plus.magnifyingglass", "zoom-out": "minus.magnifyingglass",
+        "zoom-reset": "1.magnifyingglass", "blockers": "shield", "share": "square.and.arrow.up",
+        "close-others": "xmark.square", "reopen": "arrow.uturn.backward", "sidebar": "sidebar.left",
+        "panel": "sidebar.right", "private": "eye.slash", "close-private": "eye.slash", "new-space": "plus.rectangle.on.rectangle",
+        "downloads": "arrow.down.circle", "archive": "archivebox", "settings": "gearshape", "space": "square.stack",
+        "move": "arrow.right.square", "restore": "archivebox",
+    ]
+
     func run(command id: String) {
         commandBar = nil
+        if library.workbench.run(commandID: id, in: self) { return }
         switch id {
+        case "panel": togglePanel()
         case "pin": if let t = currentTab { togglePinned(t) }
         case "favourite": if let t = currentTab, let url = t.url { addFavorite(url: url, title: t.displayTitle) }
         case "close": if let t = currentTab { close(t) }

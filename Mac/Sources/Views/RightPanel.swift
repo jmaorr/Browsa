@@ -4,54 +4,73 @@ import BrowserCore
 import BrowserEngine
 import Extensibility
 
-/// The slim panel on the right: Margin notes, the agent log, or an extension's side panel.
-/// It sits beside the page and narrows it, so nothing on the page is ever hidden behind it.
+/// The slim panel on the right. It shows one tool from the workbench at a time and sits beside the
+/// page, narrowing it, so nothing on the page is ever hidden behind it.
+///
+/// The panel only knows tools by their `Tool` entry: a plugin's panel arrives here the same way Notes does.
 struct RightPanel: View {
     @Environment(Browser.self) private var browser
-    let kind: PanelKind
+    let toolID: String
+
+    private var workbench: Workbench { browser.library.workbench }
+    private var tool: Tool? { workbench.tool(toolID) }
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider().opacity(0.5)
             Group {
-                switch kind {
-                case .margin: MarginPanel()
-                case .agents: AgentsPanel()
-                case .extensionPanel(let id): ExtensionPanelView(extensionID: id)
+                if let view = tool?.panel { view() } else {
+                    ContentUnavailableView("Not available", systemImage: "puzzlepiece.extension",
+                                           description: Text("This tool was removed or turned off."))
                 }
             }
+            .id(toolID)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(.background.opacity(0.92))
+        .background(PanelFill(), in: .rect(cornerRadius: PageCard.radius, style: .continuous))
         .clipShape(.rect(cornerRadius: PageCard.radius, style: .continuous))
     }
 
+    /// The tool's name on the left, a rail of the other panel tools on the right.
     private var header: some View {
-        HStack(spacing: 2) {
-            tab(.margin, "Notes", "text.bubble")
-            tab(.agents, "Agents", "sparkles")
-            ForEach(browser.library.extensions.filter { $0.panelURL != nil }, id: \.id) { ext in
-                tab(.extensionPanel(id: ext.id), ext.name, "puzzlepiece.extension")
+        HStack(spacing: 6) {
+            if let tool {
+                Text(tool.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                if tool.stage == .preview { PreviewBadge() }
             }
-            Spacer(minLength: 0)
-            Button { browser.panel = nil } label: { Image(systemName: "sidebar.right") }
-                .buttonStyle(.borderless)
-                .help("Hide Panel (⌥⌘S)")
+            Spacer(minLength: 4)
+            ForEach(workbench.panelTools) { t in
+                Button { browser.showPanel(t.id) } label: {
+                    Image(systemName: t.symbol)
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(width: 26, height: 24)
+                        .background(t.id == toolID ? AnyShapeStyle(.primary.opacity(0.08)) : AnyShapeStyle(.clear),
+                                    in: .rect(cornerRadius: 6, style: .continuous))
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(t.id == toolID ? .primary : .secondary)
+                .help(t.title)
+            }
+            Divider().frame(height: 14)
+            SidebarIconButton(symbol: "sidebar.right", help: "Hide Panel (⌥⌘S)") { browser.togglePanel() }
         }
-        .padding(.horizontal, 8)
-        .frame(height: 36)
+        .padding(.leading, 12)
+        .padding(.trailing, 6)
+        .frame(height: 38)
     }
+}
 
-    private func tab(_ k: PanelKind, _ title: String, _ symbol: String) -> some View {
-        Button { browser.panel = k } label: {
-            Image(systemName: symbol)
-                .frame(width: 28, height: 24)
-                .background(kind == k ? Color.primary.opacity(0.08) : .clear, in: .rect(cornerRadius: 6))
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(kind == k ? .primary : .secondary)
-        .help(title)
+/// Marks UI that's shown with sample data while it's being designed.
+struct PreviewBadge: View {
+    var body: some View {
+        Text("Preview")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(.quaternary, in: .capsule)
+            .help("Sample data, for designing. Not wired up yet.")
     }
 }
 

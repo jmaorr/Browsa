@@ -48,6 +48,8 @@ final class Library {
     @ObservationIgnored let extensionInstaller: ExtensionInstaller
     /// Notes pinned to pages, which agents read too.
     let margin: MarginStore
+    /// Every tool that plugs into the window: the right panel, sidebar sections, command bar rows.
+    let workbench = Workbench()
     /// Coding agents over MCP. Made after everything else, since it reaches back into the library.
     @ObservationIgnored private(set) var agents: AgentBridge!
     var downloads: [EngineDownload] = []
@@ -109,11 +111,13 @@ final class Library {
         engine.extensionHost = self
         reloadExtensions()
         agents = AgentBridge(library: self)
+        BuiltInTools.register(in: workbench)
     }
 
     func reloadExtensions() {
         engine.unloadExtensions()
         extensions = []
+        BuiltInTools.sync(extensions: [], in: workbench)
         guard engine.info.capabilities.contains(.webExtensions) else { return }
         let folders = extensionFolders()
         guard useSafariExtensions || !folders.isEmpty else { return }
@@ -122,6 +126,7 @@ final class Library {
             while windows.isEmpty { try? await Task.sleep(for: .milliseconds(100)) }
             let problems = await engine.loadInstalledExtensions(folders: folders, includeApps: useSafariExtensions)
             extensions = engine.extensions
+            BuiltInTools.sync(extensions: extensions, in: workbench)
             if !problems.isEmpty { print("[extensions] " + problems.joined(separator: "\n[extensions] ")) }
             print("[extensions] loaded: \(extensions.map { "\($0.name) \($0.version)" })")
         }
