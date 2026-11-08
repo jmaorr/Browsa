@@ -1,5 +1,6 @@
 #if os(macOS)
 import Foundation
+import CryptoKit
 
 /// Prepares an unpacked extension built for Chrome to run in WebKit: copies it into Browsa's own
 /// folder and puts `extension-compat.js` in front of its background (see that file). The extension's
@@ -13,7 +14,7 @@ enum ExtensionCompat {
     /// The prepared copy of `source`, under `root`. Re-made each time, so it follows the source.
     static func prepare(_ source: URL, id: String, in root: URL) throws -> URL {
         let fm = FileManager.default
-        let target = root.appending(path: id, directoryHint: .isDirectory)
+        let target = root.appending(path: folderName(for: id), directoryHint: .isDirectory)
         try? fm.removeItem(at: target)
         try fm.createDirectory(at: root, withIntermediateDirectories: true)
         try fm.copyItem(at: source, to: target)
@@ -67,6 +68,14 @@ enum ExtensionCompat {
         let data = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .withoutEscapingSlashes])
         try data.write(to: manifestURL)
         return target
+    }
+
+    /// A folder name for an extension id. Ids can hold anything (a folder extension's is its path), so
+    /// readable characters are kept and a hash keeps names apart.
+    static func folderName(for id: String) -> String {
+        let readable = String(id.map { $0.isLetter || $0.isNumber || $0 == "-" ? $0 : "-" }.suffix(40))
+        let hash = SHA256.hash(data: Data(id.utf8)).prefix(6).map { String(format: "%02x", $0) }.joined()
+        return "\(readable)-\(hash)"
     }
 
     /// Paths written into the generated entry: plain relative file paths only.
