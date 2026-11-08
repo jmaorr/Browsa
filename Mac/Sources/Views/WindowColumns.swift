@@ -52,7 +52,10 @@ final class ColumnsController: NSSplitViewController {
         panelItem.canCollapse = true
         panelItem.minimumThickness = 240
         panelItem.maximumThickness = 560
-        panelItem.holdingPriority = .init(260)
+        // Between the page's and the sidebar's: with the sidebar's priority, dragging the panel's divider
+        // couldn't widen it (the panel slid over, leaving an empty strip at the window edge, then snapped
+        // back). Still above the page's, so a window resize goes to the page.
+        panelItem.holdingPriority = .init(250)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -131,6 +134,7 @@ final class ColumnsController: NSSplitViewController {
     }
 
     // MARK: Split view delegate
+
 
     /// Collapsed columns keep their divider: it's the gap between the page and the window edge.
     override func splitView(_ splitView: NSSplitView, shouldHideDividerAt dividerIndex: Int) -> Bool { false }
