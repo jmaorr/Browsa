@@ -33,7 +33,10 @@ enum SandboxMigration {
         }
         // WebKit's: site data, extension storage and compiled content rules, then cookies (sign-ins),
         // which WebKit keeps in HTTPStorages.
-        copy(old.appending(path: "WebKit"), to: library.appending(path: "WebKit/\(id)"), mergeInto: true)
+        // A folder already there came from an unsandboxed build with the same ID (a test or spike),
+        // not from you: it's set aside so your real data wins, rather than merged under it.
+        for path in ["WebKit/\(id)", "HTTPStorages/\(id)"] { setAside(library.appending(path: path)) }
+        copy(old.appending(path: "WebKit"), to: library.appending(path: "WebKit/\(id)"))
         copy(old.appending(path: "HTTPStorages/\(id)"), to: library.appending(path: "HTTPStorages/\(id)"))
 
         // Saved paths that point into the container (store-installed extensions) now point here.
@@ -50,9 +53,17 @@ enum SandboxMigration {
         log("done")
     }
 
-    /// Copies a file or folder. With `mergeInto`, a folder that's already there (WebKit may have
-    /// made an empty one) gets the missing items instead of being skipped.
-    private static func copy(_ from: URL, to: URL, mergeInto: Bool = false) {
+    /// Renames a folder to "<name> before migration <date>", so nothing is deleted.
+    private static func setAside(_ url: URL) {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: url.path) else { return }
+        let stamp = Date().formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false)).replacingOccurrences(of: ":", with: "-")
+        let aside = url.deletingLastPathComponent().appending(path: "\(url.lastPathComponent) before migration \(stamp)")
+        do { try fm.moveItem(at: url, to: aside); log("set aside \(url.path)") } catch { log("couldn't set aside \(url.path): \(error)") }
+    }
+
+    /// Copies a file or folder, unless something is already there.
+    private static func copy(_ from: URL, to: URL) {
         let fm = FileManager.default
         guard fm.fileExists(atPath: from.path) else { return }
         try? fm.createDirectory(at: to.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -60,8 +71,6 @@ enum SandboxMigration {
             do { try fm.copyItem(at: from, to: to) } catch { log("couldn't copy \(from.lastPathComponent): \(error)") }
             return
         }
-        guard mergeInto, let items = try? fm.contentsOfDirectory(at: from, includingPropertiesForKeys: nil) else { return }
-        for item in items { copy(item, to: to.appending(path: item.lastPathComponent), mergeInto: true) }
     }
 
     private static func rewritePaths(in folder: URL, from: String, to: String) {
