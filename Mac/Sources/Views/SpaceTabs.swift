@@ -252,13 +252,15 @@ struct TabMenu: View {
 
 // MARK: - Downloads
 
+/// The sidebar's downloads button: a ring while files download. Opens Downloads in the right panel.
 struct DownloadsButton: View {
     @Environment(Browser.self) private var browser
+    @State private var hovering = false
 
     var body: some View {
-        @Bindable var browser = browser
         let running = browser.downloads.filter { $0.status == .running }
-        Button { browser.isDownloadsPresented.toggle() } label: {
+        let showing = browser.panel == "downloads"
+        Button { browser.showPanel("downloads", toggles: true) } label: {
             ZStack {
                 if !running.isEmpty {
                     Circle().stroke(.quaternary, lineWidth: 2)
@@ -270,48 +272,93 @@ struct DownloadsButton: View {
                     .font(.system(size: 11, weight: .semibold))
             }
             .frame(width: 20, height: 20)
-            .frame(width: 26, height: 26)
+            .frame(width: 28, height: 26)
+            .background(showing || hovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear),
+                        in: .rect(cornerRadius: 6, style: .continuous))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .opacity(browser.downloads.isEmpty ? 0.5 : 1)
-        .help("Downloads (⌥⌘J)")
-        .popover(isPresented: $browser.isDownloadsPresented, arrowEdge: .top) {
-            DownloadsList()
-                .environment(browser)
-        }
+        .foregroundStyle(showing ? .primary : .secondary)
+        .opacity(browser.downloads.isEmpty && !showing ? 0.5 : 1)
+        .onHover { hovering = $0 }
+        .help(showing ? "Hide Downloads (⌥⌘J)" : "Downloads (⌥⌘J)")
     }
 }
 
-struct DownloadsList: View {
+/// Downloads, as a panel tool beside the page: newest first, full height, with Finder actions.
+struct DownloadsPanel: View {
     @Environment(Browser.self) private var browser
+    @State private var selection: UUID?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Downloads").font(.headline)
-                Spacer()
-                Button("Clear") { browser.library.downloads.removeAll { $0.status != .running } }
-                    .disabled(!browser.downloads.contains { $0.status != .running })
-            }
-            .padding(12)
-            Divider()
-            if browser.downloads.isEmpty {
-                Text("Files you download appear here.")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(24)
+        let downloads = browser.downloads
+        VStack(spacing: 0) {
+            if downloads.isEmpty {
+                ContentUnavailableView("No Downloads", systemImage: "arrow.down.circle",
+                                       description: Text("Files you download appear here."))
             } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(browser.downloads) { DownloadRow(item: $0) }
+                List(selection: $selection) {
+                    ForEach(downloads.reversed()) { item in
+                        DownloadRow(item: item).tag(item.id)
                     }
                 }
-                .frame(maxHeight: 320)
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .onDeleteCommand { remove(selection) }
+                .contextMenu(forSelectionType: UUID.self) { ids in
+                    if let id = ids.first, let item = downloads.first(where: { $0.id == id }) { menu(for: item) }
+                } primaryAction: { ids in
+                    if let id = ids.first, let item = downloads.first(where: { $0.id == id }) { open(item) }
+                }
+            }
+            Divider().opacity(0.5)
+            HStack {
+                Button("Open Downloads Folder", systemImage: "folder") {
+                    if let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+                        NSWorkspace.shared.open(dir)
+                    }
+                }
+                Spacer()
+                Button("Clear") { browser.library.downloads.removeAll { $0.status != .running } }
+                    .disabled(!downloads.contains { $0.status != .running })
+                    .help("Remove finished downloads from the list. The files stay.")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+        }
+    }
+
+    @ViewBuilder private func menu(for item: EngineDownload) -> some View {
+        if item.status == .running {
+            Button("Cancel Download", systemImage: "xmark") { item.cancel() }
+        } else {
+            Button("Open", systemImage: "arrow.up.forward.app") { open(item) }.disabled(item.status != .finished)
+            Button("Show in Finder", systemImage: "folder") {
+                if let url = item.fileURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            }
+            .disabled(item.fileURL == nil || item.status != .finished)
+        }
+        if let source = item.sourceURL {
+            Button("Copy Download Address", systemImage: "link") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(source.absoluteString, forType: .string)
             }
         }
-        .frame(width: 320)
+        if item.status != .running {
+            Divider()
+            Button("Remove from List", systemImage: "minus.circle") { remove(item.id) }
+        }
+    }
+
+    private func open(_ item: EngineDownload) {
+        if let url = item.fileURL, item.status == .finished { NSWorkspace.shared.open(url) }
+    }
+
+    private func remove(_ id: UUID?) {
+        guard let id else { return }
+        browser.library.downloads.removeAll { $0.id == id && $0.status != .running }
     }
 }
 
@@ -322,12 +369,12 @@ private struct DownloadRow: View {
         HStack(spacing: 10) {
             Image(nsImage: item.fileURL.map { NSWorkspace.shared.icon(forFile: $0.path) } ?? NSWorkspace.shared.icon(for: .data))
                 .resizable()
-                .frame(width: 28, height: 28)
+                .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.filename).lineLimit(1).truncationMode(.middle)
+                Text(item.filename).lineLimit(1).truncationMode(.middle).foregroundStyle(.primary)
                 switch item.status {
                 case .running: ProgressView(value: item.progress).controlSize(.small)
-                case .finished: Text("Done").font(.caption).foregroundStyle(.secondary)
+                case .finished: Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 case .cancelled: Text("Cancelled").font(.caption).foregroundStyle(.secondary)
                 case .failed(let why): Text(why).font(.caption).foregroundStyle(.red).lineLimit(1)
                 }
@@ -341,11 +388,14 @@ private struct DownloadRow: View {
                     .buttonStyle(.plain).foregroundStyle(.secondary).help("Show in Finder")
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .contentShape(.rect)
-        .onTapGesture(count: 2) {
-            if let url = item.fileURL, item.status == .finished { NSWorkspace.shared.open(url) }
-        }
+        .padding(.vertical, 4)
+    }
+
+    /// "example.com · 2:14 PM", where the file came from and when.
+    private var detail: String {
+        let time = item.startedAt.formatted(date: .omitted, time: .shortened)
+        guard let host = item.sourceURL?.host() else { return time }
+        let short = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+        return "\(short) · \(time)"
     }
 }

@@ -156,7 +156,7 @@ extension Browser {
         case "private": newTab(url: nil, isPrivate: true); showCommandBar(.editCurrent)
         case "close-private": closePrivateSpace()
         case "new-space": addSpace()
-        case "downloads": isDownloadsPresented = true
+        case "downloads": showPanel("downloads")
         case "archive": isArchivePresented = true
         case "settings": NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         default:
