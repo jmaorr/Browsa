@@ -1,5 +1,6 @@
 #!/bin/zsh
-# Builds Browsa for Mac (Release, com.orriginal.browsa) and installs it as /Applications/Browsa.app.
+# Builds Browsa for Mac (Release, com.orriginal.browsa) and installs it as /Applications/Browsa.app
+# (~/Applications/Browsa.app when this account can't write to /Applications).
 #
 #   tools/install-mac.sh              # latest origin/main
 #   tools/install-mac.sh <git-ref>    # any branch, tag or commit, e.g. origin/claude/some-branch
@@ -14,7 +15,9 @@ repo="${0:A:h:h}"
 ref="${1:-origin/main}"
 work="$HOME/Library/Caches/com.orriginal.browsa.install"
 src="$work/src"
-app="/Applications/Browsa.app"
+# /Applications needs an admin account; otherwise ~/Applications, which works the same for
+# Launch Services and the default-browser setting.
+if [[ -w /Applications ]]; then app="/Applications/Browsa.app"; else app="$HOME/Applications/Browsa.app"; fi
 bundle_id="com.orriginal.browsa"
 
 echo "==> Fetching $ref"
@@ -54,6 +57,7 @@ if running; then
 fi
 
 echo "==> Installing $app"
+mkdir -p "${app:h}"
 rm -rf "$app"
 ditto "$built" "$app"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app"
