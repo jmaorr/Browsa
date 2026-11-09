@@ -322,7 +322,7 @@ struct WelcomePage: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.automatic)
-            .overlayPreferenceValue(WelcomeTileAnchors.self) { anchors in
+            .backgroundPreferenceValue(WelcomeTileAnchors.self) { anchors in
                 GeometryReader { g in PulseLayer(anchors: anchors, proxy: g) }
             }
         }
