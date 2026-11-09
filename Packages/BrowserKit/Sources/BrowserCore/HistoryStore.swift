@@ -30,7 +30,7 @@ public actor HistoryStore: HistoryIndex {
     }
 
     public static func defaultFileURL() -> URL {
-        let dir = URL.applicationSupportDirectory.appending(path: "Browser", directoryHint: .isDirectory)
+        let dir = AppFolders.support.appending(path: "Browser", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appending(path: "history.json")
     }

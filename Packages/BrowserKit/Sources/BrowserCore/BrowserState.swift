@@ -121,7 +121,7 @@ public final class BrowserState {
 
 
     public static func defaultSnapshotURL() -> URL {
-        URL.applicationSupportDirectory.appending(path: "Browser/state.json")
+        AppFolders.support.appending(path: "Browser/state.json")
     }
 
     // MARK: Selection

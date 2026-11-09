@@ -5,7 +5,7 @@ import Foundation
 public struct ThumbnailStore: Sendable {
     public let directory: URL
 
-    public init(directory: URL = URL.cachesDirectory.appending(path: "Thumbnails", directoryHint: .isDirectory)) {
+    public init(directory: URL = AppFolders.caches.appending(path: "Thumbnails", directoryHint: .isDirectory)) {
         self.directory = directory
     }
 

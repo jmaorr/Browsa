@@ -94,14 +94,10 @@ targets:
     entitlements:
       path: Mac/Browsa.entitlements
       properties:
-        com.apple.security.app-sandbox: true
-        com.apple.security.network.client: true
-        # The agent endpoint, on 127.0.0.1 only.
-        com.apple.security.network.server: true
-        # Unpacked extension folders the user picks stay readable across launches.
-        com.apple.security.files.bookmarks.app-scope: true
-        com.apple.security.files.downloads.read-write: true
-        com.apple.security.files.user-selected.read-write: true
+        # Not sandboxed: Browsa ships outside the App Store (Developer ID), and Radar has to see
+        # other processes and project folders to find dev servers. Data that lived in the old
+        # container is copied out on first launch (SandboxMigration). Hardened Runtime stays on,
+        # and these are its keys for what sites can ask for.
         com.apple.security.device.camera: true
         com.apple.security.device.audio-input: true
         com.apple.security.personal-information.location: true
@@ -128,9 +124,9 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Browsa
-        # Same ID as the iPhone app, so the two can be one universal purchase. Only Release
-        # builds use it: that's the copy in /Applications (tools/install-mac.sh), whose sandbox
-        # container holds Josh's sign-ins, tabs and extensions.
+        # Only Release builds use it: that's the copy in ~/Applications (tools/install-mac.sh),
+        # whose data (~/Library/Application Support/com.orriginal.browsa, ~/Library/WebKit and
+        # ~/Library/HTTPStorages under the same ID) holds Josh's sign-ins, tabs and extensions.
         PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa
         BROWSA_APP_NAME: Browsa
         MARKETING_VERSION: "1.0"

@@ -1,5 +1,6 @@
 import AppKit
 import BrowserEngine
+import BrowserCore
 import Extensibility
 
 /// Adding, updating and removing extensions that don't come from an app: Chrome Web Store and
@@ -55,8 +56,10 @@ extension Library {
         extensionCatalog.enabled.compactMap { item in
             if let bookmark = item.folderBookmark {
                 var stale = false
+                // Outside the sandbox a folder needs no security scope, so a bookmark made inside it
+                // still counts when the scope can't be started.
                 guard let url = try? URL(resolvingBookmarkData: bookmark, options: .withSecurityScope, bookmarkDataIsStale: &stale),
-                      url.startAccessingSecurityScopedResource() else { return nil }
+                      url.startAccessingSecurityScopedResource() || !AppFolders.isSandboxed else { return nil }
                 return ExtensionFolder(id: item.id, url: url)
             }
             return item.folderPath.map { ExtensionFolder(id: item.id, url: URL(filePath: $0)) }

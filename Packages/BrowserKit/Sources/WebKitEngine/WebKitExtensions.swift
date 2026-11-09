@@ -3,6 +3,7 @@ import AppKit
 import WebKit
 import CryptoKit
 import BrowserEngine
+import BrowserCore
 
 /// Web extensions run by WebKit's WKWebExtensionController: Safari extensions inside the user's
 /// apps, and unpacked folders (store installs and ones the user picked).
@@ -70,7 +71,7 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             do {
                 // Chrome extensions run from a copy with Browsa's compat script in front of the background.
                 let url = try ExtensionCompat.prepare(folder.url, id: id,
-                                                      in: URL.applicationSupportDirectory.appending(path: "Extensions (WebKit)"))
+                                                      in: AppFolders.support.appending(path: "Extensions (WebKit)"))
                 let ext = try await WKWebExtension(resourceBaseURL: url)
                 let context = WKWebExtensionContext(for: ext)
                 context.uniqueIdentifier = id

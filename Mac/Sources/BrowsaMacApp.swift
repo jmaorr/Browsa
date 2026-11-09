@@ -7,6 +7,11 @@ import BrowserCore
 struct BrowsaMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
+    init() {
+        // Before anything opens a store: bring data over from the old sandbox container, once.
+        SandboxMigration.runIfNeeded()
+    }
+
     var body: some Scene {
         WindowGroup(id: "browser") {
             WindowRoot(library: appDelegate.library)
@@ -99,6 +104,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let dir = ProcessInfo.processInfo.environment["BROWSA_COLUMNS_CHECK"] {
             Task { @MainActor in await ColumnsCheck(directory: URL(fileURLWithPath: dir), delegate: self).run() }
+        }
+        if let mode = ProcessInfo.processInfo.environment["BROWSA_MIGRATION_CHECK"] {
+            Task { @MainActor in await MigrationCheck(mode: mode, delegate: self).run() }
         }
         if let dir = ProcessInfo.processInfo.environment["BROWSA_RADAR_CHECK"] {
             Task { @MainActor in await RadarCheck(directory: URL(fileURLWithPath: dir), delegate: self).run() }
