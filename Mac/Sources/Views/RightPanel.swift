@@ -224,7 +224,8 @@ private struct AuthorBadge: View {
         switch author {
         case .you: Text("You").font(.caption.weight(.semibold))
         case .agent(let name):
-            Label(name, systemImage: "sparkles").font(.caption.weight(.semibold)).foregroundStyle(.purple)
+            Label { Text(name) } icon: { AgentIcon(caller: name, size: 12) }
+                .font(.caption.weight(.semibold)).foregroundStyle(.purple)
         }
     }
 }
@@ -249,7 +250,7 @@ struct AgentsPanel: View {
             }
             Divider().opacity(0.5)
             if agents.activity.isEmpty {
-                ContentUnavailableView("Nothing yet", systemImage: "sparkles",
+                ContentUnavailableView("Nothing yet", systemImage: AgentIdentity.symbol,
                                        description: Text("When an agent reads a page, clicks or resolves a note, it shows up here."))
             } else {
                 List(agents.activity) { ActivityRow(entry: $0) }
@@ -273,8 +274,16 @@ struct AgentsPanel: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(agents.isPaused ? "Stopped" : !agents.isRunning ? "Not running" : agents.isDriving ? "Working in the Agent space" : "Ready")
                         .font(.callout.weight(.semibold))
-                    Text(agents.connectedAgents.isEmpty ? "No agent has acted yet" : agents.connectedAgents.joined(separator: ", "))
+                    if agents.connectedAgents.isEmpty {
+                        Text("No agent has acted yet").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        HStack(spacing: 8) {
+                            ForEach(agents.connectedAgents, id: \.self) { name in
+                                Label { Text(name) } icon: { AgentIcon(caller: name, size: 12) }
+                            }
+                        }
                         .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
                 Button(agents.isPaused ? "Resume" : "Stop") {
@@ -296,7 +305,10 @@ private struct AgentRequestCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
+                AgentIcon(caller: request.caller, size: 16)
+                    .overlay(alignment: .bottomTrailing) {
+                        Image(systemName: "hand.raised.circle.fill").font(.system(size: 9)).foregroundStyle(.white, .orange).offset(x: 3, y: 3)
+                    }
                 Text(headline).font(.callout.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
             }
             if case .yourTab(let id, let host) = request.grant {
@@ -351,7 +363,10 @@ private struct ActivityRow: View {
         HStack(alignment: .top, spacing: 8) {
             icon.frame(width: 14)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(entry.caller) · \(entry.tool)").font(.caption.weight(.semibold))
+                HStack(spacing: 4) {
+                    AgentIcon(caller: entry.caller, size: 12)
+                    Text("\(entry.caller) · \(entry.tool)").font(.caption.weight(.semibold))
+                }
                 if !entry.summary.isEmpty { Text(entry.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
                 if case .failed(let why) = entry.outcome { Text(why).font(.caption).foregroundStyle(.red).lineLimit(2) }
             }

@@ -15,7 +15,7 @@ struct SettingsView: View {
             SpacesSettings().tabItem { Label("Spaces", systemImage: "square.stack") }.tag("spaces")
             PrivacySettings().tabItem { Label("Privacy", systemImage: "hand.raised") }.tag("privacy")
             ExtensionSettings().tabItem { Label("Extensions", systemImage: "puzzlepiece.extension") }.tag("extensions")
-            AgentSettings().tabItem { Label("Agents", systemImage: "sparkles") }.tag("agents")
+            AgentSettings().tabItem { Label("Agents", systemImage: AgentIdentity.symbol) }.tag("agents")
             EngineSettings().tabItem { Label("Engine", systemImage: "cpu") }.tag("engine")
         }
         .frame(width: 520)

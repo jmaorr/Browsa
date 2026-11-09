@@ -129,7 +129,7 @@ final class AgentBridge {
         if let space = existingAgentSpace { return space }
         let space = library.addSpace()
         space.name = "Agent"
-        space.symbol = "sparkles"
+        space.symbol = AgentIdentity.symbol
         Preferences.agentSpaceID = space.id
         library.scheduleSave()
         // It opens on the Agents panel: what's happening, what's waiting on you, and Stop.
@@ -139,7 +139,10 @@ final class AgentBridge {
 
     /// The Agent space if there is one, without making it.
     var existingAgentSpace: Space? {
-        Preferences.agentSpaceID.flatMap { id in library.regularSpaces.first { $0.id == id } }
+        let space = Preferences.agentSpaceID.flatMap { id in library.regularSpaces.first { $0.id == id } }
+        // Made before the icon changed.
+        if let space, space.symbol == "sparkles" { space.symbol = AgentIdentity.symbol; library.scheduleSave() }
+        return space
     }
 
     /// The sidebar shows the Agent space only while an agent is driving or has pages open there.
