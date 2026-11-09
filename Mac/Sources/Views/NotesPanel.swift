@@ -145,24 +145,26 @@ struct MarginPanel: View {
 
     private var toolbar: some View {
         HStack(spacing: 8) {
-            Picker("Show", selection: $scope) {
-                ForEach(Scope.allCases, id: \.self) { Text($0.rawValue) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.small)
-            .fixedSize()
-            Spacer(minLength: 0)
+            // Next to the page, where your eye already is.
             CommentToolButton()
+            Spacer(minLength: 0)
+            ScopeSwitch(scope: $scope)
             Menu {
                 Toggle("Show Resolved", isOn: $showResolved)
                 Divider()
                 Button("Copy Page Notes as Markdown") { copyMarkdown() }
-            } label: { Image(systemName: "ellipsis.circle") }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .help("More")
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: 22, height: 22)
+                    .contentShape(.rect)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .foregroundStyle(.secondary)
+            .fixedSize()
+            .help("More")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -175,7 +177,7 @@ struct MarginPanel: View {
                             message: "Highlight text or pick something on the page with the comment tool, or right-click it and choose Add Note. Connected agents see your notes and reply here.")
         } else {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8) {
+                LazyVStack(alignment: .leading, spacing: 10) {
                     if scope == .page {
                         ForEach(notes) { card($0) }
                     } else {
@@ -277,6 +279,39 @@ struct MarginPanel: View {
             break
         }
         _ = try? await page.evaluate(NotePicker.script + "\nwindow.__browsaPickOff(); return true;", inWorld: "browsa.margin")
+    }
+}
+
+/// This Page / This Site, as a glass capsule with the choice riding in it.
+private struct ScopeSwitch: View {
+    @Binding var scope: MarginPanel.Scope
+    @Namespace private var ns
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(MarginPanel.Scope.allCases, id: \.self) { s in
+                Button { withAnimation(Motion.snappy) { scope = s } } label: {
+                    Text(s.rawValue)
+                        .font(.system(size: 11, weight: scope == s ? .semibold : .medium))
+                        .foregroundStyle(scope == s ? .primary : .secondary)
+                        .padding(.horizontal, 9)
+                        .frame(height: 22)
+                        .background {
+                            if scope == s {
+                                Capsule().fill(.background)
+                                    .shadow(color: .black.opacity(0.12), radius: 1.5, y: 0.5)
+                                    .matchedGeometryEffect(id: "scope", in: ns)
+                            }
+                        }
+                        .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .glassEffect(.regular, in: .capsule)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Show notes on")
     }
 }
 
@@ -460,9 +495,9 @@ private struct NoteCard: View {
     private var showsActions: Bool { hovering || isSelected || replying }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Button(action: select) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 7) {
                     header(author: note.author, date: note.createdAt, number: number)
                     if let q = note.anchor.quote {
                         Text(q).font(.caption).foregroundStyle(.secondary).lineLimit(3)
@@ -471,7 +506,7 @@ private struct NoteCard: View {
                     } else if let s = note.anchor.selector {
                         Label(s, systemImage: "scope").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
-                    Text(note.body).font(.callout)
+                    Text(note.body).font(.system(size: 13)).lineSpacing(1.5)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(.rect)
@@ -482,7 +517,7 @@ private struct NoteCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Divider().opacity(0.6)
                     header(author: r.author, date: r.createdAt, number: nil)
-                    Text(r.body).font(.callout).textSelection(.enabled)
+                    Text(r.body).font(.system(size: 13)).lineSpacing(1.5).textSelection(.enabled)
                 }
             }
 
@@ -518,12 +553,16 @@ private struct NoteCard: View {
                 .transition(.opacity)
             }
         }
-        .padding(10)
-        .background(.primary.opacity(note.status == .open ? (isSelected ? 0.075 : 0.05) : 0.03), in: .rect(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, 13)
+        .padding(.vertical, 12)
+        // White in light, black in dark, lifted off the panel by a hairline and a soft shadow.
+        .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 12, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(isSelected ? AnyShapeStyle(NoteColor.pin.opacity(0.75)) : AnyShapeStyle(.clear), lineWidth: 1.5)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(isSelected ? AnyShapeStyle(NoteColor.pin.opacity(0.8)) : AnyShapeStyle(.primary.opacity(0.08)),
+                              lineWidth: isSelected ? 1.5 : 1)
         }
+        .shadow(color: .black.opacity(isSelected ? 0.10 : 0.05), radius: isSelected ? 6 : 3, y: 1)
         .opacity(note.status == .resolved && ui.justResolved[note.id] == nil ? 0.7 : 1)
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
         .contextMenu {
