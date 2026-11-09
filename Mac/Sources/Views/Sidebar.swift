@@ -435,8 +435,10 @@ struct FavoriteTile: View {
     let favorite: Favorite
     @State private var hovering = false
 
+    /// Showing its own tab (even after the site redirected elsewhere), or a tab on the same address.
     private var isCurrent: Bool {
-        browser.currentTab?.url.map(URLNormalizer.key(for:)) == URLNormalizer.key(for: favorite.url)
+        guard let tab = browser.currentTab else { return false }
+        return tab.favoriteID == favorite.id || tab.url.map(URLNormalizer.key(for:)) == URLNormalizer.key(for: favorite.url)
     }
 
     var body: some View {

@@ -282,13 +282,20 @@ final class Browser {
         newTab(url: url, in: target, source: .link)
     }
 
-    /// Favourites behave like Arc's: one click goes to the tab that has the site, or opens one.
+    /// Favourites behave like Arc's: the tile holds its own tab, kept out of the Today list. One
+    /// click goes back to that tab, or to a tab already showing the site, or opens one.
     func open(_ favorite: Favorite) {
+        if let owned = currentSpace.today.first(where: { $0.favoriteID == favorite.id }) {
+            select(owned)
+            return
+        }
         let key = URLNormalizer.key(for: favorite.url)
         if let existing = currentSpace.allTabs.first(where: { $0.url.map(URLNormalizer.key(for:)) == key }) {
             select(existing)
         } else {
-            newTab(url: favorite.url, source: .bookmark)
+            let tab = newTab(url: favorite.url, source: .bookmark)
+            tab.favoriteID = favorite.id
+            scheduleSave()
         }
     }
 
@@ -302,12 +309,12 @@ final class Browser {
     func close(_ tab: BrowserTab) { library.close(tab) }
 
     func closeOtherTabs(than keep: BrowserTab) {
-        for t in currentSpace.today where t.id != keep.id { close(t) }
+        for t in currentSpace.listedToday where t.id != keep.id { close(t) }
     }
 
     /// Clears Today in the current space, like Arc's "Clear" button.
     func clearToday() {
-        for t in currentSpace.today { close(t) }
+        for t in currentSpace.listedToday { close(t) }
     }
 
     func reopenClosedTab() {

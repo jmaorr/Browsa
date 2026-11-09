@@ -90,8 +90,24 @@ struct FaviconView: View {
 
     private var host: String { URLNormalizer.displayHost(url) }
 
+    /// DuckDuckGo gives every Google app the plain "G". Google's own icon service tells Gmail, Meet,
+    /// Drive, Calendar, Docs and Sheets apart by host and first path segment ("docs.google.com/
+    /// spreadsheets"), so Google pages ask it, and send it no more than that.
+    private var iconURL: URL? {
+        let h = host.lowercased()
+        if h == "google.com" || h.hasSuffix(".google.com") {
+            let first = url.pathComponents.dropFirst().first.map { "/\($0)/" } ?? "/"
+            var c = URLComponents(string: "https://t1.gstatic.com/faviconV2")
+            c?.queryItems = [.init(name: "client", value: "SOCIAL"), .init(name: "type", value: "FAVICON"),
+                             .init(name: "fallback_opts", value: "TYPE,SIZE,URL"),
+                             .init(name: "url", value: "https://\(h)\(first)"), .init(name: "size", value: "64")]
+            return c?.url
+        }
+        return URL(string: "https://icons.duckduckgo.com/ip3/\(host).ico")
+    }
+
     var body: some View {
-        AsyncImage(url: URL(string: "https://icons.duckduckgo.com/ip3/\(host).ico")) { phase in
+        AsyncImage(url: iconURL) { phase in
             if let image = phase.image {
                 image.resizable().interpolation(.high).scaledToFit()
                     .padding(chip ? size * 0.12 : 0)

@@ -32,12 +32,12 @@ struct SpaceTabs: View {
 
                 if !space.isPrivate {
                     TodayDivider(space: space)
-                        .dropDestination(for: String.self) { items, _ in return drop(items, before: space.today.first, pinned: false) }
+                        .dropDestination(for: String.self) { items, _ in return drop(items, before: space.listedToday.first, pinned: false) }
                 }
 
                 NewTabRow()
 
-                ForEach(Array(space.today.enumerated()), id: \.element.id) { i, tab in
+                ForEach(Array(space.listedToday.enumerated()), id: \.element.id) { i, tab in
                     TabRow(tab: tab, selected: tab.id == browser.selectedTabID(in: space))
                         .spaceCascade(index: i + space.pinned.count + 1, spaceSwitch: browser.lastSpaceSwitch)
                 }
@@ -97,7 +97,7 @@ private struct TodayDivider: View {
     var body: some View {
         HStack(spacing: 8) {
             Rectangle().fill(.primary.opacity(0.1)).frame(height: 1)
-            if hovering, !space.today.isEmpty {
+            if hovering, !space.listedToday.isEmpty {
                 Button { withAnimation(Motion.spring) { browser.clearToday() } } label: {
                     Label("Clear", systemImage: "arrow.down").labelStyle(.titleAndIcon)
                 }
