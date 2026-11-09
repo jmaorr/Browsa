@@ -521,10 +521,10 @@ struct FavoriteTile: View {
     }
 
     var body: some View {
-        FaviconView(url: favorite.url, size: 20, chip: true, letter: favorite.customName ?? favorite.title)
-            .frame(maxWidth: .infinity, minHeight: 42)
+        FaviconView(url: favorite.url, size: 26, chip: true, letter: favorite.customName ?? favorite.title)
+            .frame(maxWidth: .infinity, minHeight: 50)
             .background(isCurrent ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(hovering ? 0.09 : 0.05)),
-                        in: .rect(cornerRadius: 10, style: .continuous))
+                        in: .rect(cornerRadius: 12, style: .continuous))
             .shadow(color: .black.opacity(isCurrent ? 0.08 : 0), radius: 2, y: 1)
             .contentShape(.rect)
             .onTapGesture { browser.open(favorite) }

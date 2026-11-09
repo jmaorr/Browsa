@@ -313,7 +313,7 @@ final class Browser {
 
     /// Clears Today in the current space, like Arc's "Clear" button.
     func clearToday() {
-        for t in currentSpace.listedToday { close(t) }
+        for t in currentSpace.listedToday where t.id != currentTab?.id { close(t) }
     }
 
     func reopenClosedTab() {
