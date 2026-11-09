@@ -99,6 +99,8 @@ struct MarginPanel: View {
     @State private var scope = Scope.page
     @State private var showResolved = false
     @State private var selected: UUID?
+    /// A note picked on another page, to scroll to once that page has loaded.
+    @State private var revealAfterLoad: UUID?
     /// The page the marks were last drawn on.
     @State private var markedPage: (any EnginePage)?
 
@@ -221,6 +223,13 @@ struct MarginPanel: View {
         let number = pinned.firstIndex { $0.id == note.id }.map { $0 + 1 }
         return NoteCard(note: note, number: scope == .page || note.page == url.map(MarginStore.pageKey) ? number : nil,
                         isSelected: selected == note.id) {
+            // A note on another page of the site takes you there, then picks it once the page is up.
+            if note.page != url.map(MarginStore.pageKey), let target = URL(string: note.url) {
+                withAnimation(Motion.snappy) { selected = note.id }
+                revealAfterLoad = note.id
+                go(to: target, in: browser)
+                return
+            }
             withAnimation(Motion.snappy) { selected = selected == note.id ? nil : note.id }
             if selected == note.id, let number { reveal(number) }
         }
@@ -280,6 +289,10 @@ struct MarginPanel: View {
         }
         guard let data = try? JSONSerialization.data(withJSONObject: marks), let json = String(data: data, encoding: .utf8) else { return }
         _ = try? await page.evaluate(MarginMarks.script + "\nreturn window.__browsaMarks(\(json));", inWorld: "browsa.margin")
+        if let id = revealAfterLoad, let i = pinned.firstIndex(where: { $0.id == id }) {
+            revealAfterLoad = nil
+            reveal(i + 1)
+        }
     }
 
     private func clearPage() async {
@@ -418,11 +431,7 @@ private struct PageGroupHeader: View {
     var body: some View {
         Button {
             guard let url, !isCurrent else { return }
-            if let tab = browser.library.allTabs.first(where: { $0.url.map(MarginStore.pageKey) == MarginStore.pageKey(url) }) {
-                browser.select(tab)
-            } else {
-                browser.newTab(url: url)
-            }
+            go(to: url, in: browser)
         } label: {
             HStack(spacing: 6) {
                 Text(title).font(.system(size: 11, weight: .semibold)).lineLimit(1)
@@ -757,6 +766,20 @@ private struct AuthorBadge: View {
                 .font(.caption.weight(.semibold)).foregroundStyle(.purple)
         }
     }
+}
+
+/// Goes to a page: its open tab if there is one, in any space, else a new tab. Notes stays open.
+@MainActor
+func go(to url: URL, in browser: Browser) {
+    let key = MarginStore.pageKey(url)
+    withAnimation(Motion.snappy) {
+        if let tab = browser.library.allTabs.first(where: { $0.url.map(MarginStore.pageKey) == key }) {
+            browser.select(tab)
+        } else {
+            browser.newTab(url: url)
+        }
+    }
+    if browser.panel != "notes" { browser.showPanel("notes") }
 }
 
 /// Open notes on a tab's page, for the yellow count on its row.
