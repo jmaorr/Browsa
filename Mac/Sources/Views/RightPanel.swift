@@ -21,8 +21,8 @@ struct RightPanel: View {
             Divider().opacity(0.5)
             Group {
                 if let view = tool?.panel { view() } else {
-                    ContentUnavailableView("Not available", systemImage: "puzzlepiece.extension",
-                                           description: Text("This tool was removed or turned off."))
+                    PanelEmptyState(title: "Not Available", symbol: "puzzlepiece.extension",
+                                    message: "This tool was removed or turned off.")
                 }
             }
             .id(toolID)
@@ -62,6 +62,46 @@ struct RightPanel: View {
     }
 }
 
+/// What a panel shows when it has nothing yet: centred in the space it has, with an icon, a line
+/// on what will appear here, and at most one thing to do about it.
+struct PanelEmptyState<Actions: View>: View {
+    let title: String
+    let symbol: String
+    let message: String
+    @ViewBuilder var actions: () -> Actions
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 52, height: 52)
+                .background(.primary.opacity(0.06), in: .circle)
+            VStack(spacing: 4) {
+                Text(title).font(.headline)
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            actions()
+                .buttonStyle(.glass)
+                .controlSize(.large)
+                .padding(.top, 4)
+        }
+        .frame(maxWidth: 260)
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+extension PanelEmptyState where Actions == EmptyView {
+    init(title: String, symbol: String, message: String) {
+        self.init(title: title, symbol: symbol, message: message) { EmptyView() }
+    }
+}
+
 /// Marks UI that's shown with sample data while it's being designed.
 struct PreviewBadge: View {
     var body: some View {
@@ -94,19 +134,19 @@ struct MarginPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             if url == nil {
-                ContentUnavailableView("No page", systemImage: "text.bubble",
-                                       description: Text("Notes belong to pages. Open one to leave a note on it."))
+                PanelEmptyState(title: "No Page Open", symbol: "text.bubble",
+                                message: "Notes belong to pages. Open one to leave a note on it.")
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        if notes.isEmpty {
-                            Text("Leave a note on this page: a change to make, a bug, a question. Agents connected to Browsa see it too, and reply here when they've acted on it.")
-                                .font(.callout).foregroundStyle(.secondary)
-                                .padding(.vertical, 24)
+                if notes.isEmpty {
+                    PanelEmptyState(title: "No Notes Here", symbol: "text.bubble",
+                                    message: "Leave a note on this page: a change, a bug, a question. Connected agents see it and reply here when they've acted on it.")
+                } else {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 10) {
+                            ForEach(notes) { NoteCard(note: $0) }
                         }
-                        ForEach(notes) { NoteCard(note: $0) }
+                        .padding(12)
                     }
-                    .padding(12)
                 }
                 footer
             }
@@ -239,23 +279,30 @@ struct AgentsPanel: View {
     private var agents: AgentBridge { browser.library.agents }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            status.padding(12)
-            if !agents.requests.isEmpty {
-                VStack(spacing: 8) {
-                    ForEach(agents.requests) { AgentRequestCard(request: $0) }
-                }
-                .padding([.horizontal, .bottom], 12)
-                .transition(.move(edge: .top).combined(with: .opacity))
+        if !agents.isEnabled {
+            PanelEmptyState(title: "Let Agents Use Browsa", symbol: AgentIdentity.symbol,
+                            message: "Claude Code, Codex, Cursor and other MCP agents can read pages, test your localhost in an Agent space you can watch, and work through your notes.") {
+                Button("Set Up Agents…") { openSettings() }
             }
-            Divider().opacity(0.5)
-            if agents.activity.isEmpty {
-                ContentUnavailableView("Nothing yet", systemImage: AgentIdentity.symbol,
-                                       description: Text("When an agent reads a page, clicks or resolves a note, it shows up here."))
-            } else {
-                List(agents.activity) { ActivityRow(entry: $0) }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                status.padding(12)
+                if !agents.requests.isEmpty {
+                    VStack(spacing: 8) {
+                        ForEach(agents.requests) { AgentRequestCard(request: $0) }
+                    }
+                    .padding([.horizontal, .bottom], 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                Divider().opacity(0.5)
+                if agents.activity.isEmpty {
+                    PanelEmptyState(title: "No Activity Yet", symbol: AgentIdentity.symbol,
+                                    message: "When an agent reads a page, clicks, or resolves a note, it shows up here.")
+                } else {
+                    List(agents.activity) { ActivityRow(entry: $0) }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                }
             }
         }
     }
