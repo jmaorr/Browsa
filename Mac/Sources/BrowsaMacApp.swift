@@ -14,6 +14,9 @@ struct BrowsaMacApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 1280, height: 820)
+        // Left to itself, SwiftUI answers a link from another app by opening a new window. Claim no
+        // external events here, so links reach the app delegate and open as tabs instead.
+        .handlesExternalEvents(matching: [])
         .commands { BrowserCommands(library: appDelegate.library) }
 
         Settings {
