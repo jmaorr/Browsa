@@ -469,7 +469,7 @@ private struct ExtensionFooterButton: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.primary)
         .onHover { hovering = $0 }
     }
 }
