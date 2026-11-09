@@ -5,6 +5,7 @@ import BrowserCore
 /// Menus act on the key window's browser; with no window open, the ones that need one are off.
 struct BrowserCommands: Commands {
     let library: Library
+    let updates: Updates
     @FocusedValue(\.browser) private var focused
 
     private var browser: Browser? { focused ?? library.activeWindow }
@@ -12,6 +13,13 @@ struct BrowserCommands: Commands {
     private var hasPage: Bool { tab?.url != nil }
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            if Updates.isEnabled {
+                Button("Check for Updates…") { updates.checkForUpdates() }
+                    .disabled(!updates.canCheck)
+            }
+        }
+
         CommandGroup(replacing: .newItem) {
             Button("New Tab") { newTab(.newTab) }
                 .keyboardShortcut("t")
