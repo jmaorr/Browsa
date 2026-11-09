@@ -230,8 +230,9 @@ struct MarginPanel: View {
                 go(to: target, in: browser)
                 return
             }
-            withAnimation(Motion.snappy) { selected = selected == note.id ? nil : note.id }
-            if selected == note.id, let number { reveal(number) }
+            // Always picks, never toggles off: clicking empty panel space puts it down.
+            withAnimation(Motion.snappy) { selected = note.id }
+            if let number { reveal(number) }
         }
         .transition(.opacity.combined(with: .move(edge: .top)))
         .id(note.id)
@@ -551,9 +552,15 @@ private struct NoteCard: View {
     private var ui: NotesUI { .shared }
     private var showsActions: Bool { hovering || isSelected || replying }
 
+    /// The one thing a click anywhere on the card does: pick it, with its reply open.
+    private func pick() {
+        select()
+        if note.status == .open { withAnimation(Motion.snappy) { replying = true } }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Button(action: select) {
+            Button(action: pick) {
                 VStack(alignment: .leading, spacing: 7) {
                     header(author: note.author, date: note.createdAt, number: number)
                     if let q = note.anchor.quote {
@@ -564,19 +571,19 @@ private struct NoteCard: View {
                         Label(s, systemImage: "scope").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Text(note.body).font(.system(size: 13)).lineSpacing(1.5)
+                    ForEach(note.replies) { r in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Divider().opacity(0.6)
+                            header(author: r.author, date: r.createdAt, number: nil)
+                            Text(r.body).font(.system(size: 13)).lineSpacing(1.5)
+                        }
+                        .padding(.top, 3)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-
-            ForEach(note.replies) { r in
-                VStack(alignment: .leading, spacing: 4) {
-                    Divider().opacity(0.6)
-                    header(author: r.author, date: r.createdAt, number: nil)
-                    Text(r.body).font(.system(size: 13)).lineSpacing(1.5).textSelection(.enabled)
-                }
-            }
 
             if let at = ui.justResolved[note.id], note.status == .resolved {
                 ResolvedLine(by: note.resolvedBy ?? .you, at: at) {
@@ -612,6 +619,10 @@ private struct NoteCard: View {
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 12)
+        // The card's padding and gaps pick it too, so there's no dead area.
+        .background {
+            Button(action: pick) { Color.clear.contentShape(.rect) }.buttonStyle(.plain)
+        }
         // White in light, black in dark, lifted off the panel by a hairline and a soft shadow.
         .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 12, style: .continuous))
         .overlay {
