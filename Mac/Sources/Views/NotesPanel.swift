@@ -559,6 +559,7 @@ private struct NoteCard: View {
     let select: () -> Void
     @State private var hovering = false
     @State private var replying = false
+    @State private var focusRequest = 0
 
     private var margin: MarginStore { browser.library.margin }
     private var ui: NotesUI { .shared }
@@ -567,7 +568,11 @@ private struct NoteCard: View {
     /// The one thing a click anywhere on the card does: pick it, with its reply open.
     private func pick() {
         select()
-        if note.status == .open { withAnimation(Motion.snappy) { replying = true } }
+        guard note.status == .open else { return }
+        withAnimation(Motion.snappy) { replying = true }
+        // A click on the card always puts the cursor in the reply, whether the field is new or was
+        // already open (say, from a pin). Asked for once the field exists.
+        DispatchQueue.main.async { focusRequest += 1 }
     }
 
     var body: some View {
@@ -603,7 +608,7 @@ private struct NoteCard: View {
                 }
                 .transition(.opacity)
             } else if replying {
-                ReplyBar(isOpen: $replying, autofocus: focusesReply) { text in
+                ReplyBar(isOpen: $replying, autofocus: focusesReply, focusRequest: focusRequest) { text in
                     withAnimation(Motion.snappy) { margin.reply(to: note.id, author: .you, body: text) }
                 }
                 .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)), removal: .opacity))
@@ -689,6 +694,8 @@ private struct NoteCard: View {
 private struct ReplyBar: View {
     @Binding var isOpen: Bool
     var autofocus = true
+    /// Bumped by a click on the card: focus the field.
+    var focusRequest = 0
     let send: (String) -> Void
     @State private var text = ""
     @FocusState private var focused: Bool
@@ -735,6 +742,7 @@ private struct ReplyBar: View {
         }
         .animation(Motion.snappy, value: focused)
         .onAppear { if autofocus { focused = true } }
+        .onChange(of: focusRequest) { focused = true }
         .onChange(of: focused) { _, f in
             // Clicking away from an empty reply closes it.
             if !f, text.isEmpty { withAnimation(Motion.snappy) { isOpen = false } }
