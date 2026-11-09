@@ -99,6 +99,9 @@ struct MarginPanel: View {
     @State private var scope = Scope.page
     @State private var showResolved = false
     @State private var selected: UUID?
+    /// The last pick came from a pin on the page: its reply opens without taking the keyboard,
+    /// so you can keep clicking around the page.
+    @State private var pickedFromPage = false
     /// A note picked on another page, to scroll to once that page has loaded.
     @State private var revealAfterLoad: UUID?
     /// The page the marks were last drawn on.
@@ -222,9 +225,10 @@ struct MarginPanel: View {
     private func card(_ note: MarginNote) -> some View {
         let number = pinned.firstIndex { $0.id == note.id }.map { $0 + 1 }
         return NoteCard(note: note, number: scope == .page || note.page == url.map(MarginStore.pageKey) ? number : nil,
-                        isSelected: selected == note.id, deselect: {
+                        isSelected: selected == note.id, focusesReply: !pickedFromPage, deselect: {
             if selected == note.id { withAnimation(Motion.snappy) { selected = nil } }
         }) {
+            pickedFromPage = false
             // A note on another page of the site takes you there, then picks it once the page is up.
             if note.page != url.map(MarginStore.pageKey), let target = URL(string: note.url) {
                 withAnimation(Motion.snappy) { selected = note.id }
@@ -314,6 +318,7 @@ struct MarginPanel: View {
                 inWorld: "browsa.margin")
             guard let n = (raw as? String).flatMap(Int.init), pinned.indices.contains(n - 1) else { continue }
             let id = pinned[n - 1].id
+            pickedFromPage = true
             withAnimation(Motion.snappy) { selected = id }
         }
     }
@@ -546,6 +551,8 @@ private struct NoteCard: View {
     let note: MarginNote
     let number: Int?
     let isSelected: Bool
+    /// Whether opening the reply puts the cursor in it (not when picked from a pin on the page).
+    let focusesReply: Bool
     /// Puts the card down: one state for "active", ring and reply together.
     let deselect: () -> Void
     let select: () -> Void
@@ -595,7 +602,7 @@ private struct NoteCard: View {
                 }
                 .transition(.opacity)
             } else if replying {
-                ReplyBar(isOpen: $replying) { text in
+                ReplyBar(isOpen: $replying, autofocus: focusesReply) { text in
                     withAnimation(Motion.snappy) { margin.reply(to: note.id, author: .you, body: text) }
                 }
                 .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)), removal: .opacity))
@@ -680,6 +687,7 @@ private struct NoteCard: View {
 /// Return sends, Escape closes.
 private struct ReplyBar: View {
     @Binding var isOpen: Bool
+    var autofocus = true
     let send: (String) -> Void
     @State private var text = ""
     @FocusState private var focused: Bool
@@ -724,7 +732,7 @@ private struct ReplyBar: View {
                 .strokeBorder(Color.accentColor.opacity(focused ? 0.7 : 0.3), lineWidth: focused ? 1.5 : 1)
         }
         .animation(Motion.snappy, value: focused)
-        .onAppear { focused = true }
+        .onAppear { if autofocus { focused = true } }
         .onChange(of: focused) { _, f in
             // Clicking away from an empty reply closes it.
             if !f, text.isEmpty { withAnimation(Motion.snappy) { isOpen = false } }
@@ -944,11 +952,13 @@ enum MarginMarks {
           p.dataset.n = m.n; p.textContent = m.n;
           if (typeof m.n === 'number') {
             p.title = 'Show note ' + m.n;
-            p.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
-            p.addEventListener('click', (e) => {
+            // On mousedown, not click: picking a note redraws the pins, and a click on a pin
+            // that has been replaced in between would never arrive.
+            p.addEventListener('mousedown', (e) => {
               e.preventDefault(); e.stopPropagation();
               document.documentElement.dataset.browsaPinClicked = String(m.n);
             }, true);
+            p.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
           }
           Object.assign(p.style, { left: (rect.left + scrollX) + 'px', top: (rect.top + scrollY) + 'px' });
           document.body.appendChild(p);
