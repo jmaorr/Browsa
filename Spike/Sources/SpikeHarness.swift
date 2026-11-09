@@ -337,6 +337,9 @@ enum SpikeHarness {
             } catch {
                 return .error("\(error)")
             }
+        case "settingsTab":
+            // Which Settings pane shows (general, spaces, privacy, extensions, agents, engine).
+            defaults.set(j["tab"] as? String ?? "general", forKey: "settingsTab")
         case "closeMenus":
             SpikeInput.closeMenus()
         case "pauseAgents":
@@ -365,7 +368,7 @@ enum SpikeHarness {
         let spaces = library.spaces.map { s -> [String: Any] in
             ["name": s.name, "selected": s.id == b?.selectedSpaceID,
              "tabs": (s.pinned + s.today).map { t in
-                 ["title": t.title, "url": t.url?.absoluteString ?? "", "pinned": s.pinned.contains { $0.id == t.id },
+                 ["id": t.id.uuidString, "title": t.title, "url": t.url?.absoluteString ?? "", "pinned": s.pinned.contains { $0.id == t.id },
                   "current": t.id == b?.currentTab?.id] as [String: Any]
              }]
         }
