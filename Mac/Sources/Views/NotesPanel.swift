@@ -99,6 +99,8 @@ struct MarginPanel: View {
     @State private var scope = Scope.page
     @State private var showResolved = false
     @State private var selected: UUID?
+    /// The page the marks were last drawn on.
+    @State private var markedPage: (any EnginePage)?
 
     private var ui: NotesUI { .shared }
     private var url: URL? { browser.currentTab?.url }
@@ -114,8 +116,11 @@ struct MarginPanel: View {
     /// Open notes on this page, in order: pin 1, 2, 3.
     private var pinned: [MarginNote] { url.map { margin.notes(on: $0).filter { $0.status == .open } } ?? [] }
 
+    /// The panel stays alive while closed (it slides away), so marks follow whether Notes is showing.
+    private var isShowing: Bool { browser.panel == "notes" }
+
     private var markKey: String {
-        "\(url?.absoluteString ?? "")|\(browser.currentTab?.isLoading == true)|\(pinned.map(\.id.uuidString).joined())|\(selected?.uuidString ?? "")|\(ui.drafts[browser.id]?.selector ?? "")"
+        "\(isShowing)|\(url?.absoluteString ?? "")|\(browser.currentTab?.isLoading == true)|\(pinned.map(\.id.uuidString).joined())|\(selected?.uuidString ?? "")|\(ui.drafts[browser.id]?.selector ?? "")"
     }
 
     var body: some View {
@@ -137,6 +142,9 @@ struct MarginPanel: View {
             for id in new.ids.subtracting(old.ids) { ui.justResolved[id] = Date() }
         }
         .task(id: ui.picking.contains(browser.id)) { await pickLoop() }
+        .onChange(of: isShowing) { _, showing in
+            if !showing { ui.picking.remove(browser.id) }
+        }
         .onDisappear {
             ui.picking.remove(browser.id)
             Task { await clearPage() }
@@ -238,6 +246,16 @@ struct MarginPanel: View {
 
     private func drawMarks() async {
         guard let page = browser.currentController?.page, browser.currentTab?.isLoading != true else { return }
+        // Switching tabs leaves the old page's marks behind otherwise.
+        if let old = markedPage, old !== page {
+            _ = try? await old.evaluate(MarginMarks.script + "\nreturn window.__browsaMarks([]);", inWorld: "browsa.margin")
+        }
+        markedPage = page
+        guard isShowing else {
+            _ = try? await page.evaluate(MarginMarks.script + NotePicker.script + "\nwindow.__browsaPickOff(); return window.__browsaMarks([]);",
+                                         inWorld: "browsa.margin")
+            return
+        }
         var marks: [[String: Any]] = pinned.enumerated().map { i, n in
             var m: [String: Any] = ["n": i + 1, "selected": n.id == selected]
             if let q = n.anchor.quote { m["quote"] = q }
@@ -429,7 +447,8 @@ private struct NoteComposer: View {
                     .padding(.vertical, 2)
                 if canAdd {
                     Button("Add", action: add)
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.glassProminent)
+                        .buttonBorderShape(.capsule)
                         .controlSize(.small)
                         .keyboardShortcut(.return, modifiers: .command)
                         .transition(.scale(scale: 0.8).combined(with: .opacity))
@@ -628,7 +647,8 @@ private struct ReplyBar: View {
             // Nothing typed yet: a quiet close. Once there's text: Add.
             if canSend {
                 Button("Add", action: submit)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
                     .controlSize(.small)
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
             } else {
