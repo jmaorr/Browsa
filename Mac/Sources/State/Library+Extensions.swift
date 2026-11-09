@@ -10,8 +10,21 @@ extension Library {
         var id: String { item.id }
         let item: InstalledExtension
         let manifest: ExtensionManifest
-        /// Plain-language lines for the add sheet ("Read and change pages on every site").
-        var permissionLines: [String] { manifest.allPermissions.sorted().compactMap(describePermission) }
+        /// Plain-language lines for the add sheet, sites folded into one.
+        var permissions: [PermissionSummary] { manifest.permissionSummary }
+        var isVerified: Bool { VerifiedExtensions.contains(item.source) }
+
+        /// The manifest's largest icon, from the downloaded or picked folder.
+        var icon: NSImage? {
+            let folder: URL? = item.folderPath.map { URL(filePath: $0) } ?? {
+                guard case .folder(let path) = item.source else { return nil }
+                return URL(filePath: path)
+            }()
+            guard let folder, let icons = manifest.raw["icons"]?.object else { return nil }
+            let best = icons.compactMap { key, value in Int(key).flatMap { size in value.string.map { (size, $0) } } }
+                .max { $0.0 < $1.0 }
+            return best.flatMap { NSImage(contentsOf: folder.appending(path: $0.1)) }
+        }
     }
 
     nonisolated static let fetch: ExtensionInstaller.Fetch = { url in
