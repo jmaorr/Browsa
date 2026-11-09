@@ -310,7 +310,7 @@ struct WelcomePage: View {
     }
 
     private func card(_ stop: WelcomeStop, _ order: Double, vertical: Bool = false) -> some View {
-        GalleryCard(stop: stop, vertical: vertical, done: progress.done.contains(stop)) { open = stop }
+        GalleryCard(stop: stop, vertical: vertical, done: progress.done.contains(stop), active: open == nil && shown) { open = stop }
             .welcomeArrival(order, shown: shown, distance: 22)
     }
 
@@ -398,9 +398,18 @@ private struct GalleryCard: View {
     let stop: WelcomeStop
     let vertical: Bool
     let done: Bool
+    /// False while a card is open over the gallery: the heroes behind it stop.
+    var active = true
     let action: () -> Void
     @Environment(\.colorScheme) private var scheme
     @State private var hovering = false
+    @State private var played = false
+    @State private var visible = false
+    /// The hero plays one loop when the card first comes on screen, and while it's hovered,
+    /// finishing its loop after the pointer leaves. Otherwise it rests on a still frame.
+    @State private var playing = false
+    @State private var playStart = Date.now
+    @State private var stopTask: Task<Void, Never>?
 
     var body: some View {
         let surface = stop.surface
@@ -430,14 +439,48 @@ private struct GalleryCard: View {
         .buttonStyle(.plain)
         .shadow(color: .black.opacity(hovering ? 0.18 : 0.06), radius: hovering ? 20 : 6, y: hovering ? 12 : 3)
         .offset(y: hovering ? -3 : 0)
-        .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
+        .onHover { h in
+            withAnimation(Motion.snappy) { hovering = h }
+            setPlaying(h && active)
+        }
+        .onScrollVisibilityChange(threshold: 0.4) { v in
+            visible = v
+            playFirstLoop()
+        }
+        .onChange(of: active) { _, on in
+            if on { playFirstLoop() } else { stopTask?.cancel(); playing = false }
+        }
+    }
+
+    /// Once, the first time the card is both on screen and showing (not under the intro or a card).
+    private func playFirstLoop() {
+        guard visible, active, !played else { return }
+        played = true
+        setPlaying(true)
+        setPlaying(false)
+    }
+
+    private func setPlaying(_ want: Bool) {
+        stopTask?.cancel()
+        if want {
+            if !playing { playStart = .now; playing = true }
+        } else if playing {
+            // Let the loop run to its end, which is the still frame, so stopping never jumps.
+            let elapsed = Date.now.timeIntervalSince(playStart)
+            let remain = stop.loop - elapsed.truncatingRemainder(dividingBy: stop.loop)
+            stopTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(remain))
+                guard !Task.isCancelled else { return }
+                playing = false
+            }
+        }
     }
 
     /// The hero keeps the page's own appearance for its UI, so the miniature Browsa matches.
     private var hero: some View {
         // An overlay on a clear view, so the hero's own size never widens the card.
         Color.clear
-            .overlay { StopHero(stop: stop).environment(\.colorScheme, scheme) }
+            .overlay { StopHero(stop: stop, playing: playing, start: playStart).environment(\.colorScheme, scheme) }
             .clipped()
             .allowsHitTesting(false)
     }
@@ -506,7 +549,7 @@ private struct StopSheet: View {
             HStack(spacing: 0) {
                 ZStack {
                     SurfaceBackground(surface: stop.surface)
-                    StopHero(stop: stop, scale: 1.2)
+                    StopHero(stop: stop, scale: 1.2, playing: true)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 VStack(alignment: .leading, spacing: 12) {

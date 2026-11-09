@@ -50,41 +50,54 @@ struct SurfaceBackground: View {
     }
 }
 
-/// Film grain, drawn once from a fixed seed so it doesn't shimmer.
+/// Film grain: one small tile, drawn once from a fixed seed and repeated, so it costs nothing per frame.
 struct Grain: View {
     var opacity: Double
     var body: some View {
-        Canvas { ctx, size in
-            var rng = SeededRandom(seed: 7)
-            let n = Int(size.width * size.height / 14)
-            for _ in 0..<n {
-                let x = rng.next() * size.width, y = rng.next() * size.height
-                let light = rng.next() > 0.5
-                ctx.fill(Path(CGRect(x: x, y: y, width: 1, height: 1)),
-                         with: .color((light ? Color.white : Color.black).opacity(opacity * (0.4 + rng.next()))))
-            }
-        }
-        .allowsHitTesting(false)
-        .drawingGroup()
+        Image(decorative: Texture.grain, scale: 2)
+            .resizable(resizingMode: .tile)
+            .opacity(opacity / 0.09)
+            .allowsHitTesting(false)
     }
 }
 
-/// Fine horizontal brushing.
+/// Fine horizontal brushing, from a cached tile.
 struct Brushed: View {
     let dark: Bool
     var body: some View {
-        Canvas { ctx, size in
-            var rng = SeededRandom(seed: 3)
-            var y = 0.0
-            while y < size.height {
-                let a = 0.02 + rng.next() * 0.05
-                ctx.fill(Path(CGRect(x: 0, y: y, width: size.width, height: 0.5)),
-                         with: .color((rng.next() > 0.5 ? Color.white : Color.black).opacity(dark ? a * 0.6 : a)))
-                y += 0.7 + rng.next() * 1.4
-            }
+        Image(decorative: Texture.brushed, scale: 2)
+            .resizable(resizingMode: .tile)
+            .opacity(dark ? 0.6 : 1)
+            .allowsHitTesting(false)
+    }
+}
+
+/// Texture tiles, made once with Core Graphics.
+enum Texture {
+    static let grain: CGImage = make(size: 256) { ctx, rng in
+        for _ in 0..<(256 * 256 / 7) {
+            let x = rng.next() * 256, y = rng.next() * 256
+            let light = rng.next() > 0.5
+            ctx.setFillColor(gray: light ? 1 : 0, alpha: 0.09 * (0.4 + rng.next()))
+            ctx.fill(CGRect(x: x, y: y, width: 1, height: 1))
         }
-        .allowsHitTesting(false)
-        .drawingGroup()
+    }
+
+    static let brushed: CGImage = make(size: 256) { ctx, rng in
+        var y = 0.0
+        while y < 256 {
+            ctx.setFillColor(gray: rng.next() > 0.5 ? 1 : 0, alpha: 0.02 + rng.next() * 0.05)
+            ctx.fill(CGRect(x: 0, y: y, width: 256, height: 1))
+            y += 1.4 + rng.next() * 2.8
+        }
+    }
+
+    private static func make(size: Int, draw: (CGContext, inout SeededRandom) -> Void) -> CGImage {
+        let ctx = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        var rng = SeededRandom(seed: UInt64(size) &+ 7)
+        draw(ctx, &rng)
+        return ctx.makeImage()!
     }
 }
 
@@ -118,28 +131,72 @@ extension WelcomeStop {
 
 func welcomeEase(_ x: Double) -> Double { let c = min(1, max(0, x)); return c * c * (3 - 2 * c) }
 
-/// The hero for a stop, driven by one clock so everything loops in step.
+extension WelcomeStop {
+    /// How long the hero's loop runs, in seconds.
+    var loop: Double {
+        switch self {
+        case .spaces: 7.5
+        case .newTab, .commands: 4.2
+        case .importing: 6
+        case .tour: 10
+        case .library, .makeDefault: 5
+        case .agents: 7
+        }
+    }
+
+    /// The still frame a hero rests on: the moment that best shows what it teaches.
+    var rest: Double {
+        switch self {
+        case .spaces: 1.0
+        case .newTab, .commands: 0.8 * 4.2
+        case .importing: 0.9 * 6
+        case .tour: 3.2
+        case .library: 0.85 * 5
+        case .agents: 0.82 * 7
+        case .makeDefault: 0.75 * 5
+        }
+    }
+}
+
+/// The hero for a stop. It rests on a still frame and only runs its clock while playing, so a
+/// page of cards costs nothing when nobody is looking at one.
 struct StopHero: View {
     let stop: WelcomeStop
     var scale: CGFloat = 1
+    var playing = false
+    var start: Date? = nil
+    @State private var opened = Date.now
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 60, paused: Motion.reduced)) { context in
-            let t = Motion.reduced ? 1.6 : context.date.timeIntervalSinceReferenceDate
-            Group {
-                switch stop {
-                case .spaces: SpacesHero(t: t)
-                case .newTab: ShortcutHero(t: t, letter: "T", mode: .newTab)
-                case .commands: ShortcutHero(t: t, letter: "K", mode: .commands)
-                case .importing: ImportHero(t: t)
-                case .tour: TourHero(t: t)
-                case .library: LibraryHero(t: t)
-                case .agents: AgentsHero(t: t)
-                case .makeDefault: DefaultHero(t: t)
-                }
+        if playing && !Motion.reduced {
+            TimelineView(.animation) { context in
+                // Starts from the still frame, so playing and resting line up.
+                frame(stop.rest + context.date.timeIntervalSince(start ?? opened))
             }
-            .scaleEffect(scale)
+        } else {
+            frame(stop.rest)
         }
+    }
+
+    private func frame(_ t: Double) -> some View {
+        Group {
+            switch stop {
+            case .spaces: SpacesHero(t: t)
+            case .newTab: ShortcutHero(t: t, letter: "T", mode: .newTab)
+            case .commands: ShortcutHero(t: t, letter: "K", mode: .commands)
+            case .importing: ImportHero(t: t)
+            case .tour: TourHero(t: t)
+            case .library: LibraryHero(t: t)
+            case .agents: AgentsHero(t: t)
+            case .makeDefault: DefaultHero(t: t)
+            }
+        }
+        .scaleEffect(scale)
+        // Flattened into one Metal layer: one texture to composite instead of dozens of layers.
+        // Padded first so the heroes' shadows aren't clipped by the flattened bounds.
+        .padding(36)
+        .drawingGroup()
+        .padding(-36)
     }
 }
 
@@ -207,7 +264,7 @@ struct MiniWindow<Sidebar: View, Page: View>: View {
         }
         .background {
             ZStack {
-                Rectangle().fill(.regularMaterial)
+                Rectangle().fill(PanelFill())
                 tint.opacity(0.14)
             }
         }
@@ -512,7 +569,11 @@ private struct ImportHero: View {
                     }
                 }
             }
-            ProgressView(value: prog).progressViewStyle(.linear).controlSize(.small)
+            // Drawn rather than an NSProgressIndicator, so it renders inside the flattened hero.
+            Capsule().fill(.primary.opacity(0.1)).frame(height: 4)
+                .overlay(alignment: .leading) {
+                    GeometryReader { g in Capsule().fill(Color.accentColor).frame(width: g.size.width * prog) }
+                }
             HStack {
                 Spacer()
                 Text(prog >= 1 ? "Done" : "Importing…")
@@ -524,7 +585,7 @@ private struct ImportHero: View {
         }
         .padding(14)
         .frame(width: 236)
-        .background(.regularMaterial, in: .rect(cornerRadius: 12, style: .continuous))
+        .background(PanelFill(), in: .rect(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.primary.opacity(0.1), lineWidth: 0.5))
         .shadow(color: .black.opacity(0.18), radius: 16, y: 8)
     }
@@ -719,7 +780,7 @@ private struct AgentsHero: View {
             }
             .padding(9)
             .frame(width: 168)
-            .background(.regularMaterial, in: .rect(cornerRadius: 10, style: .continuous))
+            .background(PanelFill(), in: .rect(cornerRadius: 10, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.primary.opacity(0.12), lineWidth: 0.5))
             .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
             .environment(\.colorScheme, .light)
@@ -758,7 +819,7 @@ private struct DefaultHero: View {
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
             .frame(width: 280)
-            .background(.regularMaterial, in: .rect(cornerRadius: 10, style: .continuous))
+            .background(PanelFill(), in: .rect(cornerRadius: 10, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.primary.opacity(0.1), lineWidth: 0.5))
             .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
             .environment(\.colorScheme, .light)
