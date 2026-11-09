@@ -53,9 +53,9 @@ struct IntroOverlay: View {
                 Text("Welcome to Browsa")
                     .font(.system(size: 60, weight: .semibold))
                     .tracking(-2)
-                    .foregroundStyle(colorScheme == .dark ? Color.white : Color(red: 0.17, green: 0.07, blue: 0.03))
-                    .shadow(color: colorScheme == .dark ? Color(red: 0.47, green: 0.08, blue: 0).opacity(0.3) : .white.opacity(0.5),
-                            radius: 15, y: 2)
+                    .foregroundStyle(.white)
+                    // A warm shadow keeps white legible over the metal's bright bands in either mode.
+                    .shadow(color: Color(red: 0.42, green: 0.08, blue: 0).opacity(0.45), radius: 16, y: 2)
                     .blur(radius: titleShown && !settling ? 0 : 24)
                     .opacity(titleShown && !settling ? 1 : 0)
                     .animation(.easeOut(duration: 0.9), value: settling)
