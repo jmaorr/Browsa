@@ -87,6 +87,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var archiveTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Sign-ins from the sandbox days, once. Pages that loaded before they're in reload.
+        CookieImport.runIfNeeded { [weak self] in
+            guard let library = self?.library else { return }
+            for tab in library.allTabs { library.existingController(for: tab)?.page.reload() }
+        }
         // Keys menus can't take: Cmd-= zooms (the menu shows Cmd-+), and Cmd-W closes the tab
         // rather than the window while a tab is open.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in

@@ -1,6 +1,7 @@
 #if DEBUG
 import AppKit
 import BrowserCore
+import WebKit
 
 /// Debug only: with BROWSA_MIGRATION_CHECK=seed|verify, checks that leaving the sandbox keeps your
 /// data. Build once sandboxed and run `seed`: it opens a page that stores a cookie and local
@@ -39,6 +40,8 @@ struct MigrationCheck {
             browser.newTab(url: page)
         }
         await pause(4)
+        let all = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
+        note("cookie store: \(all.count) cookies, localhost: \(all.filter { $0.domain.contains("localhost") }.map { "\($0.name)=\($0.value)" })")
         let result = try? await browser.currentController?.page.evaluate(
             "return document.cookie + ' | ' + localStorage.getItem('k')", inWorld: "page")
         note("page sees: \(result.map { "\($0)" } ?? "nothing")")
