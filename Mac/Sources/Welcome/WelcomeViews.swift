@@ -481,7 +481,7 @@ private struct GalleryCard: View {
     @State private var swipeTravel = 0.0
     @State private var swipeLatched = false
 
-    private var height: CGFloat { stop == .spaces ? 268 : 220 }
+    private var height: CGFloat { stop == .spaces ? 320 : 220 }
 
     var body: some View {
         let surface = stop.surface

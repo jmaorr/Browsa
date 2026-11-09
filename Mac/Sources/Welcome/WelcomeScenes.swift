@@ -534,11 +534,11 @@ private struct SpacesHero: View, @MainActor Animatable {
     typealias Space = (name: String, symbol: String, color: Color, tabs: [(String, String, Color)])
     static let spaces: [Space] = [
         ("Work", "briefcase.fill", .orange, [("Linear", "L", .indigo), ("Figma", "F", .purple), ("PR #42 · checkout", "G", Color(white: 0.15)),
-                                              ("Standup notes", "N", .yellow), ("Sentry", "S", .pink)]),
+                                              ("Standup notes", "N", .yellow), ("Sentry", "S", .pink), ("Calendar", "C", .red), ("Roadmap", "R", .blue)]),
         ("Personal", "house.fill", .green, [("Welcome", "W", .orange), ("Recipes", "R", .green), ("YouTube", "Y", .red),
-                                             ("Flights to Tokyo", "F", .blue), ("Bank", "B", .teal)]),
+                                             ("Flights to Tokyo", "F", .blue), ("Bank", "B", .teal), ("Spotify", "S", .green), ("News", "N", Color(white: 0.3))]),
         ("Side project", "hammer.fill", .teal, [("localhost:3000", "N", .black), ("Docs", "D", .teal), ("Deploys", "V", Color(white: 0.2)),
-                                                 ("Stripe", "S", .indigo), ("Analytics", "A", .orange)]),
+                                                 ("Stripe", "S", .indigo), ("Analytics", "A", .orange), ("GitHub Issues", "G", Color(white: 0.15)), ("Supabase", "S", .green)]),
     ]
 
     var body: some View {
