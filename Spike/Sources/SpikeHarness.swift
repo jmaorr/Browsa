@@ -244,6 +244,11 @@ enum SpikeHarness {
     private static func perform(_ action: String, _ j: [String: Any], library: Library) async -> HTTPResponse {
         guard let browser = library.activeWindow else { return .error("No window", status: 503) }
         switch action {
+        case "welcomeFocus":
+            // {"stop":"spaces"} opens that card as if hovered; {} lets go.
+            WelcomeDebug.shared.focus = (j["stop"] as? String).flatMap(WelcomeStop.init(rawValue:))
+        case "welcomeComplete":
+            if let s = (j["stop"] as? String).flatMap(WelcomeStop.init(rawValue:)) { WelcomeProgress.shared.complete(s) }
         case "welcome":
             // {"intro":true,"reset":true}: open the welcome tab, optionally clearing its progress first.
             if j["reset"] as? Bool == true { WelcomeProgress.shared.reset() }

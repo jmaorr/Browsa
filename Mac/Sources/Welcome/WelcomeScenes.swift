@@ -165,6 +165,8 @@ struct StopHero: View {
     var scale: CGFloat = 1
     var playing = false
     var start: Date? = nil
+    /// Spaces only: the space the person has swiped to.
+    var spacePos: Double? = nil
     @State private var opened = Date.now
 
     var body: some View {
@@ -181,7 +183,7 @@ struct StopHero: View {
     private func frame(_ t: Double) -> some View {
         Group {
             switch stop {
-            case .spaces: SpacesHero(t: t)
+            case .spaces: SpacesHero(t: t, pos: spacePos)
             case .newTab: ShortcutHero(t: t, letter: "T", mode: .newTab)
             case .commands: ShortcutHero(t: t, letter: "K", mode: .commands)
             case .importing: ImportHero(t: t)
@@ -473,8 +475,14 @@ private struct ShortcutHero: View {
 }
 
 /// A Browsa window whose sidebar swipes between three spaces, each with its own tint and tabs.
-private struct SpacesHero: View {
+private struct SpacesHero: View, @MainActor Animatable {
     let t: Double
+    /// When set, the person is driving it: which space is showing, fractional mid-swipe.
+    var pos: Double?
+    var animatableData: Double {
+        get { pos ?? 0 }
+        set { if pos != nil { pos = newValue } }
+    }
     private let spaces: [(name: String, symbol: String, color: Color, tabs: [(String, String, Color)])] = [
         ("Personal", "house.fill", .orange, [("Welcome", "W", .orange), ("Recipes", "R", .green), ("YouTube", "Y", .red)]),
         ("Work", "briefcase.fill", .indigo, [("Linear", "L", .indigo), ("Figma", "F", .purple), ("PR #42", "G", Color(white: 0.15))]),
@@ -484,8 +492,10 @@ private struct SpacesHero: View {
     var body: some View {
         let period = 7.5, seg = period / 3
         let local = t.truncatingRemainder(dividingBy: period)
-        let k = Int(local / seg), f = (local - Double(k) * seg) / seg
-        let p = welcomeEase((f - 0.72) / 0.28)
+        let auto = Int(local / seg)
+        let f = pos == nil ? (local - Double(auto) * seg) / seg : 0
+        let k = pos.map { Int(floor($0)) % 3 } ?? auto
+        let p = pos.map { $0 - floor($0) } ?? welcomeEase((f - 0.72) / 0.28)
         let from = spaces[k], to = spaces[(k + 1) % 3]
         MiniWindow(tint: p < 0.5 ? from.color : to.color) {
             ZStack(alignment: .topLeading) {
