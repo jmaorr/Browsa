@@ -497,12 +497,18 @@ struct VerifiedTag: View {
     let isVerified: Bool
 
     var body: some View {
-        Label(isVerified ? "Works in Browsa" : "Not tested in Browsa yet",
-              systemImage: isVerified ? "checkmark.seal.fill" : "questionmark.circle")
-            .font(.caption.weight(.medium))
-            .foregroundStyle(isVerified ? Color.green : Color.secondary)
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background((isVerified ? Color.green : Color.secondary).opacity(0.12), in: .capsule)
+        // Only the seal carries the colour; the words stay in the normal label colour on a neutral
+        // capsule, so they read in light and dark mode (green on green didn't).
+        Label {
+            Text(isVerified ? "Works in Browsa" : "Not tested in Browsa yet")
+                .foregroundStyle(isVerified ? Color.primary : Color.secondary)
+        } icon: {
+            Image(systemName: isVerified ? "checkmark.seal.fill" : "questionmark.circle")
+                .foregroundStyle(isVerified ? Color.green : Color.secondary)
+        }
+        .font(.caption.weight(.medium))
+        .padding(.horizontal, 9).padding(.vertical, 4)
+        .background(.quaternary, in: .capsule)
     }
 }
 
