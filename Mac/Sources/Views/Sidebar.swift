@@ -71,15 +71,16 @@ struct Sidebar: View {
                 Button("Archived Tabs…", systemImage: "archivebox") { browser.isArchivePresented = true }
                 SettingsLink { Label("Settings…", systemImage: "gearshape") }
             } label: {
-                Image(systemName: "plus")
-                    .frame(width: 26, height: 26)
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 13, weight: .medium))
+                    .frame(width: 28, height: 26)
                     .contentShape(.rect)
             }
             .menuStyle(.button)
             .menuIndicator(.hidden)
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help("New Space and more")
+            .help("Spaces and more")
         }
         .frame(height: 30)
     }
@@ -321,6 +322,7 @@ private struct ExtensionIconImage: View {
 /// pill, or when the extension has something for this page (shown with a dot).
 private struct PinnedExtensionIcon: View {
     @Environment(Browser.self) private var browser
+    @Environment(\.openSettings) private var openSettings
     let ext: EngineExtension
     let pillHovered: Bool
     @State private var anchor = PopupAnchor()
@@ -343,20 +345,25 @@ private struct PinnedExtensionIcon: View {
             .onTapGesture { browser.runExtension(ext, anchor: anchor.view) }
             .contextMenu {
                 Button("Unpin") { browser.library.setPinned(ext, false) }
-                Button("Manage Extensions…") { browser.library.showExtensionSettings() }
+                Button("Manage Extensions…") {
+                    Preferences.settingsTab = "extensions"
+                    openSettings()
+                }
             }
             .help(state?.badgeText.isEmpty == false ? "\(ext.name): \(state!.badgeText)" : ext.name)
             .animation(Motion.snappy, value: pillHovered)
     }
 }
 
-/// Every extension with a toolbar button: run it, pin or unpin it, or manage extensions.
+/// Every extension with a toolbar button, in a popover: click a row to run it, click its pin to keep it
+/// in the address pill, or manage extensions.
 private struct ExtensionsMenu: View {
     @Environment(Browser.self) private var browser
     @State private var anchor = PopupAnchor()
+    @State private var isPresented = false
 
     var body: some View {
-        Button(action: showMenu) {
+        Button { isPresented.toggle() } label: {
             Image(systemName: "puzzlepiece.extension")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
@@ -366,37 +373,110 @@ private struct ExtensionsMenu: View {
         .buttonStyle(.plain)
         .background(AnchorView(anchor: anchor))
         .help("Extensions")
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+            ExtensionsList(anchor: anchor) { isPresented = false }
+                .environment(browser)
+        }
     }
+}
 
-    private func showMenu() {
-        guard let view = anchor.view else { return }
+private struct ExtensionsList: View {
+    @Environment(Browser.self) private var browser
+    @Environment(\.openSettings) private var openSettings
+    let anchor: PopupAnchor
+    let dismiss: () -> Void
+
+    var body: some View {
         let library = browser.library
-        let actions = MenuActions()
-        let menu = NSMenu()
-        let exts = library.actionExtensions
-        if !exts.isEmpty { menu.addItem(.sectionHeader(title: "Extensions")) }
-        for ext in exts {
-            let item = actions.item(ext.name) { browser.runExtension(ext, anchor: view) }
-            item.image = extensionImage(ext, nil)
-            if library.isPinned(ext) { item.badge = NSMenuItemBadge(string: "Pinned") }
-            menu.addItem(item)
-        }
-        if !exts.isEmpty {
-            menu.addItem(.separator())
-            let pins = NSMenuItem(title: "Pin to Address Bar", action: nil, keyEquivalent: "")
-            let pinMenu = NSMenu()
-            for ext in exts {
-                let item = actions.item(ext.name) { library.setPinned(ext, !library.isPinned(ext)) }
-                item.state = library.isPinned(ext) ? .on : .off
-                item.image = extensionImage(ext, nil)
-                pinMenu.addItem(item)
+        VStack(alignment: .leading, spacing: 2) {
+            if library.actionExtensions.isEmpty {
+                Text("No extensions with a toolbar button yet.")
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
             }
-            pins.submenu = pinMenu
-            menu.addItem(pins)
+            ForEach(library.actionExtensions, id: \.id) { ext in
+                ExtensionRow(ext: ext, pinned: library.isPinned(ext)) {
+                    dismiss()
+                    // Let the popover close first, so the extension's own popup opens at the pill.
+                    DispatchQueue.main.async { browser.runExtension(ext, anchor: anchor.view) }
+                } togglePin: {
+                    withAnimation(Motion.snappy) { library.setPinned(ext, !library.isPinned(ext)) }
+                }
+            }
+            Divider().padding(.vertical, 4)
+            ExtensionFooterButton(title: "Manage Extensions…", symbol: "gearshape") {
+                dismiss()
+                Preferences.settingsTab = "extensions"
+                openSettings()
+            }
         }
-        menu.addItem(actions.item("Manage Extensions…") { library.showExtensionSettings() })
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.isFlipped ? view.bounds.maxY + 6 : -6), in: view)
-        withExtendedLifetime(actions) {}
+        .padding(6)
+        .frame(width: 260)
+    }
+}
+
+private struct ExtensionRow: View {
+    let ext: EngineExtension
+    let pinned: Bool
+    let run: () -> Void
+    let togglePin: () -> Void
+    @State private var hovering = false
+    @State private var pinHovering = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ExtensionIconImage(ext: ext, state: nil)
+            Text(ext.name).lineLimit(1)
+            Spacer(minLength: 4)
+            Button(action: togglePin) {
+                Image(systemName: pinned ? "pin.fill" : "pin")
+                    .font(.system(size: 12, weight: .medium))
+                    .rotationEffect(.degrees(45))
+                    .frame(width: 24, height: 24)
+                    .background(pinHovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear), in: .circle)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(pinned ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+            .opacity(pinned || hovering ? 1 : 0)
+            .onHover { pinHovering = $0 }
+            .help(pinned ? "Unpin from Address Bar" : "Pin to Address Bar")
+            .accessibilityLabel(pinned ? "Unpin \(ext.name)" : "Pin \(ext.name)")
+        }
+        .padding(.leading, 8)
+        .padding(.trailing, 4)
+        .frame(height: 32)
+        .background(hovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 7, style: .continuous))
+        .contentShape(.rect)
+        .onTapGesture(perform: run)
+        .onHover { hovering = $0 }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+private struct ExtensionFooterButton: View {
+    let title: String
+    let symbol: String
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: symbol).frame(width: 16)
+                Text(title)
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 30)
+            .background(hovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear), in: .rect(cornerRadius: 7, style: .continuous))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .onHover { hovering = $0 }
     }
 }
 
@@ -440,15 +520,17 @@ struct FavoriteTile: View {
     let favorite: Favorite
     @State private var hovering = false
 
+    /// Showing its own tab (even after the site redirected elsewhere), or a tab on the same address.
     private var isCurrent: Bool {
-        browser.currentTab?.url.map(URLNormalizer.key(for:)) == URLNormalizer.key(for: favorite.url)
+        guard let tab = browser.currentTab else { return false }
+        return tab.favoriteID == favorite.id || tab.url.map(URLNormalizer.key(for:)) == URLNormalizer.key(for: favorite.url)
     }
 
     var body: some View {
-        FaviconView(url: favorite.url, size: 20, chip: true, letter: favorite.customName ?? favorite.title)
-            .frame(maxWidth: .infinity, minHeight: 42)
+        FaviconView(url: favorite.url, size: 26, chip: true, letter: favorite.customName ?? favorite.title)
+            .frame(maxWidth: .infinity, minHeight: 50)
             .background(isCurrent ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(hovering ? 0.09 : 0.05)),
-                        in: .rect(cornerRadius: 10, style: .continuous))
+                        in: .rect(cornerRadius: 12, style: .continuous))
             .shadow(color: .black.opacity(isCurrent ? 0.08 : 0), radius: 2, y: 1)
             .contentShape(.rect)
             .onTapGesture { browser.open(favorite) }

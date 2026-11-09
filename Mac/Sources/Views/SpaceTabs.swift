@@ -13,24 +13,32 @@ struct SpaceTabs: View {
         let forward = browser.lastSpaceSwitch?.forward ?? true
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 2) {
-                SpaceHeader(space: space)
-                    .padding(.bottom, 4)
-                    // Dropping a tab on the space's name pins it.
-                    .dropDestination(for: String.self) { items, _ in return drop(items, before: nil, pinned: true) }
+                // Spaces are named by their icon in the switcher below, so only a private space gets a
+                // header, for its Close All. Otherwise a slim strip at the top takes drops to pin.
+                if space.isPrivate {
+                    SpaceHeader(space: space)
+                        .padding(.bottom, 4)
+                        .dropDestination(for: String.self) { items, _ in return drop(items, before: nil, pinned: true) }
+                } else {
+                    Color.clear.frame(height: 6)
+                        .contentShape(.rect)
+                        .dropDestination(for: String.self) { items, _ in return drop(items, before: nil, pinned: true) }
+                }
 
                 ForEach(Array(space.pinned.enumerated()), id: \.element.id) { i, tab in
                     TabRow(tab: tab, selected: tab.id == browser.selectedTabID(in: space))
                         .spaceCascade(index: i, spaceSwitch: browser.lastSpaceSwitch)
                 }
 
-                if !space.isPrivate {
-                    TodayDivider(space: space)
-                        .dropDestination(for: String.self) { items, _ in return drop(items, before: space.today.first, pinned: false) }
+                // A little air between pinned and Today, rather than a rule.
+                if !space.pinned.isEmpty {
+                    Color.clear.frame(height: 8)
                 }
 
-                NewTabRow()
+                NewTabRow(space: space)
+                    .dropDestination(for: String.self) { items, _ in return drop(items, before: space.listedToday.first, pinned: false) }
 
-                ForEach(Array(space.today.enumerated()), id: \.element.id) { i, tab in
+                ForEach(Array(space.listedToday.enumerated()), id: \.element.id) { i, tab in
                     TabRow(tab: tab, selected: tab.id == browser.selectedTabID(in: space))
                         .spaceCascade(index: i + space.pinned.count + 1, spaceSwitch: browser.lastSpaceSwitch)
                 }
@@ -81,36 +89,16 @@ private struct SpaceHeader: View {
     }
 }
 
-/// The line between pinned and today, with Arc's "Clear" on hover.
-private struct TodayDivider: View {
+/// New Tab, with Clear on hover: closes this space's Today tabs except the one you're on.
+private struct NewTabRow: View {
     @Environment(Browser.self) private var browser
     let space: Space
     @State private var hovering = false
+    @State private var clearHovering = false
 
-    var body: some View {
-        HStack(spacing: 8) {
-            Rectangle().fill(.primary.opacity(0.1)).frame(height: 1)
-            if hovering, !space.today.isEmpty {
-                Button { withAnimation(Motion.spring) { browser.clearToday() } } label: {
-                    Label("Clear", systemImage: "arrow.down").labelStyle(.titleAndIcon)
-                }
-                .buttonStyle(.plain)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .transition(.opacity)
-                .help("Close every Today tab in this space")
-            }
-        }
-        .frame(height: 22)
-        .padding(.horizontal, 8)
-        .contentShape(.rect)
-        .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
+    private var canClear: Bool {
+        space.listedToday.contains { $0.id != browser.currentTab?.id }
     }
-}
-
-private struct NewTabRow: View {
-    @Environment(Browser.self) private var browser
-    @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -119,19 +107,31 @@ private struct NewTabRow: View {
                 .frame(width: 16, height: 16)
             Text("New Tab")
             Spacer()
+            if hovering, canClear, !space.isPrivate {
+                Button { withAnimation(Motion.spring) { browser.clearToday() } } label: {
+                    Text("Clear")
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.horizontal, 8)
+                        .frame(height: 22)
+                        .background(.primary.opacity(clearHovering ? 0.12 : 0.07), in: .capsule)
+                        .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .onHover { clearHovering = $0 }
+                .help("Close the other Today tabs in this space")
+                .transition(.opacity)
+            }
         }
         .font(.system(size: 13))
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 8)
-        .frame(height: 32)
+        .padding(.leading, 8)
+        .padding(.trailing, 6)
+        .frame(height: 34)
         .background(.primary.opacity(hovering ? 0.06 : 0), in: .rect(cornerRadius: 8, style: .continuous))
         .contentShape(.rect)
         .onTapGesture { browser.showCommandBar(.newTab) }
-        .onHover { hovering = $0 }
+        .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
         .help("New Tab (⌘T)")
-        .contextMenu {
-            Button("New Private Tab", systemImage: "eye.slash") { browser.run(command: "private") }
-        }
     }
 }
 
@@ -243,13 +243,15 @@ struct TabMenu: View {
 
 // MARK: - Downloads
 
+/// The sidebar's downloads button: a ring while files download. Opens Downloads in the right panel.
 struct DownloadsButton: View {
     @Environment(Browser.self) private var browser
+    @State private var hovering = false
 
     var body: some View {
-        @Bindable var browser = browser
         let running = browser.downloads.filter { $0.status == .running }
-        Button { browser.isDownloadsPresented.toggle() } label: {
+        let showing = browser.panel == "downloads"
+        Button { browser.showPanel("downloads", toggles: true) } label: {
             ZStack {
                 if !running.isEmpty {
                     Circle().stroke(.quaternary, lineWidth: 2)
@@ -261,48 +263,93 @@ struct DownloadsButton: View {
                     .font(.system(size: 11, weight: .semibold))
             }
             .frame(width: 20, height: 20)
-            .frame(width: 26, height: 26)
+            .frame(width: 28, height: 26)
+            .background(showing || hovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear),
+                        in: .rect(cornerRadius: 6, style: .continuous))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .opacity(browser.downloads.isEmpty ? 0.5 : 1)
-        .help("Downloads (⌥⌘J)")
-        .popover(isPresented: $browser.isDownloadsPresented, arrowEdge: .top) {
-            DownloadsList()
-                .environment(browser)
-        }
+        .foregroundStyle(showing ? .primary : .secondary)
+        .opacity(browser.downloads.isEmpty && !showing ? 0.5 : 1)
+        .onHover { hovering = $0 }
+        .help(showing ? "Hide Downloads (⌥⌘J)" : "Downloads (⌥⌘J)")
     }
 }
 
-struct DownloadsList: View {
+/// Downloads, as a panel tool beside the page: newest first, full height, with Finder actions.
+struct DownloadsPanel: View {
     @Environment(Browser.self) private var browser
+    @State private var selection: UUID?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Downloads").font(.headline)
-                Spacer()
-                Button("Clear") { browser.library.downloads.removeAll { $0.status != .running } }
-                    .disabled(!browser.downloads.contains { $0.status != .running })
-            }
-            .padding(12)
-            Divider()
-            if browser.downloads.isEmpty {
-                Text("Files you download appear here.")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(24)
+        let downloads = browser.downloads
+        VStack(spacing: 0) {
+            if downloads.isEmpty {
+                ContentUnavailableView("No Downloads", systemImage: "arrow.down.circle",
+                                       description: Text("Files you download appear here."))
             } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(browser.downloads) { DownloadRow(item: $0) }
+                List(selection: $selection) {
+                    ForEach(downloads.reversed()) { item in
+                        DownloadRow(item: item).tag(item.id)
                     }
                 }
-                .frame(maxHeight: 320)
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .onDeleteCommand { remove(selection) }
+                .contextMenu(forSelectionType: UUID.self) { ids in
+                    if let id = ids.first, let item = downloads.first(where: { $0.id == id }) { menu(for: item) }
+                } primaryAction: { ids in
+                    if let id = ids.first, let item = downloads.first(where: { $0.id == id }) { open(item) }
+                }
+            }
+            Divider().opacity(0.5)
+            HStack {
+                Button("Open Downloads Folder", systemImage: "folder") {
+                    if let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+                        NSWorkspace.shared.open(dir)
+                    }
+                }
+                Spacer()
+                Button("Clear") { browser.library.downloads.removeAll { $0.status != .running } }
+                    .disabled(!downloads.contains { $0.status != .running })
+                    .help("Remove finished downloads from the list. The files stay.")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+        }
+    }
+
+    @ViewBuilder private func menu(for item: EngineDownload) -> some View {
+        if item.status == .running {
+            Button("Cancel Download", systemImage: "xmark") { item.cancel() }
+        } else {
+            Button("Open", systemImage: "arrow.up.forward.app") { open(item) }.disabled(item.status != .finished)
+            Button("Show in Finder", systemImage: "folder") {
+                if let url = item.fileURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            }
+            .disabled(item.fileURL == nil || item.status != .finished)
+        }
+        if let source = item.sourceURL {
+            Button("Copy Download Address", systemImage: "link") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(source.absoluteString, forType: .string)
             }
         }
-        .frame(width: 320)
+        if item.status != .running {
+            Divider()
+            Button("Remove from List", systemImage: "minus.circle") { remove(item.id) }
+        }
+    }
+
+    private func open(_ item: EngineDownload) {
+        if let url = item.fileURL, item.status == .finished { NSWorkspace.shared.open(url) }
+    }
+
+    private func remove(_ id: UUID?) {
+        guard let id else { return }
+        browser.library.downloads.removeAll { $0.id == id && $0.status != .running }
     }
 }
 
@@ -313,12 +360,12 @@ private struct DownloadRow: View {
         HStack(spacing: 10) {
             Image(nsImage: item.fileURL.map { NSWorkspace.shared.icon(forFile: $0.path) } ?? NSWorkspace.shared.icon(for: .data))
                 .resizable()
-                .frame(width: 28, height: 28)
+                .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.filename).lineLimit(1).truncationMode(.middle)
+                Text(item.filename).lineLimit(1).truncationMode(.middle).foregroundStyle(.primary)
                 switch item.status {
                 case .running: ProgressView(value: item.progress).controlSize(.small)
-                case .finished: Text("Done").font(.caption).foregroundStyle(.secondary)
+                case .finished: Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 case .cancelled: Text("Cancelled").font(.caption).foregroundStyle(.secondary)
                 case .failed(let why): Text(why).font(.caption).foregroundStyle(.red).lineLimit(1)
                 }
@@ -332,11 +379,14 @@ private struct DownloadRow: View {
                     .buttonStyle(.plain).foregroundStyle(.secondary).help("Show in Finder")
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .contentShape(.rect)
-        .onTapGesture(count: 2) {
-            if let url = item.fileURL, item.status == .finished { NSWorkspace.shared.open(url) }
-        }
+        .padding(.vertical, 4)
+    }
+
+    /// "example.com · 2:14 PM", where the file came from and when.
+    private var detail: String {
+        let time = item.startedAt.formatted(date: .omitted, time: .shortened)
+        guard let host = item.sourceURL?.host() else { return time }
+        let short = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+        return "\(short) · \(time)"
     }
 }

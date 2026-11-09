@@ -19,6 +19,9 @@ struct BrowsaMacApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 1280, height: 820)
+        // Left to itself, SwiftUI answers a link from another app by opening a new window. Claim no
+        // external events here, so links reach the app delegate and open as tabs instead.
+        .handlesExternalEvents(matching: [])
         .commands { BrowserCommands(library: appDelegate.library) }
 
         Settings {
@@ -133,6 +136,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let window = event.window, window.attachedSheet == nil,
               let browser = library.window(for: window) else { return false }
         if flags == .command, key == "=" { browser.zoom(1); return true }
+        // Pages that take ⌘S for themselves (Save in Docs, Notion, Figma…) would otherwise swallow
+        // it before the menu sees it, so the sidebar and panel shortcuts are caught here first.
+        if flags == .command, key == "s", browser.commandBar == nil {
+            withAnimation(Motion.dock) { browser.toggleSidebar() }
+            return true
+        }
+        if flags == [.command, .option], key == "s" || event.keyCode == 1 {
+            browser.togglePanel()
+            return true
+        }
         if flags == .command, key == "w" {
             if browser.commandBar != nil { browser.commandBar = nil; return true }
             if let tab = browser.currentTab {
