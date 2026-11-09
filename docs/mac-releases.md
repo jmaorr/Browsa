@@ -55,20 +55,22 @@ Without the private key, no installed copy will accept another update, so keep a
 
 and store that file in 1Password, then delete it.
 
-## Where updates are served (proposal)
+## Publishing
 
-The app looks for `https://browsa.app/mac/appcast.xml` and the appcast points downloads at
-`https://browsa.app/mac/releases/<file>`. Nothing is published there yet. The proposal:
+```sh
+tools/publish-mac.sh 1.0.1
+```
 
-- **appcast.xml** as a static asset in `website/public/mac/appcast.xml`, committed with each
-  release and deployed with the site, with `Cache-Control: no-cache` in `_headers` so new
-  releases show up straight away. It is small and its history in git is useful.
-- **Zips, deltas and DMGs** in an R2 bucket (say `browsa-releases`) bound to the website Worker,
-  which serves `/mac/releases/*` from it. They don't belong in git, and Workers static assets
-  would need every past one in each deploy.
-- **The Download button** points at `https://browsa.app/mac/releases/Browsa.dmg`
-  (`DOWNLOADS.mac` in `website/src/index.js`), so new downloads always get the newest build,
-  and `/download/mac` redirects there.
+uploads the release to the `browsa-releases` R2 bucket, under `mac/`. The website Worker
+(`website/src/index.js`, binding `RELEASES`) serves it:
 
-Order matters when publishing: upload the zip, deltas and DMGs first, then deploy the appcast, so
-the appcast never points at a file that isn't there.
+- `https://browsa.app/mac/appcast.xml`: the Sparkle feed, revalidated on every request.
+- `https://browsa.app/mac/releases/<file>`: zips, deltas and DMGs. Versioned files are cached
+  for a year, since they never change.
+- `https://browsa.app/mac/releases/Browsa.dmg`: always the newest build, cached for an hour.
+  Every Mac Download button on the site, and `/download/mac`, point here once it exists. Until
+  the first release is published the buttons keep their "coming soon" state.
+
+The script uploads the zip, deltas and DMGs first and the appcast last, so the appcast never
+points at a file that isn't there. Publishing doesn't need a site deploy. Files stay in the
+bucket, so an older version can still be downloaded by its versioned name.

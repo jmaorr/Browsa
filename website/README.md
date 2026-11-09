@@ -28,6 +28,11 @@ is `null`, the pages show their coming-soon state (the static HTML). Set a URL a
 points every `data-download` button there with its live label, and removes the `data-soon` notes.
 `/download/mac` and `/download/ios` always redirect to the current link.
 
+The Mac link is automatic: once `tools/publish-mac.sh` has put `Browsa.dmg` in the
+`browsa-releases` R2 bucket, the buttons point at `/mac/releases/Browsa.dmg`, the newest build.
+The Worker also serves the Sparkle appcast (`/mac/appcast.xml`) and every release file from that
+bucket. See `docs/mac-releases.md`.
+
 `scripts/build-clips.sh` rebuilds the clips and stills in `public/media` from raw simulator captures.
 
 When the app's network behaviour changes, update `public/privacy/index.html` and its date.
