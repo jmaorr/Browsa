@@ -249,7 +249,10 @@ enum SpikeHarness {
             WelcomeDebug.shared.focus = (j["stop"] as? String).flatMap(WelcomeStop.init(rawValue:))
         case "welcomeSpaceKey":
             // {"n":2}: ⌃2 as the Spaces card's shortcut monitor would receive it.
-            WelcomeDebug.shared.spaceKey = ((j["n"] as? Int ?? 1) - 1, UUID())
+            WelcomeInput.shared.send(.space((j["n"] as? Int ?? 1) - 1))
+        case "welcomeShortcut":
+            // {"key":"t"} or {"key":"k"}: ⌘T / ⌘K as the welcome page catches them.
+            WelcomeInput.shared.send(.shortcut(j["key"] as? String == "k" ? .commands : .newTab))
         case "welcomeComplete":
             if let s = (j["stop"] as? String).flatMap(WelcomeStop.init(rawValue:)) { WelcomeProgress.shared.complete(s) }
         case "welcome":

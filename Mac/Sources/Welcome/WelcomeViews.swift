@@ -247,8 +247,15 @@ enum WelcomeLevel: Int, CaseIterable {
 @MainActor @Observable final class WelcomeDebug {
     static let shared = WelcomeDebug()
     var focus: WelcomeStop?
-    /// A space shortcut as the card's key monitor would see it (posted keys skip local monitors).
-    var spaceKey: (index: Int, id: UUID)?
+}
+
+/// The shortcuts the welcome page catches while onboarding is under way, handed to the cards so
+/// they play on the card's own UI instead of switching spaces or opening a tab.
+@MainActor @Observable final class WelcomeInput {
+    static let shared = WelcomeInput()
+    enum Event { case space(Int), spaceStep(Int), shortcut(CommandBarMode) }
+    private(set) var last: (event: Event, id: UUID)?
+    func send(_ event: Event) { last = (event, UUID()) }
 }
 
 /// The welcome tab's page: a title near the middle of the first screen, the level bar and the
@@ -257,6 +264,10 @@ enum WelcomeLevel: Int, CaseIterable {
 struct WelcomePage: View {
     @Environment(Browser.self) private var browser
     @State private var progress = WelcomeProgress.shared
+    @State private var keyMonitor: Any?
+
+    /// Until every stop is done, the page keeps the shortcuts it teaches to itself.
+    private var onboarding: Bool { progress.done.count < WelcomeStop.allCases.count }
     private var shown: Bool { browser.intro == nil || browser.intro == .cards }
 
     var body: some View {
@@ -299,6 +310,38 @@ struct WelcomePage: View {
         .onChange(of: browser.commandBar) { _, mode in
             if mode == .newTab { complete(.newTab) }
             if mode == .commands { complete(.commands) }
+        }
+        .onAppear(perform: catchShortcuts)
+        .onDisappear {
+            if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+            keyMonitor = nil
+        }
+    }
+
+    /// While onboarding, ⌃1–9, ⌥⌘← →, ⌘T and ⌘K play on the cards instead of leaving the page,
+    /// so people can try them freely. Once every stop is done they go back to normal.
+    private func catchShortcuts() {
+        guard keyMonitor == nil else { return }
+        let input = WelcomeInput.shared
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard onboarding, browser.commandBar == nil, event.window === browser.nsWindow else { return event }
+            let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
+            let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+            if mods == .control, let n = Int(key), (1...9).contains(n) {
+                if n <= 3 { input.send(.space(n - 1)) }
+                return nil
+            }
+            if mods == [.command, .option], event.keyCode == 123 || event.keyCode == 124 {
+                input.send(.spaceStep(event.keyCode == 124 ? 1 : -1))
+                return nil
+            }
+            if mods == .command, key == "t" || key == "k" {
+                let mode: CommandBarMode = key == "t" ? .newTab : .commands
+                input.send(.shortcut(mode))
+                complete(mode == .newTab ? .newTab : .commands)
+                return nil
+            }
+            return event
         }
     }
 
@@ -422,6 +465,7 @@ private struct GalleryCard: View {
     let complete: () -> Void
     @Environment(\.colorScheme) private var scheme
     @State private var debug = WelcomeDebug.shared
+    @State private var input = WelcomeInput.shared
 
     @State private var hovering = false
     @State private var played = false
@@ -431,8 +475,8 @@ private struct GalleryCard: View {
     @State private var stopTask: Task<Void, Never>?
 
     // Spaces: the person drives the hero by swiping on the card or with ⌃1–3 / ⌥⌘← →.
-    @State private var spacePos: Double?
-    @State private var visited: Set<Int> = []
+    @State private var spacePos = 0.0
+    @State private var visited: Set<Int> = [0]
     @State private var monitors: [Any] = []
     @State private var swipeTravel = 0.0
     @State private var swipeLatched = false
@@ -450,7 +494,7 @@ private struct GalleryCard: View {
                 }
             } else {
                 HStack(spacing: 0) {
-                    text.frame(width: 300, alignment: .leading)
+                    text.frame(width: 330, alignment: .leading)
                     hero.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(height: height)
@@ -466,23 +510,39 @@ private struct GalleryCard: View {
         .animation(.smooth(duration: 0.3), value: hovering)
         .onHover { h in
             hovering = h
-            if stop != .spaces || spacePos == nil { setPlaying(h && active) }
+            if stop != .spaces { setPlaying(h && active) }
         }
         .onScrollVisibilityChange(threshold: 0.4) { v in
             visible = v
             playFirstLoop()
         }
         .onChange(of: active) { _, on in if on { playFirstLoop() } }
-        .onAppear { if stop == .spaces, !done { listen() } }
+        .onAppear { if stop == .spaces { listen() } }
         .onDisappear { stopListening() }
-        .onChange(of: debug.spaceKey?.id) { if let k = debug.spaceKey, stop == .spaces, !done { go(to: k.index) } }
-        .onChange(of: done) { _, now in if now { stopListening() } else if stop == .spaces { listen() } }
+        .onChange(of: input.last?.id) { if let e = input.last?.event { handle(e) } }
     }
 
     // MARK: Spaces: real gestures and shortcuts drive the hero
 
-    /// Until Spaces is learned, the welcome page catches the space gestures and shortcuts and
-    /// plays them on the card's own window, so learning never whisks you away from the page.
+    /// The page's caught shortcuts, played on this card. Still works after the card is done.
+    private func handle(_ event: WelcomeInput.Event) {
+        switch (stop, event) {
+        case (.spaces, .space(let i)): go(to: i)
+        case (.spaces, .spaceStep(let d)): step(d)
+        case (.newTab, .shortcut(.newTab)), (.commands, .shortcut(.commands)): pressPlay()
+        default: break
+        }
+    }
+
+    /// Plays the shortcut hero from the key press, once.
+    private func pressPlay() {
+        stopTask?.cancel()
+        playStart = .now.addingTimeInterval(-0.1 * stop.loop)
+        playing = true
+        setPlaying(false)
+    }
+
+    /// Two-finger sideways swipes over the Spaces card play on its own window, during onboarding and after.
     private func listen() {
         guard monitors.isEmpty else { return }
         if let swipe = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel, handler: { event in
@@ -502,18 +562,6 @@ private struct GalleryCard: View {
             }
             return nil
         }) { monitors.append(swipe) }
-        if let keys = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { event in
-            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if mods == .control, let n = Int(event.charactersIgnoringModifiers ?? ""), (1...3).contains(n) {
-                go(to: n - 1)
-                return nil
-            }
-            if mods.contains([.command, .option]), event.keyCode == 123 || event.keyCode == 124 {
-                step(event.keyCode == 124 ? 1 : -1)
-                return nil
-            }
-            return event
-        }) { monitors.append(keys) }
     }
 
     private func stopListening() {
@@ -522,32 +570,25 @@ private struct GalleryCard: View {
         swipeTravel = 0
     }
 
-    private var currentSpace: Int { ((Int((spacePos ?? 0).rounded()) % 3) + 3) % 3 }
+    private var currentSpace: Int { ((Int(spacePos.rounded()) % 3) + 3) % 3 }
 
     private func step(_ delta: Int) {
-        stopTask?.cancel()
-        playing = false
-        let from = spacePos ?? 0
-        withAnimation(.smooth(duration: 0.55)) { spacePos = from.rounded() + Double(delta) }
+        withAnimation(.smooth(duration: 0.55)) { spacePos = spacePos.rounded() + Double(delta) }
         arrived()
     }
 
     private func go(to index: Int) {
-        let from = spacePos ?? 0
         var delta = index - currentSpace
         if delta > 1 { delta -= 3 }
         if delta < -1 { delta += 3 }
-        guard delta != 0 else { arrived(); return }
-        stopTask?.cancel()
-        playing = false
-        withAnimation(.smooth(duration: 0.55)) { spacePos = from.rounded() + Double(delta) }
+        guard delta != 0 else { return }
+        withAnimation(.smooth(duration: 0.55)) { spacePos = spacePos.rounded() + Double(delta) }
         arrived()
     }
 
     private func arrived() {
-        visited.insert(0)
         visited.insert(currentSpace)
-        if visited.count == 3 {
+        if visited.count == 3, !done {
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(500))
                 complete()
@@ -585,7 +626,7 @@ private struct GalleryCard: View {
         // An overlay on a clear view, so the hero's own size never widens the card.
         Color.clear
             .overlay {
-                StopHero(stop: stop, playing: playing && spacePos == nil, start: playStart, spacePos: spacePos)
+                StopHero(stop: stop, playing: playing && stop != .spaces, start: playStart, spacePos: stop == .spaces ? spacePos : nil)
                     .environment(\.colorScheme, scheme)
             }
             .clipped()
@@ -617,7 +658,7 @@ private struct GalleryCard: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
             if stop == .spaces {
-                SpacesInstruction(visited: visited, current: currentSpace, done: done)
+                SpacesInstruction(done: done)
             }
         }
         .foregroundStyle(.primary)
@@ -677,19 +718,18 @@ private struct DoneTile: View {
     }
 }
 
-/// The instruction for Spaces: a small, clean card with a trackpad showing the swipe, and the
-/// keyboard way for people with a mouse. Three dots fill in as each space is visited.
+/// The instruction for Spaces: a small, clean card that says what to try, with the keyboard way
+/// for people with a mouse, and a trackpad showing the swipe.
 private struct SpacesInstruction: View {
-    let visited: Set<Int>
-    let current: Int
     let done: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Trackpad()
-            VStack(alignment: .leading, spacing: 4) {
-                Text(done ? "You've got Spaces" : "Swipe to switch spaces")
-                    .font(.system(size: 13, weight: .semibold))
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 7) {
+                TryBadge(done: done)
+                Text("Swipe to switch spaces")
+                    .font(.system(size: 14, weight: .semibold))
+                    .fixedSize()
                 HStack(spacing: 4) {
                     Text("or press").foregroundStyle(.secondary)
                     KeyCap(text: "⌃1")
@@ -697,23 +737,32 @@ private struct SpacesInstruction: View {
                     KeyCap(text: "⌃3")
                 }
                 .font(.system(size: 11.5))
+                .fixedSize()
             }
             Spacer(minLength: 0)
-            VStack(spacing: 5) {
-                ForEach(0..<3, id: \.self) { i in
-                    Circle()
-                        .fill(visited.contains(i) || done ? Color.green : Color.primary.opacity(0.15))
-                        .frame(width: 6, height: 6)
-                        .overlay(Circle().strokeBorder(Color.primary.opacity(i == current && !done ? 0.5 : 0), lineWidth: 1).padding(-2))
-                }
-            }
-            .animation(.smooth(duration: 0.3), value: visited)
+            Trackpad()
         }
-        .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(.white.opacity(0.94), in: .rect(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.black.opacity(0.06)))
-        .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
+        .padding(16)
+        .frame(maxWidth: .infinity)
+        .background(.white.opacity(0.95), in: .rect(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.black.opacity(0.06)))
+        .shadow(color: .black.opacity(0.08), radius: 12, y: 5)
         .environment(\.colorScheme, .light)
+    }
+}
+
+/// "Try it", or "Done" once learned.
+private struct TryBadge: View {
+    let done: Bool
+    var body: some View {
+        Label(done ? "Done" : "Try it", systemImage: done ? "checkmark" : "hand.tap.fill")
+            .font(.system(size: 10.5, weight: .bold))
+            .labelStyle(.titleAndIcon)
+            .foregroundStyle(done ? Color(red: 0.12, green: 0.55, blue: 0.24) : Color(red: 0.8, green: 0.36, blue: 0.05))
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background((done ? Color.green : Color.orange).opacity(0.14), in: .capsule)
+            .contentTransition(.opacity)
+            .animation(.smooth(duration: 0.3), value: done)
     }
 }
 
@@ -722,7 +771,7 @@ private struct Trackpad: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 30, paused: Motion.reduced)) { context in
             let f = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2.2) / 2.2
-            let x = 10 - 20 * welcomeEase((f - 0.15) / 0.55)
+            let x = 14 - 28 * welcomeEase((f - 0.15) / 0.55)
             let a = f < 0.1 ? f / 0.1 : f > 0.75 ? max(0, 1 - (f - 0.75) / 0.15) : 1
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(LinearGradient(colors: [Color(white: 0.96), Color(white: 0.89)], startPoint: .top, endPoint: .bottom))
@@ -736,7 +785,7 @@ private struct Trackpad: View {
                     .offset(x: x)
                     .opacity(a)
                 }
-                .frame(width: 44, height: 32)
+                .frame(width: 58, height: 42)
         }
     }
 }

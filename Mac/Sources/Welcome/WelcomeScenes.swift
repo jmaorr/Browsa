@@ -151,7 +151,7 @@ extension WelcomeStop {
     var rest: Double {
         switch self {
         case .spaces: 1.0
-        case .newTab, .commands: 0.8 * 4.2
+        case .newTab, .commands: 0
         case .importing: 0.9 * 6
         case .tour: 3.2
         case .library: 0.85 * 5
@@ -280,6 +280,50 @@ struct MiniWindow<Sidebar: View, Page: View>: View {
 }
 
 /// Grey lines standing in for a page's text.
+/// A web page in miniature: an address bar, a banner in the space's colour, a heading, a few lines
+/// and two cards. Each space's page is laid out a little differently.
+struct MiniPage: View {
+    let accent: Color
+    var seed = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 5) {
+                Circle().fill(accent.opacity(0.8)).frame(width: 7, height: 7)
+                Capsule().fill(.primary.opacity(0.07)).frame(width: 70, height: 7)
+                Spacer()
+                Capsule().fill(.primary.opacity(0.07)).frame(width: 22, height: 7)
+            }
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(LinearGradient(colors: [accent.opacity(0.55), accent.opacity(0.18)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(height: seed == 1 ? 30 : 40)
+                .overlay(alignment: .bottomLeading) {
+                    RoundedRectangle(cornerRadius: 2).fill(.white.opacity(0.85)).frame(width: 54, height: 6).padding(7)
+                }
+            RoundedRectangle(cornerRadius: 2).fill(.primary.opacity(0.22)).frame(width: [92, 70, 84][seed % 3], height: 6)
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach([0.95, 0.8, 0.88], id: \.self) { w in
+                    GeometryReader { g in RoundedRectangle(cornerRadius: 2).fill(.primary.opacity(0.08)).frame(width: g.size.width * w, height: 4) }
+                        .frame(height: 4)
+                }
+            }
+            HStack(spacing: 6) {
+                ForEach(0..<2, id: \.self) { i in
+                    VStack(alignment: .leading, spacing: 4) {
+                        RoundedRectangle(cornerRadius: 3).fill(accent.opacity(i == 0 ? 0.3 : 0.16)).frame(height: 18)
+                        RoundedRectangle(cornerRadius: 2).fill(.primary.opacity(0.14)).frame(width: 34, height: 4)
+                        RoundedRectangle(cornerRadius: 2).fill(.primary.opacity(0.07)).frame(width: 46, height: 3)
+                    }
+                    .padding(5)
+                    .background(.primary.opacity(0.035), in: .rect(cornerRadius: 5, style: .continuous))
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(9)
+    }
+}
+
 struct PageLines: View {
     var widths: [CGFloat] = [0.9, 0.75, 0.82, 0.6, 0.7]
     var body: some View {
@@ -533,11 +577,13 @@ private struct SpacesHero: View, @MainActor Animatable {
             .frame(maxWidth: .infinity)
             .padding(.top, 4)
         } page: {
-            PageLines(widths: [0.9, 0.7, 0.85, 0.6, 0.75, 0.5, 0.8])
+            MiniPage(accent: showing == 0 ? Self.spaces[0].color : showing == 1 ? Self.spaces[1].color : Self.spaces[2].color, seed: showing)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(width: 330)
+        .frame(maxHeight: .infinity)
         .padding(.vertical, 24)
         .padding(.trailing, 24)
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
     private func list(_ s: Space) -> some View {
