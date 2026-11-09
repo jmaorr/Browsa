@@ -142,6 +142,7 @@ struct MarginPanel: View {
             for id in new.ids.subtracting(old.ids) { ui.justResolved[id] = Date() }
         }
         .task(id: ui.picking.contains(browser.id)) { await pickLoop() }
+        .task(id: "\(isShowing)|\(url?.absoluteString ?? "")") { await pinClickLoop() }
         .onChange(of: isShowing) { _, showing in
             if !showing { ui.picking.remove(browser.id) }
         }
@@ -184,6 +185,7 @@ struct MarginPanel: View {
             PanelEmptyState(title: scope == .page ? "No Notes Here" : "No Notes on This Site", symbol: "text.bubble",
                             message: "Highlight text or pick something on the page with the comment tool, or right-click it and choose Add Note. Connected agents see your notes and reply here.")
         } else {
+            ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
                     if scope == .page {
@@ -206,6 +208,12 @@ struct MarginPanel: View {
                 Color.clear.contentShape(.rect)
                     .onTapGesture { withAnimation(Motion.snappy) { selected = nil } }
             }
+            // A note picked from its pin on the page scrolls into view here.
+            .onChange(of: selected) { _, id in
+                guard let id else { return }
+                withAnimation(Motion.snappy) { proxy.scrollTo(id, anchor: .center) }
+            }
+            }
         }
     }
 
@@ -217,6 +225,7 @@ struct MarginPanel: View {
             if selected == note.id, let number { reveal(number) }
         }
         .transition(.opacity.combined(with: .move(edge: .top)))
+        .id(note.id)
     }
 
     private struct Group { let page: String; let title: String; let url: URL?; let notes: [MarginNote] }
@@ -277,6 +286,20 @@ struct MarginPanel: View {
         guard let page = browser.currentController?.page else { return }
         _ = try? await page.evaluate(MarginMarks.script + NotePicker.script + "\nwindow.__browsaPickOff(); return window.__browsaMarks([]);",
                                      inWorld: "browsa.margin")
+    }
+
+    /// Clicking a pin on the page picks its note here, which opens its reply.
+    private func pinClickLoop() async {
+        guard isShowing, let page = browser.currentController?.page else { return }
+        while !Task.isCancelled, isShowing {
+            try? await Task.sleep(for: .milliseconds(200))
+            let raw = try? await page.evaluate(
+                "const r = document.documentElement; const n = r.dataset.browsaPinClicked; delete r.dataset.browsaPinClicked; return n || null;",
+                inWorld: "browsa.margin")
+            guard let n = (raw as? String).flatMap(Int.init), pinned.indices.contains(n - 1) else { continue }
+            let id = pinned[n - 1].id
+            withAnimation(Motion.snappy) { selected = id }
+        }
     }
 
     private func reveal(_ n: Int) {
@@ -836,7 +859,7 @@ enum MarginMarks {
           st.textContent = `
             ::highlight(browsa-note) { background-color: rgba(250, 204, 21, .32); }
             ::highlight(browsa-note-selected) { background-color: rgba(250, 204, 21, .62); }
-            .__browsa-pin { position: absolute; z-index: 2147483646; pointer-events: none; width: 20px; height: 20px;
+            .__browsa-pin { position: absolute; z-index: 2147483646; pointer-events: auto; cursor: pointer; width: 20px; height: 20px;
               border-radius: 10px 10px 10px 2px; background: #f5b60b; color: #1d1600; font: 600 11px/20px -apple-system, system-ui;
               text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.25); transform: translate(-4px, -22px); transition: transform .15s; }
             .__browsa-pin.sel { transform: translate(-4px, -22px) scale(1.18); box-shadow: 0 0 0 3px rgba(245,182,11,.35), 0 1px 3px rgba(0,0,0,.25); }
@@ -877,6 +900,14 @@ enum MarginMarks {
           const p = document.createElement('div');
           p.className = '__browsa-pin' + (m.selected ? ' sel' : '');
           p.dataset.n = m.n; p.textContent = m.n;
+          if (typeof m.n === 'number') {
+            p.title = 'Show note ' + m.n;
+            p.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+            p.addEventListener('click', (e) => {
+              e.preventDefault(); e.stopPropagation();
+              document.documentElement.dataset.browsaPinClicked = String(m.n);
+            }, true);
+          }
           Object.assign(p.style, { left: (rect.left + scrollX) + 'px', top: (rect.top + scrollY) + 'px' });
           document.body.appendChild(p);
         }
