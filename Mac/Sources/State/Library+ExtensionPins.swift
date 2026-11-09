@@ -37,9 +37,4 @@ extension Library {
 
     func extensionActionsDidChange() { extensionActionsRevision += 1 }
 
-    /// Browsa > Settings, on the Extensions tab.
-    func showExtensionSettings() {
-        Preferences.settingsTab = "extensions"
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-    }
 }
