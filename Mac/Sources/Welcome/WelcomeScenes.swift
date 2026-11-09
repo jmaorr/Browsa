@@ -280,7 +280,7 @@ struct MiniWindow<Sidebar: View, Page: View>: View {
 }
 
 /// Grey lines standing in for a page's text.
-/// A web page in miniature: an address bar, a banner in the space's colour, a heading, a few lines
+/// A web page in miniature: a banner in the space's colour, a heading, a few lines
 /// and two cards. Each space's page is laid out a little differently.
 struct MiniPage: View {
     let accent: Color
@@ -288,12 +288,6 @@ struct MiniPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 5) {
-                Circle().fill(accent.opacity(0.8)).frame(width: 7, height: 7)
-                Capsule().fill(.primary.opacity(0.07)).frame(width: 70, height: 7)
-                Spacer()
-                Capsule().fill(.primary.opacity(0.07)).frame(width: 22, height: 7)
-            }
             RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .fill(LinearGradient(colors: [accent.opacity(0.55), accent.opacity(0.18)], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .frame(height: seed == 1 ? 30 : 40)

@@ -214,3 +214,23 @@ float3 metal(float2 position, float2 size, float time, float3 base, float green)
 [[ stitchable ]] half4 twinMetal(float2 position, half4 color, float2 size, float time, float3 base, float green) {
     return half4(half3(orb::metal(position, size, time, base, green)), 1.0h);
 }
+
+/// A soft green pulse rolling out across the page from `origin` when a stop is ticked off.
+/// `progress` runs 0 to 1. Premultiplied, so it lays over the page.
+[[ stitchable ]] half4 welcomePulse(float2 position, half4 color, float2 size, float2 origin, float progress) {
+    float2 d2 = position - origin;
+    float d = length(d2);
+    float reach = length(size) * 1.05;
+    float e = 1.0 - pow(1.0 - progress, 2.2);              // fast out, easing as it spreads
+    float r = e * reach;
+    float width = 50.0 + 160.0 * e;
+    // A gently wavy front, so it reads as light moving rather than a perfect circle.
+    float angle = atan2(d2.y, d2.x);
+    float wave = 0.5 + 0.5 * sin(angle * 5.0 + progress * 9.0) * sin(angle * 3.0 - progress * 5.0);
+    float front = exp(-pow((d - r - 18.0 * (wave - 0.5)) / width, 2.0));
+    float wake = (1.0 - smoothstep(0.0, r + 1.0, d)) * 0.35;   // a faint glow left behind the front
+    float fade = (1.0 - smoothstep(0.55, 1.0, progress)) * smoothstep(0.0, 0.06, progress);
+    float a = (front * (0.26 + 0.1 * wave) + wake * 0.12) * fade;
+    float3 g = mix(float3(0.18, 0.80, 0.38), float3(0.62, 0.92, 0.32), wave * 0.6);
+    return half4(half3(g * a), half(a));
+}

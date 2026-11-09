@@ -249,6 +249,23 @@ enum WelcomeLevel: Int, CaseIterable {
     var focus: WelcomeStop?
 }
 
+/// A completion pulse to play across the page, from a point in the page's coordinates.
+@MainActor @Observable final class WelcomePulse {
+    static let shared = WelcomePulse()
+    private(set) var stop: WelcomeStop?
+    private(set) var started = Date.distantPast
+    func fire(from stop: WelcomeStop) { self.stop = stop; started = .now }
+    func end(_ start: Date) { if started == start { stop = nil } }
+}
+
+/// Where each card's icon tile sits, so the page can start a pulse from it exactly.
+struct WelcomeTileAnchors: PreferenceKey {
+    static let defaultValue: [WelcomeStop: Anchor<CGPoint>] = [:]
+    static func reduce(value: inout [WelcomeStop: Anchor<CGPoint>], nextValue: () -> [WelcomeStop: Anchor<CGPoint>]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
 /// The shortcuts the welcome page catches while onboarding is under way, handed to the cards so
 /// they play on the card's own UI instead of switching spaces or opening a tab.
 @MainActor @Observable final class WelcomeInput {
@@ -305,7 +322,11 @@ struct WelcomePage: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.automatic)
+            .overlayPreferenceValue(WelcomeTileAnchors.self) { anchors in
+                GeometryReader { g in PulseLayer(anchors: anchors, proxy: g) }
+            }
         }
+        .coordinateSpace(.named(WelcomePage.space))
         .background(Color(nsColor: .textBackgroundColor))
         .onChange(of: browser.commandBar) { _, mode in
             if mode == .newTab { complete(.newTab) }
@@ -344,6 +365,8 @@ struct WelcomePage: View {
             return event
         }
     }
+
+    static let space = "welcomePage"
 
     private var gallery: some View {
         VStack(spacing: 20) {
@@ -520,6 +543,7 @@ private struct GalleryCard: View {
         .onAppear { if stop == .spaces { listen() } }
         .onDisappear { stopListening() }
         .onChange(of: input.last?.id) { if let e = input.last?.event { handle(e) } }
+        .onChange(of: done) { _, now in if now { WelcomePulse.shared.fire(from: stop) } }
     }
 
     // MARK: Spaces: real gestures and shortcuts drive the hero
@@ -639,6 +663,7 @@ private struct GalleryCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 DoneTile(stop: stop, done: done)
+                    .anchorPreference(key: WelcomeTileAnchors.self, value: .center) { [stop: $0] }
                 Text(stop.title).font(.system(size: 15, weight: .semibold)).tracking(-0.15)
                 Spacer(minLength: 6)
                 if !done {
@@ -809,6 +834,33 @@ private struct KeyCap: View {
             .background(.white, in: .rect(cornerRadius: 4, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(.black.opacity(0.14)))
             .shadow(color: .black.opacity(0.12), radius: 0.5, y: 1)
+    }
+}
+
+// MARK: - Completion pulse
+
+/// The green pulse that rolls out across the page when a stop is ticked off.
+private struct PulseLayer: View {
+    let anchors: [WelcomeStop: Anchor<CGPoint>]
+    let proxy: GeometryProxy
+    @State private var pulse = WelcomePulse.shared
+    private let duration = 1.8
+
+    var body: some View {
+        if let stop = pulse.stop, let anchor = anchors[stop], !Motion.reduced {
+            let origin = proxy[anchor]
+            TimelineView(.animation) { context in
+                let p = min(1, context.date.timeIntervalSince(pulse.started) / duration)
+                Rectangle()
+                    .colorEffect(ShaderLibrary.welcomePulse(.float2(proxy.size), .float2(origin), .float(p)))
+            }
+            .allowsHitTesting(false)
+            .task(id: pulse.started) {
+                let start = pulse.started
+                try? await Task.sleep(for: .seconds(duration))
+                pulse.end(start)
+            }
+        }
     }
 }
 
