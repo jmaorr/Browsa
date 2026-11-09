@@ -169,7 +169,7 @@ struct BrowserCommands: Commands {
         }
 
         CommandGroup(before: .windowList) {
-            Button("Downloads") { browser?.isDownloadsPresented.toggle() }
+            Button("Downloads") { browser?.showPanel("downloads", toggles: true) }
                 .keyboardShortcut("j", modifiers: [.command, .option])
                 .disabled(browser == nil)
             Divider()
