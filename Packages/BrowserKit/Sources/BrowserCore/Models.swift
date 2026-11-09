@@ -13,6 +13,9 @@ public final class BrowserTab: Identifiable {
     /// WKWebView.interactionState (back/forward list + scroll), saved when the web view is evicted.
     public var interactionState: Data?
     public var isPrivate: Bool
+    /// Set when the tab was opened from a favourite: it belongs to that favourite's tile and stays
+    /// out of the Today list.
+    public var favoriteID: UUID?
 
     // Live state mirrored from the web view (not persisted).
     public var estimatedProgress: Double = 0
@@ -78,6 +81,9 @@ public final class Space: Identifiable {
     }
 
     public var allTabs: [BrowserTab] { pinned + today }
+
+    /// Today's tabs as the sidebar lists them: without the ones a favourite tile holds.
+    public var listedToday: [BrowserTab] { today.filter { $0.favoriteID == nil } }
 
     public var selectedTab: BrowserTab? {
         allTabs.first { $0.id == selectedTabID }
@@ -242,6 +248,8 @@ public struct SavedSite: Codable, Identifiable, Equatable, Sendable {
 /// The saved form of a tab. Shared by the iOS and Mac apps, so the formats can sync later.
 public struct TabRecord: Codable, Sendable {
     public var id: UUID, url: URL?, title: String, isPinned: Bool, lastActive: Date, interactionState: Data?
+    /// Missing in state saved before favourites owned their tabs.
+    public var favoriteID: UUID? = nil
 }
 
 public struct SpaceRecord: Codable, Sendable {
@@ -272,11 +280,12 @@ public struct BrowserSnapshot: Codable, Sendable {
 extension BrowserTab {
     public var record: TabRecord {
         TabRecord(id: id, url: url, title: title, isPinned: isPinned, lastActive: lastActive,
-                  interactionState: interactionState)
+                  interactionState: interactionState, favoriteID: favoriteID)
     }
     public convenience init(_ r: TabRecord) {
         self.init(id: r.id, url: r.url, title: r.title, isPinned: r.isPinned,
                   lastActive: r.lastActive, interactionState: r.interactionState)
+        favoriteID = r.favoriteID
     }
 }
 

@@ -384,6 +384,8 @@ final class Library {
 
     func removeFavorite(_ fav: Favorite) {
         favorites.removeAll { $0.id == fav.id }
+        // Its tabs go back to being ordinary Today tabs.
+        for tab in allTabs where tab.favoriteID == fav.id { tab.favoriteID = nil }
         Task { await history.setBookmarked(fav.url, false) }
         scheduleSave()
     }
