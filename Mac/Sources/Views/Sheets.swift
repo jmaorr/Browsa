@@ -1,6 +1,7 @@
 import SwiftUI
 import BrowserCore
 import BrowserEngine
+import Extensibility
 
 /// A page's dialog, sign-in or permission request. Always names the site, so a page can't pass
 /// itself off as the browser.
@@ -10,6 +11,7 @@ struct PromptSheet: View {
     @State private var text = ""
     @State private var user = ""
     @State private var password = ""
+    @State private var alwaysAllow = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -26,8 +28,9 @@ struct PromptSheet: View {
                     Button(cancelTitle) { browser.answer(.cancel) }
                         .keyboardShortcut(.cancelAction)
                 }
+                // An agent's ask can appear while you're typing elsewhere: Return mustn't allow it.
                 Button(okTitle) { browser.answer(okResponse) }
-                    .keyboardShortcut(.defaultAction)
+                    .keyboardShortcut(isAgentAsk ? nil : .defaultAction)
             }
         }
         .padding(20)
@@ -45,8 +48,12 @@ struct PromptSheet: View {
             "Sign in to \(host)"
         case .permission(let p, let host):
             "Allow \(host) to \(p.phrase)?"
-        case .agent(let caller, _, let host):
-            "Let \(caller) act on \(host)?"
+        case .agent(let ask):
+            switch ask.grant {
+            case .site(let host): "Let \(ask.caller) use \(host)?"
+            case .yourTab: "Let \(ask.caller) use your tab “\(ask.tabTitle ?? "Untitled")”?"
+            case .yourTabs: "Let \(ask.caller) see your open tabs?"
+            }
         }
     }
 
@@ -55,8 +62,15 @@ struct PromptSheet: View {
         case .dialog(.alert(_, let m)), .dialog(.confirm(_, let m)), .dialog(.prompt(_, let m, _)): m
         case .dialog(.credentials(_, let realm)): realm.map { "The site says: “\($0)”" }
         case .permission: "You can change this later in Settings."
-        case .agent(_, let action, _):
-            "It wants to \(action.lowercased()). It works as you, in the Agent space where you can watch. You can take this back in Settings > Agents, and Stop pauses every agent."
+        case .agent(let ask):
+            switch ask.grant {
+            case .site:
+                "It wants to \(ask.action.lowercased()). It works as you, signed in, in the Agent space where you can watch. Allowed until you quit Browsa. Stop in the Agents panel halts every agent."
+            case .yourTab(_, let host):
+                "It wants to \(ask.action.lowercased()) on \(host.isEmpty ? "this page" : host). This is your tab, not the Agent space, so it sees what you see there, signed in as you. Allowed for this tab until you quit Browsa."
+            case .yourTabs:
+                "It gets the title and address of every tab that isn't private. It still asks before it reads or uses one of them."
+            }
         }
     }
 
@@ -64,12 +78,21 @@ struct PromptSheet: View {
         switch prompt.kind {
         case .dialog(.prompt):
             TextField("", text: $text).textFieldStyle(.roundedBorder)
+        case .agent(let ask):
+            if case .site(let host) = ask.grant {
+                Toggle("Always allow on \(host)", isOn: $alwaysAllow).toggleStyle(.checkbox)
+            }
         case .dialog(.credentials):
             TextField("User name", text: $user).textFieldStyle(.roundedBorder).textContentType(.username)
             SecureField("Password", text: $password).textFieldStyle(.roundedBorder).textContentType(.password)
         default:
             EmptyView()
         }
+    }
+
+    private var isAgentAsk: Bool {
+        if case .agent = prompt.kind { return true }
+        return false
     }
 
     private var showsCancel: Bool {
@@ -86,7 +109,7 @@ struct PromptSheet: View {
     private var okTitle: String {
         switch prompt.kind {
         case .permission: "Allow"
-        case .agent: "Allow on This Site"
+        case .agent: "Allow"
         case .dialog(.credentials): "Sign In"
         default: "OK"
         }
@@ -96,6 +119,7 @@ struct PromptSheet: View {
         switch prompt.kind {
         case .dialog(.prompt): .text(text)
         case .dialog(.credentials): .credentials(user: user, password: password)
+        case .agent: alwaysAllow ? .text(AgentAsk.always) : .ok
         default: .ok
         }
     }

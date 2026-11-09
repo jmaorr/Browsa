@@ -527,7 +527,7 @@ private struct AgentSettings: View {
                     LabeledContent("Status", value: agents.problem ?? (agents.isRunning ? "Ready on port \(AgentBridge.port)" : "Starting…"))
                 }
             } footer: {
-                Text("Agents such as Claude Code, Codex and Cursor connect over MCP from this Mac only. They open pages in an Agent space you can watch, read and resolve your notes, and ask before acting on a site for the first time.")
+                Text("Agents such as Claude Code, Codex and Cursor connect over MCP from this Mac only. They open pages in an Agent space you can watch, read and resolve your notes, and ask before they read or act on a site, or touch one of your own tabs.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if agents.isEnabled {
@@ -554,7 +554,25 @@ private struct AgentSettings: View {
                         }
                     }
                 } header: {
-                    Text("Sites agents may act on")
+                    Text("Always allowed")
+                }
+                if !agents.sessionGrants.isEmpty {
+                    Section {
+                        ForEach(agents.sessionHosts, id: \.self) { host in
+                            HStack {
+                                Text(host)
+                                Spacer()
+                                Button("Forget") { agents.forget(host: host) }.buttonStyle(.borderless)
+                            }
+                        }
+                        if agents.sessionTabCount > 0 {
+                            Text(agents.sessionTabCount == 1 ? "1 of your tabs" : "\(agents.sessionTabCount) of your tabs")
+                        }
+                        if agents.sessionGrants.contains(.yourTabs) { Text("The list of your open tabs") }
+                        Button("Forget All") { agents.forgetSession() }
+                    } header: {
+                        Text("Allowed until you quit")
+                    }
                 }
             }
         }

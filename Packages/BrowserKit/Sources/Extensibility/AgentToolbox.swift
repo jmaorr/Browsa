@@ -34,7 +34,8 @@ public struct AgentTool: Sendable {
     public let title: String
     public let description: String
     public let inputSchema: JSONValue
-    /// Only reads. Tools that change pages or act on sites are gated by `AgentToolbox.authorize`.
+    /// Only reads. Shown to agents as a hint; every call, reads included, still goes through
+    /// `AgentToolbox.authorize`.
     public let readOnly: Bool
     /// The plugin that offers it, or nil for Browsa's own.
     public let pluginID: String?
@@ -65,7 +66,7 @@ public struct AgentCaller: Sendable, Equatable {
 
 /// One line in the agent activity log the right panel shows.
 public struct AgentActivity: Identifiable, Sendable, Equatable {
-    public enum Outcome: Sendable, Equatable { case running, done, failed(String), denied }
+    public enum Outcome: Sendable, Equatable { case running, done, failed(String), denied, stopped }
     public let id = UUID()
     public let caller: String
     public let tool: String
@@ -90,15 +91,26 @@ public final class AgentToolbox {
     public let serverName: String
     public let serverVersion: String
     public private(set) var tools: [String: AgentTool] = [:]
-    /// Asked before a tool that isn't read-only runs. Return false to refuse (the user said no, or
-    /// agents are paused). Default: allow.
-    public var authorize: @MainActor (AgentTool, JSONValue, AgentCaller) async -> Bool = { _, _, _ in true }
+    /// The answer to "may this call run?".
+    public enum Verdict: Sendable, Equatable {
+        case allow
+        /// Refused, with what to tell the agent.
+        case deny(String)
+    }
+
+    /// Asked before every call, reads included. Default: allow.
+    public var authorize: @MainActor (AgentTool, JSONValue, AgentCaller) async -> Verdict = { _, _, _ in .allow }
     /// Every call, as it starts and as it ends.
     public var onActivity: @MainActor (AgentActivity) -> Void = { _ in }
     /// Told when the tool list changes, so the transport can send `notifications/tools/list_changed`.
     public var onToolsChanged: @MainActor () -> Void = {}
     /// Callers seen, by session, from their `initialize`.
     private var callers: [String: AgentCaller] = [:]
+    /// Calls that are running now, so Stop can end them.
+    private var running: [UUID: RunningCall] = [:]
+    public var hasRunningCalls: Bool { !running.isEmpty }
+
+    nonisolated public static let stoppedMessage = "The user pressed Stop in Browsa. Don't retry; wait until they tell you to carry on."
 
     public init(serverName: String = "Browsa", serverVersion: String) {
         self.serverName = serverName
@@ -185,21 +197,71 @@ public final class AgentToolbox {
 
     func call(_ tool: AgentTool, args: JSONValue, caller: AgentCaller) async -> AgentTool.Result {
         var activity = AgentActivity(caller: caller.name, tool: tool.name, summary: Self.summary(args), outcome: .running)
-        if !tool.readOnly, !(await authorize(tool, args, caller)) {
-            activity.outcome = .denied
+        if case .deny(let why) = await authorize(tool, args, caller) {
+            activity.outcome = why == Self.stoppedMessage ? .stopped : .denied
             onActivity(activity)
-            return .error("The user declined this in Browsa.")
+            return .error(why)
         }
         onActivity(activity)
-        do {
-            let result = try await tool.handler(args, caller)
+        let outcome = await run(tool, args: args, caller: caller)
+        switch outcome {
+        case .finished(let result):
             activity.outcome = result.isError ? .failed(Self.firstText(result)) : .done
             onActivity(activity)
             return result
-        } catch {
-            activity.outcome = .failed(error.localizedDescription)
+        case .threw(let message):
+            activity.outcome = .failed(message)
             onActivity(activity)
-            return .error(error.localizedDescription)
+            return .error(message)
+        case .stopped:
+            activity.outcome = .stopped
+            onActivity(activity)
+            return .error(Self.stoppedMessage)
+        }
+    }
+
+    /// Ends every running call now: each answers its agent at once, and its work is cancelled.
+    /// Work that can't be interrupted (a script already running in a page) finishes unseen.
+    public func stopAll() {
+        let calls = running
+        running.removeAll()
+        for call in calls.values { call.stop() }
+    }
+
+    enum Outcome { case finished(AgentTool.Result), threw(String), stopped }
+
+    /// Runs the handler in its own task, and answers when it finishes or when Stop ends it,
+    /// whichever comes first.
+    private func run(_ tool: AgentTool, args: JSONValue, caller: AgentCaller) async -> Outcome {
+        let id = UUID()
+        return await withCheckedContinuation { (cont: CheckedContinuation<Outcome, Never>) in
+            let call = RunningCall(cont)
+            running[id] = call
+            call.task = Task { @MainActor [weak self] in
+                let outcome: Outcome
+                do {
+                    let result = try await tool.handler(args, caller)
+                    outcome = Task.isCancelled ? .stopped : .finished(result)
+                } catch {
+                    outcome = Task.isCancelled || error is CancellationError ? .stopped : .threw(error.localizedDescription)
+                }
+                self?.running[id] = nil
+                call.finish(outcome)
+            }
+        }
+    }
+
+    @MainActor final class RunningCall {
+        private var cont: CheckedContinuation<Outcome, Never>?
+        var task: Task<Void, Never>?
+        init(_ cont: CheckedContinuation<Outcome, Never>) { self.cont = cont }
+        func finish(_ outcome: Outcome) {
+            cont?.resume(returning: outcome)
+            cont = nil
+        }
+        func stop() {
+            task?.cancel()
+            finish(.stopped)
         }
     }
 

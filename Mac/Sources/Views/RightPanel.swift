@@ -269,7 +269,7 @@ struct AgentsPanel: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(agents.isPaused ? "Resume" : "Stop") { agents.isPaused.toggle() }
+                Button(agents.isPaused ? "Resume" : "Stop") { agents.isPaused ? agents.resume() : agents.stopAll() }
                     .tint(agents.isPaused ? nil : .red)
             }
         }
@@ -298,6 +298,7 @@ private struct ActivityRow: View {
         case .done: Image(systemName: "checkmark").foregroundStyle(.green)
         case .failed: Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
         case .denied: Image(systemName: "hand.raised").foregroundStyle(.red)
+        case .stopped: Image(systemName: "stop.circle").foregroundStyle(.red)
         }
     }
 }

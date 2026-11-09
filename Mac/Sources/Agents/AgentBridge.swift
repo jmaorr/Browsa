@@ -9,7 +9,8 @@ import Extensibility
 /// What an agent gets that a separate automation browser can't give it:
 /// - the user's real browser, with an **Agent space** they can watch, signed in as them;
 /// - **Margin notes**, the user's feedback pinned to pages, as a shared to-do list;
-/// - a per-site **ask first** gate and a **Stop** button the browser owns, not the agent.
+/// - an **ask first** gate on every call, reads included, judged by the tab and site it touches,
+///   and a **Stop** button the browser owns, not the agent.
 @MainActor @Observable
 final class AgentBridge {
     static let port: UInt16 = 47913
@@ -17,11 +18,15 @@ final class AgentBridge {
     var isEnabled: Bool {
         didSet { Preferences.agentsEnabled = isEnabled; isEnabled ? start() : stop() }
     }
-    /// Stop: every call that changes something is refused until resumed.
-    var isPaused = false
+    /// After Stop: every call is refused, reads included, until resumed.
+    private(set) var isPaused = false
     private(set) var activity: [AgentActivity] = []
-    /// Sites agents may act on without asking, by host. "Ask once per site" fills it.
+    /// Sites agents may always use without asking, by host ("Always allow" on the ask).
     private(set) var trustedHosts: Set<String>
+    /// Allowed until Browsa quits: sites, your own tabs, and the list of your tabs.
+    private(set) var sessionGrants: Set<AgentAccess.Grant> = []
+    /// Asks on screen or queued, so calls that need the same thing share one.
+    @ObservationIgnored private var pendingAsks: [AgentAccess.Grant: Task<Bool, Never>] = [:]
     private(set) var connectedAgents: [String] = []
     var isRunning: Bool { server?.isRunning ?? false }
     var problem: String? { server?.problem }
@@ -44,7 +49,7 @@ final class AgentBridge {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         toolbox = AgentToolbox(serverVersion: version)
         toolbox.authorize = { [weak self] tool, args, caller in
-            await self?.authorize(tool, args: args, caller: caller) ?? false
+            await self?.authorize(tool, args: args, caller: caller) ?? .deny("Browsa is closing.")
         }
         toolbox.onActivity = { [weak self] entry in self?.record(entry) }
         BrowserAgentTools.register(in: toolbox, bridge: self)
@@ -68,8 +73,37 @@ final class AgentBridge {
 
     func forget(host: String) {
         trustedHosts.remove(host)
+        sessionGrants.remove(.site(host))
         Preferences.agentTrustedHosts = Array(trustedHosts)
     }
+
+    /// Sites allowed until quit, for Settings.
+    var sessionHosts: [String] {
+        sessionGrants.compactMap { if case .site(let h) = $0, !trustedHosts.contains(h) { h } else { nil } }.sorted()
+    }
+
+    /// Your own tabs agents may use until quit, for Settings.
+    var sessionTabCount: Int {
+        sessionGrants.filter { if case .yourTab = $0 { true } else { false } }.count
+    }
+
+    /// Takes back everything allowed for this session (not the "always" sites).
+    func forgetSession() { sessionGrants.removeAll() }
+
+    // MARK: Stop
+
+    /// Halts every agent now: running calls answer "stopped" and are cancelled, open asks close
+    /// as "Don't Allow", and nothing runs again until Resume.
+    func stopAll() {
+        isPaused = true
+        toolbox.stopAll()
+        for task in pendingAsks.values { task.cancel() }
+        pendingAsks.removeAll()
+        library.windows.forEach { $0.cancelAgentPrompts() }
+        for tab in agentSpace.today where tab.isLoading { library.controller(for: tab).page.stopLoading() }
+    }
+
+    func resume() { isPaused = false }
 
     func clearActivity() { activity.removeAll() }
 
@@ -88,11 +122,17 @@ final class AgentBridge {
         return space
     }
 
-    /// The tab an agent means: the one it named, else the newest in the Agent space, else what's on screen.
+    /// The tab an agent means: the one it named, else the newest in the Agent space. Never the
+    /// tab you happen to be looking at: an agent has to name one of yours, and that asks.
     func tab(_ id: String?) -> BrowserTab? {
-        if let id, let uuid = UUID(uuidString: id) { return library.tab(id: uuid) }
-        return agentSpace.today.first ?? library.activeWindow?.currentTab
+        if let id {
+            guard let uuid = UUID(uuidString: id), let tab = library.tab(id: uuid), !tab.isPrivate else { return nil }
+            return tab
+        }
+        return agentSpace.today.first
     }
+
+    func isInAgentSpace(_ tab: BrowserTab) -> Bool { space(of: tab)?.id == agentSpace.id }
 
     func controller(for tab: BrowserTab) -> TabController { library.controller(for: tab) }
 
@@ -111,26 +151,68 @@ final class AgentBridge {
 
     // MARK: Asking
 
-    private func authorize(_ tool: AgentTool, args: JSONValue, caller: AgentCaller) async -> Bool {
-        if isPaused { return false }
+    /// Every call comes through here, reads included.
+    private func authorize(_ tool: AgentTool, args: JSONValue, caller: AgentCaller) async -> AgentToolbox.Verdict {
+        if isPaused { return .deny(AgentToolbox.stoppedMessage) }
         if !connectedAgents.contains(caller.name) { connectedAgents.append(caller.name) }
-        // Plugins' own tools and notes don't touch a page.
-        guard tool.pluginID == nil, !tool.name.hasPrefix("notes_") else { return true }
-        let host = tab(args["tab"]?.string)?.url?.host() ?? args["url"]?.string.flatMap { URL(string: $0)?.host() } ?? ""
-        if host.isEmpty || trustedHosts.contains(host) || Self.isLocal(host) { return true }
-        guard let window = library.activeWindow else { return false }
-        let answer = await window.askForAgent(.agent(caller: caller.name, action: tool.title, host: host))
-        if answer == .ok {
-            trustedHosts.insert(host)
-            Preferences.agentTrustedHosts = Array(trustedHosts)
-            return true
+        for grant in grants(for: tool, args: args) where !isAllowed(grant) {
+            let allowed = await ask(grant, caller: caller.name, action: tool.title)
+            if isPaused { return .deny(AgentToolbox.stoppedMessage) }
+            if !allowed { return .deny("The user declined this in Browsa.") }
         }
+        return .allow
+    }
+
+    /// What a call touches. Notes and plugins' own tools don't touch a page; tabs_list asks for
+    /// itself, since without your tabs it can still list the Agent space.
+    private func grants(for tool: AgentTool, args: JSONValue) -> [AgentAccess.Grant] {
+        guard tool.pluginID == nil, tool.name.hasPrefix("page_") || tool.name == "tab_open" else { return [] }
+        let target: AgentAccess.Target? = tool.name == "tab_open" ? nil : tab(args["tab"]?.string).map {
+            AgentAccess.Target(tabID: $0.id, host: $0.url?.host()?.lowercased() ?? "", inAgentSpace: isInAgentSpace($0))
+        }
+        let destination = tool.name == "tab_open" || tool.name == "page_navigate" ? AgentAccess.host(of: args["url"]?.string) : nil
+        return AgentAccess.grants(target: target, destination: destination)
+    }
+
+    func isAllowed(_ grant: AgentAccess.Grant) -> Bool {
+        if sessionGrants.contains(grant) { return true }
+        if case .site(let host) = grant { return trustedHosts.contains(host) }
         return false
     }
 
-    /// Your own dev servers: agents can always work on them.
-    static func isLocal(_ host: String) -> Bool {
-        host == "localhost" || host == "127.0.0.1" || host.hasSuffix(".localhost") || host.hasSuffix(".local")
+    /// Asks once for each thing, however many calls are waiting on it.
+    func ask(_ grant: AgentAccess.Grant, caller: String, action: String) async -> Bool {
+        if isAllowed(grant) { return true }
+        if isPaused { return false }
+        if let pending = pendingAsks[grant] { return await pending.value }
+        let task = Task { @MainActor [weak self] () -> Bool in
+            guard let self, let window = library.activeWindow else { return false }
+            let answer = await window.askForAgent(.agent(AgentAsk(caller: caller, action: action, grant: grant, tabTitle: title(of: grant))))
+            guard !Task.isCancelled, !isPaused else { return false }
+            switch answer {
+            case .ok:
+                sessionGrants.insert(grant)
+                return true
+            case .text(AgentAsk.always):
+                sessionGrants.insert(grant)
+                if case .site(let host) = grant {
+                    trustedHosts.insert(host)
+                    Preferences.agentTrustedHosts = Array(trustedHosts)
+                }
+                return true
+            default:
+                return false
+            }
+        }
+        pendingAsks[grant] = task
+        let allowed = await task.value
+        if pendingAsks[grant] == task { pendingAsks[grant] = nil }
+        return allowed
+    }
+
+    private func title(of grant: AgentAccess.Grant) -> String? {
+        guard case .yourTab(let id, _) = grant else { return nil }
+        return library.tab(id: id)?.displayTitle
     }
 
     private func record(_ entry: AgentActivity) {

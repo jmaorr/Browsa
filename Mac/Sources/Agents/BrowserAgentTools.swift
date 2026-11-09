@@ -11,25 +11,35 @@ import Extensibility
 enum BrowserAgentTools {
     /// Scripts run in their own content world, so a page can't see or tamper with them.
     static let world = "browsa-agent"
+    static let noTab = "No such tab. Open one with tab_open, or pass a tab id from tabs_list."
 
     static func register(in toolbox: AgentToolbox, bridge: AgentBridge) {
         let tabArg: JSONValue = ["type": "string", "description": "A tab id from tabs_list. Leave out for the newest tab in the Agent space."]
 
         toolbox.register(AgentTool(
             name: "tabs_list", title: "List tabs",
-            description: "The user's open tabs (never private ones), with their space. Tabs in the Agent space are yours.",
+            description: """
+            Tabs in the Agent space, which are yours to use. The user's own tabs (never private ones) are \
+            listed too if they allow it; using one of those asks them first.
+            """,
             readOnly: true
-        ) { _, _ in
-            let agentID = bridge.agentSpace.id
-            let tabs: [JSONValue] = bridge.allTabs.map { t in
+        ) { _, caller in
+            let mine = bridge.allTabs.filter(bridge.isInAgentSpace)
+            let others = bridge.allTabs.filter { !bridge.isInAgentSpace($0) }
+            var seesYours = false
+            if !others.isEmpty { seesYours = await bridge.ask(.yourTabs, caller: caller.name, action: "See your open tabs") }
+            let tabs: [JSONValue] = (mine + (seesYours ? others : [])).map { t in
                 [
                     "id": .string(t.id.uuidString),
                     "title": .string(t.title),
                     "url": .string(t.url?.absoluteString ?? ""),
                     "space": .string(bridge.space(of: t)?.name ?? ""),
-                    "agent": .bool(bridge.space(of: t)?.id == agentID),
+                    "agent": .bool(bridge.isInAgentSpace(t)),
                     "openNotes": .number(Double(openCount(t.url, bridge))),
                 ]
+            }
+            if !others.isEmpty, !seesYours {
+                return .json(["tabs": .array(tabs), "note": "The user didn't share their own tabs. These are the Agent space's."])
             }
             return .json(.array(tabs))
         })
@@ -43,7 +53,7 @@ enum BrowserAgentTools {
             ]],
             readOnly: false
         ) { args, _ in
-            guard let url = args["url"]?.string.flatMap(URL.init(string:)), url.scheme != nil else { return .error("Give a full URL, like https://example.com") }
+            guard let url = webURL(args["url"]?.string) else { return .error("Give a full web address, like https://example.com") }
             let tab = bridge.openTab(url, show: args["show"]?.bool ?? true)
             await waitForLoad(tab)
             return .json(["tab": .string(tab.id.uuidString), "title": .string(tab.title), "url": .string(tab.url?.absoluteString ?? "")])
@@ -59,14 +69,14 @@ enum BrowserAgentTools {
             ]],
             readOnly: false
         ) { args, _ in
-            guard let tab = bridge.tab(args["tab"]?.string) else { return .error("No such tab.") }
+            guard let tab = bridge.tab(args["tab"]?.string) else { return .error(noTab) }
             let c = bridge.controller(for: tab)
             switch args["action"]?.string {
             case "back": c.page.goBack()
             case "forward": c.page.goForward()
             case "reload": c.page.reload()
             default:
-                guard let url = args["url"]?.string.flatMap(URL.init(string:)) else { return .error("Give a url or an action.") }
+                guard let url = webURL(args["url"]?.string) else { return .error("Give a web address (http or https) or an action.") }
                 c.load(url, source: .link)
             }
             await waitForLoad(tab)
@@ -85,7 +95,7 @@ enum BrowserAgentTools {
             ]],
             readOnly: true
         ) { args, _ in
-            guard let tab = bridge.tab(args["tab"]?.string) else { return .error("No such tab.") }
+            guard let tab = bridge.tab(args["tab"]?.string) else { return .error(noTab) }
             let max = Int(args["maxCharacters"]?.double ?? 20000)
             let raw = try await bridge.controller(for: tab).page.evaluate(readScript(max: max), inWorld: world)
             var page = JSONValue(any: raw)
@@ -104,7 +114,7 @@ enum BrowserAgentTools {
             inputSchema: ["type": "object", "properties": ["tab": tabArg]],
             readOnly: true
         ) { args, _ in
-            guard let tab = bridge.tab(args["tab"]?.string) else { return .error("No such tab.") }
+            guard let tab = bridge.tab(args["tab"]?.string) else { return .error(noTab) }
             guard let image = await bridge.controller(for: tab).page.snapshot(),
                   let data = jpeg(image) else {
                 return .error("Browsa can only take a screenshot of a tab that's showing. Open the Agent space in a window.")
@@ -122,7 +132,7 @@ enum BrowserAgentTools {
             ]],
             readOnly: false
         ) { args, _ in
-            guard let tab = bridge.tab(args["tab"]?.string) else { return .error("No such tab.") }
+            guard let tab = bridge.tab(args["tab"]?.string) else { return .error(noTab) }
             let target = try targetExpression(args)
             let raw = try await bridge.controller(for: tab).page.evaluate("""
                 const el = \(target);
@@ -150,7 +160,7 @@ enum BrowserAgentTools {
             ]],
             readOnly: false
         ) { args, _ in
-            guard let tab = bridge.tab(args["tab"]?.string) else { return .error("No such tab.") }
+            guard let tab = bridge.tab(args["tab"]?.string) else { return .error(noTab) }
             let target = try targetExpression(args)
             let text = jsString(args["text"]?.string ?? "")
             let submit = args["submit"]?.bool == true
@@ -184,8 +194,8 @@ enum BrowserAgentTools {
             inputSchema: ["type": "object", "required": ["script"], "properties": ["tab": tabArg, "script": ["type": "string"]]],
             readOnly: false
         ) { args, _ in
-            guard let tab = bridge.tab(args["tab"]?.string) else { return .error("No such tab.") }
-            guard AgentBridge.isLocal(tab.url?.host() ?? "") else { return .error("page_eval only runs on localhost pages.") }
+            guard let tab = bridge.tab(args["tab"]?.string) else { return .error(noTab) }
+            guard AgentAccess.isLoopback(tab.url?.host() ?? "") else { return .error("page_eval only runs on localhost pages.") }
             // The page's own world, so it sees the app's globals.
             let raw = try await bridge.controller(for: tab).page.evaluate(args["script"]?.string ?? "", inWorld: "page")
             return .json(JSONValue(any: raw))
@@ -259,6 +269,12 @@ enum BrowserAgentTools {
     }
 
     // MARK: Helpers
+
+    /// Only the web: no file:, data: or javascript: pages for agents.
+    static func webURL(_ s: String?) -> URL? {
+        guard let url = s.flatMap(URL.init(string:)), url.scheme == "https" || url.scheme == "http", url.host() != nil else { return nil }
+        return url
+    }
 
     static func openCount(_ url: URL?, _ bridge: AgentBridge) -> Int {
         guard let url else { return 0 }
