@@ -337,6 +337,11 @@ enum SpikeHarness {
             } catch {
                 return .error("\(error)")
             }
+        case "claudeAdd":
+            // The same code path as the Add to Claude Code button.
+            let a = library.agents!
+            await a.claudeCodeSetup.add(name: AgentBridge.mcpName, url: a.endpoint, token: a.token)
+            return .json(["ok": true, "state": "\(a.claudeCodeSetup.state)", "name": AgentBridge.mcpName])
         case "settingsTab":
             // Which Settings pane shows (general, spaces, privacy, extensions, agents, engine).
             defaults.set(j["tab"] as? String ?? "general", forKey: "settingsTab")

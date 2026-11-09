@@ -64,9 +64,15 @@ final class AgentBridge {
     @ObservationIgnored private var idleTimer: Timer?
 
     /// For Settings: paste into a terminal once.
+    /// The name agents know Browsa by. SpikeBrowsa uses its own, so it never replaces Browsa's.
+    static let mcpName = Bundle.main.object(forInfoDictionaryKey: "BrowsaMCPName") as? String ?? "browsa"
+    var endpoint: String { "http://127.0.0.1:\(Self.port)/mcp" }
+    /// "Add to Claude Code" in the Agents panel.
+    @ObservationIgnored let claudeCodeSetup = ClaudeCodeSetup()
+
     var claudeCodeCommand: String {
         // User scope: Browsa is there in every project, not just the folder it was added from.
-        "claude mcp add --scope user --transport http browsa http://127.0.0.1:\(Self.port)/mcp --header \"Authorization: Bearer \(token)\""
+        "claude mcp add --scope user --transport http \(Self.mcpName) \(endpoint) --header \"Authorization: Bearer \(token)\""
     }
 
     init(library: Library) {

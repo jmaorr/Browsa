@@ -191,13 +191,10 @@ targets:
     entitlements:
       path: Spike/SpikeBrowsa.entitlements
       properties:
-        com.apple.security.app-sandbox: true
-        com.apple.security.network.client: true
-        # The agent endpoint, the control channel and the mock dev servers, all on 127.0.0.1.
-        com.apple.security.network.server: true
-        com.apple.security.files.bookmarks.app-scope: true
-        com.apple.security.files.downloads.read-write: true
-        com.apple.security.files.user-selected.read-write: true
+        # Like Browsa itself: not sandboxed (one-click Add to Claude Code runs the claude command).
+        # Its files still live apart, under its own bundle ID.
+        com.apple.security.device.camera: true
+        com.apple.security.device.audio-input: true
     info:
       path: Spike/Info.plist
       properties:
@@ -209,6 +206,8 @@ targets:
         # Not the daily driver's 47913, so both can run at once.
         BrowsaAgentPort: 47914
         SpikeControlPort: 47930
+        # Adds itself to Claude Code under its own name, never replacing Browsa's.
+        BrowsaMCPName: browsa-spike
         # Never updates itself.
         BrowsaUpdates: "NO"
     settings:

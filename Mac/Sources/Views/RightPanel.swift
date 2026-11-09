@@ -225,7 +225,7 @@ private struct ConnectAgentCard: View {
     private var connected: Bool {
         agents.connectedAgents.contains { $0.lowercased().contains(kind.rawValue.lowercased().components(separatedBy: " ")[0]) }
     }
-    private var url: String { "http://127.0.0.1:\(AgentBridge.port)/mcp" }
+    private var url: String { agents.endpoint }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -256,8 +256,29 @@ private struct ConnectAgentCard: View {
             }
             .padding(2)
             .glassEffect(.regular, in: .capsule)
-            Text(kind == .claude ? "Run this once in a terminal:" : "Add an MCP server with this URL and header:")
-                .font(.caption).foregroundStyle(.secondary)
+            if kind == .claude {
+                ClaudeCodeAddRow(connected: connected)
+                DisclosureGroup("Or run it yourself") { commandBlock.padding(.top, 6) }
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("Add an MCP server with this URL and header:").font(.caption).foregroundStyle(.secondary)
+                commandBlock
+                HStack {
+                    Spacer()
+                    waiting
+                }
+            }
+        }
+        .animation(Motion.snappy, value: connected)
+        .padding(12)
+        .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.primary.opacity(0.08)))
+        .shadow(color: .black.opacity(0.05), radius: 3, y: 1)
+        .onChange(of: kind) { copied = false }
+    }
+
+    private var commandBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
             Text(revealed ? fullText : maskedText)
                 .font(.system(size: 11, design: .monospaced))
                 .textSelection(.enabled)
@@ -271,27 +292,23 @@ private struct ConnectAgentCard: View {
                     NSPasteboard.general.setString(fullText, forType: .string)
                     withAnimation(Motion.snappy) { copied = true }
                 }
-                .buttonStyle(.glassProminent).controlSize(.small)
+                .controlSize(.small)
                 Button(revealed ? "Hide Token" : "Show Token") { withAnimation(Motion.snappy) { revealed.toggle() } }
                     .controlSize(.small)
-                Spacer()
-                if connected {
-                    Label("Connected", systemImage: "checkmark.circle.fill").font(.caption.weight(.semibold)).foregroundStyle(.green)
-                        .transition(.scale.combined(with: .opacity))
-                } else {
-                    HStack(spacing: 5) {
-                        ProgressView().controlSize(.mini)
-                        Text("Waiting for \(kind.rawValue)…").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
             }
-            .animation(Motion.snappy, value: connected)
         }
-        .padding(12)
-        .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.primary.opacity(0.08)))
-        .shadow(color: .black.opacity(0.05), radius: 3, y: 1)
-        .onChange(of: kind) { copied = false }
+    }
+
+    @ViewBuilder private var waiting: some View {
+        if connected {
+            Label("Connected", systemImage: "checkmark.circle.fill").font(.caption.weight(.semibold)).foregroundStyle(.green)
+                .transition(.scale.combined(with: .opacity))
+        } else {
+            HStack(spacing: 5) {
+                ProgressView().controlSize(.mini)
+                Text("Waiting for \(kind.rawValue)…").font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var header: String { "Authorization: Bearer \(agents.token)" }
@@ -362,6 +379,57 @@ private struct AgentRequestCard: View {
         guard let tab = browser.library.tab(id: id) else { return }
         if let space = browser.space(containing: tab) { browser.selectSpace(space) }
         browser.select(tab)
+    }
+}
+
+/// Add to Claude Code: one click runs `claude mcp add` (user scope), then waits for it to connect.
+private struct ClaudeCodeAddRow: View {
+    @Environment(Browser.self) private var browser
+    let connected: Bool
+    private var agents: AgentBridge { browser.library.agents }
+    private var setup: ClaudeCodeSetup { agents.claudeCodeSetup }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Button {
+                    Task { await setup.add(name: AgentBridge.mcpName, url: agents.endpoint, token: agents.token) }
+                } label: {
+                    Label(setup.state == .added ? "Added to Claude Code" : "Add to Claude Code",
+                          systemImage: setup.state == .added ? "checkmark" : "plus")
+                }
+                .buttonStyle(.glassProminent)
+                .controlSize(.regular)
+                .disabled(setup.state == .working || setup.state == .added)
+                if setup.state == .working { ProgressView().controlSize(.small) }
+                Spacer(minLength: 0)
+            }
+            Group {
+                switch setup.state {
+                case .idle:
+                    Text("Adds Browsa for every project. Your token stays on this Mac.")
+                case .working:
+                    Text("Adding…")
+                case .added:
+                    if connected {
+                        Label("Connected", systemImage: "checkmark.circle.fill").foregroundStyle(.green).fontWeight(.semibold)
+                    } else {
+                        HStack(spacing: 5) {
+                            ProgressView().controlSize(.mini)
+                            Text("Added. Start a new Claude Code session; it connects on its first call.")
+                        }
+                    }
+                case .notInstalled:
+                    Text("Claude Code isn't installed on this Mac. Install it, then try again, or run the command yourself.")
+                        .foregroundStyle(.orange)
+                case .failed(let why):
+                    Text(why).foregroundStyle(.red).textSelection(.enabled)
+                }
+            }
+            .font(.caption).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .animation(Motion.snappy, value: setup.state)
+        }
     }
 }
 
