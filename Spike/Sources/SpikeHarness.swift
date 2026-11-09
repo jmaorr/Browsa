@@ -311,6 +311,32 @@ enum SpikeHarness {
             """
             let found = (try? await library.controller(for: tab).page.evaluate(script, inWorld: "browsa.margin")) as? Bool ?? false
             if !found { return .error("\"\(text)\" isn't on the page", status: 404) }
+        case "pageMouse":
+            // Mouse events straight into the page's DOM at a window point. WebKit ignores posted clicks
+            // while SpikeBrowsa is in the background, so the comment tool is driven this way.
+            guard let x = j["x"] as? Double, let y = j["y"] as? Double, let tab = browser.currentTab,
+                  let window = SpikeInput.window else { return .error("Give x and y in window points") }
+            let view = library.controller(for: tab).page.view
+            var p = view.convert(NSPoint(x: x, y: window.frame.height - y), from: nil)
+            if !view.isFlipped { p.y = view.bounds.height - p.y }
+            let types = (j["types"] as? [String]) ?? ["mousemove", "mousedown", "mouseup", "click"]
+            let list = String(data: try! JSONSerialization.data(withJSONObject: types), encoding: .utf8)!
+            let script = """
+            const el = document.elementFromPoint(\(p.x), \(p.y)); if (!el) return null;
+            for (const t of \(list)) el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, clientX: \(p.x), clientY: \(p.y), view: window }));
+            return el.tagName;
+            """
+            let tag = try? await library.controller(for: tab).page.evaluate(script, inWorld: "page")
+            return .json(["ok": true, "element": tag.map { "\($0)" } ?? "none"])
+        case "eval":
+            // Runs a script body in the current tab (Browsa's notes world unless world says otherwise).
+            guard let script = j["script"] as? String, let tab = browser.currentTab else { return .error("Give script") }
+            do {
+                let value = try await library.controller(for: tab).page.evaluate(script, inWorld: j["world"] as? String ?? "browsa.margin")
+                return .json(["ok": true, "value": value.map { "\($0)" } ?? "null"])
+            } catch {
+                return .error("\(error)")
+            }
         case "closeMenus":
             SpikeInput.closeMenus()
         case "pauseAgents":

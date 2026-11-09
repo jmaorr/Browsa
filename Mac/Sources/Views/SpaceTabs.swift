@@ -156,6 +156,16 @@ struct TabRow: View {
                 .lineLimit(1)
                 .foregroundStyle(.primary)
             Spacer(minLength: 0)
+            let notes = openNoteCount(tab.url, in: browser.library)
+            if notes > 0, !hovering {
+                Text(verbatim: "\(notes)")
+                    .font(.system(size: 10, weight: .semibold)).monospacedDigit()
+                    .foregroundStyle(NoteColor.ink)
+                    .padding(.horizontal, 5).frame(minWidth: 16, minHeight: 16)
+                    .background(NoteColor.pin.opacity(0.85), in: .capsule)
+                    .help(notes == 1 ? "1 open note" : "\(notes) open notes")
+                    .transition(.scale.combined(with: .opacity))
+            }
             if hovering {
                 Button { withAnimation(Motion.snappy) { browser.close(tab) } } label: {
                     Image(systemName: tab.isPinned ? "minus" : "xmark")
