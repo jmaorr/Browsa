@@ -724,9 +724,16 @@ private struct SpacesInstruction: View {
     let done: Bool
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TryBadge(done: done)
+            card
+        }
+        .environment(\.colorScheme, .light)
+    }
+
+    private var card: some View {
         HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 7) {
-                TryBadge(done: done)
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Swipe to switch spaces")
                     .font(.system(size: 14, weight: .semibold))
                     .fixedSize()
@@ -747,20 +754,21 @@ private struct SpacesInstruction: View {
         .background(.white.opacity(0.95), in: .rect(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.black.opacity(0.06)))
         .shadow(color: .black.opacity(0.08), radius: 12, y: 5)
-        .environment(\.colorScheme, .light)
     }
 }
 
-/// "Try it", or "Done" once learned.
+/// "Try it", or "Done" once learned: a small white pill above the instruction card.
 private struct TryBadge: View {
     let done: Bool
     var body: some View {
         Label(done ? "Done" : "Try it", systemImage: done ? "checkmark" : "hand.tap.fill")
             .font(.system(size: 10.5, weight: .bold))
             .labelStyle(.titleAndIcon)
-            .foregroundStyle(done ? Color(red: 0.12, green: 0.55, blue: 0.24) : Color(red: 0.8, green: 0.36, blue: 0.05))
-            .padding(.horizontal, 7).padding(.vertical, 3)
-            .background((done ? Color.green : Color.orange).opacity(0.14), in: .capsule)
+            .foregroundStyle(done ? Color(red: 0.12, green: 0.55, blue: 0.24) : Color(white: 0.15))
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .background(.white.opacity(0.95), in: .capsule)
+            .overlay(Capsule().strokeBorder(.black.opacity(0.06)))
+            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
             .contentTransition(.opacity)
             .animation(.smooth(duration: 0.3), value: done)
     }
