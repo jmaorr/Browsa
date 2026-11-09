@@ -136,8 +136,59 @@ import Testing
     @Test func refusedToolsReportIt() async throws {
         let box = AgentToolbox(serverVersion: "1.0")
         box.register(AgentTool(name: "click", title: "Click", description: "", readOnly: false) { _, _ in .text("clicked") })
-        box.authorize = { _, _, _ in false }
+        box.authorize = { _, _, _ in .deny("The user declined this in Browsa.") }
         let out = try await call(box, #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"click"}}"#)
         #expect(out["result"]?["isError"]?.bool == true)
+        #expect(out["result"]?["content"]?.array?.first?["text"]?.string == "The user declined this in Browsa.")
+    }
+
+    @Test func readsAreAskedToo() async throws {
+        let box = AgentToolbox(serverVersion: "1.0")
+        var ran = false
+        box.register(AgentTool(name: "read", title: "Read", description: "", readOnly: true) { _, _ in ran = true; return .text("secret") })
+        var asked: [String] = []
+        box.authorize = { tool, _, _ in asked.append(tool.name); return .deny("no") }
+        let out = try await call(box, #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read"}}"#)
+        #expect(asked == ["read"])
+        #expect(!ran)
+        #expect(out["result"]?["isError"]?.bool == true)
+    }
+
+    @Test func stopEndsARunningCallAtOnce() async throws {
+        let box = AgentToolbox(serverVersion: "1.0")
+        var cancelled = false
+        box.register(AgentTool(name: "slow", title: "Slow", description: "", readOnly: true) { _, _ in
+            do { try await Task.sleep(for: .seconds(30)) } catch { cancelled = true; throw error }
+            return .text("done")
+        })
+        var outcomes: [AgentActivity.Outcome] = []
+        box.onActivity = { outcomes.append($0.outcome) }
+        let pending = Task { try await call(box, #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"slow"}}"#) }
+        while !box.hasRunningCalls { await Task.yield() }
+        let started = ContinuousClock.now
+        box.stopAll()
+        let out = try await pending.value
+        #expect(ContinuousClock.now - started < .seconds(2))
+        #expect(out["result"]?["content"]?.array?.first?["text"]?.string == AgentToolbox.stoppedMessage)
+        #expect(outcomes.last == .stopped)
+        #expect(!box.hasRunningCalls)
+        await Task.yield()
+        #expect(cancelled)
+    }
+}
+
+@Suite struct AgentAccessTests {
+    @Test func agentSpaceNeverAsksYourTabsAlwaysDo() {
+        let id = UUID()
+        #expect(AgentAccess.grants(target: nil).isEmpty)
+        #expect(AgentAccess.grants(target: .init(tabID: id, host: "bank.example", inAgentSpace: true)).isEmpty)
+        #expect(AgentAccess.grants(target: .init(tabID: id, host: "mail.google.com", inAgentSpace: false)) == [.yourTab(id, host: "mail.google.com")])
+        // Even your own dev server, when it's your tab.
+        #expect(AgentAccess.grants(target: .init(tabID: id, host: "localhost", inAgentSpace: false)) == [.yourTab(id, host: "localhost")])
+    }
+
+    @Test func loopbackIsThisMacOnly() {
+        for h in ["localhost", "app.localhost", "127.0.0.1", "127.1.2.3", "::1", "[::1]"] { #expect(AgentAccess.isLoopback(h), "\(h)") }
+        for h in ["router.local", "localhost.evil.com", "127.0.0.1.evil.com", "10.0.0.1", "", "1270.0.0.1"] { #expect(!AgentAccess.isLoopback(h), "\(h)") }
     }
 }

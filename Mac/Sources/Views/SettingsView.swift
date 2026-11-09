@@ -15,7 +15,7 @@ struct SettingsView: View {
             SpacesSettings().tabItem { Label("Spaces", systemImage: "square.stack") }.tag("spaces")
             PrivacySettings().tabItem { Label("Privacy", systemImage: "hand.raised") }.tag("privacy")
             ExtensionSettings().tabItem { Label("Extensions", systemImage: "puzzlepiece.extension") }.tag("extensions")
-            AgentSettings().tabItem { Label("Agents", systemImage: "sparkles") }.tag("agents")
+            AgentSettings().tabItem { Label("Agents", systemImage: AgentIdentity.symbol) }.tag("agents")
             EngineSettings().tabItem { Label("Engine", systemImage: "cpu") }.tag("engine")
         }
         .frame(width: 520)
@@ -527,7 +527,7 @@ private struct AgentSettings: View {
                     LabeledContent("Status", value: agents.problem ?? (agents.isRunning ? "Ready on port \(AgentBridge.port)" : "Starting…"))
                 }
             } footer: {
-                Text("Agents such as Claude Code, Codex and Cursor connect over MCP from this Mac only. They open pages in an Agent space you can watch, read and resolve your notes, and ask before acting on a site for the first time.")
+                Text("Agents such as Claude Code, Codex and Cursor connect over MCP from this Mac only. They open pages in an Agent space you can watch, read and resolve your notes, and ask in the Agents panel before they touch one of your own tabs.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if agents.isEnabled {
@@ -545,16 +545,14 @@ private struct AgentSettings: View {
                     }
                 }
                 Section {
-                    if agents.trustedHosts.isEmpty { Text("None yet. Localhost never asks.").foregroundStyle(.secondary) }
-                    ForEach(agents.trustedHosts.sorted(), id: \.self) { host in
-                        HStack {
-                            Text(host)
-                            Spacer()
-                            Button("Forget") { agents.forget(host: host) }.buttonStyle(.borderless)
-                        }
-                    }
+                    Text(agents.allowedTabCount == 0 ? "None of your tabs" : agents.allowedTabCount == 1 ? "1 of your tabs" : "\(agents.allowedTabCount) of your tabs")
+                    if agents.grants.contains(.yourTabs) { Text("The list of your open tabs") }
+                    if !agents.grants.isEmpty { Button("Forget All") { agents.forgetGrants() } }
                 } header: {
-                    Text("Sites agents may act on")
+                    Text("Allowed until you quit")
+                } footer: {
+                    Text("The Agent space is the agent's own and never asks. Your own tabs ask first, in the Agents panel.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
         }

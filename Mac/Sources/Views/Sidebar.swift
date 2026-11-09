@@ -495,7 +495,7 @@ struct SpaceSwitcher: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(Array(browser.spaces.enumerated()), id: \.element.id) { i, s in
+            ForEach(Array(browser.shownSpaces.enumerated()), id: \.element.id) { i, s in
                 let selected = s.id == browser.selectedSpaceID
                 Button { withAnimation(Motion.spring) { browser.selectSpace(s) } } label: {
                     Image(systemName: selected ? s.symbol : "circle.fill")

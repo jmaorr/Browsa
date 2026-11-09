@@ -20,15 +20,15 @@ enum BuiltInTools {
             ]))
 
         workbench.register(Tool(
-            id: "agents", title: "Agents", symbol: "sparkles",
+            id: "agents", title: "Agents", symbol: AgentIdentity.symbol,
             summary: "What connected agents are doing, and Stop",
             panel: { AnyView(AgentsPanel()) },
             commands: [
                 ToolCommand(id: "stop", title: "Stop All Agents", symbol: "hand.raised", keywords: ["pause", "agent"]) { browser in
-                    browser.library.agents.isPaused = true
-                    browser.showToast("Agents paused")
+                    browser.library.agents.stopAll()
+                    browser.showToast("Agents stopped")
                 },
-                ToolCommand(id: "space", title: "Go to Agent Space", symbol: "sparkles", keywords: ["agent", "space"]) { browser in
+                ToolCommand(id: "space", title: "Go to Agent Space", symbol: AgentIdentity.symbol, keywords: ["agent", "space"]) { browser in
                     browser.selectSpace(browser.library.agents.agentSpace)
                 },
             ]))

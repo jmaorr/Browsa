@@ -67,7 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         // The snapshot tour starts from a fresh state and leaves the real one alone.
         if ProcessInfo.processInfo.environment["BROWSA_SNAPSHOT"] != nil || ProcessInfo.processInfo.environment["BROWSA_COLUMNS_CHECK"] != nil
-            || ProcessInfo.processInfo.environment["BROWSA_DROP_CHECK"] != nil {
+            || ProcessInfo.processInfo.environment["BROWSA_DROP_CHECK"] != nil
+            || ProcessInfo.processInfo.environment["BROWSA_AGENT_GATE_CHECK"] != nil {
             return Library(engine: WebKitEngine(), history: HistoryStore(fileURL: nil), snapshotURL: nil)
         }
         #endif
@@ -94,6 +95,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let dir = ProcessInfo.processInfo.environment["BROWSA_COLUMNS_CHECK"] {
             Task { @MainActor in await ColumnsCheck(directory: URL(fileURLWithPath: dir), delegate: self).run() }
+        }
+        if let dir = ProcessInfo.processInfo.environment["BROWSA_AGENT_GATE_CHECK"] {
+            Task { @MainActor in await AgentGateCheck(directory: URL(fileURLWithPath: dir), delegate: self).run() }
         }
         if let dir = ProcessInfo.processInfo.environment["BROWSA_SNAPSHOT"] {
             Task { @MainActor in await SnapshotTour(directory: URL(fileURLWithPath: dir), delegate: self).run() }
