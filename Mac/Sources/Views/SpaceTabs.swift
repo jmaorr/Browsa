@@ -156,6 +156,25 @@ struct TabRow: View {
                 .lineLimit(1)
                 .foregroundStyle(.primary)
             Spacer(minLength: 0)
+            let notes = openNoteCount(tab.url, in: browser.library)
+            if notes > 0 {
+                // Stays put and slides left when the close button comes in on hover. A click opens
+                // this tab's notes.
+                Button {
+                    browser.select(tab)
+                    if browser.panel != "notes" { browser.showPanel("notes") }
+                } label: {
+                    Text(verbatim: "\(notes)")
+                        .font(.system(size: 10, weight: .semibold)).monospacedDigit()
+                        .foregroundStyle(NoteColor.ink)
+                        .padding(.horizontal, 5).frame(minWidth: 16, minHeight: 16)
+                        .background(NoteColor.pin.opacity(0.85), in: .capsule)
+                        .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .help(notes == 1 ? "1 open note. Click to show it." : "\(notes) open notes. Click to show them.")
+                .transition(.scale.combined(with: .opacity))
+            }
             if hovering {
                 Button { withAnimation(Motion.snappy) { browser.close(tab) } } label: {
                     Image(systemName: tab.isPinned ? "minus" : "xmark")
@@ -166,7 +185,7 @@ struct TabRow: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .help(tab.isPinned ? "Unload Tab (⌘W)" : "Close Tab (⌘W)")
-                .transition(.opacity)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
         .font(.system(size: 13))
