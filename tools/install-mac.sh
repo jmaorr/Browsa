@@ -60,6 +60,11 @@ echo "==> Installing $app"
 mkdir -p "${app:h}"
 rm -rf "$app"
 ditto "$built" "$app"
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app"
+lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+# Old Xcode builds with the same ID stay registered and can catch links or the default-browser
+# setting, so Launch Services forgets every copy but this one. (Their files aren't touched.)
+swift -e "import AppKit; for u in NSWorkspace.shared.urlsForApplications(withBundleIdentifier: \"$bundle_id\") { print(u.path) }" 2>/dev/null |
+  while IFS= read -r other; do [[ "$other" == "$app" ]] || "$lsregister" -u "$other" 2>/dev/null || true; done
+"$lsregister" -f "$app"
 open "$app"
 echo "==> Browsa $commit installed and running"
