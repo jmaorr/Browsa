@@ -164,7 +164,7 @@ targets:
     sources:
       - path: Mac/Sources
       - Mac/Resources
-      - App/Browsa.icon
+      - Spike/SpikeBrowsa.icon
       - Spike/Sources
     dependencies:
       - package: BrowserKit
@@ -204,7 +204,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa.spike
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
-        ASSETCATALOG_COMPILER_APPICON_NAME: Browsa
+        ASSETCATALOG_COMPILER_APPICON_NAME: SpikeBrowsa
         ENABLE_HARDENED_RUNTIME: true
         COMBINE_HIDPI_IMAGES: true
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) SPIKE
