@@ -3,6 +3,15 @@ import AppKit
 import BrowserCore
 import Extensibility
 
+// MARK: - Colour
+
+/// Red, like a recording light: an agent is acting live. (Agents' names stay purple; this is for
+/// "happening now": the pill, the cursor, the caption.)
+enum AgentLive {
+    static let color = Color(red: 0.92, green: 0.23, blue: 0.20)
+    static let css = "#eb3b33"
+}
+
 // MARK: - Words
 
 /// Agent calls in plain words: "Typed ‘Ada Lovelace’ into Name on card", not "page_type text: …".
@@ -70,8 +79,8 @@ enum AgentWords {
 
 // MARK: - Cursor on the page
 
-/// A purple cursor that glides to what the agent is about to click or type into, a ripple on a
-/// click, an outline on a field. Runs in its own world; waits until the cursor arrives.
+/// A red pointer (the iPad pointer symbol) that glides to what the agent is about to click or type
+/// into, a ripple on a click, an outline on a field. Runs in its own world; waits until it arrives.
 enum AgentCursor {
     static func target(_ args: JSONValue) -> String {
         if let ref = args["ref"]?.double { return "document.querySelector('[data-browsa-ref=\"\(Int(ref))\"]')" }
@@ -82,7 +91,29 @@ enum AgentCursor {
         return "null"
     }
 
-    static let script = #"""
+    /// `pointer.arrow.ipad`, drawn once as a PNG for the page.
+    @MainActor static let pointerImage: String = {
+        let config = NSImage.SymbolConfiguration(pointSize: 26, weight: .regular)
+            .applying(.init(paletteColors: [NSColor(AgentLive.color)]))
+        guard let symbol = NSImage(systemSymbolName: "pointer.arrow.ipad", accessibilityDescription: nil)?.withSymbolConfiguration(config)
+        else { return "" }
+        let size = NSSize(width: symbol.size.width * 2, height: symbol.size.height * 2)
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width), pixelsHigh: Int(size.height), bitsPerSample: 8,
+                                   samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+        guard let rep else { return "" }
+        rep.size = symbol.size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        symbol.draw(in: NSRect(origin: .zero, size: symbol.size))
+        NSGraphicsContext.restoreGraphicsState()
+        guard let png = rep.representation(using: .png, properties: [:]) else { return "" }
+        return "data:image/png;base64," + png.base64EncodedString()
+    }()
+
+    @MainActor static var script: String { scriptBody.replacingOccurrences(of: "__POINTER__", with: pointerImage)
+        .replacingOccurrences(of: "__LIVE__", with: AgentLive.css) }
+
+    private static let scriptBody = #"""
     window.__browsaAgentCursor = async (el, click) => {
       if (!el) return false;
       el.scrollIntoView({ block: 'center', inline: 'nearest' });
@@ -90,9 +121,9 @@ enum AgentCursor {
       let c = document.getElementById('__browsa-agent-cursor');
       if (!c) {
         c = document.createElement('div'); c.id = '__browsa-agent-cursor';
-        c.innerHTML = '<svg width="22" height="22" viewBox="0 0 22 22"><path d="M3 2 L3 18 L7.5 13.5 L10.5 20 L13 19 L10 12.5 L16 12.5 Z" fill="#8b5cf6" stroke="white" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+        c.innerHTML = '<img src="__POINTER__" width="26" alt="">';
         Object.assign(c.style, { position: 'fixed', zIndex: 2147483647, pointerEvents: 'none', left: (innerWidth - 40) + 'px', top: '40px',
-          transition: 'left .32s cubic-bezier(.3,.7,.2,1), top .32s cubic-bezier(.3,.7,.2,1), opacity .3s', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,.3))' });
+          transition: 'left .32s cubic-bezier(.3,.7,.2,1), top .32s cubic-bezier(.3,.7,.2,1), opacity .3s', filter: 'drop-shadow(0 1px 1.5px rgba(0,0,0,.35)) drop-shadow(0 0 1px white)' });
         root.appendChild(c);
       }
       const r = el.getBoundingClientRect();
@@ -103,15 +134,15 @@ enum AgentCursor {
       const mark = document.createElement('div');
       if (click) {
         Object.assign(mark.style, { position: 'fixed', zIndex: 2147483646, pointerEvents: 'none', left: (x - 14) + 'px', top: (y - 14) + 'px',
-          width: '28px', height: '28px', borderRadius: '50%', border: '2px solid #8b5cf6', opacity: '0.9',
+          width: '28px', height: '28px', borderRadius: '50%', border: '2px solid __LIVE__', opacity: '0.9',
           transition: 'transform .45s ease-out, opacity .45s ease-out' });
         root.appendChild(mark);
         requestAnimationFrame(() => { mark.style.transform = 'scale(2.2)'; mark.style.opacity = '0'; });
         setTimeout(() => mark.remove(), 500);
       } else {
         Object.assign(mark.style, { position: 'fixed', zIndex: 2147483646, pointerEvents: 'none', left: (r.left - 4) + 'px', top: (r.top - 4) + 'px',
-          width: (r.width + 8) + 'px', height: (r.height + 8) + 'px', borderRadius: '8px', border: '2px solid #8b5cf6',
-          boxShadow: '0 0 0 4px rgba(139,92,246,.18)', transition: 'opacity .4s' });
+          width: (r.width + 8) + 'px', height: (r.height + 8) + 'px', borderRadius: '8px', border: '2px solid __LIVE__',
+          boxShadow: '0 0 0 4px rgba(235,59,51,.18)', transition: 'opacity .4s' });
         root.appendChild(mark);
         setTimeout(() => { mark.style.opacity = '0'; setTimeout(() => mark.remove(), 400); }, 1600);
       }
@@ -139,7 +170,9 @@ struct AgentDrivingPill: View {
             HStack(spacing: 8) {
                 AgentIcon(caller: step.caller, size: 16)
                     .overlay(alignment: .bottomTrailing) {
-                        Circle().fill(.purple).frame(width: 6, height: 6).offset(x: 2, y: 2)
+                        Circle().fill(AgentLive.color).frame(width: 7, height: 7)
+                            .overlay(Circle().strokeBorder(.white, lineWidth: 1))
+                            .offset(x: 2, y: 2)
                             .symbolEffect(.pulse)
                     }
                 VStack(alignment: .leading, spacing: 0) {
@@ -169,8 +202,8 @@ struct AgentDrivingPill: View {
                 .help("Stop all agents")
             }
             .padding(.leading, 10).padding(.trailing, 6).padding(.vertical, 6)
-            .background(.purple.opacity(0.10), in: .rect(cornerRadius: 11, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(.purple.opacity(0.25)))
+            .background(AgentLive.color.opacity(0.09), in: .rect(cornerRadius: 11, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(AgentLive.color.opacity(0.3)))
             .animation(Motion.snappy, value: step.text)
             .transition(.move(edge: .top).combined(with: .opacity))
         }
@@ -191,11 +224,12 @@ struct AgentPageOverlay: View {
             if let step = agents.currentStep, agents.isActing, step.tabID != nil, step.tabID == browser.currentTab?.id,
                Date().timeIntervalSince(step.at) < 6 {
                 HStack(spacing: 7) {
+                    Circle().fill(AgentLive.color).frame(width: 7, height: 7).symbolEffect(.pulse)
                     AgentIcon(caller: step.caller, size: 13)
                     Text(AgentWords.caption(step.text)).font(.system(size: 12, weight: .medium)).lineLimit(1)
                 }
                 .padding(.horizontal, 12).frame(height: 28)
-                .glassEffect(.regular.tint(.purple.opacity(0.25)), in: .capsule)
+                .glassEffect(.regular.tint(AgentLive.color.opacity(0.22)), in: .capsule)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .id(step.at)
             }

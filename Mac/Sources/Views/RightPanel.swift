@@ -180,7 +180,7 @@ struct AgentsPanel: View {
     /// "Driving" only while calls are coming in; agents that went quiet a while ago grey out.
     private var status: some View {
         HStack(spacing: 10) {
-            Circle().fill(agents.isPaused ? .orange : !agents.isRunning ? .red : agents.isActing ? .purple : .green)
+            Circle().fill(agents.isPaused ? .orange : !agents.isRunning ? .red : agents.isActing ? AgentLive.color : .green)
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 2) {
                 Text(agents.isPaused ? "Stopped" : !agents.isRunning ? "Not running"

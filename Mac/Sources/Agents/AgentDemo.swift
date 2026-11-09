@@ -49,6 +49,10 @@ final class AgentDemo {
         if !bridge.isEnabled { bridge.isEnabled = true }
         if bridge.isPaused { bridge.resume() }
         isRunning = true
+        // A fresh run each time: the last demo's notes and Supper tab go first.
+        let key = MarginStore.pageKey(Self.url)
+        for note in bridge.margin.notes(on: Self.url) where note.author == .agent(Self.agentName) { bridge.margin.delete(note.id) }
+        for tab in bridge.allTabs where tab.url.map(MarginStore.pageKey) == key { window.close(tab) }
         task = Task { [weak self] in
             defer { self?.isRunning = false }
             let session = "browsa-demo"
@@ -66,7 +70,7 @@ final class AgentDemo {
             }
             // The reveal: its notes, pinned to the page, scrolled to the menu where both are pinned.
             if let tab = bridge.tab(nil) { let page = bridge.controller(for: tab).page!
-                _ = try? await page.evaluate("document.querySelector('#menu').scrollIntoView({ behavior: 'smooth', block: 'start' }); return true", inWorld: "browsa.agent")
+                _ = try? await page.evaluate("const m = document.querySelector('#menu'); if (getComputedStyle(m).position === 'sticky') scrollTo({ top: 0, behavior: 'smooth' }); else m.scrollIntoView({ behavior: 'smooth', block: 'start' }); return true", inWorld: "browsa.agent")
             }
             withAnimation(Motion.dock) { window.showPanel("notes") }
         }

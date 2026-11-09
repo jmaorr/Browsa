@@ -5,7 +5,7 @@ import BrowserEngine
 import Extensibility
 import WebKitEngine
 
-/// Yellow, like a sticky note: it reads as "a note" on any site and stays clear of agents' purple.
+/// Yellow, like a sticky note: it reads as "a note" on any site and stays clear of agents' red.
 enum NoteColor {
     static let pin = Color(red: 0.96, green: 0.71, blue: 0.04)
     static let ink = Color(red: 0.11, green: 0.09, blue: 0)
@@ -416,12 +416,14 @@ private struct AgentWorkingLine: View {
         TimelineView(.periodic(from: .now, by: 2)) { _ in
             if let agent = browser.library.agents.working(on: browser.currentTab?.url) {
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.mini)
-                    Text("\(agent) is working on this page").font(.caption).foregroundStyle(.purple)
+                    Circle().fill(AgentLive.color).frame(width: 7, height: 7).symbolEffect(.pulse)
+                    Text("\(agent) is working on this page").font(.caption.weight(.medium)).foregroundStyle(AgentLive.color)
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(.purple.opacity(0.08))
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                // Inset like the cards below it, not edge to edge.
+                .background(AgentLive.color.opacity(0.08), in: .rect(cornerRadius: 9, style: .continuous))
+                .padding(.horizontal, 10).padding(.bottom, 6)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
