@@ -285,8 +285,10 @@ struct DownloadsPanel: View {
         let downloads = browser.downloads
         VStack(spacing: 0) {
             if downloads.isEmpty {
-                ContentUnavailableView("No Downloads", systemImage: "arrow.down.circle",
-                                       description: Text("Files you download appear here."))
+                PanelEmptyState(title: "No Downloads", symbol: "arrow.down.circle",
+                                message: "Files you download in Browsa appear here, newest first.") {
+                    Button("Open Downloads Folder", action: openFolder)
+                }
             } else {
                 List(selection: $selection) {
                     ForEach(downloads.reversed()) { item in
@@ -302,22 +304,26 @@ struct DownloadsPanel: View {
                     if let id = ids.first, let item = downloads.first(where: { $0.id == id }) { open(item) }
                 }
             }
-            Divider().opacity(0.5)
-            HStack {
-                Button("Open Downloads Folder", systemImage: "folder") {
-                    if let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
-                        NSWorkspace.shared.open(dir)
-                    }
+            if !downloads.isEmpty {
+                Divider().opacity(0.5)
+                HStack {
+                    Button("Open Downloads Folder", systemImage: "folder", action: openFolder)
+                    Spacer()
+                    Button("Clear") { browser.library.downloads.removeAll { $0.status != .running } }
+                        .disabled(!downloads.contains { $0.status != .running })
+                        .help("Remove finished downloads from the list. The files stay.")
                 }
-                Spacer()
-                Button("Clear") { browser.library.downloads.removeAll { $0.status != .running } }
-                    .disabled(!downloads.contains { $0.status != .running })
-                    .help("Remove finished downloads from the list. The files stay.")
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .padding(.horizontal, 12)
+                .frame(height: 36)
             }
-            .buttonStyle(.borderless)
-            .controlSize(.small)
-            .padding(.horizontal, 12)
-            .frame(height: 36)
+        }
+    }
+
+    private func openFolder() {
+        if let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+            NSWorkspace.shared.open(dir)
         }
     }
 

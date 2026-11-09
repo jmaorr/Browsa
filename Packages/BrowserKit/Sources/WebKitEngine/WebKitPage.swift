@@ -13,6 +13,9 @@ public final class WebKitPage: NSObject, EnginePage {
     let profile: BrowsingProfile
     private(set) weak var engine: WebKitEngine?
     private var observations: [NSKeyValueObservation] = []
+    /// Set while a restored session hasn't shown a page yet. WebKit can sit on a restored history
+    /// entry forever (reload just retries it), where a fresh load of the same address works.
+    private var awaitingRestore = false
 
     public var view: NSView { webView }
 
@@ -62,12 +65,20 @@ public final class WebKitPage: NSObject, EnginePage {
 
     // MARK: EnginePage
 
-    public func load(_ url: URL) { webView.load(URLRequest(url: url)) }
+    public func load(_ url: URL) {
+        awaitingRestore = false
+        webView.load(URLRequest(url: url))
+    }
 
     public func loadHTML(_ html: String, baseURL: URL?) { webView.loadHTMLString(html, baseURL: baseURL) }
 
     public func reload() {
-        if webView.url != nil { webView.reload() }
+        if awaitingRestore, let url = webView.url ?? state.url {
+            // The restored entry never loaded: start over with a plain request instead.
+            awaitingRestore = false
+            webView.stopLoading()
+            load(url)
+        } else if webView.url != nil { webView.reload() }
         else if let url = state.url { load(url) }
     }
 
@@ -102,13 +113,26 @@ public final class WebKitPage: NSObject, EnginePage {
     public func sessionState() -> Data? { webView.interactionState as? Data }
 
     /// Restoring saved state can come to nothing, so load the URL if the page stays empty.
+    /// Restoring saved state can come to nothing, or hang on the restored entry, so if no page has
+    /// been committed shortly after, load the address afresh.
     func restore(_ data: Data, fallback: URL?) {
         state.url = fallback
+        awaitingRestore = true
         webView.interactionState = data
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(2))
-            guard let self, self.webView.url == nil, !self.webView.isLoading, let fallback else { return }
-            self.load(fallback)
+            guard let self, self.awaitingRestore else { return }
+            if self.webView.url == nil, !self.webView.isLoading, let fallback {
+                self.awaitingRestore = false
+                self.load(fallback)
+                return
+            }
+            // Still loading the restored entry: give it a little longer, then start over.
+            try? await Task.sleep(for: .seconds(4))
+            guard self.awaitingRestore, let url = self.webView.url ?? fallback else { return }
+            self.awaitingRestore = false
+            self.webView.stopLoading()
+            self.load(url)
         }
     }
 
@@ -193,6 +217,7 @@ extension WebKitPage: WKNavigationDelegate {
     }
 
     public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        awaitingRestore = false
         delegate?.page(self, didCommit: webView.url)
         engine?.extensionPageChanged(self)
     }
