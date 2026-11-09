@@ -289,7 +289,8 @@ struct AgentsPanel: View {
                 Button(agents.isPaused ? "Resume" : "Stop") {
                     withAnimation(Motion.snappy) { agents.isPaused ? agents.resume() : agents.stopAll() }
                 }
-                .tint(agents.isPaused ? nil : .red)
+                .buttonStyle(.borderedProminent)
+                .tint(agents.isPaused ? .accentColor : .red)
             }
         }
     }
