@@ -37,7 +37,6 @@ final class Browser {
     var activePrompt: Prompt?
     /// Reader, when it's showing over the current tab.
     var reader: ReaderSession?
-    var isDownloadsPresented = false
     var isArchivePresented = false
     /// When and which way the space last changed, so tab lists cascade in from that side.
     private(set) var lastSpaceSwitch: SpaceSwitch?
