@@ -75,6 +75,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isClearingForQuit = false
 
     private static func makeLibrary() -> Library {
+        #if SPIKE
+        SpikeHarness.willMakeLibrary()
+        #endif
         #if DEBUG
         // The snapshot tour starts from a fresh state and leaves the real one alone.
         if ProcessInfo.processInfo.environment["BROWSA_SNAPSHOT"] != nil || ProcessInfo.processInfo.environment["BROWSA_COLUMNS_CHECK"] != nil
@@ -100,6 +103,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             MainActor.assumeIsolated { self?.handle(event) ?? false } ? nil : event
         }
+        #if SPIKE
+        SpikeHarness.start(delegate: self)
+        #endif
         #if DEBUG
         if let dir = ProcessInfo.processInfo.environment["BROWSA_EXT_COMPAT_CHECK"] {
             Task { @MainActor in await ExtensionCompatCheck(directory: URL(fileURLWithPath: dir), delegate: self).run() }
