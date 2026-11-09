@@ -12,7 +12,8 @@ import Extensibility
 /// - a per-site **ask first** gate and a **Stop** button the browser owns, not the agent.
 @MainActor @Observable
 final class AgentBridge {
-    static let port: UInt16 = 47913
+    /// 47913, unless Info.plist says otherwise (SpikeBrowsa uses its own, so both can run).
+    static let port = UInt16((Bundle.main.object(forInfoDictionaryKey: "BrowsaAgentPort") as? NSNumber)?.intValue ?? 47913)
 
     var isEnabled: Bool {
         didSet { Preferences.agentsEnabled = isEnabled; isEnabled ? start() : stop() }
