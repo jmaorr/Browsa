@@ -247,6 +247,9 @@ enum SpikeHarness {
         case "welcomeFocus":
             // {"stop":"spaces"} opens that card as if hovered; {} lets go.
             WelcomeDebug.shared.focus = (j["stop"] as? String).flatMap(WelcomeStop.init(rawValue:))
+        case "welcomeSpaceKey":
+            // {"n":2}: ⌃2 as the Spaces card's shortcut monitor would receive it.
+            WelcomeDebug.shared.spaceKey = ((j["n"] as? Int ?? 1) - 1, UUID())
         case "welcomeComplete":
             if let s = (j["stop"] as? String).flatMap(WelcomeStop.init(rawValue:)) { WelcomeProgress.shared.complete(s) }
         case "welcome":

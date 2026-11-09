@@ -122,7 +122,7 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
 
     var detail: String {
         switch self {
-        case .spaces: "Work, side project, personal. Each space keeps its own tabs and its own colour. Swipe with two fingers to switch."
+        case .spaces: "A place to keep your tabs organised for Work, Personal, and anything else."
         case .newTab: "Search, type an address, or jump to a tab you already have open."
         case .commands: "Split the view, pin a tab, ask an agent. Everything is a few letters away."
         case .importing: "Bookmarks, history, saved passwords and your open tabs, brought over in one go. Your old browser stays as it was."
@@ -231,7 +231,11 @@ enum WelcomeLevel: Int, CaseIterable {
         return level != before ? level : nil
     }
 
+    /// Bumped on reset, so the cards' own state starts over too.
+    private(set) var generation = 0
+
     func reset() {
+        generation += 1
         done = []
         UserDefaults.standard.removeObject(forKey: Self.key)
     }
@@ -243,44 +247,55 @@ enum WelcomeLevel: Int, CaseIterable {
 @MainActor @Observable final class WelcomeDebug {
     static let shared = WelcomeDebug()
     var focus: WelcomeStop?
+    /// A space shortcut as the card's key monitor would see it (posted keys skip local monitors).
+    var spaceKey: (index: Int, id: UUID)?
 }
 
-/// The welcome tab's page: a title, the level bar, and the stops as a gallery of cards. Each card
-/// is learned in place: hovering it opens it a little and says what to do, doing it ticks the card
-/// off and folds it down. During the intro the page waits for the metal to start fading, then rises.
+/// The welcome tab's page: a title near the middle of the first screen, the level bar and the
+/// stops below it. Each card teaches its stop in place and ticks itself off when you do it.
+/// During the intro the page waits for the metal to start fading, then rises.
 struct WelcomePage: View {
     @Environment(Browser.self) private var browser
     @State private var progress = WelcomeProgress.shared
-
     private var shown: Bool { browser.intro == nil || browser.intro == .cards }
 
     var body: some View {
-        ZStack {
-            Color(nsColor: .textBackgroundColor)
+        GeometryReader { viewport in
             ScrollView {
                 VStack(spacing: 30) {
+                    // The title sits a little above the middle of the first screen; the stops
+                    // start just below the fold, with the bar and the first card peeking up.
                     VStack(spacing: 6) {
                         Text("Make Browsa yours")
-                            .font(.system(size: 30, weight: .semibold))
-                            .tracking(-0.7)
+                            .font(.system(size: 34, weight: .semibold))
+                            .tracking(-0.8)
                         Text("Eight short stops, about four minutes. Skip any of them.")
-                            .font(.system(size: 13))
+                            .font(.system(size: 13.5))
                             .foregroundStyle(.secondary)
                     }
+                    .frame(height: max(220, viewport.size.height * 0.56), alignment: .bottom)
                     .welcomeArrival(0, shown: shown)
                     LevelBar(done: progress.done.count)
                         .frame(maxWidth: 620)
+                        .padding(.bottom, 24)
                         .welcomeArrival(1, shown: shown)
                     gallery
+                        .id(progress.generation)
+                    Button("Reset Progress", systemImage: "arrow.counterclockwise") {
+                        progress.reset()
+                    }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .padding(.top, 20)
                 }
                 .frame(maxWidth: 780)
                 .padding(.horizontal, 40)
-                .padding(.top, 56)
                 .padding(.bottom, 64)
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.automatic)
         }
+        .background(Color(nsColor: .textBackgroundColor))
         .onChange(of: browser.commandBar) { _, mode in
             if mode == .newTab { complete(.newTab) }
             if mode == .commands { complete(.commands) }
@@ -395,37 +410,9 @@ private struct LevelBar: View {
 
 // MARK: - Gallery cards
 
-extension WelcomeStop {
-    /// What to do, shown when the card opens up.
-    var instruction: String {
-        switch self {
-        case .spaces: "Swipe sideways with two fingers on this card"
-        case .newTab: "Press ⌘T now"
-        case .commands: "Press ⌘K now"
-        case .importing: "Pick the browser you're coming from"
-        case .tour: "Keep the pointer here to watch"
-        case .library: "Add a kit to set Browsa up"
-        case .agents: "Add Browsa to your agent"
-        case .makeDefault: "Make Browsa the browser links open in"
-        }
-    }
-
-    var instructionSymbol: String {
-        switch self {
-        case .spaces: "hand.draw"
-        case .newTab, .commands: "keyboard"
-        case .importing: "square.and.arrow.down"
-        case .tour: "eye"
-        case .library: "square.grid.2x2"
-        case .agents: "terminal"
-        case .makeDefault: "star"
-        }
-    }
-}
-
-/// A stop as a card that's learned in place. At rest it shows its story and a still of its hero.
-/// Hover opens it a little and says what to do; doing it plays the hero through, ticks the card
-/// and folds it down to a slim done row. Clicking keeps it open without a hover.
+/// A stop as a fixed card. It shows its story, a hero of the real UI, and (as each stop gets its
+/// pass) a small instruction card saying what to do. Doing it for real ticks the card: its icon
+/// turns green with a flourish. The hero rests on a still frame and plays on first view and hover.
 private struct GalleryCard: View {
     let stop: WelcomeStop
     let vertical: Bool
@@ -437,158 +424,134 @@ private struct GalleryCard: View {
     @State private var debug = WelcomeDebug.shared
 
     @State private var hovering = false
-    @State private var pinned = false
-    /// After ticking off, the card folds down even while still hovered, until the pointer leaves.
-    @State private var folded = false
-    @State private var celebrating = false
-    @State private var unhover: Task<Void, Never>?
-
     @State private var played = false
     @State private var visible = false
     @State private var playing = false
     @State private var playStart = Date.now
     @State private var stopTask: Task<Void, Never>?
-    @State private var watchTask: Task<Void, Never>?
 
-    // Spaces
-    @State private var spacePos = 0.0
-    @State private var swipeMonitor: Any?
+    // Spaces: the person drives the hero by swiping on the card or with ⌃1–3 / ⌥⌘← →.
+    @State private var spacePos: Double?
+    @State private var visited: Set<Int> = []
+    @State private var monitors: [Any] = []
     @State private var swipeTravel = 0.0
     @State private var swipeLatched = false
 
-    // Import
-    @State private var importFrom: String?
-    @State private var importing = false
-
-    private var focused: Bool { active && !folded && (hovering || pinned || debug.focus == stop) }
-    private var compact: Bool { done && !celebrating && !focused }
-    private var expanded: Bool { focused && !compact }
-
-    private var expandedHeight: CGFloat {
-        switch stop {
-        case .importing, .agents, .library: 300
-        case .tour: 330
-        default: 286
-        }
-    }
+    private var height: CGFloat { stop == .spaces ? 268 : 220 }
 
     var body: some View {
         let surface = stop.surface
         let dark = surface.isDark(scheme)
         Group {
-            if compact {
-                doneRow
-            } else if vertical {
+            if vertical {
                 VStack(spacing: 0) {
-                    text(dark)
+                    text
                     hero.frame(height: 210).frame(maxWidth: .infinity)
                 }
             } else {
                 HStack(spacing: 0) {
-                    text(dark).frame(width: 300, alignment: .leading)
+                    text.frame(width: 300, alignment: .leading)
                     hero.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(height: expanded ? expandedHeight : 220)
+                .frame(height: height)
             }
         }
-        .background { if !compact { SurfaceBackground(surface: surface) } else { compactBackground } }
+        .background { SurfaceBackground(surface: surface) }
         .clipShape(.rect(cornerRadius: 18, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .strokeBorder(compact ? Color.primary.opacity(0.08) : dark ? Color.white.opacity(0.1) : Color.black.opacity(0.08), lineWidth: 1))
-        .environment(\.colorScheme, compact ? scheme : dark ? .dark : .light)
+            .strokeBorder(dark ? Color.white.opacity(0.1) : Color.black.opacity(0.08), lineWidth: 1))
+        .environment(\.colorScheme, dark ? .dark : .light)
         .contentShape(.rect(cornerRadius: 18))
-        .shadow(color: .black.opacity(expanded ? 0.16 : compact ? 0 : 0.06), radius: expanded ? 22 : 6, y: expanded ? 12 : 3)
-        .animation(.smooth(duration: 0.45), value: expanded)
-        .animation(.smooth(duration: 0.5), value: compact)
-        .onTapGesture { pinned.toggle() }
-        .onHover(perform: hover)
+        .shadow(color: .black.opacity(hovering ? 0.12 : 0.05), radius: hovering ? 16 : 6, y: hovering ? 8 : 3)
+        .animation(.smooth(duration: 0.3), value: hovering)
+        .onHover { h in
+            hovering = h
+            if stop != .spaces || spacePos == nil { setPlaying(h && active) }
+        }
         .onScrollVisibilityChange(threshold: 0.4) { v in
             visible = v
             playFirstLoop()
         }
         .onChange(of: active) { _, on in if on { playFirstLoop() } }
-        .onChange(of: focused) { _, on in focusChanged(on) }
-        .onChange(of: done) { _, now in if now { celebrate() } }
-        .onDisappear { endSwipes() }
+        .onAppear { if stop == .spaces, !done { listen() } }
+        .onDisappear { stopListening() }
+        .onChange(of: debug.spaceKey?.id) { if let k = debug.spaceKey, stop == .spaces, !done { go(to: k.index) } }
+        .onChange(of: done) { _, now in if now { stopListening() } else if stop == .spaces { listen() } }
     }
 
-    // MARK: Focus
+    // MARK: Spaces: real gestures and shortcuts drive the hero
 
-    private func hover(_ h: Bool) {
-        unhover?.cancel()
-        if h {
-            hovering = true
-        } else {
-            // A short grace, so the card growing under the pointer never flickers it closed.
-            unhover = Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(250))
-                guard !Task.isCancelled else { return }
-                hovering = false
-                pinned = false
-                folded = false
-            }
-        }
-    }
-
-    private func focusChanged(_ on: Bool) {
-        setPlaying(on && stop != .spaces)
-        if on, !done {
-            if stop == .spaces { beginSwipes() }
-            if stop == .tour { watchTour() }
-        } else {
-            endSwipes()
-            watchTask?.cancel()
-        }
-    }
-
-    /// Ticked off: let the hero finish its moment, then fold the card down.
-    private func celebrate() {
-        celebrating = true
-        endSwipes()
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.4))
-            celebrating = false
-            pinned = false
-            if hovering { folded = true }
-        }
-    }
-
-    // MARK: Spaces: a real two-finger swipe on the card
-
-    private func beginSwipes() {
-        guard swipeMonitor == nil else { return }
-        swipeMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
-            // Only sideways swipes; vertical scrolling still moves the page.
-            guard abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) * 1.2 || swipeTravel != 0 else { return event }
+    /// Until Spaces is learned, the welcome page catches the space gestures and shortcuts and
+    /// plays them on the card's own window, so learning never whisks you away from the page.
+    private func listen() {
+        guard monitors.isEmpty else { return }
+        if let swipe = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel, handler: { event in
+            // Sideways two-finger swipes over this card only; vertical scrolling still moves the page.
+            guard hovering || debug.focus == stop,
+                  abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) * 1.2 || swipeTravel != 0 else { return event }
             if event.phase == .began { swipeTravel = 0; swipeLatched = false }
             swipeTravel += event.scrollingDeltaX
-            if !swipeLatched, abs(swipeTravel) > 70 {
+            if !swipeLatched, abs(swipeTravel) > 60 {
                 swipeLatched = true
-                withAnimation(.smooth(duration: 0.6)) { spacePos += 1 }
-                if spacePos >= 2 { complete() }
+                // Natural direction: fingers moving left bring in the next space.
+                step(swipeTravel < 0 ? 1 : -1)
             }
             if event.phase == .ended || event.phase == .cancelled || event.momentumPhase == .ended {
                 swipeTravel = 0
                 swipeLatched = false
             }
             return nil
-        }
+        }) { monitors.append(swipe) }
+        if let keys = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { event in
+            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if mods == .control, let n = Int(event.charactersIgnoringModifiers ?? ""), (1...3).contains(n) {
+                go(to: n - 1)
+                return nil
+            }
+            if mods.contains([.command, .option]), event.keyCode == 123 || event.keyCode == 124 {
+                step(event.keyCode == 124 ? 1 : -1)
+                return nil
+            }
+            return event
+        }) { monitors.append(keys) }
     }
 
-    private func endSwipes() {
-        if let swipeMonitor { NSEvent.removeMonitor(swipeMonitor) }
-        swipeMonitor = nil
+    private func stopListening() {
+        monitors.forEach(NSEvent.removeMonitor)
+        monitors = []
         swipeTravel = 0
     }
 
-    // MARK: Tour: watching it through counts
+    private var currentSpace: Int { ((Int((spacePos ?? 0).rounded()) % 3) + 3) % 3 }
 
-    private func watchTour() {
-        watchTask?.cancel()
-        watchTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(stop.loop))
-            guard !Task.isCancelled, focused else { return }
-            complete()
+    private func step(_ delta: Int) {
+        stopTask?.cancel()
+        playing = false
+        let from = spacePos ?? 0
+        withAnimation(.smooth(duration: 0.55)) { spacePos = from.rounded() + Double(delta) }
+        arrived()
+    }
+
+    private func go(to index: Int) {
+        let from = spacePos ?? 0
+        var delta = index - currentSpace
+        if delta > 1 { delta -= 3 }
+        if delta < -1 { delta += 3 }
+        guard delta != 0 else { arrived(); return }
+        stopTask?.cancel()
+        playing = false
+        withAnimation(.smooth(duration: 0.55)) { spacePos = from.rounded() + Double(delta) }
+        arrived()
+    }
+
+    private func arrived() {
+        visited.insert(0)
+        visited.insert(currentSpace)
+        if visited.count == 3 {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(500))
+                complete()
+            }
         }
     }
 
@@ -622,190 +585,159 @@ private struct GalleryCard: View {
         // An overlay on a clear view, so the hero's own size never widens the card.
         Color.clear
             .overlay {
-                StopHero(stop: stop, playing: playing || (stop == .importing && importing), start: playStart,
-                         spacePos: stop == .spaces && focused ? spacePos : nil)
+                StopHero(stop: stop, playing: playing && spacePos == nil, start: playStart, spacePos: spacePos)
                     .environment(\.colorScheme, scheme)
             }
-            .overlay(alignment: .topTrailing) {
-                if celebrating {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 30))
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, .green)
-                        .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
-                        .padding(16)
-                        .transition(.scale(scale: 0.4).combined(with: .opacity))
-                }
-            }
-            .animation(.bouncy(duration: 0.45, extraBounce: 0.2), value: celebrating)
             .clipped()
             .allowsHitTesting(false)
     }
 
     // MARK: Text column
 
-    private var tile: some View {
-        Image(systemName: stop.symbol)
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(.white)
-            .frame(width: 32, height: 32)
-            .background(LinearGradient(colors: [Color(hue: stop.hue, saturation: 0.62, brightness: 0.95),
-                                                 Color(hue: stop.hue, saturation: 0.8, brightness: 0.66)],
-                                        startPoint: .top, endPoint: .bottom), in: .rect(cornerRadius: 9, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(.white.opacity(0.25)))
-            .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
-    }
-
-    private func text(_ dark: Bool) -> some View {
+    private var text: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                tile
-                Text(stop.title).font(.system(size: 14, weight: .semibold)).tracking(-0.1)
+                DoneTile(stop: stop, done: done)
+                Text(stop.title).font(.system(size: 15, weight: .semibold)).tracking(-0.15)
                 Spacer(minLength: 6)
-                if done {
-                    Image(systemName: "checkmark.circle.fill").font(.system(size: 15)).foregroundStyle(.green)
-                } else {
+                if !done {
                     Text(stop.time)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(.primary.opacity(0.07), in: .capsule)
+                        .transition(.opacity)
                 }
             }
+            .animation(.smooth(duration: 0.3), value: done)
             Text(stop.detail)
-                .font(.system(size: 12.5))
+                .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .lineSpacing(1.5)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
-            if expanded {
-                action
-                    .transition(.opacity.combined(with: .offset(y: 8)))
+            if stop == .spaces {
+                SpacesInstruction(visited: visited, current: currentSpace, done: done)
             }
         }
         .foregroundStyle(.primary)
-        .padding(EdgeInsets(top: 18, leading: 20, bottom: 18, trailing: 18))
+        .padding(EdgeInsets(top: 20, leading: 22, bottom: 20, trailing: 20))
     }
+}
 
-    /// What to do: the instruction, and for the stops done in the card, its controls.
-    @ViewBuilder private var action: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if done {
-                Label("Done", systemImage: "checkmark").font(.system(size: 12, weight: .semibold)).foregroundStyle(.green)
-            } else {
-                instruction
-                controls
+/// The stop's icon tile. Done, it turns green with a check, a ring that rings out and a few sparks.
+private struct DoneTile: View {
+    let stop: WelcomeStop
+    let done: Bool
+    @State private var burst = false
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(LinearGradient(colors: done
+                                     ? [Color(red: 0.36, green: 0.84, blue: 0.44), Color(red: 0.13, green: 0.62, blue: 0.27)]
+                                     : [Color(hue: stop.hue, saturation: 0.62, brightness: 0.95), Color(hue: stop.hue, saturation: 0.8, brightness: 0.66)],
+                                     startPoint: .top, endPoint: .bottom))
+            RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.white.opacity(0.25))
+            Image(systemName: done ? "checkmark" : stop.symbol)
+                .font(.system(size: done ? 15 : 14, weight: done ? .bold : .semibold))
+                .foregroundStyle(.white)
+                .contentTransition(.symbolEffect(.replace.downUp))
+        }
+        .frame(width: 34, height: 34)
+        .shadow(color: (done ? Color.green : .black).opacity(done ? 0.35 : 0.2), radius: done ? 8 : 4, y: 2)
+        .scaleEffect(burst ? 1.18 : 1)
+        .background {
+            // The flourish: a ring ringing out and sparks flying off, once.
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.green.opacity(burst ? 0 : 0.7), lineWidth: 2)
+                    .scaleEffect(burst ? 2.1 : 1)
+                ForEach(0..<8, id: \.self) { i in
+                    Circle()
+                        .fill(i.isMultiple(of: 2) ? Color.green : Color.yellow)
+                        .frame(width: 4, height: 4)
+                        .offset(y: burst ? -34 : -12)
+                        .rotationEffect(.degrees(Double(i) * 45))
+                        .opacity(burst ? 0 : 1)
+                }
+            }
+            .opacity(done ? 1 : 0)
+        }
+        .animation(.smooth(duration: 0.4), value: done)
+        .onChange(of: done) { _, now in
+            guard now else { return }
+            burst = false
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.5)) { burst = true }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(320))
+                withAnimation(.smooth(duration: 0.4)) { burst = false }
             }
         }
     }
+}
 
-    private var instruction: some View {
-        HStack(spacing: 8) {
-            Image(systemName: stop.instructionSymbol)
-                .font(.system(size: 12, weight: .semibold))
-                .symbolEffect(.pulse, options: .repeating, isActive: expanded)
-            if stop == .newTab || stop == .commands {
-                Text("Press").font(.system(size: 12.5, weight: .medium))
-                KeyCap(text: "⌘")
-                KeyCap(text: stop == .newTab ? "T" : "K")
-                Text("now").font(.system(size: 12.5, weight: .medium))
-            } else {
-                Text(stop.instruction).font(.system(size: 12.5, weight: .medium))
-            }
-            if stop == .spaces {
-                Spacer(minLength: 4)
-                HStack(spacing: 4) {
-                    ForEach(0..<3, id: \.self) { i in
-                        Circle().fill(Double(i) <= spacePos ? Color.primary : Color.primary.opacity(0.2)).frame(width: 5, height: 5)
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, 11).padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.primary.opacity(0.08), in: .rect(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.primary.opacity(0.1)))
-    }
+/// The instruction for Spaces: a small, clean card with a trackpad showing the swipe, and the
+/// keyboard way for people with a mouse. Three dots fill in as each space is visited.
+private struct SpacesInstruction: View {
+    let visited: Set<Int>
+    let current: Int
+    let done: Bool
 
-    @ViewBuilder private var controls: some View {
-        switch stop {
-        case .importing:
-            if importing {
-                ProgressView().controlSize(.small).progressViewStyle(.linear)
-                Text("Bringing over bookmarks, history and passwords…").font(.system(size: 11)).foregroundStyle(.secondary)
-            } else {
-                HStack(spacing: 6) {
-                    ForEach(["Chrome", "Safari", "Arc", "Firefox"], id: \.self) { b in
-                        Button(b) { importFrom = b }
-                            .buttonStyle(.glass)
-                            .tint(importFrom == b ? .accentColor : nil)
-                            .controlSize(.small)
-                    }
-                }
-                if let from = importFrom {
-                    Button("Import from \(from)") { runImport() }
-                        .buttonStyle(.glassProminent)
-                        .controlSize(.small)
-                }
-            }
-        case .library:
-            HStack(spacing: 8) {
-                Button("Add Developer kit") { complete() }.buttonStyle(.glassProminent).controlSize(.small)
-                Button("Browse the Library") {}.buttonStyle(.glass).controlSize(.small)
-            }
-        case .agents:
-            HStack(spacing: 6) {
-                ForEach(["Claude Code", "Codex", "Cursor"], id: \.self) { a in
-                    Button(a) { complete() }.buttonStyle(.glass).controlSize(.small)
-                }
-            }
-        case .makeDefault:
-            Button("Make Browsa my default") {
-                WelcomePage.makeDefaultBrowser()
-                complete()
-            }
-            .buttonStyle(.glassProminent)
-            .controlSize(.small)
-        case .tour:
-            TimelineView(.animation(minimumInterval: 1 / 15)) { context in
-                let f = min(1, context.date.timeIntervalSince(playStart) / stop.loop)
-                Capsule().fill(.primary.opacity(0.12)).frame(height: 4)
-                    .overlay(alignment: .leading) {
-                        GeometryReader { g in Capsule().fill(Color.primary.opacity(0.8)).frame(width: g.size.width * f) }
-                    }
-            }
-            .frame(height: 4)
-        default:
-            EmptyView()
-        }
-    }
-
-    private func runImport() {
-        importing = true
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(stop.loop * 0.75))
-            importing = false
-            complete()
-        }
-    }
-
-    // MARK: Done
-
-    private var compactBackground: some View {
-        Color(nsColor: .textBackgroundColor)
-    }
-
-    private var doneRow: some View {
+    var body: some View {
         HStack(spacing: 12) {
-            tile.scaleEffect(0.85)
-            Text(stop.title).font(.system(size: 13.5, weight: .semibold))
-            Spacer()
-            Label("Done", systemImage: "checkmark.circle.fill")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.green)
+            Trackpad()
+            VStack(alignment: .leading, spacing: 4) {
+                Text(done ? "You've got Spaces" : "Swipe to switch spaces")
+                    .font(.system(size: 13, weight: .semibold))
+                HStack(spacing: 4) {
+                    Text("or press").foregroundStyle(.secondary)
+                    KeyCap(text: "⌃1")
+                    KeyCap(text: "⌃2")
+                    KeyCap(text: "⌃3")
+                }
+                .font(.system(size: 11.5))
+            }
+            Spacer(minLength: 0)
+            VStack(spacing: 5) {
+                ForEach(0..<3, id: \.self) { i in
+                    Circle()
+                        .fill(visited.contains(i) || done ? Color.green : Color.primary.opacity(0.15))
+                        .frame(width: 6, height: 6)
+                        .overlay(Circle().strokeBorder(Color.primary.opacity(i == current && !done ? 0.5 : 0), lineWidth: 1).padding(-2))
+                }
+            }
+            .animation(.smooth(duration: 0.3), value: visited)
         }
-        .padding(.horizontal, 16)
-        .frame(height: 60)
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(.white.opacity(0.94), in: .rect(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.black.opacity(0.06)))
+        .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
+        .environment(\.colorScheme, .light)
+    }
+}
+
+/// A trackpad with two fingertips sliding sideways, on a loop.
+private struct Trackpad: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: Motion.reduced)) { context in
+            let f = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2.2) / 2.2
+            let x = 10 - 20 * welcomeEase((f - 0.15) / 0.55)
+            let a = f < 0.1 ? f / 0.1 : f > 0.75 ? max(0, 1 - (f - 0.75) / 0.15) : 1
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(LinearGradient(colors: [Color(white: 0.96), Color(white: 0.89)], startPoint: .top, endPoint: .bottom))
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(.black.opacity(0.1)))
+                .overlay {
+                    HStack(spacing: 4) {
+                        Circle().frame(width: 7, height: 7)
+                        Circle().frame(width: 7, height: 7)
+                    }
+                    .foregroundStyle(Color(white: 0.35))
+                    .offset(x: x)
+                    .opacity(a)
+                }
+                .frame(width: 44, height: 32)
+        }
     }
 }
 
@@ -814,11 +746,12 @@ private struct KeyCap: View {
     let text: String
     var body: some View {
         Text(text)
-            .font(.system(size: 11.5, weight: .semibold))
-            .frame(minWidth: 20, minHeight: 20)
-            .background(.background.opacity(0.9), in: .rect(cornerRadius: 5, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(.primary.opacity(0.15)))
-            .shadow(color: .black.opacity(0.15), radius: 0.5, y: 1)
+            .font(.system(size: 10.5, weight: .semibold))
+            .padding(.horizontal, 4)
+            .frame(minWidth: 20, minHeight: 18)
+            .background(.white, in: .rect(cornerRadius: 4, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(.black.opacity(0.14)))
+            .shadow(color: .black.opacity(0.12), radius: 0.5, y: 1)
     }
 }
 

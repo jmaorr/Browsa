@@ -9,8 +9,10 @@ import AppKit
 enum CardSurface {
     /// Clean page-coloured card with a hairline: the quiet ones.
     case paper
-    /// A soft mesh of colours.
+    /// A soft mesh of colours, deep enough for white text.
     case mesh([Color])
+    /// A soft mesh of light colours, taking dark text.
+    case meshLight([Color])
     /// A dark gradient with film grain.
     case grain(Color, Color)
     /// Brushed aluminium, like the keyboard deck.
@@ -20,6 +22,7 @@ enum CardSurface {
     func isDark(_ scheme: ColorScheme) -> Bool {
         switch self {
         case .paper, .aluminium: scheme == .dark
+        case .meshLight: false
         case .mesh, .grain: true
         }
     }
@@ -33,7 +36,7 @@ struct SurfaceBackground: View {
         switch surface {
         case .paper:
             scheme == .dark ? Color(white: 0.135) : Color.white
-        case .mesh(let c):
+        case .mesh(let c), .meshLight(let c):
             MeshGradient(width: 3, height: 3, points: [
                 [0, 0], [0.55, 0], [1, 0],
                 [0, 0.5], [0.42, 0.58], [1, 0.42],
@@ -113,8 +116,8 @@ struct SeededRandom {
 extension WelcomeStop {
     var surface: CardSurface {
         switch self {
-        case .spaces: .mesh([Color(red: 0.36, green: 0.33, blue: 0.86), Color(red: 0.95, green: 0.52, blue: 0.2),
-                             Color(red: 0.13, green: 0.62, blue: 0.62), Color(red: 0.55, green: 0.35, blue: 0.9)])
+        case .spaces: .meshLight([Color(red: 0.99, green: 0.66, blue: 0.3), Color(red: 1.0, green: 0.86, blue: 0.42),
+                                  Color(red: 0.62, green: 0.86, blue: 0.5), Color(red: 0.98, green: 0.76, blue: 0.36)])
         case .newTab: .paper
         case .commands: .aluminium
         case .importing: .paper
@@ -477,65 +480,71 @@ private struct ShortcutHero: View {
 /// A Browsa window whose sidebar swipes between three spaces, each with its own tint and tabs.
 private struct SpacesHero: View, @MainActor Animatable {
     let t: Double
-    /// When set, the person is driving it: which space is showing, fractional mid-swipe.
+    /// When set, the person is driving it: which space is showing, fractional mid-switch.
     var pos: Double?
     var animatableData: Double {
         get { pos ?? 0 }
         set { if pos != nil { pos = newValue } }
     }
-    private let spaces: [(name: String, symbol: String, color: Color, tabs: [(String, String, Color)])] = [
-        ("Personal", "house.fill", .orange, [("Welcome", "W", .orange), ("Recipes", "R", .green), ("YouTube", "Y", .red)]),
-        ("Work", "briefcase.fill", .indigo, [("Linear", "L", .indigo), ("Figma", "F", .purple), ("PR #42", "G", Color(white: 0.15))]),
-        ("Side project", "hammer.fill", .teal, [("localhost:3000", "N", .black), ("Docs", "D", .teal), ("Deploys", "V", Color(white: 0.2))]),
+
+    typealias Space = (name: String, symbol: String, color: Color, tabs: [(String, String, Color)])
+    static let spaces: [Space] = [
+        ("Work", "briefcase.fill", .orange, [("Linear", "L", .indigo), ("Figma", "F", .purple), ("PR #42 · checkout", "G", Color(white: 0.15)),
+                                              ("Standup notes", "N", .yellow), ("Sentry", "S", .pink)]),
+        ("Personal", "house.fill", .green, [("Welcome", "W", .orange), ("Recipes", "R", .green), ("YouTube", "Y", .red),
+                                             ("Flights to Tokyo", "F", .blue), ("Bank", "B", .teal)]),
+        ("Side project", "hammer.fill", .teal, [("localhost:3000", "N", .black), ("Docs", "D", .teal), ("Deploys", "V", Color(white: 0.2)),
+                                                 ("Stripe", "S", .indigo), ("Analytics", "A", .orange)]),
     ]
 
     var body: some View {
         let period = 7.5, seg = period / 3
         let local = t.truncatingRemainder(dividingBy: period)
-        let auto = Int(local / seg)
-        let f = pos == nil ? (local - Double(auto) * seg) / seg : 0
-        let k = pos.map { Int(floor($0)) % 3 } ?? auto
-        let p = pos.map { $0 - floor($0) } ?? welcomeEase((f - 0.72) / 0.28)
-        let from = spaces[k], to = spaces[(k + 1) % 3]
-        MiniWindow(tint: p < 0.5 ? from.color : to.color) {
-            ZStack(alignment: .topLeading) {
-                list(from).offset(x: -110 * p).opacity(1 - p)
-                list(to).offset(x: 110 * (1 - p)).opacity(p)
+        let raw = pos ?? {
+            let k = floor(local / seg)
+            return k + welcomeEase(((local - k * seg) / seg - 0.72) / 0.28)
+        }()
+        let base = floor(raw), p = raw - base
+        let k = ((Int(base) % 3) + 3) % 3
+        let from = Self.spaces[k], to = Self.spaces[(k + 1) % 3]
+        let showing = p < 0.5 ? k : (k + 1) % 3
+        MiniWindow(tint: p < 0.5 ? from.color : to.color, sidebarWidth: 156) {
+            HStack(spacing: 5) {
+                ForEach([("Y", Color.red), ("G", Color(white: 0.15)), ("W", Color(white: 0.45)), ("M", Color.blue)], id: \.0) { f in
+                    MiniFavicon(letter: f.0, color: f.1, size: 13)
+                        .frame(maxWidth: .infinity, minHeight: 26)
+                        .background(.primary.opacity(0.06), in: .rect(cornerRadius: 6, style: .continuous))
+                }
             }
-            .frame(height: 104, alignment: .top)
+            .padding(.bottom, 8)
+            ZStack(alignment: .topLeading) {
+                list(from).offset(x: -150 * p).opacity(1 - p)
+                list(to).offset(x: 150 * (1 - p)).opacity(p)
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
             .clipped()
-            HStack(spacing: 6) {
+            HStack(spacing: 9) {
                 ForEach(0..<3, id: \.self) { i in
-                    Image(systemName: spaces[i].symbol)
-                        .font(.system(size: 8))
-                        .foregroundStyle(i == (p < 0.5 ? k : (k + 1) % 3) ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
+                    Image(systemName: Self.spaces[i].symbol)
+                        .font(.system(size: 9))
+                        .foregroundStyle(i == showing ? AnyShapeStyle(Self.spaces[i].color) : AnyShapeStyle(.tertiary))
                 }
             }
             .frame(maxWidth: .infinity)
-            .padding(.top, 6)
+            .padding(.top, 4)
         } page: {
-            PageLines()
+            PageLines(widths: [0.9, 0.7, 0.85, 0.6, 0.75, 0.5, 0.8])
         }
-        .frame(width: 290, height: 170)
-        .offset(x: 30, y: 26)
-        .overlay(alignment: .bottomLeading) {
-            // Two fingers swiping, during the switch.
-            HStack(spacing: 5) {
-                Circle().frame(width: 12, height: 12)
-                Circle().frame(width: 12, height: 12)
-            }
-            .foregroundStyle(.white.opacity(0.85))
-            .shadow(color: .black.opacity(0.3), radius: 4)
-            .offset(x: 120 - 70 * welcomeEase((f - 0.62) / 0.36), y: -18)
-            .opacity(f > 0.6 && f < 0.98 ? 1 : 0)
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 24)
+        .padding(.trailing, 24)
     }
 
-    private func list(_ s: (name: String, symbol: String, color: Color, tabs: [(String, String, Color)])) -> some View {
+    private func list(_ s: Space) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Label(s.name, systemImage: s.symbol)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(s.color)
                 .padding(.horizontal, 6).padding(.bottom, 3)
             ForEach(s.tabs.indices, id: \.self) { i in
                 MiniTabRow(title: s.tabs[i].0, letter: s.tabs[i].1, color: s.tabs[i].2, selected: i == 0)
