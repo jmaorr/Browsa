@@ -30,12 +30,13 @@ struct SpaceTabs: View {
                         .spaceCascade(index: i, spaceSwitch: browser.lastSpaceSwitch)
                 }
 
-                if !space.isPrivate {
-                    TodayDivider(space: space)
-                        .dropDestination(for: String.self) { items, _ in return drop(items, before: space.listedToday.first, pinned: false) }
+                // A little air between pinned and Today, rather than a rule.
+                if !space.pinned.isEmpty {
+                    Color.clear.frame(height: 8)
                 }
 
-                NewTabRow()
+                NewTabRow(space: space)
+                    .dropDestination(for: String.self) { items, _ in return drop(items, before: space.listedToday.first, pinned: false) }
 
                 ForEach(Array(space.listedToday.enumerated()), id: \.element.id) { i, tab in
                     TabRow(tab: tab, selected: tab.id == browser.selectedTabID(in: space))
@@ -88,37 +89,16 @@ private struct SpaceHeader: View {
     }
 }
 
-/// The line between pinned and today, with Arc's "Clear" on hover.
-private struct TodayDivider: View {
+/// New Tab, with Clear on hover: closes this space's Today tabs except the one you're on.
+private struct NewTabRow: View {
     @Environment(Browser.self) private var browser
     let space: Space
     @State private var hovering = false
+    @State private var clearHovering = false
 
-    var body: some View {
-        HStack(spacing: 8) {
-            Rectangle().fill(.primary.opacity(0.1)).frame(height: 1)
-            if hovering, !space.listedToday.isEmpty {
-                Button { withAnimation(Motion.spring) { browser.clearToday() } } label: {
-                    Label("Clear", systemImage: "arrow.down").labelStyle(.titleAndIcon)
-                }
-                .buttonStyle(.plain)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .transition(.opacity)
-                .help("Close every Today tab in this space")
-            }
-        }
-        .frame(height: 18)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 2)
-        .contentShape(.rect)
-        .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
+    private var canClear: Bool {
+        space.listedToday.contains { $0.id != browser.currentTab?.id }
     }
-}
-
-private struct NewTabRow: View {
-    @Environment(Browser.self) private var browser
-    @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -127,20 +107,31 @@ private struct NewTabRow: View {
                 .frame(width: 16, height: 16)
             Text("New Tab")
             Spacer()
-            Text("⌘T").font(.system(size: 11)).foregroundStyle(.tertiary).opacity(hovering ? 1 : 0)
+            if hovering, canClear, !space.isPrivate {
+                Button { withAnimation(Motion.spring) { browser.clearToday() } } label: {
+                    Text("Clear")
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.horizontal, 8)
+                        .frame(height: 22)
+                        .background(.primary.opacity(clearHovering ? 0.12 : 0.07), in: .capsule)
+                        .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .onHover { clearHovering = $0 }
+                .help("Close the other Today tabs in this space")
+                .transition(.opacity)
+            }
         }
         .font(.system(size: 13))
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 8)
+        .padding(.leading, 8)
+        .padding(.trailing, 6)
         .frame(height: 34)
         .background(.primary.opacity(hovering ? 0.06 : 0), in: .rect(cornerRadius: 8, style: .continuous))
         .contentShape(.rect)
         .onTapGesture { browser.showCommandBar(.newTab) }
-        .onHover { hovering = $0 }
+        .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
         .help("New Tab (⌘T)")
-        .contextMenu {
-            Button("New Private Tab", systemImage: "eye.slash") { browser.run(command: "private") }
-        }
     }
 }
 
