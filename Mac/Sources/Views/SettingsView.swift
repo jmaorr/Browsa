@@ -396,31 +396,119 @@ private struct ExtensionSettings: View {
     }
 }
 
-/// What an extension will be able to do, in plain words, before it runs.
+/// What an extension will be able to do, in plain words, before it runs. Laid out like a macOS
+/// alert: icon and question centred, the details in a card that scrolls when they run long, and two
+/// large rounded glass buttons side by side.
 struct AddExtensionSheet: View {
     let preview: Library.ExtensionPreview
     let add: () -> Void
     let cancel: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Add \(preview.item.name)?").font(.headline)
-            Text("\(preview.item.source.label) · version \(preview.item.version)").font(.caption).foregroundStyle(.secondary)
-            if !preview.permissionLines.isEmpty {
-                Text("It will be able to:").font(.callout)
-                ForEach(preview.permissionLines, id: \.self) { Label($0, systemImage: "checkmark.shield").font(.callout) }
+        VStack(spacing: 16) {
+            VStack(spacing: 6) {
+                ExtensionIcon(image: preview.icon, size: 64)
+                    .padding(.bottom, 4)
+                Text("Add \u{201C}\(preview.item.name)\u{201D} to Browsa?")
+                    .font(.title3.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("\(preview.item.source.label) · Version \(preview.item.version)")
+                    .font(.callout).foregroundStyle(.secondary)
+                if preview.item.source.isFromStore { VerifiedTag(isVerified: preview.isVerified) }
+            }
+            if !preview.permissions.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("It will be able to").font(.callout.weight(.medium)).foregroundStyle(.secondary)
+                    ViewThatFits(in: .vertical) {
+                        permissionList
+                        ScrollView { permissionList }.scrollIndicators(.automatic)
+                    }
+                    .frame(maxHeight: 240)
+                    .background(.quaternary.opacity(0.6), in: .rect(cornerRadius: 14))
+                }
             }
             if preview.item.source.isFromStore {
-                Text("Browsa keeps it up to date, and asks again if an update wants more.").font(.caption).foregroundStyle(.secondary)
+                Text("Browsa keeps it up to date, and asks again if an update wants more.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            HStack {
-                Spacer()
-                Button("Not Now", action: cancel).keyboardShortcut(.cancelAction)
-                Button("Add Extension", action: add).keyboardShortcut(.defaultAction)
+            HStack(spacing: 10) {
+                Button(action: cancel) { Text("Not Now").frame(maxWidth: .infinity) }
+                    .buttonStyle(.glass)
+                    .keyboardShortcut(.cancelAction)
+                Button(action: add) { Text("Add Extension").frame(maxWidth: .infinity) }
+                    .buttonStyle(.glassProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .controlSize(.large)
+            .buttonBorderShape(.capsule)
+        }
+        .padding(24)
+        .frame(width: 400)
+    }
+
+    private var permissionList: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(preview.permissions, id: \.self) { line in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Image(systemName: line.symbol)
+                        .foregroundStyle(.tint)
+                        .frame(width: 20)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(line.text).fixedSize(horizontal: false, vertical: true)
+                        if !line.sites.isEmpty {
+                            Text(line.sites.joined(separator: "\n"))
+                                .font(.caption).foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
             }
         }
-        .padding(20)
-        .frame(width: 380)
+        .font(.callout)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// An extension's own icon, or a puzzle piece while it has none.
+struct ExtensionIcon: View {
+    let image: NSImage?
+    var size: CGFloat = 32
+
+    var body: some View {
+        if let image {
+            Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
+                .frame(width: size, height: size)
+        } else {
+            Image(systemName: "puzzlepiece.extension.fill")
+                .font(.system(size: size * 0.5))
+                .foregroundStyle(.secondary)
+                .frame(width: size, height: size)
+                .background(.quaternary, in: .rect(cornerRadius: size * 0.22))
+        }
+    }
+}
+
+/// "Works in Browsa" for extensions checked end to end, a quieter "Not tested in Browsa yet" otherwise.
+struct VerifiedTag: View {
+    let isVerified: Bool
+
+    var body: some View {
+        // Only the seal carries the colour; the words stay in the normal label colour on a neutral
+        // capsule, so they read in light and dark mode (green on green didn't).
+        Label {
+            Text(isVerified ? "Works in Browsa" : "Not tested in Browsa yet")
+                .foregroundStyle(isVerified ? Color.primary : Color.secondary)
+        } icon: {
+            Image(systemName: isVerified ? "checkmark.seal.fill" : "questionmark.circle")
+                .foregroundStyle(isVerified ? Color.green : Color.secondary)
+        }
+        .font(.caption.weight(.medium))
+        .padding(.horizontal, 9).padding(.vertical, 4)
+        .background(.quaternary, in: .capsule)
     }
 }
 

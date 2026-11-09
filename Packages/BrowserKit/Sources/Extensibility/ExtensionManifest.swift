@@ -203,3 +203,64 @@ public func describePermission(_ permission: String) -> String? {
     default: permission.contains("://") ? "Read and change \(permission)" : nil
     }
 }
+
+/// One line of the add sheet: what an extension may do, with the sites behind it when there are several.
+public struct PermissionSummary: Hashable, Sendable {
+    public let symbol: String
+    public let text: String
+    /// Site names behind a "pages on N sites" line, for a scrolling list.
+    public let sites: [String]
+}
+
+extension ExtensionManifest {
+    static let everySite: Set<String> = ["<all_urls>", "*://*/*", "http://*/*", "https://*/*"]
+
+    /// Sites first, folded into one line: every site, one site, or "N sites" with the list. A manifest that
+    /// asks for every site and also names dozens (1Password does) shows just the one line.
+    public var permissionSummary: [PermissionSummary] {
+        var lines: [PermissionSummary] = []
+        if !hostPermissions.isDisjoint(with: Self.everySite) {
+            lines.append(.init(symbol: "globe", text: "Read and change every website you visit", sites: []))
+        } else {
+            let sites = Set(hostPermissions.compactMap(Self.siteName)).sorted()
+            if sites.count == 1 {
+                lines.append(.init(symbol: "globe", text: "Read and change pages on \(sites[0])", sites: []))
+            } else if !sites.isEmpty {
+                lines.append(.init(symbol: "globe", text: "Read and change pages on \(sites.count) sites", sites: sites))
+            }
+        }
+        for permission in permissions.union(browsa?.permissions ?? []).sorted() where !permission.contains("://") {
+            guard let text = describePermission(permission) else { continue }
+            lines.append(.init(symbol: Self.symbol(for: permission), text: text, sites: []))
+        }
+        return lines
+    }
+
+    /// "https://*.example.com/*" → "example.com".
+    static func siteName(_ pattern: String) -> String? {
+        var host = pattern
+        if let scheme = host.range(of: "://") { host = String(host[scheme.upperBound...]) }
+        host = String(host.prefix { $0 != "/" })
+        if host.hasPrefix("*.") { host.removeFirst(2) }
+        if let port = host.firstIndex(of: ":") { host = String(host[..<port]) }
+        return host.isEmpty || host.contains("*") ? nil : host
+    }
+
+    static func symbol(for permission: String) -> String {
+        switch permission {
+        case "tabs": "square.on.square"
+        case "history": "clock.arrow.circlepath"
+        case "bookmarks": "bookmark"
+        case "nativeMessaging": "app.connected.to.app.below.fill"
+        case "cookies": "key.horizontal"
+        case "downloads": "arrow.down.circle"
+        case "clipboardRead": "doc.on.clipboard"
+        case "browsa.sidebar": "sidebar.left"
+        case "browsa.panel": "sidebar.right"
+        case "browsa.commands": "command"
+        case "browsa.agentTools": "sparkles"
+        case "browsa.badges": "app.badge"
+        default: "checkmark.shield"
+        }
+    }
+}

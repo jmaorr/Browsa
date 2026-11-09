@@ -39,7 +39,7 @@ struct PageArea: View {
             if let tab = browser.currentTab { ProgressLine(tab: tab) }
         }
         .overlay(alignment: .top) {
-            if let url = browser.currentTab?.url, !browser.isReaderShowing { StoreInstallBanner(pageURL: url).padding(.top, 10) }
+            if let url = browser.currentTab?.url, !browser.isReaderShowing { StoreInstallBanner(pageURL: url, pageTitle: browser.currentTab?.title ?? "").padding(.top, 10) }
         }
         .overlay(alignment: .topTrailing) {
             if browser.isReaderShowing {
@@ -287,13 +287,17 @@ private struct FindBar: View {
 
 
 /// On a Chrome Web Store or Firefox Add-ons page, which only offer to install into their own browser:
-/// the same add flow as Settings > Extensions, from the page.
+/// a glass bar naming the extension, whether it's been checked in Browsa, and Add to Browsa. After
+/// adding, the same bar confirms it and offers to pin it to the address pill.
 private struct StoreInstallBanner: View {
     let pageURL: URL
+    let pageTitle: String
     @Environment(Browser.self) private var browser
     @State private var preview: Library.ExtensionPreview?
     @State private var working = false
     @State private var problem: String?
+    /// Set once added, until the page changes.
+    @State private var added: InstalledExtension?
 
     private var source: ExtensionSource? {
         guard let host = pageURL.host()?.lowercased(),
@@ -301,26 +305,96 @@ private struct StoreInstallBanner: View {
         return ExtensionSource(link: pageURL.absoluteString)
     }
 
+    /// The extension's name from the store page's title, before anything is downloaded.
+    private var name: String? {
+        let cut = [" - Chrome Web Store", " \u{2013} Get this Extension", " \u{2013} Get this Add-on", " – Add-ons for Firefox"]
+        var title = pageTitle
+        for suffix in cut { if let r = title.range(of: suffix) { title = String(title[..<r.lowerBound]) } }
+        title = title.trimmingCharacters(in: .whitespaces)
+        return title.isEmpty || title.lowercased().contains("chrome web store") ? nil : title
+    }
+
     var body: some View {
-        if let source, !browser.library.extensionCatalog.items.contains(where: { $0.source == source }) {
-            HStack(spacing: 8) {
-                Image(systemName: "puzzlepiece.extension")
-                Text(problem ?? "This page only installs into its own browser.")
-                    .foregroundStyle(problem == nil ? Color.secondary : Color.red)
-                Button(working ? "Getting…" : "Add to Browsa…", action: fetch)
-                    .disabled(working)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-            }
-            .font(.callout)
-            .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(PanelFill(), in: .capsule)
-            .overlay(Capsule().strokeBorder(.primary.opacity(0.1)))
-            .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
-            .sheet(item: $preview) { p in
-                AddExtensionSheet(preview: p) { browser.library.install(p); preview = nil } cancel: { preview = nil }
+        Group {
+            if let added, added.source == source {
+                addedBar(added)
+            } else if let source, !browser.library.extensionCatalog.items.contains(where: { $0.source == source }) {
+                offerBar(source)
             }
         }
+        .sheet(item: $preview) { p in
+            AddExtensionSheet(preview: p) {
+                browser.library.install(p)
+                preview = nil
+                withAnimation(Motion.snappy) { added = p.item }
+            } cancel: { preview = nil }
+        }
+        .onChange(of: pageURL) { added = nil; problem = nil }
+    }
+
+    private func offerBar(_ source: ExtensionSource) -> some View {
+        bar {
+            Image(systemName: "puzzlepiece.extension.fill")
+                .font(.title2)
+                .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name ?? "Add this extension to Browsa")
+                    .font(.headline).lineLimit(1)
+                if let problem {
+                    Text(problem).font(.caption).foregroundStyle(.red).lineLimit(2)
+                } else {
+                    VerifiedLine(isVerified: VerifiedExtensions.contains(source))
+                }
+            }
+            Spacer(minLength: 12)
+            Button(action: fetch) {
+                HStack(spacing: 6) {
+                    if working { ProgressView().controlSize(.small) }
+                    Text(working ? "Getting…" : "Add to Browsa")
+                }
+            }
+            .buttonStyle(.glassProminent)
+            .disabled(working)
+        }
+    }
+
+    private func addedBar(_ item: InstalledExtension) -> some View {
+        let loaded = browser.library.extensions.first { $0.id == item.id }
+        let pinned = loaded.map(browser.library.isPinned) ?? false
+        return bar {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title2)
+                .foregroundStyle(.green)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(item.name) is in Browsa").font(.headline).lineLimit(1)
+                Text(loaded == nil ? "Starting it up…"
+                     : pinned ? "Pinned to the address bar."
+                     : loaded?.hasAction == true ? "Find it in the address bar's extensions menu."
+                     : "It runs on the pages it works with.")
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 12)
+            if let loaded, loaded.hasAction, !pinned {
+                Button("Pin to Address Bar") { browser.library.setPinned(loaded, true) }
+                    .buttonStyle(.glass)
+            }
+            Button("Done") { withAnimation(Motion.snappy) { added = nil } }
+                .buttonStyle(.glassProminent)
+        }
+    }
+
+    private func bar<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: 12) { content() }
+            .controlSize(.large)
+            .buttonBorderShape(.capsule)
+            .padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 8)
+            .frame(maxWidth: 560)
+            // Glass alone lets busy store headers show through the text; a material under it keeps it legible.
+            .background(.regularMaterial, in: .capsule)
+            .glassEffect(.regular, in: .capsule)
+            .shadow(color: .black.opacity(0.12), radius: 10, y: 3)
+            .padding(.horizontal, 16)
+            .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     private func fetch() {
@@ -331,5 +405,20 @@ private struct StoreInstallBanner: View {
             catch { problem = "Couldn't get it: \(error.localizedDescription)" }
             working = false
         }
+    }
+}
+
+/// The checked-in-Browsa line under an extension's name.
+private struct VerifiedLine: View {
+    let isVerified: Bool
+
+    var body: some View {
+        Label {
+            Text(isVerified ? "Works in Browsa" : "Not tested in Browsa yet").foregroundStyle(.secondary)
+        } icon: {
+            Image(systemName: isVerified ? "checkmark.seal.fill" : "questionmark.circle")
+                .foregroundStyle(isVerified ? Color.green : Color.secondary)
+        }
+        .font(.caption)
     }
 }
