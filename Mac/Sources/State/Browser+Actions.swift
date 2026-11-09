@@ -90,6 +90,13 @@ extension Browser {
         out.append(BrowserCommand(id: "archive", title: "Show Archive", subtitle: "\(archive.count) archived tabs", keywords: ["history", "closed"]))
         out.append(BrowserCommand(id: "settings", title: "Settings", keywords: ["preferences", "search engine"]))
         out.append(BrowserCommand(id: "panel", title: panel == nil ? "Show Panel" : "Hide Panel", keywords: ["right", "side", "tools"]))
+        // Every extension with a toolbar button.
+        let page = currentController?.page
+        for ext in library.actionExtensions {
+            let badge = library.actionState(ext, for: page)?.badgeText ?? ""
+            out.append(BrowserCommand(id: "ext:" + ext.id, title: "Extension: \(ext.name)", subtitle: badge.isEmpty ? nil : badge,
+                                      keywords: ["extension", "add-on"]))
+        }
         // Tools add their own: "Open Radar", "Stop All Agents"…
         for (tool, command) in library.workbench.commands {
             out.append(BrowserCommand(id: Workbench.commandID(tool, command), title: command.title,
@@ -117,12 +124,16 @@ extension Browser {
         "close-others": "xmark.square", "reopen": "arrow.uturn.backward", "sidebar": "sidebar.left",
         "panel": "sidebar.right", "private": "eye.slash", "close-private": "eye.slash", "new-space": "plus.rectangle.on.rectangle",
         "downloads": "arrow.down.circle", "archive": "archivebox", "settings": "gearshape", "space": "square.stack",
-        "move": "arrow.right.square", "restore": "archivebox",
+        "move": "arrow.right.square", "restore": "archivebox", "ext": "puzzlepiece.extension",
     ]
 
     func run(command id: String) {
         commandBar = nil
         if library.workbench.run(commandID: id, in: self) { return }
+        if id.hasPrefix("ext:"), let ext = library.actionExtensions.first(where: { $0.id == String(id.dropFirst(4)) }) {
+            runExtension(ext, anchor: nil)
+            return
+        }
         switch id {
         case "panel": togglePanel()
         case "pin": if let t = currentTab { togglePinned(t) }

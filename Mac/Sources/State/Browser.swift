@@ -415,6 +415,18 @@ enum Preferences {
         set { d.set(newValue, forKey: "hasSeenWelcome") }
     }
 
+    /// Extension ids pinned to the address pill; nil until the user first pins or unpins one.
+    static var pinnedExtensions: Set<String>? {
+        get { (d.array(forKey: "pinnedExtensions") as? [String]).map(Set.init) }
+        set { d.set(newValue.map { Array($0).sorted() }, forKey: "pinnedExtensions") }
+    }
+
+    /// The Settings tab to show next, so other places can open Settings on a given tab.
+    static var settingsTab: String {
+        get { d.string(forKey: "settingsTab") ?? "general" }
+        set { d.set(newValue, forKey: "settingsTab") }
+    }
+
     static var panelWidth: CGFloat {
         get { (d.object(forKey: "panelWidth") as? Double).map { CGFloat($0) } ?? 320 }
         set { d.set(Double(newValue), forKey: "panelWidth") }

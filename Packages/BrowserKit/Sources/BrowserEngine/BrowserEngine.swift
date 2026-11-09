@@ -60,6 +60,8 @@ public protocol BrowserEngine: AnyObject {
     func unloadExtensions()
     /// The extension's toolbar button was clicked. Its popup, if it has one, appears at `anchor`.
     func performAction(extensionID: String, for page: (any EnginePage)?, anchor: PlatformView?)
+    /// An extension's toolbar action as it stands for `page`: its label, badge and icon there.
+    func extensionActionState(extensionID: String, for page: (any EnginePage)?) -> EngineActionState?
     /// A tab came to the front of its window, or its window came to the front.
     func pageDidBecomeActive(_ page: any EnginePage)
 }
@@ -74,6 +76,7 @@ public extension BrowserEngine {
     }
     func unloadExtensions() {}
     func performAction(extensionID: String, for page: (any EnginePage)?, anchor: PlatformView?) {}
+    func extensionActionState(extensionID: String, for page: (any EnginePage)?) -> EngineActionState? { nil }
     func pageDidBecomeActive(_ page: any EnginePage) {}
 }
 
@@ -143,6 +146,34 @@ public protocol EngineExtensionHost: AnyObject {
     func openExtensionTab(url: URL?, windowID: UUID?, active: Bool) -> (any EnginePage)?
     func activateExtensionTab(_ page: any EnginePage)
     func closeExtensionTab(_ page: any EnginePage)
+    /// An extension changed its toolbar action (badge, icon, label) for some page.
+    func extensionActionsDidChange()
+}
+
+public extension EngineExtensionHost {
+    func extensionActionsDidChange() {}
+}
+
+/// An extension's toolbar action for one page.
+public struct EngineActionState: Equatable {
+    public var label: String
+    /// Chrome's badge, e.g. a blocked count.
+    public var badgeText: String
+    /// The badge changed and the user hasn't opened the popup since.
+    public var hasUnreadBadge: Bool
+    public var isEnabled: Bool
+    public var icon: CGImage?
+
+    public init(label: String, badgeText: String, hasUnreadBadge: Bool, isEnabled: Bool, icon: CGImage?) {
+        self.label = label
+        self.badgeText = badgeText
+        self.hasUnreadBadge = hasUnreadBadge
+        self.isEnabled = isEnabled
+        self.icon = icon
+    }
+
+    /// The extension has something for this page: a badge, or one the user hasn't seen.
+    public var hasSomethingForPage: Bool { hasUnreadBadge || !badgeText.isEmpty }
 }
 
 public struct EngineInfo: Sendable, Equatable {

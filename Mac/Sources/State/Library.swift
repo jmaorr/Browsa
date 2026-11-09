@@ -43,6 +43,9 @@ final class Library {
     }
     /// The extensions running now, for the toolbar.
     private(set) var extensions: [EngineExtension] = []
+    /// Bumped when pins change or an extension updates its action, so the address pill redraws.
+    var extensionPinsRevision = 0
+    var extensionActionsRevision = 0
     /// Extensions added from the Chrome Web Store, Firefox Add-ons or a folder (Safari ones come from apps).
     let extensionCatalog: ExtensionCatalog
     @ObservationIgnored let extensionInstaller: ExtensionInstaller

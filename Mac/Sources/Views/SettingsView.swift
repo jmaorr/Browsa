@@ -7,14 +7,16 @@ import Extensibility
 
 /// Browsa > Settings (Cmd-,).
 struct SettingsView: View {
+    @AppStorage("settingsTab") private var tab = "general"
+
     var body: some View {
-        TabView {
-            GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }
-            SpacesSettings().tabItem { Label("Spaces", systemImage: "square.stack") }
-            PrivacySettings().tabItem { Label("Privacy", systemImage: "hand.raised") }
-            ExtensionSettings().tabItem { Label("Extensions", systemImage: "puzzlepiece.extension") }
-            AgentSettings().tabItem { Label("Agents", systemImage: "sparkles") }
-            EngineSettings().tabItem { Label("Engine", systemImage: "cpu") }
+        TabView(selection: $tab) {
+            GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }.tag("general")
+            SpacesSettings().tabItem { Label("Spaces", systemImage: "square.stack") }.tag("spaces")
+            PrivacySettings().tabItem { Label("Privacy", systemImage: "hand.raised") }.tag("privacy")
+            ExtensionSettings().tabItem { Label("Extensions", systemImage: "puzzlepiece.extension") }.tag("extensions")
+            AgentSettings().tabItem { Label("Agents", systemImage: "sparkles") }.tag("agents")
+            EngineSettings().tabItem { Label("Engine", systemImage: "cpu") }.tag("engine")
         }
         .frame(width: 520)
         .scenePadding()
