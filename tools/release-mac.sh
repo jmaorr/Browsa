@@ -14,8 +14,9 @@ ref="${2:-origin/main}"
 repo="${0:A:h:h}"
 team="UAU4449Y7J"
 bundle_id="com.orriginal.browsa"
-# Where zips and appcast.xml collect between releases. generate_appcast reads every zip here, so
-# keep old ones: they give the appcast its history and Sparkle its deltas.
+# Where zips, DMGs and appcast.xml collect between releases. generate_appcast reads every zip
+# here, so keep old ones: they give the appcast its history and Sparkle its deltas. DMGs go in
+# dmg/ underneath, where generate_appcast doesn't look (it would take them for duplicate updates).
 releases="${BROWSA_RELEASES_DIR:-$HOME/Developer/Browsa/releases/mac}"
 download_prefix="https://browsa.app/mac/releases/"
 work="$HOME/Library/Caches/com.orriginal.browsa.release"
@@ -88,6 +89,31 @@ ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
 notes="$repo/docs/release-notes/mac/$version.md"
 [[ -f "$notes" ]] && cp "$notes" "$releases/Browsa-$version.md"
 
+echo "==> Making the DMG for first downloads"
+# Drag-to-Applications window: background art in Mac/Distribution (600×360 pt, @1x and @2x in one
+# TIFF), the app on the left, the Applications link over the drawn folder. create-dmg lays the
+# window out by scripting Finder, so the first run asks to let the terminal control Finder.
+# The DMG isn't signed or notarised itself; the app inside is, and its ticket is stapled.
+command -v create-dmg >/dev/null || { echo "create-dmg is missing: brew install create-dmg" >&2; exit 1; }
+mkdir -p "$releases/dmg"
+dmg="$releases/dmg/Browsa-$version.dmg"
+dmg_stage="$work/dmg" && rm -rf "$dmg_stage" && mkdir -p "$dmg_stage" && ditto "$app" "$dmg_stage/Browsa.app"
+create-dmg --volname "Browsa" --background "$src/Mac/Distribution/dmg-background.tiff" \
+  --window-pos 200 120 --window-size 600 400 --icon-size 100 \
+  --icon "Browsa.app" 175 190 --hide-extension "Browsa.app" --app-drop-link 425 190 \
+  --no-internet-enable "$dmg" "$dmg_stage" >/dev/null
+mount=$(mktemp -d)
+hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount" >/dev/null
+layout_ok=1
+for f in .DS_Store .background/dmg-background.tiff Applications Browsa.app; do
+  [[ -e "$mount/$f" ]] || { echo "DMG is missing $f" >&2; layout_ok=0; }
+done
+spctl --assess --type execute "$mount/Browsa.app" || layout_ok=0
+hdiutil detach "$mount" -quiet
+[[ $layout_ok == 1 ]] || { echo "DMG check failed; don't ship it" >&2; exit 1; }
+# The site's Download button always points at Browsa.dmg, the newest build.
+cp "$dmg" "$releases/dmg/Browsa.dmg"
+
 echo "==> Updating the appcast"
 sparkle_bin="$derived/SourcePackages/artifacts/sparkle/Sparkle/bin"
 "$sparkle_bin/generate_appcast" --download-url-prefix "$download_prefix" --embed-release-notes \
@@ -95,5 +121,6 @@ sparkle_bin="$derived/SourcePackages/artifacts/sparkle/Sparkle/bin"
 
 echo
 echo "==> Browsa $version ($build, $commit) is ready in $releases"
-echo "    Upload to $download_prefix: Browsa-$version.zip and any new *.delta files"
+echo "    Upload to $download_prefix: Browsa-$version.zip, any new *.delta files, and from dmg/"
+echo "    Browsa-$version.dmg and Browsa.dmg"
 echo "    Then publish appcast.xml at https://browsa.app/mac/appcast.xml (last, so it never points at a missing file)"
