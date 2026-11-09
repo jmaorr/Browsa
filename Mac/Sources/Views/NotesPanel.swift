@@ -191,6 +191,12 @@ struct MarginPanel: View {
                 .padding(.horizontal, 10)
                 .padding(.bottom, 10)
                 .animation(Motion.snappy, value: notes.map(\.id))
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
+            // A click on the panel's empty space puts the picked note down.
+            .background {
+                Color.clear.contentShape(.rect)
+                    .onTapGesture { withAnimation(Motion.snappy) { selected = nil } }
             }
         }
     }
@@ -564,6 +570,11 @@ private struct NoteCard: View {
         }
         .shadow(color: .black.opacity(isSelected ? 0.10 : 0.05), radius: isSelected ? 6 : 3, y: 1)
         .opacity(note.status == .resolved && ui.justResolved[note.id] == nil ? 0.7 : 1)
+        // Picking a note opens its reply; picking another, or clicking away, closes it.
+        .onChange(of: isSelected) { _, selected in
+            withAnimation(Motion.snappy) { replying = selected && note.status == .open }
+        }
+        .onAppear { if isSelected, note.status == .open { replying = true } }
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
         .contextMenu {
             Button("Delete Note", role: .destructive) { margin.delete(note.id) }
@@ -614,12 +625,27 @@ private struct ReplyBar: View {
                 .onSubmit(submit)
                 .onKeyPress(.escape) { withAnimation(Motion.snappy) { isOpen = false }; return .handled }
                 .padding(.vertical, 2)
-            Button("Add", action: submit)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(!canSend)
-                .opacity(canSend ? 1 : 0.5)
+            // Nothing typed yet: a quiet close. Once there's text: Add.
+            if canSend {
+                Button("Add", action: submit)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+            } else {
+                Button { withAnimation(Motion.snappy) { isOpen = false } } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .frame(width: 18, height: 18)
+                        .background(.primary.opacity(0.07), in: .circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Close (Esc)")
+                .transition(.scale(scale: 0.85).combined(with: .opacity))
+            }
         }
+        .animation(Motion.snappy, value: canSend)
         .padding(.horizontal, 9).padding(.vertical, 6)
         .background(.background, in: .rect(cornerRadius: 8, style: .continuous))
         .overlay {
