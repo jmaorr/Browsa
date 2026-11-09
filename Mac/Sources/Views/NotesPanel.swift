@@ -222,7 +222,9 @@ struct MarginPanel: View {
     private func card(_ note: MarginNote) -> some View {
         let number = pinned.firstIndex { $0.id == note.id }.map { $0 + 1 }
         return NoteCard(note: note, number: scope == .page || note.page == url.map(MarginStore.pageKey) ? number : nil,
-                        isSelected: selected == note.id) {
+                        isSelected: selected == note.id, deselect: {
+            if selected == note.id { withAnimation(Motion.snappy) { selected = nil } }
+        }) {
             // A note on another page of the site takes you there, then picks it once the page is up.
             if note.page != url.map(MarginStore.pageKey), let target = URL(string: note.url) {
                 withAnimation(Motion.snappy) { selected = note.id }
@@ -544,6 +546,8 @@ private struct NoteCard: View {
     let note: MarginNote
     let number: Int?
     let isSelected: Bool
+    /// Puts the card down: one state for "active", ring and reply together.
+    let deselect: () -> Void
     let select: () -> Void
     @State private var hovering = false
     @State private var replying = false
@@ -597,7 +601,7 @@ private struct NoteCard: View {
                 .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)), removal: .opacity))
             } else if showsActions {
                 HStack(spacing: 14) {
-                    Button { withAnimation(Motion.snappy) { replying = true } } label: {
+                    Button(action: pick) {
                         Label("Reply", systemImage: "arrowshape.turn.up.left").font(.caption.weight(.medium))
                     }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
@@ -637,6 +641,10 @@ private struct NoteCard: View {
             withAnimation(Motion.snappy) { replying = selected && note.status == .open }
         }
         .onAppear { if isSelected, note.status == .open { replying = true } }
+        // Closing the reply (Esc, the close button, sending, or clicking away) puts the card down too.
+        .onChange(of: replying) { _, open in
+            if !open, isSelected { deselect() }
+        }
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
         .contextMenu {
             Button("Delete Note", role: .destructive) { margin.delete(note.id) }
