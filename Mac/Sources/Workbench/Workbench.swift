@@ -35,7 +35,14 @@ struct Tool: Identifiable {
     var stage: Stage = .live
     var panel: (@MainActor () -> AnyView)?
     var sidebar: (@MainActor () -> AnyView)?
+    /// What the sidebar card shows while collapsed, beside the title: a glanceable status.
+    var sidebarSummary: (@MainActor () -> AnyView)?
+    /// True when there's nothing to show: the card hides until there is.
+    var sidebarIsEmpty: (@MainActor () -> Bool)?
     var commands: [ToolCommand] = []
+    /// Commands that change as the tool does (one per running server, say), asked for each time
+    /// the command bar opens.
+    var liveCommands: (@MainActor () -> [ToolCommand])?
 }
 
 /// Something a tool can do from the command bar.
@@ -79,7 +86,7 @@ final class Workbench {
     /// For the command bar. Each panel tool gets an "Open …" row for free.
     var commands: [(tool: Tool, command: ToolCommand)] {
         tools.flatMap { tool -> [(tool: Tool, command: ToolCommand)] in
-            var list = tool.commands.map { (tool: tool, command: $0) }
+            var list = (tool.commands + (tool.liveCommands?() ?? [])).map { (tool: tool, command: $0) }
             if tool.panel != nil {
                 list.insert((tool: tool, command: ToolCommand(id: "open", title: "Open \(tool.title)", subtitle: tool.summary,
                                                              symbol: tool.symbol, keywords: ["panel", "tool"]) { browser in

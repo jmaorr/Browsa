@@ -115,6 +115,10 @@ final class Library {
         reloadExtensions()
         agents = AgentBridge(library: self)
         BuiltInTools.register(in: workbench)
+        #if !SPIKE
+        // SpikeBrowsa sets mock servers instead.
+        RadarStore.shared.startLive(library: self, ownPorts: [Int(AgentBridge.port)])
+        #endif
     }
 
     func reloadExtensions() {

@@ -128,8 +128,14 @@ struct AddressPill: View {
         let isWelcome = Welcome.isWelcome(tab?.url)
         HStack(spacing: 8) {
             SiteMenu()
-            Text(isWelcome ? "Welcome to Browsa" : tab?.url.map(URLNormalizer.displayHost) ?? "Search or enter address")
+            let devServer = RadarStore.shared.server(for: tab?.url)
+            if let devServer, devServer.isWorktree {
+                Image(systemName: "arrow.triangle.branch").font(.system(size: 10)).foregroundStyle(.secondary)
+                    .help(Text(verbatim: "Worktree of \(devServer.project), on localhost:\(devServer.port)"))
+            }
+            Text(isWelcome ? "Welcome to Browsa" : devServer?.shortName ?? tab?.url.map(URLNormalizer.displayHost) ?? "Search or enter address")
                 .lineLimit(1)
+                .help(devServer.map { Text(verbatim: "\($0.details) · localhost:\($0.port)") } ?? Text(verbatim: ""))
                 .foregroundStyle(tab?.url == nil ? .secondary : .primary)
             Spacer(minLength: 0)
             if hovering, tab?.url != nil, !isWelcome {
@@ -616,54 +622,82 @@ struct SpaceSwitcher: View {
 
 // MARK: - Tool sections
 
-/// Sections tools put under the tabs (Radar's dev servers, say). Each one folds away, and
-/// right-click removes it. The order is the user's.
+/// Cards tools put under the tabs (Radar's dev servers, say). Each one starts collapsed to a status
+/// line, opens with a click, and right-click removes it. The order is the user's.
 struct ToolSections: View {
     @Environment(Browser.self) private var browser
-    @AppStorage("collapsedToolSections") private var collapsedRaw = ""
+    /// Cards start collapsed; these are the ones opened. Saved.
+    @AppStorage("expandedToolSections") private var expandedRaw = ""
 
-    private var collapsed: Set<String> { Set(collapsedRaw.split(separator: ",").map(String.init)) }
+    private var expanded: Set<String> { Set(expandedRaw.split(separator: ",").map(String.init)) }
 
     var body: some View {
-        let tools = browser.library.workbench.sidebarTools
-        if !tools.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(tools) { tool in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Button { toggle(tool.id) } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: tool.symbol).font(.system(size: 10, weight: .semibold))
-                                Text(tool.title.uppercased()).font(.system(size: 10, weight: .semibold)).tracking(0.6)
-                                if tool.stage == .preview { PreviewBadge() }
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.down")
-                                    .font(.system(size: 9, weight: .semibold))
-                                    .rotationEffect(.degrees(collapsed.contains(tool.id) ? -90 : 0))
-                            }
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .frame(height: 22)
-                            .contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            if tool.panel != nil { Button("Open in Panel") { browser.showPanel(tool.id) } }
-                            Button("Remove from Sidebar") { browser.library.workbench.toggleSidebar(tool.id) }
-                        }
-                        if !collapsed.contains(tool.id), let view = tool.sidebar {
-                            view().transition(.opacity)
-                        }
-                    }
-                }
+        // A tool with nothing to show (Radar with no servers running) hides its card.
+        let tools = browser.library.workbench.sidebarTools.filter { !($0.sidebarIsEmpty?() ?? false) }
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(tools) { tool in
+                ToolCard(tool: tool, isExpanded: expanded.contains(tool.id)) { toggle(tool.id) }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            .animation(Motion.snappy, value: collapsedRaw)
         }
+        .animation(Motion.spring, value: tools.map(\.id))
+        .animation(Motion.snappy, value: expandedRaw)
     }
 
     private func toggle(_ id: String) {
-        var set = collapsed
+        var set = expanded
         if set.contains(id) { set.remove(id) } else { set.insert(id) }
-        collapsedRaw = set.sorted().joined(separator: ",")
+        expandedRaw = set.sorted().joined(separator: ",")
+    }
+}
+
+/// A sidebar tool as a card: its name and a status line while collapsed, its full section when open.
+/// Every tool gets the same card, so plugins' sections sit with Browsa's own.
+private struct ToolCard: View {
+    @Environment(Browser.self) private var browser
+    let tool: Tool
+    let isExpanded: Bool
+    let toggle: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: toggle) {
+                HStack(spacing: 7) {
+                    Image(systemName: tool.symbol).font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary).frame(width: 14)
+                    Text(tool.title).font(.system(size: 12, weight: .semibold))
+                    if tool.stage == .preview { PreviewBadge() }
+                    Spacer(minLength: 4)
+                    if !isExpanded, let summary = tool.sidebarSummary {
+                        summary().transition(.opacity)
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 34)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .help(isExpanded ? "Collapse \(tool.title)" : "Show \(tool.title)")
+            .contextMenu {
+                if tool.panel != nil { Button("Open in Panel") { browser.showPanel(tool.id) } }
+                Button("Remove from Sidebar") { browser.library.workbench.toggleSidebar(tool.id) }
+            }
+            if isExpanded, let view = tool.sidebar {
+                view()
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 6)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .background(.primary.opacity(hovering && !isExpanded ? 0.07 : 0.05), in: .rect(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.primary.opacity(0.06)))
+        .clipShape(.rect(cornerRadius: 12, style: .continuous))
+        .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
     }
 }
 
