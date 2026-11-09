@@ -84,6 +84,11 @@ final class AgentServer {
         if let origin = request.headers["origin"], !origin.hasPrefix("http://127.0.0.1"), !origin.hasPrefix("http://localhost") {
             return send(.init(status: 403, body: "Forbidden"), on: connection)
         }
+        // Supper, the demo site agents can practise on. Public, read-only, and only on this Mac.
+        if request.method == "GET", request.path == "/demo" || request.path == "/demo/",
+           let url = Bundle.main.url(forResource: "supper", withExtension: "html"), let page = try? Data(contentsOf: url) {
+            return send(.init(status: 200, contentType: "text/html; charset=utf-8", data: page), on: connection)
+        }
         guard request.headers["authorization"] == "Bearer \(token)" else {
             return send(.init(status: 401, body: "Add the token from Browsa's Settings"), on: connection)
         }

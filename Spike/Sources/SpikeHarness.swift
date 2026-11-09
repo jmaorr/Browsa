@@ -337,6 +337,8 @@ enum SpikeHarness {
             } catch {
                 return .error("\(error)")
             }
+        case "demo":
+            library.agents.demo.start(bridge: library.agents, in: browser)
         case "claudeAdd":
             // The same code path as the Add to Claude Code button.
             let a = library.agents!

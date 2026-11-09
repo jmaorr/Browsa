@@ -133,20 +133,28 @@ struct AgentsPanel: View {
     @Environment(Browser.self) private var browser
     @Environment(\.openSettings) private var openSettings
     @State private var connecting = false
+    @AppStorage("agentPromptDismissed") private var promptDismissed = false
     private var agents: AgentBridge { browser.library.agents }
 
     var body: some View {
         if !agents.isEnabled {
             PanelEmptyState(title: "Let Agents Use Browsa", symbol: AgentIdentity.symbol,
                             message: "Claude Code, Codex, Cursor and other MCP agents can read pages, test your localhost in an Agent space you can watch, and work through your notes.") {
-                Button("Turn On Agents") { withAnimation(Motion.snappy) { agents.isEnabled = true; connecting = true } }
+                VStack(spacing: 8) {
+                    Button("Turn On Agents") { withAnimation(Motion.snappy) { agents.isEnabled = true; connecting = true } }
+                    Button("Watch a Demo") { agents.demo.start(bridge: agents, in: browser) }
+                        .buttonStyle(.link)
+                }
             }
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     status
-                    if connecting || agents.connectedAgents.isEmpty {
+                    if connecting || agents.connectedAgents.allSatisfy({ $0 == AgentDemo.agentName }) {
                         ConnectAgentCard { withAnimation(Motion.snappy) { connecting = false } }
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    } else if !promptDismissed {
+                        TryItCard { withAnimation(Motion.snappy) { promptDismissed = true } }
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
                     if !agents.requests.isEmpty {
@@ -193,6 +201,8 @@ struct AgentsPanel: View {
             Spacer()
             Menu {
                 Button("Connect an Agent…") { withAnimation(Motion.snappy) { connecting = true } }
+                Button("Watch a Demo") { agents.demo.start(bridge: agents, in: browser) }
+                Button("Show the Demo Prompt") { withAnimation(Motion.snappy) { promptDismissed = false } }
                 Button("Clear Activity") { agents.clearActivity() }
                 Divider()
                 Button("Agent Settings…") { openSettings() }
@@ -268,6 +278,14 @@ private struct ConnectAgentCard: View {
                     waiting
                 }
             }
+            Divider().opacity(0.5)
+            HStack(spacing: 4) {
+                Text("No agent handy?").foregroundStyle(.secondary)
+                Button("Watch a Demo") { agents.demo.start(bridge: agents, in: browser) }
+                    .buttonStyle(.link)
+                    .disabled(agents.demo.isRunning)
+            }
+            .font(.caption)
         }
         .animation(Motion.snappy, value: connected)
         .padding(12)
@@ -379,6 +397,41 @@ private struct AgentRequestCard: View {
         guard let tab = browser.library.tab(id: id) else { return }
         if let space = browser.space(containing: tab) { browser.selectSpace(space) }
         browser.select(tab)
+    }
+}
+
+/// Once a real agent is connected: a task to give it, on Supper, to see it work in Browsa.
+private struct TryItCard: View {
+    let dismiss: () -> Void
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Try it", systemImage: "sparkles").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Button(action: dismiss) { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Hide")
+            }
+            Text("Give your agent this, then watch it plan a dinner party in the Agent space.")
+                .font(.caption).foregroundStyle(.secondary)
+            Text(AgentDemo.prompt)
+                .font(.system(size: 12))
+                .italic()
+                .textSelection(.enabled)
+                .padding(9)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.purple.opacity(0.07), in: .rect(cornerRadius: 8))
+            Button(copied ? "Copied" : "Copy Prompt") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(AgentDemo.prompt, forType: .string)
+                withAnimation(Motion.snappy) { copied = true }
+            }
+            .buttonStyle(.glassProminent).controlSize(.small)
+        }
+        .padding(12)
+        .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.primary.opacity(0.08)))
     }
 }
 

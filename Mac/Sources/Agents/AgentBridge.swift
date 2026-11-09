@@ -67,6 +67,8 @@ final class AgentBridge {
     /// The name agents know Browsa by. SpikeBrowsa uses its own, so it never replaces Browsa's.
     static let mcpName = Bundle.main.object(forInfoDictionaryKey: "BrowsaMCPName") as? String ?? "browsa"
     var endpoint: String { "http://127.0.0.1:\(Self.port)/mcp" }
+    /// Watch a Demo, in the Agents panel.
+    @ObservationIgnored let demo = AgentDemo()
     /// "Add to Claude Code" in the Agents panel.
     @ObservationIgnored let claudeCodeSetup = ClaudeCodeSetup()
 
