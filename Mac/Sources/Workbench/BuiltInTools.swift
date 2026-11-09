@@ -40,6 +40,8 @@ enum BuiltInTools {
             stage: .preview,
             panel: { AnyView(RadarPanel()) },
             sidebar: { AnyView(RadarSidebarSection()) },
+            sidebarSummary: { AnyView(RadarSummary()) },
+            sidebarIsEmpty: { RadarStore.shared.servers.isEmpty },
             commands: RadarSample.servers.filter(\.isUp).map { s in
                 ToolCommand(id: "open-\(s.port)", title: "Open \(s.project)", subtitle: "\(s.branch) · localhost:\(s.port)",
                             symbol: "dot.radiowaves.left.and.right", keywords: ["localhost", "dev", "server", s.branch]) { browser in
