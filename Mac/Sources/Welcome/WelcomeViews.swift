@@ -394,91 +394,78 @@ private struct LevelBar: View {
 
 // MARK: - Gallery cards
 
-/// A card's colours, from its hue, for light and dark.
-struct CardTint {
-    let hue: Double
-    let dark: Bool
-
-    var top: Color { dark ? Color(hue: hue, saturation: 0.5, brightness: 0.2) : Color(hue: hue, saturation: 0.05, brightness: 1) }
-    var bottom: Color { dark ? Color(hue: hue, saturation: 0.55, brightness: 0.12) : Color(hue: hue, saturation: 0.15, brightness: 0.97) }
-    var glow: Color { Color(hue: hue, saturation: dark ? 0.8 : 0.6, brightness: dark ? 0.9 : 1).opacity(dark ? 0.35 : 0.3) }
-    var line: Color { Color(hue: hue, saturation: 0.4, brightness: dark ? 0.75 : 0.7).opacity(dark ? 0.22 : 0.4) }
-    var ink: Color { Color(hue: hue, saturation: dark ? 0.5 : 0.75, brightness: dark ? 1 : 0.62) }
-    var muted: Color { Color(hue: hue, saturation: dark ? 0.12 : 0.22, brightness: dark ? 0.8 : 0.38) }
-    var chip: Color { dark ? Color(hue: hue, saturation: 0.4, brightness: 0.34).opacity(0.6) : Color.white.opacity(0.78) }
-    var tile: LinearGradient {
-        LinearGradient(colors: [Color(hue: hue, saturation: 0.62, brightness: 0.95), Color(hue: hue, saturation: 0.78, brightness: 0.68)],
-                       startPoint: .top, endPoint: .bottom)
-    }
-
-    var background: some View {
-        ZStack {
-            LinearGradient(colors: [top, bottom], startPoint: .topLeading, endPoint: .bottomTrailing)
-            RadialGradient(colors: [glow, .clear], center: UnitPoint(x: 0.85, y: 0.6), startRadius: 0, endRadius: 260)
-        }
-    }
-}
-
 private struct GalleryCard: View {
     let stop: WelcomeStop
     let vertical: Bool
     let done: Bool
     let action: () -> Void
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorScheme) private var scheme
     @State private var hovering = false
 
     var body: some View {
-        let tint = CardTint(hue: stop.hue, dark: colorScheme == .dark)
+        let surface = stop.surface
+        let dark = surface.isDark(scheme)
         Button(action: action) {
             Group {
                 if vertical {
                     VStack(spacing: 0) {
-                        text(tint)
-                        Rectangle().fill(tint.line).frame(height: 1)
-                        StopArt(stop: stop, tint: tint).frame(height: 150).frame(maxWidth: .infinity)
+                        text(dark)
+                        hero.frame(height: 210).frame(maxWidth: .infinity)
                     }
                 } else {
                     HStack(spacing: 0) {
-                        text(tint).frame(maxWidth: .infinity, alignment: .leading)
-                        Rectangle().fill(tint.line).frame(width: 1)
-                        StopArt(stop: stop, tint: tint).frame(maxWidth: .infinity, maxHeight: .infinity)
+                        text(dark).frame(width: 250, alignment: .leading)
+                        hero.frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .frame(minHeight: 178)
+                    .frame(height: 220)
                 }
             }
-            .background { tint.background }
+            .background { SurfaceBackground(surface: surface) }
             .clipShape(.rect(cornerRadius: 18, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(tint.line))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(dark ? Color.white.opacity(0.1) : Color.black.opacity(0.08), lineWidth: 1))
+            .environment(\.colorScheme, dark ? .dark : .light)
             .contentShape(.rect(cornerRadius: 18))
         }
         .buttonStyle(.plain)
-        .shadow(color: Color(hue: stop.hue, saturation: 0.7, brightness: 0.3).opacity(hovering ? 0.3 : 0), radius: 18, y: 12)
+        .shadow(color: .black.opacity(hovering ? 0.18 : 0.06), radius: hovering ? 20 : 6, y: hovering ? 12 : 3)
         .offset(y: hovering ? -3 : 0)
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
     }
 
-    private func text(_ tint: CardTint) -> some View {
+    /// The hero keeps the page's own appearance for its UI, so the miniature Browsa matches.
+    private var hero: some View {
+        // An overlay on a clear view, so the hero's own size never widens the card.
+        Color.clear
+            .overlay { StopHero(stop: stop).environment(\.colorScheme, scheme) }
+            .clipped()
+            .allowsHitTesting(false)
+    }
+
+    private func text(_ dark: Bool) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 10) {
                 Image(systemName: stop.symbol)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 32, height: 32)
-                    .background(tint.tile, in: .rect(cornerRadius: 9, style: .continuous))
+                    .background(LinearGradient(colors: [Color(hue: stop.hue, saturation: 0.62, brightness: 0.95),
+                                                         Color(hue: stop.hue, saturation: 0.8, brightness: 0.66)],
+                                                startPoint: .top, endPoint: .bottom), in: .rect(cornerRadius: 9, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(.white.opacity(0.25)))
-                    .shadow(color: Color(hue: stop.hue, saturation: 0.8, brightness: 0.4).opacity(0.5), radius: 5, y: 3)
+                    .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
                 Text(stop.title).font(.system(size: 14, weight: .semibold)).tracking(-0.1)
                 Spacer(minLength: 6)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(tint.ink)
+                    .foregroundStyle(.secondary)
                     .frame(width: 26, height: 26)
-                    .background(tint.chip, in: .rect(cornerRadius: 8, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(tint.line))
+                    .background(.primary.opacity(0.07), in: .rect(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.primary.opacity(0.1)))
             }
             Text(stop.detail)
                 .font(.system(size: 12.5))
-                .foregroundStyle(tint.muted)
+                .foregroundStyle(.secondary)
                 .lineSpacing(1.5)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
@@ -487,339 +474,15 @@ private struct GalleryCard: View {
                     Label("Done", systemImage: "checkmark").foregroundStyle(.green)
                 } else {
                     Text(stop.time)
-                        .foregroundStyle(tint.ink)
+                        .foregroundStyle(.secondary)
                         .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(tint.chip, in: .capsule)
-                        .overlay(Capsule().strokeBorder(tint.line))
+                        .background(.primary.opacity(0.07), in: .capsule)
                 }
             }
             .font(.system(size: 11, weight: .semibold))
         }
+        .foregroundStyle(.primary)
         .padding(EdgeInsets(top: 16, leading: 18, bottom: 14, trailing: 16))
-    }
-}
-
-// MARK: - Illustrations
-
-/// Each stop's little looping scene, drawn in code so it stays crisp at any size.
-struct StopArt: View {
-    let stop: WelcomeStop
-    let tint: CardTint
-    var scale: CGFloat = 1
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: Motion.reduced)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            Group {
-                switch stop {
-                case .spaces: SpacesArt(t: t)
-                case .newTab: KeysArt(t: t, letter: "T", tint: tint, lines: nil)
-                case .commands: KeysArt(t: t, letter: "K", tint: tint, lines: ["Split view", "Pin tab", "Ask an agent"])
-                case .importing: ImportArt(t: t, tint: tint)
-                case .tour: TourArt(t: t, tint: tint)
-                case .library: KitsArt(t: t, hue: stop.hue)
-                case .agents: AgentsArt(t: t, tint: tint)
-                case .makeDefault: MedalArt(t: t, tint: tint)
-                }
-            }
-            .scaleEffect(scale)
-        }
-        .clipped()
-    }
-}
-
-private func ease(_ x: Double) -> Double { let c = min(1, max(0, x)); return c * c * (3 - 2 * c) }
-
-private struct Chip<Content: View>: View {
-    let tint: CardTint
-    var radius: CGFloat = 9
-    @ViewBuilder let content: Content
-    var body: some View {
-        content
-            .background(tint.chip, in: .rect(cornerRadius: radius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(tint.line))
-    }
-}
-
-private struct SpacesArt: View {
-    let t: Double
-    private let spaces: [(String, [Color])] = [
-        ("Personal", [Color(red: 0.94, green: 0.42, blue: 0.16), Color(red: 0.72, green: 0.21, blue: 0.05)]),
-        ("Work", [Color(red: 0.29, green: 0.49, blue: 0.94), Color(red: 0.14, green: 0.27, blue: 0.69)]),
-        ("Side project", [Color(red: 0.21, green: 0.71, blue: 0.43), Color(red: 0.11, green: 0.48, blue: 0.27)]),
-    ]
-
-    var body: some View {
-        let period = 7.2, seg = period / 3
-        let local = t.truncatingRemainder(dividingBy: period)
-        let k = floor(local / seg), f = (local - k * seg) / seg
-        let pos = k + ease((f - 0.72) / 0.28)
-        VStack(spacing: 10) {
-            HStack(spacing: 0) {
-                ForEach(0..<4, id: \.self) { i in panel(spaces[i % 3]) }
-            }
-            .fixedSize()
-            .offset(x: -132 * pos)
-            .frame(width: 132, height: 116, alignment: .leading)
-            .clipShape(.rect(cornerRadius: 12, style: .continuous))
-            .shadow(color: .black.opacity(0.18), radius: 10, y: 6)
-            HStack(spacing: 5) {
-                Circle().frame(width: 8, height: 8)
-                Circle().frame(width: 8, height: 8)
-            }
-            .foregroundStyle(.secondary)
-            .opacity(f > 0.6 && f < 0.95 ? 0.8 : 0)
-            .offset(x: f > 0.6 ? 14 - 32 * ease((f - 0.6) / 0.35) : 14)
-        }
-    }
-
-    private func panel(_ s: (String, [Color])) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
-                Circle().fill(.white).frame(width: 7, height: 7)
-                Text(s.0).font(.system(size: 11.5, weight: .semibold))
-            }
-            .padding(.bottom, 3)
-            ForEach([1.0, 0.8, 0.66, 0.74], id: \.self) { w in
-                RoundedRectangle(cornerRadius: 5).fill(.white.opacity(0.22)).frame(width: 112 * w, height: 15)
-            }
-        }
-        .foregroundStyle(.white)
-        .padding(10)
-        .frame(width: 132, height: 116, alignment: .topLeading)
-        .background(LinearGradient(colors: s.1, startPoint: .top, endPoint: .bottom))
-    }
-}
-
-private struct KeysArt: View {
-    let t: Double
-    let letter: String
-    let tint: CardTint
-    let lines: [String]?
-
-    var body: some View {
-        let period = 2.8, f = t.truncatingRemainder(dividingBy: period) / period
-        let pressed = f > 0.4 && f < 0.56
-        VStack(spacing: 12) {
-            HStack(spacing: 7) {
-                cap("⌘", pressed)
-                cap(letter, pressed)
-            }
-            if let lines {
-                let lit = Int(t / 1.4) % lines.count
-                VStack(alignment: .leading, spacing: 3) {
-                    ForEach(lines.indices, id: \.self) { i in
-                        Text(lines[i])
-                            .font(.system(size: 10.5, weight: i == lit ? .semibold : .regular))
-                            .foregroundStyle(i == lit ? Color.primary : tint.muted)
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .frame(width: 150, alignment: .leading)
-                            .background(i == lit ? tint.chip : .clear, in: .rect(cornerRadius: 6, style: .continuous))
-                    }
-                }
-            } else {
-                let text = "github.com/jma"
-                let n = Int(Double(text.count) * ease((f - 0.48) / 0.32))
-                Chip(tint: tint) {
-                    HStack(spacing: 1) {
-                        Image(systemName: "magnifyingglass").font(.system(size: 9, weight: .semibold)).foregroundStyle(tint.muted).padding(.trailing, 5)
-                        Text(String(text.prefix(n))).font(.system(size: 11, design: .monospaced))
-                        Rectangle().fill(tint.ink).frame(width: 1.5, height: 12).opacity(Int(t * 2) % 2 == 0 ? 1 : 0)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 9).padding(.vertical, 6)
-                    .frame(width: 170)
-                }
-            }
-        }
-    }
-
-    private func cap(_ s: String, _ pressed: Bool) -> some View {
-        Text(s)
-            .font(.system(size: 17, weight: .semibold))
-            .frame(width: 40, height: 40)
-            .background(tint.chip, in: .rect(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(tint.line))
-            .overlay(alignment: .bottom) {
-                RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.black.opacity(0.08)).frame(height: pressed ? 1 : 3)
-            }
-            .shadow(color: .black.opacity(pressed ? 0.05 : 0.16), radius: pressed ? 1 : 5, y: pressed ? 0 : 3)
-            .offset(y: pressed ? 2 : 0)
-    }
-}
-
-private struct ImportArt: View {
-    let t: Double
-    let tint: CardTint
-
-    var body: some View {
-        HStack(spacing: 18) {
-            VStack(spacing: 8) {
-                ForEach(["C", "S", "A"], id: \.self) { l in
-                    Chip(tint: tint) {
-                        Text(l).font(.system(size: 12, weight: .bold)).foregroundStyle(tint.ink).frame(width: 30, height: 30)
-                    }
-                }
-            }
-            Canvas { ctx, size in
-                for k in 0..<5 {
-                    let f = (t / 2.4 + Double(k) / 5).truncatingRemainder(dividingBy: 1)
-                    let startY = [8.0, 48, 88, 28, 68][k]
-                    let x = f * size.width, y = startY + (size.height / 2 - startY) * f
-                    let a = f < 0.15 ? f / 0.15 : f > 0.85 ? (1 - f) / 0.15 : 1
-                    ctx.fill(Path(ellipseIn: CGRect(x: x - 3, y: y - 3, width: 6, height: 6)), with: .color(tint.ink.opacity(a)))
-                }
-            }
-            .frame(width: 46, height: 96)
-            Chip(tint: tint, radius: 10) {
-                VStack(alignment: .leading, spacing: 5) {
-                    ForEach(0..<6, id: \.self) { k in
-                        let f = (t / 4.8 - Double(k) * 0.073).truncatingRemainder(dividingBy: 1)
-                        let fill = f < 0.08 ? 0 : f < 0.22 ? ease((f - 0.08) / 0.14) : f < 0.85 ? 1 : 1 - ease((f - 0.85) / 0.15)
-                        RoundedRectangle(cornerRadius: 3).fill(tint.ink.opacity(0.35))
-                            .frame(width: 96 * [0.9, 0.7, 0.84, 0.6, 0.78, 0.66][k] * max(0, fill), height: 9)
-                    }
-                }
-                .padding(8)
-                .frame(width: 112, alignment: .leading)
-            }
-        }
-    }
-}
-
-private struct TourArt: View {
-    let t: Double
-    let tint: CardTint
-
-    var body: some View {
-        let lit = Int(t / 1.5) % 4
-        ZStack {
-            Grid(horizontalSpacing: 7, verticalSpacing: 7) {
-                GridRow { tile(0, "Split view", lit); tile(1, "Notes", lit) }
-                GridRow { tile(2, "Radar", lit); tile(3, "Agents", lit) }
-            }
-            Image(systemName: "play.fill")
-                .font(.system(size: 12))
-                .foregroundStyle(.white)
-                .frame(width: 34, height: 34)
-                .background(tint.tile, in: .circle)
-                .shadow(color: Color(hue: tint.hue, saturation: 0.8, brightness: 0.4).opacity(0.6), radius: 8, y: 4)
-        }
-        .padding(14)
-    }
-
-    private func tile(_ i: Int, _ s: String, _ lit: Int) -> some View {
-        Text(s)
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(i == lit ? Color.primary : tint.muted)
-            .padding(8)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(i == lit ? tint.chip : tint.line.opacity(0.25), in: .rect(cornerRadius: 9, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(i == lit ? tint.ink : .clear, lineWidth: 1.5))
-            .shadow(color: i == lit ? tint.glow : .clear, radius: 8, y: 4)
-            .animation(.easeOut(duration: 0.4), value: lit)
-    }
-}
-
-private struct KitsArt: View {
-    let t: Double
-    let hue: Double
-
-    var body: some View {
-        ZStack {
-            kit(0, "Developer", "JSON, React, Radar", hue, x: -62, angle: -9)
-            kit(2, "Writer", "Reader, Clipper", hue + 0.19, x: 62, angle: 9)
-            kit(1, "Agents", "MCP, Notes, Space", hue - 0.33, x: 0, angle: 0)
-        }
-    }
-
-    private func kit(_ i: Int, _ name: String, _ sub: String, _ h: Double, x: CGFloat, angle: Double) -> some View {
-        let hh = (h + 1).truncatingRemainder(dividingBy: 1)
-        return VStack(alignment: .leading, spacing: 2) {
-            Spacer()
-            Text(name).font(.system(size: 11, weight: .semibold))
-            Text(sub).font(.system(size: 9)).opacity(0.85)
-        }
-        .foregroundStyle(.white)
-        .padding(9)
-        .frame(width: 88, height: 112, alignment: .leading)
-        .background(LinearGradient(colors: [Color(hue: hh, saturation: 0.7, brightness: 0.85), Color(hue: hh, saturation: 0.8, brightness: 0.5)],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing), in: .rect(cornerRadius: 13, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(.white.opacity(0.25)))
-        .shadow(color: .black.opacity(0.25), radius: 10, y: 8)
-        .rotationEffect(.degrees(angle))
-        .offset(x: x, y: -6 * sin(t * 1.57 + Double(i) * 2.1))
-    }
-}
-
-private struct AgentsArt: View {
-    let t: Double
-    let tint: CardTint
-
-    var body: some View {
-        let f = t.truncatingRemainder(dividingBy: 5) / 5
-        let pts: [CGPoint] = [CGPoint(x: 0, y: 0), CGPoint(x: 70, y: -46), CGPoint(x: -30, y: -20), CGPoint(x: 0, y: 0)]
-        let s = f * 3, i = min(2, Int(s))
-        let p = CGPoint(x: pts[i].x + (pts[i + 1].x - pts[i].x) * ease(s - Double(i)),
-                        y: pts[i].y + (pts[i + 1].y - pts[i].y) * ease(s - Double(i)))
-        VStack(spacing: 6) {
-            row("Claude Code", live: true)
-            row("Codex", live: false)
-            row("Cursor", live: false)
-        }
-        .padding(16)
-        .overlay {
-            Image(systemName: "cursorarrow")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(tint.ink)
-                .offset(x: p.x, y: 30 + p.y)
-        }
-    }
-
-    private func row(_ name: String, live: Bool) -> some View {
-        Chip(tint: tint, radius: 8) {
-            HStack(spacing: 7) {
-                Circle().fill(live ? Color.green : tint.muted.opacity(0.5)).frame(width: 7, height: 7)
-                    .overlay(Circle().stroke(Color.green.opacity(live ? 0.5 * (1 - (t.truncatingRemainder(dividingBy: 1.6) / 1.6)) : 0), lineWidth: 4)
-                        .scaleEffect(1 + t.truncatingRemainder(dividingBy: 1.6)))
-                Text(name).font(.system(size: 10.5, weight: .semibold))
-                Spacer()
-                Text(live ? "Connected" : "Add").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(live ? Color.green : tint.ink)
-            }
-            .padding(.horizontal, 9).padding(.vertical, 6)
-        }
-    }
-}
-
-private struct MedalArt: View {
-    let t: Double
-    let tint: CardTint
-
-    var body: some View {
-        let f = t.truncatingRemainder(dividingBy: 3.6) / 3.6
-        let on = ease((f - 0.3) / 0.15) > 0.5
-        HStack(spacing: 20) {
-            ZStack {
-                Circle().fill(AngularGradient(colors: [Color(red: 0.54, green: 0.23, blue: 0.03), Color(red: 0.96, green: 0.71, blue: 0.27),
-                                                       Color(red: 1, green: 0.95, blue: 0.81), Color(red: 0.85, green: 0.54, blue: 0.11),
-                                                       Color(red: 0.48, green: 0.17, blue: 0.03), Color(red: 0.94, green: 0.69, blue: 0.25),
-                                                       Color(red: 1, green: 0.94, blue: 0.77), Color(red: 0.79, green: 0.45, blue: 0.07),
-                                                       Color(red: 0.54, green: 0.23, blue: 0.03)], center: .center))
-                    .rotationEffect(.degrees(t * 40))
-                Circle().strokeBorder(Color(red: 1, green: 0.94, blue: 0.78).opacity(0.4), lineWidth: 5)
-                Text("POWER\nBROWSER").font(.system(size: 9.5, weight: .heavy)).tracking(1.2)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(Color(red: 0.29, green: 0.11, blue: 0.01))
-            }
-            .frame(width: 88, height: 88)
-            .shadow(color: Color(red: 0.55, green: 0.24, blue: 0).opacity(0.5), radius: 12, y: 8)
-            Capsule().fill(on ? Color.green : tint.muted.opacity(0.3))
-                .frame(width: 44, height: 26)
-                .overlay(alignment: on ? .trailing : .leading) {
-                    Circle().fill(.white).frame(width: 20).padding(3).shadow(color: .black.opacity(0.25), radius: 1.5, y: 1)
-                }
-                .animation(.smooth(duration: 0.3), value: on)
-        }
     }
 }
 
@@ -836,16 +499,14 @@ private struct StopSheet: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let tint = CardTint(hue: stop.hue, dark: true)
         let done = progress.done.contains(stop)
         ZStack {
             Rectangle().fill(.ultraThinMaterial).ignoresSafeArea()
                 .onTapGesture { open = nil }
             HStack(spacing: 0) {
                 ZStack {
-                    tint.background
-                    StopArt(stop: stop, tint: tint, scale: 1.25)
-                        .environment(\.colorScheme, .dark)
+                    SurfaceBackground(surface: stop.surface)
+                    StopHero(stop: stop, scale: 1.2)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 VStack(alignment: .leading, spacing: 12) {
