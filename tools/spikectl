@@ -11,6 +11,13 @@ get() { curl -sS "$C$1"; echo; }
 wid() { curl -sS "$C/window" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])'; }
 rect() { curl -sS "$C/window" | python3 -c 'import sys,json;print(",".join(map(str,json.load(sys.stdin)["screenRect"])))'; }
 up() { for _ in $(seq 1 60); do curl -s -o /dev/null "$C/health" && return 0; sleep 0.5; done; echo "SpikeBrowsa didn't answer on $C" >&2; return 1; }
+recorder() {
+  local rec="$ROOT/DerivedData/spike-record"
+  if [ ! -x "$rec" ] || [ "$ROOT/tools/spike-record.swift" -nt "$rec" ]; then
+    mkdir -p "$ROOT/DerivedData" && swiftc -O -o "$rec" "$ROOT/tools/spike-record.swift" >&2
+  fi
+  echo "$rec"
+}
 json_str() { python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$1"; }
 
 cmd="${1:-help}"; shift || true
@@ -47,16 +54,14 @@ case "$cmd" in
   call)     post /agent/call "{\"tool\":\"$1\",\"args\":${2:-{\}}}" ;;
   shot)     # shot out.png  (window only, no shadow; 2x points)
     out="${1:-spike.png}"; screencapture -x -o -l"$(wid)" "$out" && echo "$out" ;;
+  menushot) # menushot out.png  (the window plus open menus and popovers; window must be on screen, may be covered)
+    "$(recorder)" shot "$(wid)" "${1:-spike.png}" ;;
   record)   # record seconds out.mov [fps]  (just the window, even while covered)
-    rec="$ROOT/DerivedData/spike-record"
-    if [ ! -x "$rec" ] || [ "$ROOT/tools/spike-record.swift" -nt "$rec" ]; then
-      mkdir -p "$ROOT/DerivedData" && swiftc -O -o "$rec" "$ROOT/tools/spike-record.swift"
-    fi
-    "$rec" "$(wid)" "${1:-5}" "${2:-spike.mov}" "${3:-30}" ;;
+    "$(recorder)" "$(wid)" "${1:-5}" "${2:-spike.mov}" "${3:-30}" ;;
   *)
     sed -n '2,4p' "$0"; echo
     echo "build | launch | quit | relaunch | reset | state | window | tree [depth] | find <text>"
     echo "click x y [mods] | dblclick x y | rclick x y | press <label> [index] | hover x y | drag x1 y1 x2 y2 | scroll x y dy"
     echo "type <text> | key <key> [cmd,shift,option,ctrl] | do <action> [json] | agent [scenario] [delay] | call <tool> [json]"
-    echo "shot [out.png] | record [secs] [out.mov]" ;;
+    echo "shot [out.png] | menushot [out.png] | record [secs] [out.mov]" ;;
 esac

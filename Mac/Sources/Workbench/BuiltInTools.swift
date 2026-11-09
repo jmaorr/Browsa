@@ -43,7 +43,7 @@ enum BuiltInTools {
             commands: RadarSample.servers.filter(\.isUp).map { s in
                 ToolCommand(id: "open-\(s.port)", title: "Open \(s.project)", subtitle: "\(s.branch) · localhost:\(s.port)",
                             symbol: "dot.radiowaves.left.and.right", keywords: ["localhost", "dev", "server", s.branch]) { browser in
-                    browser.newTab(url: URL(string: "http://localhost:\(s.port)"))
+                    RadarOpen.open(s, in: browser)
                 }
             }))
     }
