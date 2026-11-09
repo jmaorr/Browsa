@@ -130,7 +130,7 @@ struct AddressPill: View {
             let devServer = RadarStore.shared.server(for: tab?.url)
             if let devServer, devServer.isWorktree {
                 Image(systemName: "arrow.triangle.branch").font(.system(size: 10)).foregroundStyle(.secondary)
-                    .help("Worktree of \(devServer.project), on localhost:\(devServer.port)")
+                    .help(Text(verbatim: "Worktree of \(devServer.project), on localhost:\(devServer.port)"))
             }
             Text(isWelcome ? "Welcome to Browsa" : devServer?.shortName ?? tab?.url.map(URLNormalizer.displayHost) ?? "Search or enter address")
                 .lineLimit(1)
