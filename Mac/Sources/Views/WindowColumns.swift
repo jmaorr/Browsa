@@ -52,15 +52,22 @@ final class ColumnsController: NSSplitViewController {
         panelItem.canCollapse = true
         panelItem.minimumThickness = 240
         panelItem.maximumThickness = 560
-        panelItem.holdingPriority = .init(260)
+        // Between the page's and the sidebar's: with the sidebar's priority, dragging the panel's divider
+        // couldn't widen it (the panel slid over, leaving an empty strip at the window edge, then snapped
+        // back). Still above the page's, so a window resize goes to the page.
+        panelItem.holdingPriority = .init(250)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     private static func host<V: View>(_ view: V, _ browser: Browser) -> NSViewController {
-        let host = NSHostingController(rootView: view.environment(browser).environment(browser.library))
+        let host = NSHostingController(rootView: view.environment(browser).environment(browser.library)
+            .ignoresSafeArea())
         // The split view sets the frames; SwiftUI mustn't add size constraints of its own.
         host.sizingOptions = []
+        // Each hosting view would otherwise inset its content by the transparent title bar, which
+        // pushes the columns down and leaves a gap above the traffic-light row.
+        host.safeAreaRegions = []
         host.view.wantsLayer = true
         host.view.layer?.backgroundColor = .clear
         return host
@@ -71,7 +78,7 @@ final class ColumnsController: NSSplitViewController {
         split.isVertical = true
         split.dividerStyle = .thin
         split.pageView = { [weak self] in self?.pageItem.viewController.view }
-        split.onDragEnded = { [weak self] in self?.saveWidths() }
+        split.onDragEnded = { [weak self] moved in if moved { self?.saveWidths() } }
         splitView = split
         super.loadView()
     }
@@ -96,13 +103,36 @@ final class ColumnsController: NSSplitViewController {
     }
 
     func setSidebar(docked: Bool) {
-        guard placed else { startsDocked = docked; return }
+        startsDocked = docked
+        guard placed else { return }
         animate(sidebarItem, collapsed: !docked)
     }
 
     func setPanel(open: Bool) {
-        guard placed else { startsOpen = open; return }
+        startsOpen = open
+        guard placed else { return }
         animate(panelItem, collapsed: !open)
+    }
+
+    /// An interrupted animation (another toggle, a layout pass) can leave a column where it was: put
+    /// both on what the app now wants.
+    /// An open column also gets its saved width back, which an interrupted collapse can shrink.
+    private func settle() {
+        for item in [sidebarItem, panelItem] where item.isCollapsed != wantsCollapsed(item) {
+            item.isCollapsed = wantsCollapsed(item)
+        }
+        if !sidebarItem.isCollapsed, abs(sidebarItem.viewController.view.frame.width - browser.sidebarWidth) > 1 {
+            splitView.setPosition(browser.sidebarWidth, ofDividerAt: 0)
+        }
+        if !panelItem.isCollapsed, abs(panelItem.viewController.view.frame.width - browser.panelWidth) > 1 {
+            splitView.setPosition(splitView.bounds.width - browser.panelWidth - splitView.dividerThickness, ofDividerAt: 1)
+        }
+    }
+
+    /// Whether `item` should be collapsed, from the app's state (not from the split view, which can be
+    /// mid-animation).
+    private func wantsCollapsed(_ item: NSSplitViewItem) -> Bool {
+        item === sidebarItem ? !startsDocked : !startsOpen
     }
 
     private func animate(_ item: NSSplitViewItem, collapsed: Bool) {
@@ -113,8 +143,11 @@ final class ColumnsController: NSSplitViewController {
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             context.allowsImplicitAnimation = true
             item.animator().isCollapsed = collapsed
-        } completionHandler: {
-            ColumnsSplitView.endLiveResize(webViews)
+        } completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                ColumnsSplitView.endLiveResize(webViews)
+                self?.settle()
+            }
         }
     }
 
@@ -127,6 +160,7 @@ final class ColumnsController: NSSplitViewController {
     }
 
     // MARK: Split view delegate
+
 
     /// Collapsed columns keep their divider: it's the gap between the page and the window edge.
     override func splitView(_ splitView: NSSplitView, shouldHideDividerAt dividerIndex: Int) -> Bool { false }
@@ -145,7 +179,8 @@ final class ColumnsController: NSSplitViewController {
 /// signalling to the web views while one drags.
 final class ColumnsSplitView: NSSplitView {
     var pageView: () -> NSView? = { nil }
-    var onDragEnded: () -> Void = {}
+    /// After a click on a divider: whether it actually moved anything.
+    var onDragEnded: (_ moved: Bool) -> Void = { _ in }
 
     override var dividerThickness: CGFloat { PageCard.inset }
     override var dividerColor: NSColor { .clear }
@@ -154,9 +189,11 @@ final class ColumnsSplitView: NSSplitView {
     /// NSSplitView tracks a divider drag inside `mouseDown`, so this brackets the whole drag.
     override func mouseDown(with event: NSEvent) {
         let webViews = beginLiveResize()
+        let before = subviews.map(\.frame)
         super.mouseDown(with: event)
         Self.endLiveResize(webViews)
-        onDragEnded()
+        // A plain click on a divider (or the gap around the page) mustn't touch the app's state.
+        onDragEnded(subviews.map(\.frame) != before)
     }
 
     /// Tells every web view in the page column that a live resize has started, like a window resize.
