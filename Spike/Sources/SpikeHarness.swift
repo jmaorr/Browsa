@@ -286,7 +286,7 @@ enum SpikeHarness {
         case "closeMenus":
             SpikeInput.closeMenus()
         case "pauseAgents":
-            library.agents.isPaused = j["paused"] as? Bool ?? true
+            (j["paused"] as? Bool ?? true) ? library.agents.stopAll() : library.agents.resume()
         case "clearActivity":
             library.agents.clearActivity()
         default:
