@@ -190,6 +190,7 @@ final class Library {
     func openExternal(_ url: URL) {
         if let window = activeWindow {
             window.openExternal(url)
+            NSApp.activate()
             window.nsWindow?.makeKeyAndOrderFront(nil)
         } else {
             openWindow(.url(url))
