@@ -15,6 +15,11 @@ npx wrangler deploy   # publish to browsa.app
   footage, so they never go stale. A frame with `data-mw` gets a window; `data-scene` picks what
   it shows and `data-cycle="sidebar focus"` loops through scenes. Swap one for a `<video>` when
   there's a clip; the film placeholder on `/mac/` has a comment showing how.
+- Sizes in the window are the app's own points (one `--u` is a point of a 1280 × 800 window), so
+  when the Mac UI changes, change the matching number in `desktop.css`.
+- The pages inside it are made up (`desktop-sites.js`): Wander & Salt, a travel journal; Tern, a
+  developer docs site; and Northwind, the localhost shop SpikeBrowsa also serves, so a film
+  recorded from SpikeBrowsa shows the same content.
 
 ## Download links
 
