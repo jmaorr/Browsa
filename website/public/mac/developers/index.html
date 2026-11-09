@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Build for Browsa</title>
+<meta name="description" content="How to extend Browsa for Mac: web extensions, Browsa plugins and agents over MCP.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f4f1">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121211">
+<meta property="og:title" content="Build for Browsa">
+<meta property="og:description" content="Web extensions, Browsa plugins and agents: three ways to extend Browsa for Mac.">
+<meta property="og:image" content="https://browsa.app/media/hero.webp">
+<meta property="og:url" content="https://browsa.app/mac/developers/">
+<link rel="canonical" href="https://browsa.app/mac/developers/">
+<link rel="icon" href="/favicon.png">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/desktop.css">
+<script type="module" src="/desktop.js"></script>
+</head>
+<body>
+<a class="skip" href="#plugins">Skip to plugins</a>
+
+<header class="bar">
+  <a class="brand" href="/"><img src="/media/orb.webp" alt="" width="26" height="26">Browsa</a>
+  <nav aria-label="Main">
+    <a href="/">iPhone</a>
+    <a href="/mac/" aria-current="page">Mac</a>
+    <a href="/download/">Download</a>
+    <a href="https://github.com/jmaorr/Browsa">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <section class="dev-hero" aria-labelledby="dev-title">
+    <p class="crumbs"><a href="/mac/">Browsa for Mac</a> / Developers</p>
+    <h1 id="dev-title">Build for Browsa.</h1>
+    <p>Everything runs inside WebKit, and everything is free. If you've made a browser extension, you already know most of it.</p>
+
+    <div class="ways">
+      <a class="way" href="#extensions">
+        <span class="way-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 4.5a2 2 0 1 1 4 0V6h3.5a1 1 0 0 1 1 1v3.5H19a2 2 0 1 1 0 4h-1.5V18a1 1 0 0 1-1 1H13v-1.5a2 2 0 1 0-4 0V19H5.5a1 1 0 0 1-1-1v-3.5H6a2 2 0 1 0 0-4H4.5V7a1 1 0 0 1 1-1H9z"/></svg></span>
+        <h3>Web extensions <span class="badge live">Works today</span></h3>
+        <p>Safari extensions from installed apps, plus Chrome Web Store and Firefox Add-ons links. Standard WebExtensions APIs.</p>
+        <span class="go">How they load →</span>
+      </a>
+      <a class="way" href="#plugins">
+        <span class="way-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="M9 5v14M15 5v14"/></svg></span>
+        <h3>Browsa plugins <span class="badge spec">Spec</span></h3>
+        <p>A web extension with a <code>browsa</code> block that adds a sidebar section, a panel, commands, badges and agent tools.</p>
+        <span class="go">The manifest →</span>
+      </a>
+      <a class="way" href="#agents">
+        <span class="way-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3.5l1.9 4.6 4.6 1.9-4.6 1.9L12 16.5l-1.9-4.6L5.5 10l4.6-1.9z"/><path d="M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/></svg></span>
+        <h3>Agents <span class="badge live">Works today</span></h3>
+        <p>A local MCP server, so coding agents can use the browser you're watching, with page notes they can read and resolve.</p>
+        <span class="go">Connect one →</span>
+      </a>
+    </div>
+  </section>
+
+  <section class="section" id="plugins" aria-labelledby="plugins-title">
+    <h2 id="plugins-title">A plugin is an extension, plus a little more.</h2>
+    <p class="sub">Add a <code>browsa</code> block to a normal Manifest V3 extension. Other browsers ignore it, so the same plugin still works anywhere else. Point at a key to see where it lands.</p>
+
+    <div class="anatomy">
+      <div data-mw data-anatomy data-sect role="img" aria-label="Browsa's window with the place each plugin part appears outlined in turn: a section in the sidebar, the side panel, rows in the command bar, and a badge on a tab."></div>
+      <div>
+<pre class="code" aria-label="An example plugin manifest"><span class="k">{</span>
+  <span class="n">"manifest_version"</span>: 3,
+  <span class="n">"name"</span>: <span class="s">"Localhost Radar"</span>,
+  <span class="n">"background"</span>: { <span class="n">"service_worker"</span>: <span class="s">"bg.js"</span> },
+  <span class="n">"browsa"</span>: {
+    <span data-points="sidebar" tabindex="0"><span class="n">"sidebar"</span>: { <span class="n">"page"</span>: <span class="s">"sidebar.html"</span> },</span>
+    <span data-points="panel" tabindex="0"><span class="n">"panel"</span>: { <span class="n">"page"</span>: <span class="s">"panel.html"</span> },</span>
+    <span data-points="commands" tabindex="0"><span class="n">"commands"</span>: [{ <span class="n">"title"</span>: <span class="s">"Open all servers"</span> }],</span>
+    <span data-points="agentTools" tabindex="0"><span class="n">"agentTools"</span>: [{ <span class="n">"name"</span>: <span class="s">"radar_list"</span> }],</span>
+    <span data-points="badges" tabindex="0"><span class="n">"badges"</span>: true</span>
+  }
+<span class="k">}</span></pre>
+        <div class="legend" role="group" aria-label="Plugin parts">
+          <button type="button" data-points="sidebar">Sidebar section</button>
+          <button type="button" data-points="panel">Panel</button>
+          <button type="button" data-points="commands">⌘K commands</button>
+          <button type="button" data-points="agentTools">Agent tools</button>
+          <button type="button" data-points="badges">Tab badges</button>
+        </div>
+        <p class="spec-note"><span class="badge spec">Spec</span><span>Browsa reads the <code>browsa</code> block today, and its built-in tools (Notes, Agents) already plug into the window this way. The runtime that lets your plugin do the same is still being built, so details may change.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="wire-title">
+    <h2 id="wire-title">Talking to Browsa.</h2>
+    <p class="sub">Plugins send native messages to a built-in host, <code>app.browsa</code>. Each part of the <code>browsa</code> block is a permission people see before they add it, and plugins never run native code.</p>
+    <div class="wire" aria-label="How a message travels">
+      <div class="wire-box"><b>Your background script</b><span><code>runtime.sendNativeMessage</code></span></div>
+      <span class="wire-arrow" aria-hidden="true"></span>
+      <div class="wire-box"><b><code>app.browsa</code></b><span>Checks the plugin's permissions</span></div>
+      <span class="wire-arrow" aria-hidden="true"></span>
+      <div class="wire-box"><b>Browsa</b><span>Updates the sidebar, panel or command bar</span></div>
+    </div>
+    <div class="msgs" aria-label="Messages">
+      <div><code>badge.set</code><span>A count or dot on a tab</span></div>
+      <div><code>commands.register</code><span>Rows in ⌘K</span></div>
+      <div><code>ui.toast</code><span>A short message</span></div>
+      <div><code>tabs.open</code><span>Open a page in a space</span></div>
+      <div><code>agentTool.result</code><span>Answer an agent's call</span></div>
+      <div><code>notes.list</code><span>Read page notes</span></div>
+    </div>
+  </section>
+
+  <section class="section" id="agents" aria-labelledby="agents-title">
+    <div class="split">
+      <div>
+        <h2 id="agents-title">Let agents use the real browser.</h2>
+        <p>Turn on Settings › Agents and Browsa listens on 127.0.0.1 for MCP. Copy the token from Settings and add it to your agent.</p>
+        <div class="tools" aria-label="Agent tools">
+          <code>tabs_list</code><code>tab_open</code><code>page_navigate</code><code>page_read</code><code>page_screenshot</code><code>page_click</code><code>page_type</code><code class="lh">page_eval</code><code>notes_list</code><code>notes_add</code><code>notes_reply</code><code>notes_resolve</code>
+        </div>
+        <ul class="points">
+          <li><span><b>Visible.</b> Agents open pages in an Agent space, and every call shows in the Agents panel.</span></li>
+          <li><span><b>Asked once per site.</b> Localhost never asks, and <code>page_eval</code> only runs on localhost.</span></li>
+          <li><span><b>Stoppable.</b> Stop refuses everything that changes a page until it's resumed.</span></li>
+          <li><span><b>Local only.</b> A bearer token is required, and requests carrying a web page's Origin are refused.</span></li>
+        </ul>
+      </div>
+      <div class="term" aria-label="Adding Browsa to Claude Code">
+        <div class="term-bar"><i></i><i></i><i></i></div>
+<pre><span class="dim"># Claude Code</span>
+<span class="dim">$</span> claude mcp add --transport http browsa \
+    <span class="key">http://127.0.0.1:47913/mcp</span> \
+    --header <span class="key">"Authorization: Bearer &lt;token from Settings&gt;"</span>
+<span class="ok">✓</span> Added browsa
+
+<span class="dim">&gt; open localhost:3000 and check the sign-in form</span>
+<span class="ok">●</span> tab_open      localhost:3000
+<span class="ok">●</span> page_read     Sign in · 2 fields
+<span class="ok">●</span> page_type     email
+<span class="ok">●</span> page_click    Continue</pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="extensions" aria-labelledby="ext-title">
+    <h2 id="ext-title">How extensions load.</h2>
+    <p class="sub">Browsa uses Apple's <code>WKWebExtension</code>. It downloads and unpacks store extensions itself, checks for updates once a day, and asks again when an update wants more permissions. Chrome APIs WebKit doesn't have are filled in natively.</p>
+    <dl class="limits" id="limits" aria-label="WebKit limits to design around">
+      <div><dt>Extension frames</dt><dd>When a page loads an extension's own frame, like an inline menu, WebKit stops that extension's background a few seconds later in third-party browsers. Content scripts are fine. Reported to Apple.</dd></div>
+      <div><dt>Native messaging to apps</dt><dd>Talking to another company's desktop app needs that app to trust Browsa, so the Safari versions of password managers are the better bet for now.</dd></div>
+      <div><dt>No API wrapping</dt><dd>Wrapping <code>chrome.*</code> in a JS Proxy stops runtime messages reaching the background, so missing APIs are filled natively, not from script.</dd></div>
+      <div><dt>Not supported</dt><dd><code>chrome.debugger</code>, blocking <code>webRequest</code> and DevTools panels. <code>declarativeNetRequest</code> works.</dd></div>
+    </dl>
+  </section>
+
+  <section class="section" aria-labelledby="code-title">
+    <h2 id="code-title">Where it lives in the code.</h2>
+    <p class="sub">Browsa is MIT licensed. The full write-up is <a href="https://github.com/jmaorr/Browsa/blob/main/docs/extensibility.md">docs/extensibility.md</a>.</p>
+    <div class="table codemap">
+      <table>
+        <thead><tr><th scope="col">Piece</th><th scope="col">Where</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Store links, updates, CRX unpacking</th><td><a href="https://github.com/jmaorr/Browsa/blob/main/Packages/BrowserKit/Sources/Extensibility/ExtensionSources.swift"><code>Extensibility/ExtensionSources.swift</code></a></td></tr>
+          <tr><th scope="row">Manifest and the <code>browsa</code> block</th><td><a href="https://github.com/jmaorr/Browsa/blob/main/Packages/BrowserKit/Sources/Extensibility/ExtensionManifest.swift"><code>Extensibility/ExtensionManifest.swift</code></a></td></tr>
+          <tr><th scope="row">Tools: panel, sidebar, commands</th><td><a href="https://github.com/jmaorr/Browsa/blob/main/Mac/Sources/Workbench/Workbench.swift"><code>Mac/Sources/Workbench/</code></a></td></tr>
+          <tr><th scope="row">MCP toolbox</th><td><a href="https://github.com/jmaorr/Browsa/blob/main/Packages/BrowserKit/Sources/Extensibility/AgentToolbox.swift"><code>Extensibility/AgentToolbox.swift</code></a></td></tr>
+          <tr><th scope="row">Local endpoint and Agent space</th><td><a href="https://github.com/jmaorr/Browsa/tree/main/Mac/Sources/Agents"><code>Mac/Sources/Agents/</code></a></td></tr>
+          <tr><th scope="row">Page notes</th><td><a href="https://github.com/jmaorr/Browsa/blob/main/Packages/BrowserKit/Sources/Extensibility/Margin.swift"><code>Extensibility/Margin.swift</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="actions"><a class="button" href="https://github.com/jmaorr/Browsa">jmaorr/Browsa</a><a class="button ghost" href="https://github.com/jmaorr/Browsa/blob/main/docs/web-extensions.md">Web extension notes</a></p>
+  </section>
+</main>
+
+<footer class="foot">
+  <span class="brand"><img src="/media/orb.webp" alt="" width="20" height="20">Browsa</span>
+  <span>Made by <a href="https://orriginal.me">Joshua Orr</a></span>
+  <a href="/mac/">Mac</a>
+  <a href="/privacy/">Privacy</a>
+  <a href="/support/">Support</a>
+  <a href="https://github.com/jmaorr/Browsa">GitHub</a>
+  <a href="mailto:hello@orriginal.me">Contact</a>
+</footer>
+</body>
+</html>

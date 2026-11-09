@@ -8,6 +8,21 @@ npx wrangler dev      # preview locally
 npx wrangler deploy   # publish to browsa.app
 ```
 
+## Pages
+
+- `/` iPhone Duo, `/mac/` Browsa for Mac, `/mac/developers/` building for it, `/download/` both.
+- The Mac pages draw the window in HTML and CSS (`desktop.js`, `desktop.css`) instead of using
+  footage, so they never go stale. A frame with `data-mw` gets a window; `data-scene` picks what
+  it shows and `data-cycle="sidebar focus"` loops through scenes. Swap one for a `<video>` when
+  there's a clip; the film placeholder on `/mac/` has a comment showing how.
+
+## Download links
+
+Every Download button is set in one place: `DOWNLOADS` at the top of `src/index.js`. While a link
+is `null`, the pages show their coming-soon state (the static HTML). Set a URL and the Worker
+points every `data-download` button there with its live label, and removes the `data-soon` notes.
+`/download/mac` and `/download/ios` always redirect to the current link.
+
 `scripts/build-clips.sh` rebuilds the clips and stills in `public/media` from raw simulator captures.
 
 When the app's network behaviour changes, update `public/privacy/index.html` and its date.

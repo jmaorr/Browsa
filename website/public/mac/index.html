@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Browsa for Mac</title>
+<meta name="description" content="Browsa for Mac: a calm WebKit browser with a sidebar for your spaces, a panel for your tools, and room for the extensions and agents you already use.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f4f1">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121211">
+<meta property="og:title" content="Browsa for Mac">
+<meta property="og:description" content="A calm WebKit browser for your Mac, with room for your extensions and your agents.">
+<meta property="og:image" content="https://browsa.app/media/hero.webp">
+<meta property="og:url" content="https://browsa.app/mac/">
+<link rel="canonical" href="https://browsa.app/mac/">
+<link rel="icon" href="/favicon.png">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/desktop.css">
+<script type="module" src="/desktop.js"></script>
+</head>
+<body>
+<a class="skip" href="#extensions">Skip to features</a>
+
+<header class="bar">
+  <a class="brand" href="/"><img src="/media/orb.webp" alt="" width="26" height="26">Browsa</a>
+  <nav aria-label="Main">
+    <a href="/">iPhone</a>
+    <a href="/mac/" aria-current="page">Mac</a>
+    <a href="/download/">Download</a>
+    <a href="https://github.com/jmaorr/Browsa">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <section class="mac-hero" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <h1 id="hero-title">Browsa, now on&nbsp;your&nbsp;Mac.</h1>
+      <div class="hero-side">
+        <p>A calm, keyboard-first browser with a sidebar for your spaces, a panel for your tools, and room for the extensions and agents you already use. Native WebKit, open source, and free.</p>
+        <p class="actions">
+          <a class="button" href="/mac/#get" data-download="mac" data-live-label="Download for Mac">Download for Mac</a>
+          <a class="button ghost" href="/mac/developers/">For developers</a>
+        </p>
+        <p class="req">macOS 26 or later</p>
+      </div>
+    </div>
+
+    <div class="mac-stage">
+      <div data-mw data-hero-window role="img" aria-label="A drawing of Browsa's Mac window: a tinted sidebar with spaces and tabs on the left, the page in the middle, and a tool panel that opens on the right."></div>
+    </div>
+    <div class="scene-controls">
+      <div class="t-tabs" role="group" aria-label="Show">
+        <span class="t-tabs-pill" aria-hidden="true"></span>
+        <button type="button" class="t-tab" data-scene-pick="sidebar" aria-pressed="true" data-caption="Spaces, favourites and tabs live down the side, where a wide screen has room for them.">Sidebar</button>
+        <button type="button" class="t-tab" data-scene-pick="spaces" aria-pressed="false" data-caption="Work and life each keep their own tabs and colour. Swipe between them.">Spaces</button>
+        <button type="button" class="t-tab" data-scene-pick="command" aria-pressed="false" data-caption="One bar for everything: places, searches, open tabs and every tool's commands. Press ⌘K.">⌘K</button>
+        <button type="button" class="t-tab" data-scene-pick="panel" aria-pressed="false" data-caption="Tools open in a panel beside the page, never on top of it. Notes keeps your thoughts with the page they're about.">Workbench</button>
+        <button type="button" class="t-tab" data-scene-pick="extensions" aria-pressed="false" data-caption="Your password manager and favourite extensions, from the Chrome Web Store, in a WebKit browser.">Extensions</button>
+        <button type="button" class="t-tab" data-scene-pick="agent" aria-pressed="false" data-caption="A coding agent can use the browser you're looking at, in its own space, with Stop always in reach.">Agents</button>
+      </div>
+      <p id="scene-caption" aria-live="polite"></p>
+      <button type="button" class="motion" id="motion" aria-pressed="false">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path class="i-pause" d="M4 2.5h3v11H4zM9 2.5h3v11H9z"/><path class="i-play" d="M4.5 2.2 13 8l-8.5 5.8z"/></svg>
+        <span>Pause motion</span>
+      </button>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="calm-title">
+    <h2 id="calm-title">Made for a big screen, and out of your way.</h2>
+    <div class="mini-features">
+      <article>
+        <div data-mw data-cycle="sidebar focus" data-every="2600" role="img" aria-label="The sidebar sliding away so the page fills the window, then sliding back."></div>
+        <h3>The page gets the whole window</h3>
+        <p>Hide the sidebar with ⌘S and it peeks back in when you reach for the edge.</p>
+      </article>
+      <article>
+        <div data-mw data-cycle="spaces sidebar" data-every="3000" role="img" aria-label="Switching from the Personal space to the Work space. The sidebar's colour and tabs change together."></div>
+        <h3>Spaces, curated your way</h3>
+        <p>Pins, tabs and a colour for each part of your life, so neither one follows you into the other.</p>
+      </article>
+    </div>
+
+    <dl class="more" aria-label="Also in Browsa for Mac">
+      <div><dt>Keyboard first</dt><dd>Every action has a shortcut, and <kbd>⌘K</kbd> finds the ones you forget.</dd></div>
+      <div><dt>Reader</dt><dd>Just the words and pictures, set so you can settle in.</dd></div>
+      <div><dt>Windows</dt><dd>As many as you like, sharing one library of spaces.</dd></div>
+      <div><dt>Blocking</dt><dd>Ads, trackers and cookie banners, handled before the page loads.</dd></div>
+      <div><dt>Privacy</dt><dd>Global Privacy Control on by default. Clear history and data when you quit, if you like.</dd></div>
+      <div><dt>On iPhone too</dt><dd>The same spaces idea, <a href="/">handcrafted for iPhone Duo</a>.</dd></div>
+    </dl>
+  </section>
+
+  <section class="section" id="extensions" aria-labelledby="ext-title">
+    <h2 id="ext-title">Bring the extensions you rely on.</h2>
+    <p class="sub">Browsa installs extensions from where they already live and keeps them up to date itself, once a day. If an update wants more access, it asks you first.</p>
+    <div class="flow">
+      <div class="flow-sources">
+        <div><span class="src-ic safari" aria-hidden="true">S</span><p><b>Safari extensions</b><span>From the apps already on your Mac</span></p></div>
+        <div><span class="src-ic chrome" aria-hidden="true">C</span><p><b>Chrome Web Store</b><span>Paste a link in Settings</span></p></div>
+        <div><span class="src-ic firefox" aria-hidden="true">F</span><p><b>Firefox Add-ons</b><span>Paste a link in Settings</span></p></div>
+      </div>
+      <div class="flow-lines" aria-hidden="true">
+        <svg viewBox="0 0 120 240" preserveAspectRatio="none">
+          <path d="M0 40 C60 40 60 120 120 120"/><path class="dash" d="M0 40 C60 40 60 120 120 120"/>
+          <path d="M0 120 L120 120"/><path class="dash" d="M0 120 L120 120"/>
+          <path d="M0 200 C60 200 60 120 120 120"/><path class="dash" d="M0 200 C60 200 60 120 120 120"/>
+        </svg>
+      </div>
+      <div class="flow-target"><img src="/media/orb.webp" alt="" width="88" height="88">Browsa</div>
+    </div>
+    <div class="ext-grid" aria-label="Tested and working">
+      <div class="ext"><span class="mono m1" aria-hidden="true">1P</span><b>1Password</b><span>Works</span></div>
+      <div class="ext"><span class="mono m2" aria-hidden="true">LP</span><b>LastPass</b><span>Works</span></div>
+      <div class="ext"><span class="mono m3" aria-hidden="true">D</span><b>Dashlane</b><span>Works</span></div>
+      <div class="ext"><span class="mono m4" aria-hidden="true">G</span><b>Grammarly</b><span>Works</span></div>
+      <div class="ext"><span class="mono m5" aria-hidden="true">uB</span><b>uBlock Origin Lite</b><span>Works</span></div>
+      <div class="ext"><span class="mono m6" aria-hidden="true">DR</span><b>Dark Reader</b><span>Works</span></div>
+    </div>
+    <p class="ext-note">Tested so far. More are on the way, and the <a href="/mac/developers/#limits">developer page</a> lists what WebKit can't do yet. Names belong to their owners.</p>
+  </section>
+
+  <section class="section" aria-labelledby="agents-title">
+    <div class="split">
+      <div>
+        <h2 id="agents-title">A browser your agents can share.</h2>
+        <p>Turn on Agents in Settings and coding agents like Claude Code can open pages, read them and test your work, in the browser you're already signed in to.</p>
+        <ul class="points">
+          <li><span><b>In their own space.</b> Agents open pages in an Agent space, outlined so you always know.</span></li>
+          <li><span><b>Asked, not assumed.</b> Acting on a new site asks you first. Your own localhost never does.</span></li>
+          <li><span><b>One Stop button.</b> It halts anything that would change a page, until you say so.</span></li>
+        </ul>
+      </div>
+      <div class="agent-visual">
+        <div class="term" aria-label="Adding Browsa to Claude Code from a terminal">
+          <div class="term-bar"><i></i><i></i><i></i></div>
+          <pre><span class="dim">$</span> claude mcp add --transport http browsa <span class="key">http://127.0.0.1:47913/mcp</span>
+<span class="ok">✓</span> Added browsa</pre>
+        </div>
+        <div data-mw data-scene="agent" role="img" aria-label="An agent working in Browsa's Agent space, with each step listed in the Agents panel beside a red Stop button."></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="film-title">
+    <h2 id="film-title">See it move.</h2>
+    <!-- When the film is ready: drop browsa-mac.mp4 and a poster into /media and replace the
+         .film-card with <video controls playsinline preload="none" poster="/media/browsa-mac.webp"><source src="/media/browsa-mac.mp4" type="video/mp4"></video> -->
+    <div class="film">
+      <div class="film-card">
+        <img src="/media/orb.webp" alt="" width="72" height="72">
+        <b>The Browsa for Mac film</b>
+        <span>Coming soon</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="get" id="get" aria-labelledby="get-title">
+    <img src="/media/orb.webp" alt="" width="72" height="72">
+    <h2 id="get-title">Get Browsa for Mac.</h2>
+    <p>Free, open source, with no account and no analytics. Plugins will be free too.</p>
+    <p class="actions">
+      <a class="button" href="/mac/#get" data-download="mac" data-live-label="Download for Mac">Download for Mac</a>
+      <a class="button ghost" href="https://github.com/jmaorr/Browsa">Build from source</a>
+    </p>
+    <p class="soon-note" data-soon="mac">Browsa for Mac is being tested now. Want in early? Email <a href="mailto:hello@orriginal.me?subject=Browsa%20for%20Mac">hello@orriginal.me</a>, or build it yourself from GitHub.</p>
+    <p class="req">macOS 26 or later</p>
+  </section>
+</main>
+
+<footer class="foot">
+  <span class="brand"><img src="/media/orb.webp" alt="" width="20" height="20">Browsa</span>
+  <span>Made by <a href="https://orriginal.me">Joshua Orr</a></span>
+  <a href="/mac/developers/">Developers</a>
+  <a href="/privacy/">Privacy</a>
+  <a href="/support/">Support</a>
+  <a href="https://github.com/jmaorr/Browsa">GitHub</a>
+  <a href="mailto:hello@orriginal.me">Contact</a>
+</footer>
+</body>
+</html>
