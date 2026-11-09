@@ -17,3 +17,12 @@
 
 /support/
   Cache-Control: public, max-age=0, must-revalidate, no-transform
+
+/download/
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+
+/mac/
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+
+/mac/developers/
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
