@@ -23,7 +23,7 @@ struct BrowserWindow: View {
             }
         }
         .overlay {
-            if let phase = browser.intro, phase < .sidebar {
+            if let phase = browser.intro {
                 IntroOverlay(phase: phase)
                     .transition(.identity)
             }

@@ -244,6 +244,10 @@ enum SpikeHarness {
     private static func perform(_ action: String, _ j: [String: Any], library: Library) async -> HTTPResponse {
         guard let browser = library.activeWindow else { return .error("No window", status: 503) }
         switch action {
+        case "welcome":
+            // {"intro":true,"reset":true}: open the welcome tab, optionally clearing its progress first.
+            if j["reset"] as? Bool == true { WelcomeProgress.shared.reset() }
+            browser.openWelcome(playingIntro: j["intro"] as? Bool ?? true)
         case "newTab":
             browser.newTab(url: (j["url"] as? String).flatMap(URL.init(string:)))
         case "selectSpace":
