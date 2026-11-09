@@ -15,7 +15,7 @@ import Extensibility
 enum SpikeHarness {
     static let controlPort = UInt16((Bundle.main.object(forInfoDictionaryKey: "SpikeControlPort") as? NSNumber)?.intValue ?? 47930)
 
-    private static var servers: [SpikeHTTPServer] = []
+    private static var servers: [Int: SpikeHTTPServer] = [:]
     private static var control: SpikeHTTPServer?
     private weak static var delegate: AppDelegate?
     private static let defaults = UserDefaults.standard
@@ -35,14 +35,7 @@ enum SpikeHarness {
 
     static func start(delegate: AppDelegate) {
         self.delegate = delegate
-        for s in SpikeMocks.servers where s.isUp {
-            let server = SpikeHTTPServer(port: UInt16(s.port)) { request in
-                if request.path == "/favicon.ico" { return HTTPResponse(status: 404, body: "") }
-                return .html(SpikeMocks.page(port: s.port, path: request.path))
-            }
-            server.start()
-            servers.append(server)
-        }
+        for s in SpikeMocks.servers where s.isUp { startMock(s.port) }
         SpikeInput.watchMenus()
         let control = SpikeHTTPServer(port: controlPort) { await route($0) }
         control.start()
@@ -52,13 +45,39 @@ enum SpikeHarness {
         Task {
             let library = delegate.library
             while library.windows.isEmpty { try? await Task.sleep(for: .milliseconds(100)) }
-            addDesignCommands(library)
+            fakeRestarts(library)
             if !defaults.bool(forKey: "spikeSeeded") {
                 seed(library)
                 defaults.set(true, forKey: "spikeSeeded")
             }
             try? await Task.sleep(for: .seconds(2))
             _ = await runScenario("history", delay: 0)
+        }
+    }
+
+    private static func startMock(_ port: Int) {
+        guard servers[port] == nil else { return }
+        let server = SpikeHTTPServer(port: UInt16(port)) { request in
+            if request.path == "/favicon.ico" { return HTTPResponse(status: 404, body: "") }
+            return .html(SpikeMocks.page(port: port, path: request.path))
+        }
+        server.start()
+        servers[port] = server
+    }
+
+    private static func stopMock(_ port: Int) {
+        servers.removeValue(forKey: port)?.stop()
+    }
+
+    /// Restart takes a moment and then the server is back, as a dev script would be.
+    private static func fakeRestarts(_ library: Library) {
+        RadarStore.shared.restartHandler = { [weak library] s in
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.6))
+                guard let library else { return }
+                startMock(s.port)
+                withAnimation(Motion.spring) { RadarStore.shared.set(port: s.port, up: true, in: library) }
+            }
         }
     }
 
@@ -78,19 +97,6 @@ enum SpikeHarness {
             window.select(shop)
         }
         library.scheduleSave()
-    }
-
-    /// ⌘K rows for flipping between designs under review, so Josh can try them by hand too.
-    private static func addDesignCommands(_ library: Library) {
-        guard var radar = library.workbench.tool("radar") else { return }
-        for style in RadarSidebarStyle.allCases {
-            radar.commands.append(ToolCommand(id: "style-\(style.rawValue)", title: "Sidebar Style: \(style.title)",
-                                              subtitle: "Radar design option, SpikeBrowsa only", symbol: "paintbrush",
-                                              keywords: ["design", "spike", "style"]) { _ in
-                withAnimation(Motion.snappy) { defaults.set(style.rawValue, forKey: "radarSidebarStyle") }
-            })
-        }
-        library.workbench.register(radar)
     }
 
     // MARK: Agents
@@ -255,11 +261,28 @@ enum SpikeHarness {
         case "front":
             NSApp.activate()
             SpikeInput.window?.makeKeyAndOrderFront(nil)
-        case "radarStyle":
-            guard let name = j["style"] as? String, RadarSidebarStyle(rawValue: name) != nil else {
-                return .error("Styles: \(RadarSidebarStyle.allCases.map(\.rawValue))")
+        case "radarStop", "radarStart":
+            guard let port = j["port"] as? Int, RadarStore.shared.servers.contains(where: { $0.port == port }) else {
+                return .error("Give port, one of \(RadarStore.shared.servers.map(\.port))")
             }
-            withAnimation(Motion.snappy) { defaults.set(name, forKey: "radarSidebarStyle") }
+            let up = action == "radarStart"
+            up ? startMock(port) : stopMock(port)
+            withAnimation(Motion.spring) { RadarStore.shared.set(port: port, up: up, in: library) }
+        case "radarAdd":
+            // A server starting: the docs site on 47944.
+            guard !RadarStore.shared.servers.contains(where: { $0.port == SpikeMocks.extraServer.port }) else { return .ok }
+            startMock(SpikeMocks.extraServer.port)
+            withAnimation(Motion.spring) { RadarStore.shared.servers.append(SpikeMocks.extraServer) }
+        case "radarRemove":
+            guard let port = j["port"] as? Int else { return .error("Give port") }
+            stopMock(port)
+            withAnimation(Motion.spring) { RadarStore.shared.servers.removeAll { $0.port == port } }
+        case "radarClear":
+            for s in RadarStore.shared.servers { stopMock(s.port) }
+            withAnimation(Motion.spring) { RadarStore.shared.servers = [] }
+        case "radarRestore":
+            for s in SpikeMocks.servers where s.isUp { startMock(s.port) }
+            withAnimation(Motion.spring) { RadarStore.shared.servers = SpikeMocks.servers }
         case "closeMenus":
             SpikeInput.closeMenus()
         case "pauseAgents":
@@ -267,7 +290,7 @@ enum SpikeHarness {
         case "clearActivity":
             library.agents.clearActivity()
         default:
-            return .error("Actions: newTab {url}, selectSpace {name}, selectTab {index}, panel {tool|null}, toggleSidebar, toast {text}, appearance {mode}, resize {width,height}, front, pauseAgents {paused}, clearActivity")
+            return .error("Actions: radarStop/radarStart {port}, radarAdd, radarRemove {port}, radarClear, radarRestore, newTab {url}, selectSpace {name}, selectTab {index}, panel {tool|null}, toggleSidebar, toast {text}, appearance {mode}, resize {width,height}, front, pauseAgents {paused}, clearActivity")
         }
         return .ok
     }
