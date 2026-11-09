@@ -152,6 +152,58 @@ targets:
             /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "$plist" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Delete :CFBundleDocumentTypes" "$plist" 2>/dev/null || true
           fi
+  # SpikeBrowsa: the Mac UI over mock data, with a control channel Claude drives (see Spike/README.md).
+  # Its own bundle ID keeps its data apart from the daily driver; it never registers as a browser.
+  SpikeBrowsa:
+    type: application
+    platform: macOS
+    sources:
+      - path: Mac/Sources
+      - Mac/Resources
+      - App/Browsa.icon
+      - Spike/Sources
+    dependencies:
+      - package: BrowserKit
+        product: BrowserCore
+      - package: BrowserKit
+        product: Suggest
+      - package: BrowserKit
+        product: BrowserEngine
+      - package: BrowserKit
+        product: WebKitEngine
+      - package: BrowserKit
+        product: Extensibility
+    entitlements:
+      path: Spike/SpikeBrowsa.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        # The agent endpoint, the control channel and the mock dev servers, all on 127.0.0.1.
+        com.apple.security.network.server: true
+        com.apple.security.files.bookmarks.app-scope: true
+        com.apple.security.files.downloads.read-write: true
+        com.apple.security.files.user-selected.read-write: true
+    info:
+      path: Spike/Info.plist
+      properties:
+        CFBundleDisplayName: SpikeBrowsa
+        CFBundleName: SpikeBrowsa
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.developer-tools
+        # Not the daily driver's 47913, so both can run at once.
+        BrowsaAgentPort: 47914
+        SpikeControlPort: 47930
+    settings:
+      base:
+        PRODUCT_NAME: SpikeBrowsa
+        PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa.spike
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: Browsa
+        ENABLE_HARDENED_RUNTIME: true
+        COMBINE_HIDPI_IMAGES: true
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) SPIKE
   BrowsaUITests:
     type: bundle.ui-testing
     platform: iOS
