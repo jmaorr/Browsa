@@ -109,7 +109,7 @@ private struct NewTabRow: View {
             Spacer()
             if hovering, canClear, !space.isPrivate {
                 Button { withAnimation(Motion.spring) { browser.clearToday() } } label: {
-                    Text("Clear")
+                    Text("Clear Tabs")
                         .font(.system(size: 11, weight: .medium))
                         .padding(.horizontal, 8)
                         .frame(height: 22)
