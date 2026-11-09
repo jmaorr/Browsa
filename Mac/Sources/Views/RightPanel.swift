@@ -219,6 +219,7 @@ private struct ConnectAgentCard: View {
     @State private var kind = Kind.claude
     @State private var revealed = false
     @State private var copied = false
+    @Namespace private var ns
     private var agents: AgentBridge { browser.library.agents }
 
     private var connected: Bool {
@@ -234,10 +235,27 @@ private struct ConnectAgentCard: View {
                 Button(action: done) { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
                     .buttonStyle(.plain).foregroundStyle(.secondary).help("Close")
             }
-            Picker("Agent", selection: $kind) {
-                ForEach(Kind.allCases, id: \.self) { Text($0.rawValue) }
+            // The same glass switch as Notes' This Page / This Site.
+            HStack(spacing: 0) {
+                ForEach(Kind.allCases, id: \.self) { k in
+                    Button { withAnimation(Motion.snappy) { kind = k } } label: {
+                        Text(k.rawValue)
+                            .font(.system(size: 11, weight: kind == k ? .semibold : .medium))
+                            .foregroundStyle(kind == k ? .primary : .secondary)
+                            .frame(maxWidth: .infinity).frame(height: 22)
+                            .background {
+                                if kind == k {
+                                    Capsule().fill(.background).shadow(color: .black.opacity(0.12), radius: 1.5, y: 0.5)
+                                        .matchedGeometryEffect(id: "kind", in: ns)
+                                }
+                            }
+                            .contentShape(.capsule)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .pickerStyle(.segmented).labelsHidden()
+            .padding(2)
+            .glassEffect(.regular, in: .capsule)
             Text(kind == .claude ? "Run this once in a terminal:" : "Add an MCP server with this URL and header:")
                 .font(.caption).foregroundStyle(.secondary)
             Text(revealed ? fullText : maskedText)
