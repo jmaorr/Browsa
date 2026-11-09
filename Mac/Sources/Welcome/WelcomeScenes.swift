@@ -135,34 +135,40 @@ extension WelcomeStop {
 func welcomeEase(_ x: Double) -> Double { let c = min(1, max(0, x)); return c * c * (3 - 2 * c) }
 
 extension WelcomeStop {
-    /// How long the hero's loop runs, in seconds.
+    /// How long the hero plays when you act on it, in seconds.
     var loop: Double {
         switch self {
         case .spaces: 7.5
         case .newTab, .commands: 4.2
-        case .importing: 6
+        case .importing: 4
         case .tour: 10
-        case .library, .makeDefault: 5
-        case .agents: 7
+        case .library, .makeDefault: 3
+        case .agents: 6
         }
     }
 
-    /// The still frame a hero rests on: the moment that best shows what it teaches.
+    /// The still frame before you've done it.
     var rest: Double {
         switch self {
-        case .spaces: 1.0
-        case .newTab, .commands: 0
-        case .importing: 0.9 * 6
-        case .tour: 3.2
-        case .library: 0.85 * 5
-        case .agents: 0.82 * 7
-        case .makeDefault: 0.75 * 5
+        case .tour: 0.6
+        default: 0
+        }
+    }
+
+    /// The still frame once it's done: the result.
+    var doneRest: Double {
+        switch self {
+        case .importing: 0.95 * 4
+        case .library, .makeDefault: 0.95 * 3
+        case .agents: 0.9 * 6
+        case .tour: 0.6
+        default: 0
         }
     }
 }
 
-/// The hero for a stop. It rests on a still frame and only runs its clock while playing, so a
-/// page of cards costs nothing when nobody is looking at one.
+/// The hero for a stop. It rests on a still frame and only runs its clock while it plays, which
+/// is only ever because the person did something, so it never fights them.
 struct StopHero: View {
     let stop: WelcomeStop
     var scale: CGFloat = 1
@@ -170,29 +176,32 @@ struct StopHero: View {
     var start: Date? = nil
     /// Spaces only: the space the person has swiped to.
     var spacePos: Double? = nil
+    /// The still frame to rest on; the stop's own when nil.
+    var rest: Double? = nil
+    /// What the person picked: the browser, the kit or the agent.
+    var choice: String? = nil
     @State private var opened = Date.now
 
     var body: some View {
         if playing && !Motion.reduced {
             TimelineView(.animation) { context in
-                // Starts from the still frame, so playing and resting line up.
-                frame(stop.rest + context.date.timeIntervalSince(start ?? opened))
+                frame(min(stop.loop * 0.999, context.date.timeIntervalSince(start ?? opened)), playing: true)
             }
         } else {
-            frame(stop.rest)
+            frame(Motion.reduced && playing ? stop.doneRest : rest ?? stop.rest, playing: false)
         }
     }
 
-    private func frame(_ t: Double) -> some View {
+    private func frame(_ t: Double, playing: Bool) -> some View {
         Group {
             switch stop {
             case .spaces: SpacesHero(t: t, pos: spacePos)
             case .newTab: ShortcutHero(t: t, letter: "T", mode: .newTab)
             case .commands: ShortcutHero(t: t, letter: "K", mode: .commands)
-            case .importing: ImportHero(t: t)
-            case .tour: TourHero(t: t)
-            case .library: LibraryHero(t: t)
-            case .agents: AgentsHero(t: t)
+            case .importing: ImportHero(t: t, from: choice ?? "Chrome")
+            case .tour: TourHero(t: t, playing: playing)
+            case .library: LibraryHero(t: t, kit: choice ?? "Developer")
+            case .agents: AgentsHero(t: t, agent: choice ?? "Claude Code")
             case .makeDefault: DefaultHero(t: t)
             }
         }
@@ -202,6 +211,37 @@ struct StopHero: View {
         .padding(36)
         .drawingGroup()
         .padding(-36)
+    }
+}
+
+/// The browsers people come from, with their favicon stand-ins.
+enum WelcomeBrowsers {
+    static let all: [(name: String, letter: String, color: Color)] = [
+        ("Chrome", "C", Color(red: 0.86, green: 0.27, blue: 0.22)), ("Safari", "S", Color(red: 0.16, green: 0.5, blue: 0.95)),
+        ("Arc", "A", Color(red: 0.93, green: 0.3, blue: 0.5)), ("Firefox", "F", Color(red: 0.96, green: 0.48, blue: 0.1)),
+    ]
+    static func info(_ name: String) -> (name: String, letter: String, color: Color) { all.first { $0.name == name } ?? all[0] }
+}
+
+enum WelcomeKits {
+    static let all: [(name: String, items: [(String, String, Color)])] = [
+        ("Developer", [("JSON Viewer", "curlybraces", .orange), ("React Tools", "atom", .cyan),
+                       ("Radar", "dot.radiowaves.left.and.right", .green), ("Notes", "note.text", .yellow)]),
+        ("Agents", [("MCP Bridge", "point.3.connected.trianglepath.dotted", .purple), ("Agent Space", "pointer.arrow.ipad.rays", .indigo),
+                    ("Notes", "note.text", .yellow), ("Screenshots", "camera.viewfinder", .teal)]),
+        ("Writer", [("Reader", "book", .brown), ("Clipper", "scissors", .pink),
+                    ("Grammar", "textformat.abc", .green), ("Dictionary", "character.book.closed", .blue)]),
+    ]
+}
+
+enum WelcomeAgents {
+    static let all = ["Claude Code", "Codex", "Cursor"]
+    static func command(_ agent: String) -> String {
+        switch agent {
+        case "Codex": "codex mcp add browsa"
+        case "Cursor": "cursor --add-mcp browsa"
+        default: "claude mcp add browsa"
+        }
     }
 }
 
@@ -596,10 +636,12 @@ private struct SpacesHero: View, @MainActor Animatable {
 /// A macOS import sheet filling in as it brings things over.
 private struct ImportHero: View {
     let t: Double
+    let from: String
 
     var body: some View {
-        let period = 6.0, f = t.truncatingRemainder(dividingBy: period) / period
-        let prog = welcomeEase((f - 0.15) / 0.55)
+        let f = t / 4
+        let prog = welcomeEase((f - 0.1) / 0.65)
+        let browser = WelcomeBrowsers.info(from)
         let items: [(String, String, Int)] = [("Bookmarks", "bookmark", 1284), ("History", "clock", 212), ("Passwords", "key", 46), ("Open tabs", "square.on.square", 9)]
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -607,8 +649,8 @@ private struct ImportHero: View {
                 Text("Import from").font(.system(size: 12, weight: .semibold))
                 Spacer()
                 HStack(spacing: 5) {
-                    MiniFavicon(letter: "C", color: Color(red: 0.86, green: 0.27, blue: 0.22), size: 13)
-                    Text("Chrome").font(.system(size: 11)).fixedSize()
+                    MiniFavicon(letter: browser.letter, color: browser.color, size: 13)
+                    Text(browser.name).font(.system(size: 11)).fixedSize()
                     Image(systemName: "chevron.up.chevron.down").font(.system(size: 7, weight: .bold)).foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 7).padding(.vertical, 3)
@@ -624,7 +666,8 @@ private struct ImportHero: View {
                         Image(systemName: it.1).font(.system(size: 10)).foregroundStyle(.secondary).frame(width: 14)
                         Text(it.0).font(.system(size: 11))
                         Spacer()
-                        Text(Int(Double(it.2) * share).formatted()).font(.system(size: 10.5).monospacedDigit()).foregroundStyle(.secondary)
+                        Text(prog == 0 ? "–" : Int(Double(it.2) * share).formatted())
+                            .font(.system(size: 10.5).monospacedDigit()).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -635,15 +678,15 @@ private struct ImportHero: View {
                 }
             HStack {
                 Spacer()
-                Text(prog >= 1 ? "Done" : "Importing…")
+                Text(prog >= 1 ? "Done" : prog > 0 ? "Importing…" : "Import")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(prog >= 1 ? .white : .secondary)
+                    .foregroundStyle(prog >= 1 || prog == 0 ? .white : .secondary)
                     .padding(.horizontal, 12).padding(.vertical, 4)
-                    .background(prog >= 1 ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary), in: .capsule)
+                    .background(prog >= 1 || prog == 0 ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary), in: .capsule)
             }
         }
         .padding(14)
-        .frame(width: 236)
+        .frame(width: 250)
         .background(PanelFill(), in: .rect(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.primary.opacity(0.1), lineWidth: 0.5))
         .shadow(color: .black.opacity(0.18), radius: 16, y: 8)
@@ -653,6 +696,7 @@ private struct ImportHero: View {
 /// A short reel of real features in a Browsa window: split view, a note, Radar, an agent.
 private struct TourHero: View {
     let t: Double
+    var playing = false
 
     var body: some View {
         let period = 10.0, local = t.truncatingRemainder(dividingBy: period)
@@ -708,9 +752,20 @@ private struct TourHero: View {
                 }
             }
             .frame(width: 310, height: 156)
+            .overlay {
+                if !playing {
+                    // Paused: a big play button over the window, like a video.
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.white)
+                        .frame(width: 48, height: 48)
+                        .background(Circle().fill(.black.opacity(0.45)))
+                        .overlay(Circle().strokeBorder(.white.opacity(0.3)))
+                }
+            }
             // Player controls under the window, like a video.
             HStack(spacing: 8) {
-                Image(systemName: "pause.fill").font(.system(size: 9))
+                Image(systemName: playing ? "pause.fill" : "play.fill").font(.system(size: 9))
                 Text(titles[scene]).font(.system(size: 10.5, weight: .semibold))
                 Spacer()
                 HStack(spacing: 3) {
@@ -731,18 +786,16 @@ private struct TourHero: View {
 /// The Library: a kit of verified extensions, one being added.
 private struct LibraryHero: View {
     let t: Double
-    private let items: [(String, String, Color)] = [
-        ("JSON Viewer", "curlybraces", .orange), ("React Tools", "atom", .cyan),
-        ("Radar", "dot.radiowaves.left.and.right", .green), ("Notes", "note.text", .yellow),
-    ]
+    let kit: String
 
     var body: some View {
-        let period = 5.0, f = t.truncatingRemainder(dividingBy: period) / period
-        let added = f > 0.45
+        let f = t / 3
+        let added = f > 0.25
+        let items = (WelcomeKits.all.first { $0.name == kit } ?? WelcomeKits.all[0]).items
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Developer kit").font(.system(size: 13, weight: .semibold))
+                    Text("\(kit) kit").font(.system(size: 13, weight: .semibold))
                     Label("4 verified extensions", systemImage: "checkmark.seal.fill")
                         .font(.system(size: 9.5)).foregroundStyle(.secondary)
                 }
@@ -752,11 +805,11 @@ private struct LibraryHero: View {
                     .foregroundStyle(added ? Color.secondary : Color.white)
                     .padding(.horizontal, 10).padding(.vertical, 4)
                     .background(added ? AnyShapeStyle(.quaternary) : AnyShapeStyle(Color.accentColor), in: .capsule)
-                    .scaleEffect(f > 0.4 && f < 0.45 ? 0.92 : 1)
+                    .scaleEffect(f > 0.18 && f < 0.25 ? 0.92 : 1)
             }
             Grid(horizontalSpacing: 8, verticalSpacing: 8) {
-                GridRow { tile(0, f); tile(1, f) }
-                GridRow { tile(2, f); tile(3, f) }
+                GridRow { tile(items[0], on: f > 0.3); tile(items[1], on: f > 0.38) }
+                GridRow { tile(items[2], on: f > 0.46); tile(items[3], on: f > 0.54) }
             }
         }
         .padding(12)
@@ -766,10 +819,8 @@ private struct LibraryHero: View {
         .shadow(color: .black.opacity(0.14), radius: 16, y: 8)
     }
 
-    private func tile(_ i: Int, _ f: Double) -> some View {
-        let it = items[i]
-        let on = f > 0.5 + Double(i) * 0.06
-        return HStack(spacing: 7) {
+    private func tile(_ it: (String, String, Color), on: Bool) -> some View {
+        HStack(spacing: 7) {
             Image(systemName: it.1)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white)
@@ -790,10 +841,11 @@ private struct LibraryHero: View {
 /// A terminal adding Browsa's MCP server, then Claude Code working in the Agent space.
 private struct AgentsHero: View {
     let t: Double
+    let agent: String
 
     var body: some View {
-        let period = 7.0, f = t.truncatingRemainder(dividingBy: period) / period
-        let cmd = "claude mcp add browsa"
+        let f = t / 6
+        let cmd = WelcomeAgents.command(agent)
         let n = Int(Double(cmd.count) * welcomeEase((f - 0.05) / 0.3))
         let connected = f > 0.42
         ZStack(alignment: .bottomTrailing) {
@@ -811,10 +863,10 @@ private struct AgentsHero: View {
                     Text("~/checkout-web ").foregroundStyle(Color(red: 0.4, green: 0.8, blue: 0.95))
                     Text("❯ ").foregroundStyle(Color(red: 0.6, green: 0.9, blue: 0.5))
                     Text(String(cmd.prefix(n)))
-                    if !connected { Rectangle().fill(.white.opacity(0.8)).frame(width: 6, height: 11) }
+                    if !connected { Rectangle().fill(.white.opacity(0.8)).frame(width: 6, height: 11).opacity(n == 0 || n == cmd.count ? 1 : 0.8) }
                 }
                 if connected {
-                    Text("✓ Added Browsa (localhost:47913)").foregroundStyle(Color(red: 0.6, green: 0.9, blue: 0.5))
+                    Text("✓ Added Browsa to \(agent)").foregroundStyle(Color(red: 0.6, green: 0.9, blue: 0.5))
                     Text("  Browsa can open tabs, read pages and leave notes.").foregroundStyle(.white.opacity(0.55))
                 }
                 Spacer(minLength: 0)
@@ -831,8 +883,8 @@ private struct AgentsHero: View {
             HStack(spacing: 7) {
                 Image(systemName: "pointer.arrow.ipad.rays").font(.system(size: 10, weight: .semibold)).foregroundStyle(.purple)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Claude Code").font(.system(size: 10.5, weight: .semibold))
-                    Text(f > 0.6 ? "Filling the checkout form" : "Connected").font(.system(size: 9)).foregroundStyle(.secondary)
+                    Text(agent).font(.system(size: 10.5, weight: .semibold))
+                    Text(f > 0.75 ? "Filling the checkout form" : "Connected").font(.system(size: 9)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
                 Circle().fill(.green).frame(width: 6, height: 6)
@@ -855,8 +907,8 @@ private struct DefaultHero: View {
     let t: Double
 
     var body: some View {
-        let period = 5.0, f = t.truncatingRemainder(dividingBy: period) / period
-        let picked = f > 0.42
+        let f = t / 3
+        let picked = f > 0.35
         VStack(spacing: 14) {
             HStack(spacing: 10) {
                 Text("Default web browser").font(.system(size: 11.5)).fixedSize()
@@ -874,7 +926,7 @@ private struct DefaultHero: View {
                 .padding(.horizontal, 7).padding(.vertical, 3)
                 .background(.background, in: .rect(cornerRadius: 5, style: .continuous))
                 .shadow(color: .black.opacity(0.15), radius: 0.5, y: 0.5)
-                .scaleEffect(f > 0.36 && f < 0.42 ? 0.95 : 1)
+                .scaleEffect(f > 0.28 && f < 0.35 ? 0.95 : 1)
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
             .frame(width: 280)

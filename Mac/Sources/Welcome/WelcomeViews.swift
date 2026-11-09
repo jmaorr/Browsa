@@ -125,11 +125,11 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         case .spaces: "A place to keep your tabs organised for Work, Personal, and anything else."
         case .newTab: "Search, type an address, or jump to a tab you already have open."
         case .commands: "Split the view, pin a tab, ask an agent. Everything is a few letters away."
-        case .importing: "Bookmarks, history, saved passwords and your open tabs, brought over in one go. Your old browser stays as it was."
-        case .tour: "Split view, notes on any page, Radar for your dev servers, and agents in their own space. Just watch."
-        case .library: "Hand-picked, verified extensions bundled into kits. Set Browsa up for coding or for agents in one click."
-        case .agents: "Browsa runs an MCP server on your Mac. Add it to your coding agent and it can open tabs, read pages and leave notes."
-        case .makeDefault: "Links from Mail, Slack and everywhere else open here. Finish this one to reach Savant."
+        case .importing: "Bring over your bookmarks, history, passwords and open tabs. Your old browser stays just as it was."
+        case .tour: "A quick look at split view, notes on any page, Radar and agents at work."
+        case .library: "Verified extensions, bundled into kits, so you're set up for coding or agents in one click."
+        case .agents: "Browsa runs an MCP server on your Mac, so your agents can open tabs, read pages and leave notes."
+        case .makeDefault: "Links from Mail, Slack and everywhere else will open here."
         }
     }
 
@@ -164,7 +164,7 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         switch self {
         case .newTab, .commands, .makeDefault: "10 sec"
         case .spaces: "30 sec"
-        case .tour: "40 sec"
+        case .tour: "10 sec"
         case .importing, .library, .agents: "1 min"
         }
     }
@@ -247,6 +247,8 @@ enum WelcomeLevel: Int, CaseIterable {
 @MainActor @Observable final class WelcomeDebug {
     static let shared = WelcomeDebug()
     var focus: WelcomeStop?
+    /// A card's main action, as if clicked (with its pick, if any).
+    var act: (stop: WelcomeStop, choice: String?, id: UUID)?
 }
 
 /// A completion pulse to play across the page, from a point in the page's coordinates.
@@ -491,11 +493,11 @@ private struct GalleryCard: View {
     @State private var input = WelcomeInput.shared
 
     @State private var hovering = false
-    @State private var played = false
-    @State private var visible = false
     @State private var playing = false
     @State private var playStart = Date.now
-    @State private var stopTask: Task<Void, Never>?
+    @State private var playTasks: [Task<Void, Never>] = []
+    /// The browser, kit or agent picked in the instruction card.
+    @State private var choice: String?
 
     // Spaces: the person drives the hero by swiping on the card or with ⌃1–3 / ⌥⌘← →.
     @State private var spacePos = 0.0
@@ -504,7 +506,7 @@ private struct GalleryCard: View {
     @State private var swipeTravel = 0.0
     @State private var swipeLatched = false
 
-    private var height: CGFloat { stop == .spaces ? 320 : 220 }
+    private var height: CGFloat { stop == .spaces ? 320 : 300 }
 
     var body: some View {
         let surface = stop.surface
@@ -531,15 +533,12 @@ private struct GalleryCard: View {
         .contentShape(.rect(cornerRadius: 18))
         .shadow(color: .black.opacity(hovering ? 0.12 : 0.05), radius: hovering ? 16 : 6, y: hovering ? 8 : 3)
         .animation(.smooth(duration: 0.3), value: hovering)
-        .onHover { h in
-            hovering = h
-            if stop != .spaces { setPlaying(h && active) }
+        .onHover { hovering = $0 }
+        .onChange(of: debug.act?.id) {
+            guard let a = debug.act, a.stop == stop else { return }
+            if let c = a.choice { choice = c }
+            act()
         }
-        .onScrollVisibilityChange(threshold: 0.4) { v in
-            visible = v
-            playFirstLoop()
-        }
-        .onChange(of: active) { _, on in if on { playFirstLoop() } }
         .onAppear { if stop == .spaces { listen() } }
         .onDisappear { stopListening() }
         .onChange(of: input.last?.id) { if let e = input.last?.event { handle(e) } }
@@ -559,12 +558,7 @@ private struct GalleryCard: View {
     }
 
     /// Plays the shortcut hero from the key press, once.
-    private func pressPlay() {
-        stopTask?.cancel()
-        playStart = .now.addingTimeInterval(-0.1 * stop.loop)
-        playing = true
-        setPlaying(false)
-    }
+    private func pressPlay() { play(from: 0.1 * stop.loop) }
 
     /// Two-finger sideways swipes over the Spaces card play on its own window, during onboarding and after.
     private func listen() {
@@ -620,28 +614,44 @@ private struct GalleryCard: View {
         }
     }
 
-    // MARK: Hero playback
+    // MARK: Acting
 
-    private func playFirstLoop() {
-        guard visible, active, !played else { return }
-        played = true
-        setPlaying(true)
-        setPlaying(false)
+    /// Plays the hero once, from `offset` seconds in. It only ever plays because the person did something.
+    private func play(from offset: Double = 0, completeAt fraction: Double? = nil) {
+        playTasks.forEach { $0.cancel() }
+        playStart = .now.addingTimeInterval(-offset)
+        playing = true
+        let length = stop.loop - offset
+        var tasks: [Task<Void, Never>] = []
+        if let fraction {
+            tasks.append(Task { @MainActor in
+                try? await Task.sleep(for: .seconds(stop.loop * fraction - offset))
+                guard !Task.isCancelled else { return }
+                complete()
+            })
+        }
+        tasks.append(Task { @MainActor in
+            try? await Task.sleep(for: .seconds(length))
+            guard !Task.isCancelled else { return }
+            playing = false
+        })
+        playTasks = tasks
     }
 
-    private func setPlaying(_ want: Bool) {
-        stopTask?.cancel()
-        if want {
-            if !playing { playStart = .now; playing = true }
-        } else if playing {
-            // Let the loop run to its end, which is the still frame, so stopping never jumps.
-            let elapsed = Date.now.timeIntervalSince(playStart)
-            let remain = stop.loop - elapsed.truncatingRemainder(dividingBy: stop.loop)
-            stopTask = Task { @MainActor in
-                try? await Task.sleep(for: .seconds(remain))
-                guard !Task.isCancelled else { return }
-                playing = false
-            }
+    private func stopPlaying() {
+        playTasks.forEach { $0.cancel() }
+        playing = false
+    }
+
+    /// The card's main action: import, play the tour, add the kit, connect the agent, make default.
+    private func act() {
+        switch stop {
+        case .importing: play(completeAt: 0.8)
+        case .tour: playing ? stopPlaying() : play(completeAt: 0.98)
+        case .library, .agents: play(completeAt: 0.6)
+        case .makeDefault: play(completeAt: 0.5)
+        case .newTab, .commands: pressPlay()
+        case .spaces: break
         }
     }
 
@@ -650,7 +660,9 @@ private struct GalleryCard: View {
         // An overlay on a clear view, so the hero's own size never widens the card.
         Color.clear
             .overlay {
-                StopHero(stop: stop, playing: playing && stop != .spaces, start: playStart, spacePos: stop == .spaces ? spacePos : nil)
+                StopHero(stop: stop, playing: playing && stop != .spaces, start: playStart,
+                         spacePos: stop == .spaces ? spacePos : nil,
+                         rest: done ? stop.doneRest : stop.rest, choice: choice)
                     .environment(\.colorScheme, scheme)
             }
             .clipped()
@@ -682,12 +694,194 @@ private struct GalleryCard: View {
                 .lineSpacing(1.5)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
-            if stop == .spaces {
-                SpacesInstruction(done: done)
-            }
+            instruction
         }
         .foregroundStyle(.primary)
         .padding(EdgeInsets(top: 20, leading: 22, bottom: 20, trailing: 20))
+    }
+
+    // MARK: Instruction
+
+    private var tint: Color { Color(hue: stop.hue, saturation: 0.75, brightness: 0.82) }
+
+    /// What to do, in the same small white card on every stop: a badge, one line saying the action,
+    /// a hint under it, and the control or the gesture on the right.
+    @ViewBuilder private var instruction: some View {
+        switch stop {
+        case .spaces:
+            Instruction(kind: .tryIt, done: done, title: "Swipe to switch spaces") {
+                HStack(spacing: 4) {
+                    Text("or press").foregroundStyle(.secondary)
+                    KeyCap(text: "⌃1"); KeyCap(text: "⌃2"); KeyCap(text: "⌃3")
+                }
+            } trailing: { Trackpad() } below: { EmptyView() }
+        case .newTab, .commands:
+            let t = stop == .newTab
+            Instruction(kind: .tryIt, done: done, title: t ? "Press ⌘T to open anything" : "Press ⌘K for every command") {
+                Text(t ? "Type a site, a search, or a tab's name" : "Split view, pin a tab, ask an agent").foregroundStyle(.secondary)
+            } trailing: {
+                HStack(spacing: 4) { BigKey(text: "⌘"); BigKey(text: t ? "T" : "K") }
+            } below: { EmptyView() }
+        case .importing:
+            Instruction(kind: .choose, done: done, title: "Choose your old browser") {
+                Text("Bookmarks, history, passwords and open tabs").foregroundStyle(.secondary)
+            } trailing: {
+                ActionButton(title: playing ? "Importing…" : "Import", tint: tint, enabled: choice != nil && !playing, action: act)
+            } below: {
+                HStack(spacing: 6) {
+                    ForEach(WelcomeBrowsers.all, id: \.name) { b in
+                        ChoiceChip(title: b.name, selected: choice == b.name) {
+                            MiniFavicon(letter: b.letter, color: b.color, size: 14)
+                        } action: { choice = b.name }
+                    }
+                }
+            }
+        case .tour:
+            Instruction(kind: .watch, done: done, title: "Watch the tour") {
+                Text("Ten seconds. No clicking needed.").foregroundStyle(.secondary)
+            } trailing: {
+                Button(action: act) {
+                    Image(systemName: playing ? "pause.fill" : "play.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.white)
+                        .frame(width: 42, height: 42)
+                        .background(Circle().fill(tint))
+                        .shadow(color: tint.opacity(0.4), radius: 6, y: 3)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(playing ? "Pause the tour" : "Play the tour")
+            } below: { EmptyView() }
+        case .library:
+            Instruction(kind: .choose, done: done, title: "Pick a kit to start with") {
+                Text("Browse the whole Library any time").foregroundStyle(.secondary)
+            } trailing: {
+                ActionButton(title: "Add Kit", tint: tint, enabled: choice != nil && !playing, action: act)
+            } below: {
+                HStack(spacing: 6) {
+                    ForEach(WelcomeKits.all, id: \.name) { k in
+                        ChoiceChip(title: k.name, selected: choice == k.name) {
+                            Image(systemName: k.items[0].1).font(.system(size: 10, weight: .semibold)).foregroundStyle(k.items[0].2)
+                        } action: { choice = k.name }
+                    }
+                }
+            }
+        case .agents:
+            Instruction(kind: .choose, done: done, title: "Connect your coding agent") {
+                Text("Browsa adds itself to its MCP settings").foregroundStyle(.secondary)
+            } trailing: {
+                ActionButton(title: "Connect", tint: tint, enabled: choice != nil && !playing, action: act)
+            } below: {
+                HStack(spacing: 6) {
+                    ForEach(WelcomeAgents.all, id: \.self) { a in
+                        ChoiceChip(title: a, selected: choice == a) { EmptyView() } action: { choice = a }
+                    }
+                }
+            }
+        case .makeDefault:
+            Instruction(kind: .tryIt, done: done, title: "Make Browsa your default") {
+                Text("macOS will ask you to confirm").foregroundStyle(.secondary)
+            } trailing: {
+                ActionButton(title: "Make Default", tint: tint, enabled: !playing) {
+                    WelcomePage.makeDefaultBrowser()
+                    act()
+                }
+            } below: { EmptyView() }
+        }
+    }
+}
+
+/// The instruction card every stop shares: a badge above a small white card with the action, a
+/// hint under it, the control or gesture on the right, and choices below when there are any.
+private struct Instruction<Hint: View, Trailing: View, Below: View>: View {
+    let kind: TryBadge.Kind
+    let done: Bool
+    let title: String
+    @ViewBuilder let hint: Hint
+    @ViewBuilder let trailing: Trailing
+    @ViewBuilder let below: Below
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TryBadge(kind: kind, done: done)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(title).font(.system(size: 14, weight: .semibold)).fixedSize()
+                        hint.font(.system(size: 11.5)).fixedSize()
+                    }
+                    Spacer(minLength: 0)
+                    trailing
+                }
+                below
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white.opacity(0.95), in: .rect(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.black.opacity(0.06)))
+            .shadow(color: .black.opacity(0.08), radius: 12, y: 5)
+        }
+        .environment(\.colorScheme, .light)
+    }
+}
+
+/// A pick in an instruction card: a small white chip, outlined when chosen.
+private struct ChoiceChip<Icon: View>: View {
+    let title: String
+    let selected: Bool
+    @ViewBuilder let icon: Icon
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                icon
+                Text(title).font(.system(size: 11, weight: .medium)).fixedSize()
+            }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(selected ? Color.accentColor.opacity(0.1) : Color.black.opacity(0.04), in: .capsule)
+            .overlay(Capsule().strokeBorder(selected ? Color.accentColor : Color.black.opacity(0.08), lineWidth: selected ? 1.5 : 1))
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .animation(.smooth(duration: 0.2), value: selected)
+    }
+}
+
+/// The instruction card's main button, in the stop's colour.
+private struct ActionButton: View {
+    let title: String
+    let tint: Color
+    var enabled = true
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 7)
+                .background(Capsule().fill(enabled ? tint : Color.black.opacity(0.18)))
+                .shadow(color: tint.opacity(enabled ? 0.35 : 0), radius: 6, y: 3)
+                .fixedSize()
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .animation(.smooth(duration: 0.2), value: enabled)
+    }
+}
+
+/// A larger keycap for the shortcut instructions.
+private struct BigKey: View {
+    let text: String
+    var body: some View {
+        Text(text)
+            .font(.system(size: 15, weight: .medium))
+            .frame(width: 32, height: 32)
+            .background(LinearGradient(colors: [.white, Color(white: 0.95)], startPoint: .top, endPoint: .bottom),
+                        in: .rect(cornerRadius: 7, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(.black.opacity(0.12)))
+            .shadow(color: .black.opacity(0.18), radius: 0.8, y: 1.5)
     }
 }
 
@@ -743,50 +937,23 @@ private struct DoneTile: View {
     }
 }
 
-/// The instruction for Spaces: a small, clean card that says what to try, with the keyboard way
-/// for people with a mouse, and a trackpad showing the swipe.
-private struct SpacesInstruction: View {
-    let done: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TryBadge(done: done)
-            card
-        }
-        .environment(\.colorScheme, .light)
-    }
-
-    private var card: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Swipe to switch spaces")
-                    .font(.system(size: 14, weight: .semibold))
-                    .fixedSize()
-                HStack(spacing: 4) {
-                    Text("or press").foregroundStyle(.secondary)
-                    KeyCap(text: "⌃1")
-                    KeyCap(text: "⌃2")
-                    KeyCap(text: "⌃3")
-                }
-                .font(.system(size: 11.5))
-                .fixedSize()
-            }
-            Spacer(minLength: 0)
-            Trackpad()
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity)
-        .background(.white.opacity(0.95), in: .rect(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.black.opacity(0.06)))
-        .shadow(color: .black.opacity(0.08), radius: 12, y: 5)
-    }
-}
-
-/// "Try it", or "Done" once learned: a small white pill above the instruction card.
+/// "Try it", "Watch" or "Choose", or "Done" once learned: a small white pill above the instruction card.
 private struct TryBadge: View {
+    enum Kind { case tryIt, watch, choose }
+    let kind: Kind
     let done: Bool
+
+    private var label: (String, String) {
+        if done { return ("Done", "checkmark") }
+        switch kind {
+        case .tryIt: return ("Try it", "hand.tap.fill")
+        case .watch: return ("Watch", "play.fill")
+        case .choose: return ("Choose", "hand.point.up.left.fill")
+        }
+    }
+
     var body: some View {
-        Label(done ? "Done" : "Try it", systemImage: done ? "checkmark" : "hand.tap.fill")
+        Label(label.0, systemImage: label.1)
             .font(.system(size: 10.5, weight: .bold))
             .labelStyle(.titleAndIcon)
             .foregroundStyle(done ? Color(red: 0.12, green: 0.55, blue: 0.24) : Color(white: 0.15))

@@ -253,6 +253,11 @@ enum SpikeHarness {
         case "welcomeShortcut":
             // {"key":"t"} or {"key":"k"}: ⌘T / ⌘K as the welcome page catches them.
             WelcomeInput.shared.send(.shortcut(j["key"] as? String == "k" ? .commands : .newTab))
+        case "welcomeAct":
+            // {"stop":"importing","choice":"Arc"}: a card's main action, as if clicked.
+            if let st = (j["stop"] as? String).flatMap(WelcomeStop.init(rawValue:)) {
+                WelcomeDebug.shared.act = (st, j["choice"] as? String, UUID())
+            }
         case "welcomeComplete":
             if let s = (j["stop"] as? String).flatMap(WelcomeStop.init(rawValue:)) { WelcomeProgress.shared.complete(s) }
         case "welcome":
