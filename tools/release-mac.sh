@@ -56,8 +56,8 @@ plist="$archive/Products/Applications/Browsa.app/Contents/Info.plist"
 [[ "$(defaults read "$plist" BrowsaUpdates)" == "YES" ]] || { echo "updates aren't switched on" >&2; exit 1; }
 
 echo "==> Signing with Developer ID and sending to Apple's notary service"
-options="$work/ExportOptions.plist"
-cat > "$options" <<EOF
+export_options="$work/ExportOptions.plist"
+cat > "$export_options" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -67,7 +67,7 @@ cat > "$options" <<EOF
   <key>destination</key><string>upload</string>
 </dict></plist>
 EOF
-xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$options" \
+xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$export_options" \
   -exportPath "$work/upload" -allowProvisioningUpdates -quiet
 
 echo "==> Waiting for notarisation (usually a few minutes)"
