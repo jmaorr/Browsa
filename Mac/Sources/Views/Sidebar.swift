@@ -71,15 +71,16 @@ struct Sidebar: View {
                 Button("Archived Tabs…", systemImage: "archivebox") { browser.isArchivePresented = true }
                 SettingsLink { Label("Settings…", systemImage: "gearshape") }
             } label: {
-                Image(systemName: "plus")
-                    .frame(width: 26, height: 26)
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 13, weight: .medium))
+                    .frame(width: 28, height: 26)
                     .contentShape(.rect)
             }
             .menuStyle(.button)
             .menuIndicator(.hidden)
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help("New Space and more")
+            .help("Spaces and more")
         }
         .frame(height: 30)
     }
