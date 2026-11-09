@@ -24,7 +24,7 @@ public final class ContentBlocker {
     public static let rulesBaseURL = URL(string: "https://rules.browsa.app/v1/")!
 
     private let store = WKContentRuleListStore.default()!
-    private let directory = URL.applicationSupportDirectory.appending(path: "Filters", directoryHint: .isDirectory)
+    private let directory = AppFolders.support.appending(path: "Filters", directoryHint: .isDirectory)
     private let refreshInterval: TimeInterval = 4 * 24 * 3600
     private let metadataKey = "duo.filters.metadata"
 

@@ -7,8 +7,9 @@
 #
 # Builds from a clean export of the ref, so it doesn't matter which branch this checkout (or any
 # worktree) is on, or what's uncommitted in it. Website data, sign-ins, tabs and extensions live
-# in the sandbox container for com.orriginal.browsa, which reinstalling never touches. Xcode's
-# Run button builds "Browsa Dev" (com.orriginal.browsa.dev) with its own container instead.
+# under ~/Library in folders named com.orriginal.browsa (copied out of the old sandbox container
+# on first launch), which reinstalling never touches. Xcode's Run button builds "Browsa Dev"
+# (com.orriginal.browsa.dev) with its own folders instead.
 set -euo pipefail
 
 repo="${0:A:h:h}"

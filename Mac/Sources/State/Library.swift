@@ -144,7 +144,7 @@ final class Library {
     ].enumerated().map { i, f in Favorite(url: URL(string: f.0)!, title: f.1, order: i) }
 
     static func defaultSnapshotURL() -> URL {
-        URL.applicationSupportDirectory.appending(path: "Browser/state.json")
+        AppFolders.support.appending(path: "Browser/state.json")
     }
 
     // MARK: Windows
