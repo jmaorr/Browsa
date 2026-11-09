@@ -65,7 +65,8 @@ final class AgentBridge {
 
     /// For Settings: paste into a terminal once.
     var claudeCodeCommand: String {
-        "claude mcp add --transport http browsa http://127.0.0.1:\(Self.port)/mcp --header \"Authorization: Bearer \(token)\""
+        // User scope: Browsa is there in every project, not just the folder it was added from.
+        "claude mcp add --scope user --transport http browsa http://127.0.0.1:\(Self.port)/mcp --header \"Authorization: Bearer \(token)\""
     }
 
     init(library: Library) {

@@ -296,7 +296,7 @@ private struct ConnectAgentCard: View {
 
     private var header: String { "Authorization: Bearer \(agents.token)" }
     private var fullText: String {
-        kind == .claude ? "claude mcp add --scope user --transport http browsa \(url) --header \"\(header)\""
+        kind == .claude ? agents.claudeCodeCommand
                         : "URL: \(url)\n\(header)"
     }
     private var maskedText: String {
