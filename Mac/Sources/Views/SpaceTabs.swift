@@ -293,7 +293,7 @@ struct DownloadsPanel: View {
                         DownloadRow(item: item).tag(item.id)
                     }
                 }
-                .listStyle(.sidebar)
+                .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .onDeleteCommand { remove(selection) }
                 .contextMenu(forSelectionType: UUID.self) { ids in
@@ -362,7 +362,7 @@ private struct DownloadRow: View {
                 .resizable()
                 .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.filename).lineLimit(1).truncationMode(.middle)
+                Text(item.filename).lineLimit(1).truncationMode(.middle).foregroundStyle(.primary)
                 switch item.status {
                 case .running: ProgressView(value: item.progress).controlSize(.small)
                 case .finished: Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
