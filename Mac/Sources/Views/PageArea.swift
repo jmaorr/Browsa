@@ -413,10 +413,12 @@ private struct VerifiedLine: View {
     let isVerified: Bool
 
     var body: some View {
-        Label(isVerified ? "Works in Browsa" : "Not tested in Browsa yet",
-              systemImage: isVerified ? "checkmark.seal.fill" : "questionmark.circle")
-            .font(.caption)
-            .foregroundStyle(isVerified ? Color.green : Color.secondary)
-            .labelStyle(.titleAndIcon)
+        Label {
+            Text(isVerified ? "Works in Browsa" : "Not tested in Browsa yet").foregroundStyle(.secondary)
+        } icon: {
+            Image(systemName: isVerified ? "checkmark.seal.fill" : "questionmark.circle")
+                .foregroundStyle(isVerified ? Color.green : Color.secondary)
+        }
+        .font(.caption)
     }
 }
