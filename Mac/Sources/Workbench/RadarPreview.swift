@@ -35,7 +35,7 @@ struct RadarSidebarSection: View {
                         Circle().fill(s.isUp ? .green : .orange).frame(width: 6, height: 6)
                         Text(s.isWorktree ? s.branch : s.project).lineLimit(1)
                         Spacer(minLength: 0)
-                        Text(":\(s.port)").font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
+                        Text(verbatim: ":\(s.port)").font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
                     }
                     .font(.system(size: 12))
                     .padding(.horizontal, 8)
@@ -99,7 +99,7 @@ private struct ServerRow: View {
                             .background(.quaternary, in: .capsule)
                     }
                 }
-                Text("\(server.framework) · localhost:\(server.port)")
+                Text(verbatim: "\(server.framework) · localhost:\(server.port)")
                     .font(.caption).foregroundStyle(.secondary)
                 if let note = server.note { Text(note).font(.caption).foregroundStyle(.orange) }
             }
