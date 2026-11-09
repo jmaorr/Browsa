@@ -193,7 +193,29 @@ final class AgentBridge {
             if isPaused { return .deny(AgentToolbox.stoppedMessage) }
             if !allowed { return .deny("The user declined this in Browsa.") }
         }
+        noteWork(tool, args: args, caller: caller.name)
         return .allow
+    }
+
+    /// Pages an agent is working on right now, by `MarginStore.pageKey`, for the Notes panel's
+    /// "on it" line. A page counts while the agent's last call on it is under `workingFor` old.
+    private(set) var workingPages: [String: (agent: String, at: Date)] = [:]
+    static let workingFor: TimeInterval = 20
+
+    func working(on url: URL?) -> String? {
+        guard let url, let w = workingPages[MarginStore.pageKey(url)], Date().timeIntervalSince(w.at) < Self.workingFor else { return nil }
+        return w.agent
+    }
+
+    private func noteWork(_ tool: AgentTool, args: JSONValue, caller: String) {
+        var url: URL?
+        if tool.name.hasPrefix("page_") { url = tab(args["tab"]?.string)?.url }
+        if tool.name == "notes_reply" || tool.name == "notes_resolve",
+           let id = args["id"]?.string.flatMap(UUID.init(uuidString:)) {
+            url = library.margin.note(id).flatMap { URL(string: $0.url) }
+        }
+        guard let url else { return }
+        workingPages[MarginStore.pageKey(url)] = (caller, Date())
     }
 
     /// What a call touches. Notes and plugins' own tools don't touch a page; tabs_list asks for

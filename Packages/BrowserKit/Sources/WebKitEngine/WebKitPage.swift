@@ -322,10 +322,24 @@ extension WebKitPage: WKUIDelegate {
     }
 }
 
+/// Items the app adds to a page's right-click menu (Add Note, say). Given the web view and the
+/// click point in it, top-left origin, in CSS pixels at zoom 1.
+@MainActor
+public enum PageMenuItems {
+    public static var provider: ((NSView, CGPoint) -> [NSMenuItem])?
+}
+
 /// WKWebView with Browsa's link menu wording: windows are tabs here.
 final class BrowsaWebView: WKWebView {
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
+        var p = convert(event.locationInWindow, from: nil)
+        if !isFlipped { p.y = bounds.height - p.y }
+        p = CGPoint(x: p.x / pageZoom, y: p.y / pageZoom)
+        if let items = PageMenuItems.provider?(self, p), !items.isEmpty {
+            menu.insertItem(.separator(), at: 0)
+            for item in items.reversed() { menu.insertItem(item, at: 0) }
+        }
         for item in menu.items {
             switch item.identifier?.rawValue {
             case "WKMenuItemIdentifierOpenLinkInNewWindow": item.title = "Open Link in New Tab"
