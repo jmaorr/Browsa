@@ -14,6 +14,22 @@ enum SpikeInput {
             ?? NSApp.mainWindow
     }
 
+    /// Menus open right now (context menus included). While one tracks, it reads the app's event
+    /// queue itself, so keys must be posted there for arrows, return and escape to reach it.
+    static var openMenus: [NSMenu] = []
+
+    private static let menuWatcher = MenuWatcher()
+
+    static func watchMenus() {
+        let center = NotificationCenter.default
+        center.addObserver(menuWatcher, selector: #selector(MenuWatcher.began(_:)), name: NSMenu.didBeginTrackingNotification, object: nil)
+        center.addObserver(menuWatcher, selector: #selector(MenuWatcher.ended(_:)), name: NSMenu.didEndTrackingNotification, object: nil)
+    }
+
+    static func closeMenus() {
+        for m in openMenus.reversed() { m.cancelTracking() }
+    }
+
     static func point(_ x: Double, _ y: Double, in window: NSWindow) -> NSPoint {
         NSPoint(x: x, y: window.frame.height - y)
     }
@@ -113,11 +129,22 @@ enum SpikeInput {
         let code = keyCodes[lower] ?? 0
         var f = flags
         if name.count > 1, (115...126).contains(code) { f.insert(.function) }
+        // Shortcuts go straight to the menu bar: an app in the background doesn't route posted
+        // key equivalents through its menus.
+        if f.contains(.command), let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: f,
+                                                          timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                                          context: nil, characters: chars, charactersIgnoringModifiers: ignoring,
+                                                          isARepeat: false, keyCode: code),
+           NSApp.mainMenu?.performKeyEquivalent(with: e) == true {
+            return
+        }
         for type in [NSEvent.EventType.keyDown, .keyUp] {
             if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: f, timestamp: ProcessInfo.processInfo.systemUptime,
                                         windowNumber: window.windowNumber, context: nil, characters: chars,
                                         charactersIgnoringModifiers: ignoring, isARepeat: false, keyCode: code) {
-                NSApp.postEvent(e, atStart: false)
+                // In the background the app has no key window, so NSApp would drop posted keys.
+                // Straight to the window reaches its first responder (a focused field) either way.
+                if NSApp.isActive || !openMenus.isEmpty { NSApp.postEvent(e, atStart: false) } else { window.sendEvent(e) }
             }
         }
     }
@@ -259,5 +286,17 @@ enum SpikeInput {
         }
         guard f != .zero else { return .zero }
         return CGRect(x: f.minX - window.frame.minX, y: window.frame.maxY - f.maxY, width: f.width, height: f.height)
+    }
+}
+
+/// Menus post their tracking notifications on the main thread.
+@MainActor
+private final class MenuWatcher: NSObject {
+    @objc func began(_ note: Notification) {
+        if let m = note.object as? NSMenu { SpikeInput.openMenus.append(m) }
+    }
+
+    @objc func ended(_ note: Notification) {
+        SpikeInput.openMenus.removeAll { $0 === (note.object as? NSMenu) }
     }
 }

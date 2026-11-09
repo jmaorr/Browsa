@@ -43,6 +43,7 @@ enum SpikeHarness {
             server.start()
             servers.append(server)
         }
+        SpikeInput.watchMenus()
         let control = SpikeHTTPServer(port: controlPort) { await route($0) }
         control.start()
         self.control = control
@@ -51,6 +52,7 @@ enum SpikeHarness {
         Task {
             let library = delegate.library
             while library.windows.isEmpty { try? await Task.sleep(for: .milliseconds(100)) }
+            addDesignCommands(library)
             if !defaults.bool(forKey: "spikeSeeded") {
                 seed(library)
                 defaults.set(true, forKey: "spikeSeeded")
@@ -76,6 +78,19 @@ enum SpikeHarness {
             window.select(shop)
         }
         library.scheduleSave()
+    }
+
+    /// ⌘K rows for flipping between designs under review, so Josh can try them by hand too.
+    private static func addDesignCommands(_ library: Library) {
+        guard var radar = library.workbench.tool("radar") else { return }
+        for style in RadarSidebarStyle.allCases {
+            radar.commands.append(ToolCommand(id: "style-\(style.rawValue)", title: "Sidebar Style: \(style.title)",
+                                              subtitle: "Radar design option, SpikeBrowsa only", symbol: "paintbrush",
+                                              keywords: ["design", "spike", "style"]) { _ in
+                withAnimation(Motion.snappy) { defaults.set(style.rawValue, forKey: "radarSidebarStyle") }
+            })
+        }
+        library.workbench.register(radar)
     }
 
     // MARK: Agents
@@ -240,6 +255,13 @@ enum SpikeHarness {
         case "front":
             NSApp.activate()
             SpikeInput.window?.makeKeyAndOrderFront(nil)
+        case "radarStyle":
+            guard let name = j["style"] as? String, RadarSidebarStyle(rawValue: name) != nil else {
+                return .error("Styles: \(RadarSidebarStyle.allCases.map(\.rawValue))")
+            }
+            withAnimation(Motion.snappy) { defaults.set(name, forKey: "radarSidebarStyle") }
+        case "closeMenus":
+            SpikeInput.closeMenus()
         case "pauseAgents":
             library.agents.isPaused = j["paused"] as? Bool ?? true
         case "clearActivity":
@@ -277,6 +299,7 @@ enum SpikeHarness {
             "panel": b?.panel ?? NSNull(),
             "sidebarDocked": b?.isSidebarDocked ?? false,
             "commandBarOpen": b?.commandBar != nil,
+            "menusOpen": SpikeInput.openMenus.map { $0.items.map(\.title) },
             "toast": b?.toast ?? NSNull(),
             "prompt": b?.activePrompt.map { String(describing: $0) } ?? NSNull(),
             "notes": ["open": library.margin.notes.filter { $0.status == .open }.count, "total": library.margin.notes.count],
