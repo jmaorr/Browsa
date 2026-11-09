@@ -100,6 +100,9 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
                 }
                 let context = WKWebExtensionContext(for: ext)
                 context.uniqueIdentifier = id
+                // Without a fixed address WebKit picks a new one each launch, sees the change and
+                // deletes the extension's local storage and IndexedDB, so its settings and sign-ins go.
+                context.baseURL = Self.stableBaseURL(for: id)
                 context.isInspectable = true
                 grantEverything(context)
                 try controller.load(context)
