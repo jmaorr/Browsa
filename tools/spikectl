@@ -1,0 +1,62 @@
+#!/bin/bash
+# spikectl: build, run and drive SpikeBrowsa (see Spike/README.md).
+# Coordinates are window points from the window's top-left; screenshots are 2x on Retina.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+APP="$ROOT/DerivedData/Build/Products/Debug/SpikeBrowsa.app"
+C="http://127.0.0.1:${SPIKE_PORT:-47930}"
+
+post() { curl -sS -X POST "$C$1" -H 'Content-Type: application/json' -d "${2:-{\}}"; echo; }
+get() { curl -sS "$C$1"; echo; }
+wid() { curl -sS "$C/window" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])'; }
+rect() { curl -sS "$C/window" | python3 -c 'import sys,json;print(",".join(map(str,json.load(sys.stdin)["screenRect"])))'; }
+up() { for _ in $(seq 1 60); do curl -s -o /dev/null "$C/health" && return 0; sleep 0.5; done; echo "SpikeBrowsa didn't answer on $C" >&2; return 1; }
+json_str() { python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$1"; }
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  build)
+    cd "$ROOT" && xcodegen -q && xcodebuild -project Browsa.xcodeproj -scheme SpikeBrowsa -configuration Debug \
+      -derivedDataPath DerivedData -destination 'platform=macOS' build 2>&1 | grep -E "error:|BUILD" ;;
+  launch)   # in the background, without taking focus
+    open -g "$APP" && up && echo "up on $C" ;;
+  quit)
+    osascript -e 'tell application id "com.orriginal.browsa.spike" to quit' 2>/dev/null || pkill -x SpikeBrowsa || true ;;
+  relaunch)
+    "$0" quit; sleep 1; "$0" launch ;;
+  reset)    # wipe to fresh mock data and relaunch
+    post /reset >/dev/null || true; sleep 1.5; "$0" launch ;;
+  state)    get /state ;;
+  window)   get /window ;;
+  tree)     get "/tree?depth=${1:-40}" ;;
+  find)     get "/find?text=$(python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))' "$1")" ;;
+  click)    post /click "{\"x\":$1,\"y\":$2${3:+,\"mods\":[\"${3//,/\",\"}\"]}}" ;;
+  dblclick) post /click "{\"x\":$1,\"y\":$2,\"count\":2}" ;;
+  rclick)   post /click "{\"x\":$1,\"y\":$2,\"right\":true}" ;;
+  press)    post /press "{\"text\":$(json_str "$1")${2:+,\"index\":$2}}" ;;
+  hover)    post /hover "{\"x\":$1,\"y\":$2}" ;;
+  drag)     post /drag "{\"from\":[$1,$2],\"to\":[$3,$4]}" ;;
+  scroll)   post /scroll "{\"x\":$1,\"y\":$2,\"dy\":$3}" ;;
+  type)     post /type "{\"text\":$(json_str "$1")}" ;;
+  key)      # key k cmd   |   key return   |   key s cmd,option
+    post /key "{\"key\":$(json_str "$1")${2:+,\"mods\":[\"${2//,/\",\"}\"]}}" ;;
+  do)       # do panel '{"tool":"notes"}'
+    a="$1"; extra="${2:-}"; extra="${extra#\{}"; extra="${extra%\}}"
+    post /do "{\"action\":\"$a\"${extra:+,$extra}}" ;;
+  agent)    post /agent/run "{\"scenario\":\"${1:-fix-notes}\",\"delay\":${2:-1.2},\"wait\":false}" ;;
+  call)     post /agent/call "{\"tool\":\"$1\",\"args\":${2:-{\}}}" ;;
+  shot)     # shot out.png  (window only, no shadow; 2x points)
+    out="${1:-spike.png}"; screencapture -x -o -l"$(wid)" "$out" && echo "$out" ;;
+  record)   # record seconds out.mov [fps]  (just the window, even while covered)
+    rec="$ROOT/DerivedData/spike-record"
+    if [ ! -x "$rec" ] || [ "$ROOT/tools/spike-record.swift" -nt "$rec" ]; then
+      mkdir -p "$ROOT/DerivedData" && swiftc -O -o "$rec" "$ROOT/tools/spike-record.swift"
+    fi
+    "$rec" "$(wid)" "${1:-5}" "${2:-spike.mov}" "${3:-30}" ;;
+  *)
+    sed -n '2,4p' "$0"; echo
+    echo "build | launch | quit | relaunch | reset | state | window | tree [depth] | find <text>"
+    echo "click x y [mods] | dblclick x y | rclick x y | press <label> [index] | hover x y | drag x1 y1 x2 y2 | scroll x y dy"
+    echo "type <text> | key <key> [cmd,shift,option,ctrl] | do <action> [json] | agent [scenario] [delay] | call <tool> [json]"
+    echo "shot [out.png] | record [secs] [out.mov]" ;;
+esac
