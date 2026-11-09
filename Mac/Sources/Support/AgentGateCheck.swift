@@ -5,9 +5,9 @@ import BrowserEngine
 import Extensibility
 
 /// Debug only: with BROWSA_AGENT_GATE_CHECK=<folder>, drives the MCP toolbox the way an agent
-/// would, from a fresh library, and checks the gate: reads of your tabs ask, navigation asks for
-/// where it goes, loopback never asks, `.local` does, and Stop ends a call and an ask at once.
-/// Saves each ask and the Agents panel as PNGs, and exits 1 if a check fails.
+/// would, from a fresh library, and checks the gate: the Agent space never asks, your tabs do
+/// (inline, in the Agents panel), and Stop ends running calls and asks at once. Saves the window
+/// at each ask as PNGs, and exits 1 if a check fails. It opens a window: say so before running it.
 @MainActor
 struct AgentGateCheck {
     let directory: URL
@@ -21,6 +21,8 @@ struct AgentGateCheck {
         guard let browser = delegate.browser else { note("no window"); exit(1) }
         let agents: AgentBridge = delegate.library.agents
         let box = agents.toolbox
+        let wasEnabled = agents.isEnabled
+        agents.isEnabled = true
         _ = await box.handle(Data(#"{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"clientInfo":{"name":"Claude Code","version":"2"}}}"#.utf8), session: "s")
 
         // One of your tabs, on a real site.
@@ -28,71 +30,77 @@ struct AgentGateCheck {
         await pause(4)
         guard let yours = browser.currentTab else { note("no tab"); exit(1) }
 
-        // 1. Loopback never asks.
-        var r = await call(box, "tab_open", ["url": "http://localhost:9/", "show": false])
-        check(browser.activePrompt == nil && !r.isError, "localhost opens without asking")
-
-        // 2. With no tab named and nothing else, an agent gets the Agent space, never your tab.
-        let agentTab = agents.agentSpace.today.first?.id.uuidString ?? "none"
+        // 1. The Agent space never asks, on any site.
+        var r = await call(box, "tab_open", ["url": "https://example.org/", "show": false])
+        check(agents.requests.isEmpty && !r.isError, "Agent space opens a site without asking")
         r = await call(box, "page_read", [:])
+        check(agents.requests.isEmpty && r.text.contains("Example Domain"), "Agent space reads without asking")
+
+        // 2. With no tab named, an agent gets the Agent space, never your tab.
+        let agentTab = agents.agentSpace.today.first?.id.uuidString ?? "none"
         check(r.text.contains(agentTab) && !r.text.contains(yours.id.uuidString), "page_read with no tab reads the Agent space, not yours")
 
         // 3. The tab list asks; declining still lists the Agent space.
-        r = await answering(browser, "ask-your-tabs", with: .cancel) { await call(box, "tabs_list", [:]) }
+        r = await answering(browser, "ask-your-tabs", allow: false) { await call(box, "tabs_list", [:]) }
         check(!r.text.contains("example.com") && r.text.contains("didn't share"), "declined tab list hides your tabs")
 
-        // 4. Reading one of your tabs asks, even though it's only a read.
-        r = await answering(browser, "ask-your-tab", with: .cancel) { await call(box, "page_read", ["tab": .string(yours.id.uuidString)]) }
+        // 4. Reading one of your tabs asks, even though it's only a read, and asks inline.
+        r = await answering(browser, "ask-your-tab", allow: false) { await call(box, "page_read", ["tab": .string(yours.id.uuidString)]) }
         check(r.isError && r.text.contains("declined"), "declined read of your tab is refused")
-        r = await answering(browser, nil, with: .ok) { await call(box, "page_screenshot", ["tab": .string(yours.id.uuidString)]) }
-        check(!r.text.contains("declined"), "allowed tab can be used")
+        r = await answering(browser, nil, allow: true) { await call(box, "page_read", ["tab": .string(yours.id.uuidString)]) }
+        check(r.text.contains("Example Domain"), "allowed tab can be read")
         r = await call(box, "page_read", ["tab": .string(yours.id.uuidString)])
-        check(browser.activePrompt == nil && r.text.contains("Example Domain"), "allowed once, then no more asks for that tab")
+        check(agents.requests.isEmpty && !r.isError, "allowed once, then no more asks for that tab")
 
-        // 5. Navigating from localhost asks for where it's going.
-        r = await answering(browser, "ask-site", with: .ok) { await call(box, "page_navigate", ["url": "https://example.org"]) }
-        check(!r.isError, "navigation to an allowed site works")
-        r = await call(box, "tab_open", ["url": "https://example.org/", "show": false])
-        check(browser.activePrompt == nil && !r.isError, "allowed site doesn't ask again this session")
-
-        // 6. .local is not "your dev server".
-        r = await answering(browser, nil, with: .cancel) { await call(box, "tab_open", ["url": "http://router.local/", "show": false]) }
-        check(r.isError, ".local asks, and declining refuses")
-
-        // 7. Files and scripts aren't pages for agents.
-        r = await call(box, "tab_open", ["url": "file:///etc/hosts"])
-        check(r.isError, "file: URLs are refused")
-
-        // 8. Stop ends an open ask and everything after it, at once.
+        // 5. Two calls on the same tab share one ask.
         browser.newTab(url: URL(string: "https://example.net")!)
         await pause(3)
         let other = browser.currentTab!
-        let pending = Task { await call(box, "page_read", ["tab": .string(other.id.uuidString)]) }
-        var waitedForAsk = 0.0
-        while browser.activePrompt == nil, waitedForAsk < 10 { await pause(0.1); waitedForAsk += 0.1 }
+        let a = Task { await call(box, "page_read", ["tab": .string(other.id.uuidString)]) }
+        let b = Task { await call(box, "page_screenshot", ["tab": .string(other.id.uuidString)]) }
+        while agents.requests.isEmpty { await pause(0.1) }
+        await pause(0.5)
+        check(agents.requests.count == 1, "two calls, one ask")
+
+        // 6. Stop answers the waiting calls and closes the ask at once.
         let started = Date()
         agents.stopAll()
-        r = await pending.value
-        check(r.text == AgentToolbox.stoppedMessage && Date().timeIntervalSince(started) < 1 && browser.activePrompt == nil,
-              "Stop closes the ask and answers the waiting call")
+        let ra = await a.value, rb = await b.value
+        check(ra.text == AgentToolbox.stoppedMessage && rb.text == AgentToolbox.stoppedMessage && Date().timeIntervalSince(started) < 1
+              && agents.requests.isEmpty, "Stop closes the ask and answers every waiting call")
         r = await call(box, "notes_list", [:])
         check(r.text == AgentToolbox.stoppedMessage, "after Stop even reads are refused")
 
-        // Stop ends a running call too: a slow load.
+        // 7. Stop ends a running call too.
         agents.resume()
         let slow = Task { await call(box, "page_click", ["selector": "body"]) }
         await pause(0.05)
         agents.stopAll()
         r = await slow.value
         check(r.text == AgentToolbox.stoppedMessage, "Stop answers a running call")
-        await pause(0.5)
+        agents.resume()
+
+        // 8. Files aren't pages for agents, and .local isn't your dev server.
+        r = await call(box, "tab_open", ["url": "file:///etc/hosts"])
+        check(r.isError, "file: URLs are refused")
+        check(!AgentAccess.isLoopback("router.local") && AgentAccess.isLoopback("127.0.0.1"), ".local isn't loopback")
+
+        // A request waiting, for the panel shot.
+        agents.forgetGrants()
+        _ = Task { await call(box, "page_read", ["tab": .string(other.id.uuidString)]) }
+        while agents.requests.isEmpty { await pause(0.1) }
+        await pause(1)
+        if let window = browser.nsWindow { save(window, nil, "agents-panel-asking") }
+        agents.stopAll()
+        agents.resume()
 
         // The Agents panel after all that.
         await pause(1)
-        browser.panel = "agents"
+        browser.selectSpace(agents.agentSpace)
         await pause(1.5)
         if let window = browser.nsWindow { save(window, nil, "agents-panel") }
         note(Self.failures == 0 ? "all checks passed" : "\(Self.failures) failed")
+        agents.isEnabled = wasEnabled
         exit(Self.failures == 0 ? 0 : 1)
     }
 
@@ -108,16 +116,18 @@ struct AgentGateCheck {
         return Reply(isError: json["result"]?["isError"]?.bool ?? true, text: text)
     }
 
-    /// Runs a call, waits for its ask, saves it, and answers.
-    private func answering(_ browser: Browser, _ shot: String?, with response: EngineDialogResponse,
+    /// Runs a call, waits for its ask in the Agents panel, saves the window, and answers.
+    private func answering(_ browser: Browser, _ shot: String?, allow: Bool,
                            _ work: @escaping @MainActor () async -> Reply) async -> Reply {
+        let agents: AgentBridge = browser.library.agents
         let task = Task { await work() }
         var waited = 0.0
-        while browser.activePrompt == nil, waited < 10 { await pause(0.1); waited += 0.1 }
-        guard browser.activePrompt != nil else { note("expected an ask, got none"); Self.failures += 1; return await task.value }
+        while agents.requests.isEmpty, waited < 10 { await pause(0.1); waited += 0.1 }
+        guard let request = agents.requests.first else { note("expected an ask, got none"); Self.failures += 1; return await task.value }
+        check(browser.activePrompt == nil && browser.panel == "agents", "the ask is inline in the Agents panel, no popup")
         await pause(0.8)
-        if let shot, let window = browser.nsWindow { save(window, window.attachedSheet ?? window.sheets.first, shot) }
-        browser.answer(response)
+        if let shot, let window = browser.nsWindow { save(window, nil, shot) }
+        agents.answer(request.id, allow: allow)
         return await task.value
     }
 

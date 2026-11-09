@@ -176,3 +176,19 @@ import Testing
         #expect(cancelled)
     }
 }
+
+@Suite struct AgentAccessTests {
+    @Test func agentSpaceNeverAsksYourTabsAlwaysDo() {
+        let id = UUID()
+        #expect(AgentAccess.grants(target: nil).isEmpty)
+        #expect(AgentAccess.grants(target: .init(tabID: id, host: "bank.example", inAgentSpace: true)).isEmpty)
+        #expect(AgentAccess.grants(target: .init(tabID: id, host: "mail.google.com", inAgentSpace: false)) == [.yourTab(id, host: "mail.google.com")])
+        // Even your own dev server, when it's your tab.
+        #expect(AgentAccess.grants(target: .init(tabID: id, host: "localhost", inAgentSpace: false)) == [.yourTab(id, host: "localhost")])
+    }
+
+    @Test func loopbackIsThisMacOnly() {
+        for h in ["localhost", "app.localhost", "127.0.0.1", "127.1.2.3", "::1", "[::1]"] { #expect(AgentAccess.isLoopback(h), "\(h)") }
+        for h in ["router.local", "localhost.evil.com", "127.0.0.1.evil.com", "10.0.0.1", "", "1270.0.0.1"] { #expect(!AgentAccess.isLoopback(h), "\(h)") }
+    }
+}

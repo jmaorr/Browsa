@@ -1,7 +1,6 @@
 import Foundation
 import BrowserCore
 import BrowserEngine
-import Extensibility
 
 /// Something a page is asking: a JavaScript dialog, a sign-in, or a permission.
 /// One shows at a time, as a sheet on the window.
@@ -9,25 +8,13 @@ struct Prompt: Identifiable, Equatable {
     enum Kind: Equatable {
         case dialog(EngineDialog)
         case permission(EnginePermission, host: String)
-        /// A connected coding agent wants to use a site, one of your tabs, or your tab list.
-        case agent(AgentAsk)
+        /// A connected coding agent wants to act on a site for the first time.
+        case agent(caller: String, action: String, host: String)
     }
 
     let id = UUID()
     let kind: Kind
     let tabID: UUID
-}
-
-/// What an agent asks for, in words the sheet can show.
-struct AgentAsk: Equatable {
-    /// The answer for "Always allow on this site".
-    static let always = "always"
-
-    let caller: String
-    let action: String
-    let grant: AgentAccess.Grant
-    /// For one of your tabs: its title.
-    var tabTitle: String?
 }
 
 extension Browser {
@@ -60,18 +47,6 @@ extension Browser {
             try? await Task.sleep(for: .milliseconds(200))
             if activePrompt == nil { activePrompt = promptQueue.first?.0 }
         }
-    }
-
-    /// Stop: every agent ask closes as "Don't Allow".
-    func cancelAgentPrompts() {
-        let isAgent: ((Prompt, CheckedContinuation<EngineDialogResponse, Never>)) -> Bool = {
-            if case .agent = $0.0.kind { true } else { false }
-        }
-        let theirs = promptQueue.filter(isAgent)
-        promptQueue.removeAll(where: isAgent)
-        if case .agent = activePrompt?.kind { activePrompt = nil }
-        theirs.forEach { $0.1.resume(returning: .cancel) }
-        if activePrompt == nil { activePrompt = promptQueue.first?.0 }
     }
 
     func cancelPrompts(for tabID: UUID) {

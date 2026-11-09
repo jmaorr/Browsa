@@ -247,6 +247,7 @@ final class Browser {
     }
 
     func selectAdjacentSpace(_ delta: Int) {
+        let spaces = shownSpaces
         guard spaces.count > 1, let i = spaces.firstIndex(where: { $0.id == selectedSpaceID }) else { return }
         let j = i + delta
         guard spaces.indices.contains(j) else { return }
@@ -254,7 +255,13 @@ final class Browser {
     }
 
     func selectSpace(number n: Int) {
+        let spaces = shownSpaces
         if spaces.indices.contains(n - 1) { selectSpace(spaces[n - 1]) }
+    }
+
+    /// The spaces the switcher shows: the Agent space only while it's in use (or you're in it).
+    var shownSpaces: [Space] {
+        spaces.filter { $0.id == selectedSpaceID || library.agents.showsInSidebar($0) }
     }
 
     // MARK: Opening tabs
@@ -517,6 +524,17 @@ extension Browser {
     /// Opens a tool in the panel, or hides the panel if that tool is already showing.
     func showPanel(_ id: String, toggles: Bool = false) {
         withAnimation(Motion.dock) { panel = toggles && panel == id ? nil : id }
+    }
+
+    /// Sets the panel a space opens with, without touching the space on screen.
+    func setPanel(_ id: String, for space: Space, ifUnset: Bool) {
+        if ifUnset, panels[space.id] != nil { return }
+        panels[space.id] = id
+    }
+
+    /// An agent is waiting on you: bring up the Agents panel here, without taking the keyboard.
+    func showAgentsPanel() {
+        if panel != "agents" { showPanel("agents") }
     }
 }
 

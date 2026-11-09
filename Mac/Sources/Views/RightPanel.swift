@@ -240,6 +240,13 @@ struct AgentsPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             status.padding(12)
+            if !agents.requests.isEmpty {
+                VStack(spacing: 8) {
+                    ForEach(agents.requests) { AgentRequestCard(request: $0) }
+                }
+                .padding([.horizontal, .bottom], 12)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
             Divider().opacity(0.5)
             if agents.activity.isEmpty {
                 ContentUnavailableView("Nothing yet", systemImage: "sparkles",
@@ -264,15 +271,77 @@ struct AgentsPanel: View {
             HStack {
                 Circle().fill(agents.isPaused ? .orange : agents.isRunning ? .green : .red).frame(width: 8, height: 8)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(agents.isPaused ? "Paused" : agents.isRunning ? "Ready" : "Not running").font(.callout.weight(.semibold))
+                    Text(agents.isPaused ? "Stopped" : !agents.isRunning ? "Not running" : agents.isDriving ? "Working in the Agent space" : "Ready")
+                        .font(.callout.weight(.semibold))
                     Text(agents.connectedAgents.isEmpty ? "No agent has acted yet" : agents.connectedAgents.joined(separator: ", "))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(agents.isPaused ? "Resume" : "Stop") { agents.isPaused ? agents.resume() : agents.stopAll() }
-                    .tint(agents.isPaused ? nil : .red)
+                Button(agents.isPaused ? "Resume" : "Stop") {
+                    withAnimation(Motion.snappy) { agents.isPaused ? agents.resume() : agents.stopAll() }
+                }
+                .tint(agents.isPaused ? nil : .red)
             }
         }
+    }
+}
+
+/// An agent waiting for you, inline: it never pops up or takes the keyboard, and the agent
+/// just waits until you answer (or press Stop).
+private struct AgentRequestCard: View {
+    @Environment(Browser.self) private var browser
+    let request: AgentRequest
+    private var agents: AgentBridge { browser.library.agents }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
+                Text(headline).font(.callout.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+            }
+            if case .yourTab(let id, let host) = request.grant {
+                Button { showTab(id) } label: {
+                    HStack(spacing: 6) {
+                        Text("“\(request.tabTitle ?? "Untitled")”").lineLimit(1)
+                        if !host.isEmpty { Text(host).foregroundStyle(.secondary).lineLimit(1) }
+                    }
+                    .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .help("Show this tab")
+            }
+            Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button("Don't Allow") { withAnimation(Motion.snappy) { agents.answer(request.id, allow: false) } }
+                Button("Allow") { withAnimation(Motion.snappy) { agents.answer(request.id, allow: true) } }
+                    .buttonStyle(.borderedProminent)
+            }
+            .controlSize(.small)
+        }
+        .padding(10)
+        .background(.orange.opacity(0.08), in: .rect(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.orange.opacity(0.25)))
+    }
+
+    private var headline: String {
+        switch request.grant {
+        case .yourTab: "\(request.caller) wants to \(request.action.lowercased()) in your tab"
+        case .yourTabs: "\(request.caller) wants to see your open tabs"
+        }
+    }
+
+    private var detail: String {
+        switch request.grant {
+        case .yourTab: "It sees what you see there, signed in as you. Allowed for this tab until you quit."
+        case .yourTabs: "Titles and addresses of tabs that aren't private. It still asks before using one."
+        }
+    }
+
+    private func showTab(_ id: UUID) {
+        guard let tab = browser.library.tab(id: id) else { return }
+        if let space = browser.space(containing: tab) { browser.selectSpace(space) }
+        browser.select(tab)
     }
 }
 
@@ -297,7 +366,7 @@ private struct ActivityRow: View {
         case .running: ProgressView().controlSize(.mini)
         case .done: Image(systemName: "checkmark").foregroundStyle(.green)
         case .failed: Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
-        case .denied: Image(systemName: "hand.raised").foregroundStyle(.red)
+        case .denied: Image(systemName: "hand.raised").foregroundStyle(.secondary)
         case .stopped: Image(systemName: "stop.circle").foregroundStyle(.red)
         }
     }

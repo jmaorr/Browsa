@@ -70,7 +70,8 @@ public struct AgentActivity: Identifiable, Sendable, Equatable {
     public let id = UUID()
     public let caller: String
     public let tool: String
-    public let summary: String
+    /// The call's arguments in short. The app may make it friendlier (tab titles for tab ids).
+    public var summary: String
     public let at = Date()
     public var outcome: Outcome
 }

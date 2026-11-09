@@ -2,13 +2,12 @@ import Foundation
 
 /// What an agent's call touches, and so what the user has to have allowed first.
 ///
-/// Every call is judged by the tab and the site it touches, not by whether the tool only reads:
-/// reading a signed-in tab can leak as much as clicking in it.
+/// The Agent space is the agent's own: anything there runs without asking, on any site, so a
+/// driving agent never stops for a prompt. What asks is the user's own stuff: one of their tabs,
+/// or the list of them. Reading counts as much as clicking, since a signed-in page can leak either way.
 public enum AgentAccess {
-    /// One thing the user allows.
+    /// One thing the user allows, until Browsa quits.
     public enum Grant: Hashable, Sendable {
-        /// Using pages on a site, in the Agent space.
-        case site(String)
         /// Using one of the user's own tabs (outside the Agent space) while it's on this site.
         case yourTab(UUID, host: String)
         /// Seeing the titles and addresses of the user's own tabs.
@@ -27,24 +26,12 @@ public enum AgentAccess {
         }
     }
 
-    /// What has to be allowed for a call on `target` that may go to `destination`, a host.
-    /// Your own dev servers never ask; one of your tabs always does, whatever site it's on.
-    public static func grants(target: Target?, destination: String?) -> [Grant] {
-        var out: [Grant] = []
-        if let target {
-            if !target.inAgentSpace {
-                out.append(.yourTab(target.tabID, host: target.host))
-            } else if needsAsking(target.host) {
-                out.append(.site(target.host))
-            }
-        }
-        if let destination, needsAsking(destination), !out.contains(.site(destination)) {
-            out.append(.site(destination))
-        }
-        return out
+    /// What has to be allowed for a call on `target`. Nothing in the Agent space; one of your
+    /// tabs always, whatever site it's on, even your own dev server.
+    public static func grants(target: Target?) -> [Grant] {
+        guard let target, !target.inAgentSpace else { return [] }
+        return [.yourTab(target.tabID, host: target.host)]
     }
-
-    static func needsAsking(_ host: String) -> Bool { !host.isEmpty && !isLoopback(host) }
 
     /// This Mac only. Not `.local`: that's your router or NAS, not your dev server.
     public static func isLoopback(_ host: String) -> Bool {
@@ -52,10 +39,5 @@ public enum AgentAccess {
         if h == "localhost" || h.hasSuffix(".localhost") || h == "::1" { return true }
         let parts = h.split(separator: ".", omittingEmptySubsequences: false)
         return parts.count == 4 && parts[0] == "127" && parts.allSatisfy { UInt8($0) != nil }
-    }
-
-    /// The host a URL string points at, or "" when it has none (about:blank, a bad URL).
-    public static func host(of url: String?) -> String {
-        url.flatMap(URL.init(string:))?.host()?.lowercased() ?? ""
     }
 }
