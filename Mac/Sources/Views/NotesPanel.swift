@@ -479,6 +479,7 @@ private struct NoteComposer: View {
                     .lineLimit(1...6)
                     .focused($focused)
                     .onSubmit(add)
+                    .onKeyPress(.return, phases: .down) { press in newLine(press) }
                     .onKeyPress(.escape) {
                         guard draft != nil || !text.isEmpty else { return .ignored }
                         withAnimation(Motion.snappy) { text = ""; ui.drafts.removeValue(forKey: browser.id) }
@@ -701,6 +702,7 @@ private struct ReplyBar: View {
                 .lineLimit(1...5)
                 .focused($focused)
                 .onSubmit(submit)
+                .onKeyPress(.return, phases: .down) { press in newLine(press) }
                 .onKeyPress(.escape) { withAnimation(Motion.snappy) { isOpen = false }; return .handled }
                 .padding(.vertical, 2)
             // Nothing typed yet: a quiet close. Once there's text: Add.
@@ -978,4 +980,13 @@ enum MarginMarks {
       };
     }
     """#
+}
+
+/// Return sends. Shift-Return (what most apps and the web use) and Option-Return (the AppKit
+/// convention) both start a new line, at the cursor.
+@MainActor
+private func newLine(_ press: KeyPress) -> KeyPress.Result {
+    guard press.modifiers.contains(.shift) || press.modifiers.contains(.option) else { return .ignored }
+    NSApp.sendAction(#selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)), to: nil, from: nil)
+    return .handled
 }
