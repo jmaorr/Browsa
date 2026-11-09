@@ -135,7 +135,7 @@ enum SpikeInput {
                                                           timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
                                                           context: nil, characters: chars, charactersIgnoringModifiers: ignoring,
                                                           isARepeat: false, keyCode: code),
-           NSApp.mainMenu?.performKeyEquivalent(with: e) == true {
+           NSApp.mainMenu?.performKeyEquivalent(with: e) == true || (!NSApp.isActive && window.performKeyEquivalent(with: e)) {
             return
         }
         for type in [NSEvent.EventType.keyDown, .keyUp] {

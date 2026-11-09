@@ -37,7 +37,21 @@ enum SpikeHarness {
         self.delegate = delegate
         for s in SpikeMocks.servers where s.isUp { startMock(s.port) }
         SpikeInput.watchMenus()
-        let control = SpikeHTTPServer(port: controlPort) { await route($0) }
+        let control = SpikeHTTPServer(port: controlPort) { request in
+            // Driving the app must never take the screen from whatever Josh is using. If a click or
+            // a focused field makes SpikeBrowsa active, hand activation straight back.
+            let before = NSWorkspace.shared.frontmostApplication
+            let wasActive = NSApp.isActive
+            let response = await route(request)
+            let wantsFront = request.path == "/do" && request.json["action"] as? String == "front"
+            if !wasActive, !wantsFront {
+                try? await Task.sleep(for: .milliseconds(120))
+                if NSApp.isActive, let before, before.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+                    before.activate()
+                }
+            }
+            return response
+        }
         control.start()
         self.control = control
         NSLog("SpikeBrowsa: control channel on http://127.0.0.1:\(controlPort)")
@@ -259,6 +273,7 @@ enum SpikeHarness {
             f.size = CGSize(width: w, height: h)
             window.setFrame(f, display: true, animate: false)
         case "front":
+            // The one action that's meant to bring SpikeBrowsa forward.
             NSApp.activate()
             SpikeInput.window?.makeKeyAndOrderFront(nil)
         case "radarStop", "radarStart":
@@ -283,6 +298,19 @@ enum SpikeHarness {
         case "radarRestore":
             for s in SpikeMocks.servers where s.isUp { startMock(s.port) }
             withAnimation(Motion.spring) { RadarStore.shared.servers = SpikeMocks.servers }
+        case "selectText":
+            // Selects text on the page, as a person would by dragging over it.
+            guard let text = j["text"] as? String, let tab = browser.currentTab else { return .error("Give text") }
+            let q = String(data: try! JSONSerialization.data(withJSONObject: [text]), encoding: .utf8)!
+            let script = """
+            const q = \(q)[0]; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+            for (let t = w.nextNode(); t; t = w.nextNode()) { const i = t.data.indexOf(q);
+              if (i >= 0) { const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + q.length);
+                const s = getSelection(); s.removeAllRanges(); s.addRange(r); return true; } }
+            return false;
+            """
+            let found = (try? await library.controller(for: tab).page.evaluate(script, inWorld: "browsa.margin")) as? Bool ?? false
+            if !found { return .error("\"\(text)\" isn't on the page", status: 404) }
         case "closeMenus":
             SpikeInput.closeMenus()
         case "pauseAgents":
