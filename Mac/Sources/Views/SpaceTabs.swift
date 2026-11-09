@@ -13,10 +13,17 @@ struct SpaceTabs: View {
         let forward = browser.lastSpaceSwitch?.forward ?? true
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 2) {
-                SpaceHeader(space: space)
-                    .padding(.bottom, 4)
-                    // Dropping a tab on the space's name pins it.
-                    .dropDestination(for: String.self) { items, _ in return drop(items, before: nil, pinned: true) }
+                // Spaces are named by their icon in the switcher below, so only a private space gets a
+                // header, for its Close All. Otherwise a slim strip at the top takes drops to pin.
+                if space.isPrivate {
+                    SpaceHeader(space: space)
+                        .padding(.bottom, 4)
+                        .dropDestination(for: String.self) { items, _ in return drop(items, before: nil, pinned: true) }
+                } else {
+                    Color.clear.frame(height: 6)
+                        .contentShape(.rect)
+                        .dropDestination(for: String.self) { items, _ in return drop(items, before: nil, pinned: true) }
+                }
 
                 ForEach(Array(space.pinned.enumerated()), id: \.element.id) { i, tab in
                     TabRow(tab: tab, selected: tab.id == browser.selectedTabID(in: space))
@@ -101,8 +108,9 @@ private struct TodayDivider: View {
                 .help("Close every Today tab in this space")
             }
         }
-        .frame(height: 22)
+        .frame(height: 18)
         .padding(.horizontal, 8)
+        .padding(.vertical, 2)
         .contentShape(.rect)
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
     }
@@ -119,11 +127,12 @@ private struct NewTabRow: View {
                 .frame(width: 16, height: 16)
             Text("New Tab")
             Spacer()
+            Text("⌘T").font(.system(size: 11)).foregroundStyle(.tertiary).opacity(hovering ? 1 : 0)
         }
         .font(.system(size: 13))
         .foregroundStyle(.secondary)
         .padding(.horizontal, 8)
-        .frame(height: 32)
+        .frame(height: 34)
         .background(.primary.opacity(hovering ? 0.06 : 0), in: .rect(cornerRadius: 8, style: .continuous))
         .contentShape(.rect)
         .onTapGesture { browser.showCommandBar(.newTab) }
