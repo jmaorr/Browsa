@@ -68,7 +68,7 @@ cat > "$export_options" <<EOF
 </dict></plist>
 EOF
 xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$export_options" \
-  -exportPath "$work/upload" -allowProvisioningUpdates -quiet
+  -exportPath "$work/upload" -allowProvisioningUpdates -quiet 2>&1 | { grep -v 'Progress [0-9]*%' || true; }
 
 echo "==> Waiting for notarisation (usually a few minutes)"
 for attempt in {1..60}; do
