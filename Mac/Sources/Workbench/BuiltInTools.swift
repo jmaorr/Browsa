@@ -34,6 +34,12 @@ enum BuiltInTools {
             ]))
 
         workbench.register(Tool(
+            id: "downloads", title: "Downloads", symbol: "arrow.down.circle",
+            summary: "Files you've downloaded, with Open and Show in Finder",
+            panel: { AnyView(DownloadsPanel()) }))
+
+
+        workbench.register(Tool(
             id: "radar", title: "Radar", symbol: "dot.radiowaves.left.and.right",
             summary: "Dev servers on this Mac, by project and branch",
             panel: { AnyView(RadarPanel()) },
