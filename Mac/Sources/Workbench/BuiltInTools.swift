@@ -33,17 +33,21 @@ enum BuiltInTools {
                 },
             ]))
 
-        // Designing in the real window before it's wired: sample servers, Preview badge.
         workbench.register(Tool(
             id: "radar", title: "Radar", symbol: "dot.radiowaves.left.and.right",
             summary: "Dev servers on this Mac, by project and branch",
-            stage: .preview,
             panel: { AnyView(RadarPanel()) },
             sidebar: { AnyView(RadarSidebarSection()) },
-            commands: RadarSample.servers.filter(\.isUp).map { s in
-                ToolCommand(id: "open-\(s.port)", title: "Open \(s.project)", subtitle: "\(s.branch) · localhost:\(s.port)",
-                            symbol: "dot.radiowaves.left.and.right", keywords: ["localhost", "dev", "server", s.branch]) { browser in
-                    browser.newTab(url: URL(string: "http://localhost:\(s.port)"))
+            sidebarSummary: { AnyView(RadarSummary()) },
+            // The card shows while something's running, and slides in when a server starts.
+            sidebarIsEmpty: { !RadarStore.shared.hasRunning },
+            liveCommands: {
+                RadarStore.shared.servers.filter(\.isUp).map { s in
+                    ToolCommand(id: "open-\(s.port)", title: "Open \(s.shortName)",
+                                subtitle: [s.isWorktree ? s.project : s.branch, "localhost:\(s.port)"].filter { !$0.isEmpty }.joined(separator: " · "),
+                                symbol: "dot.radiowaves.left.and.right", keywords: ["localhost", "dev", "server", s.project, s.branch, s.framework]) { browser in
+                        RadarOpen.open(s, in: browser)
+                    }
                 }
             }))
     }
