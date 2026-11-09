@@ -281,31 +281,35 @@ struct RadarSidebarSection: View {
     }
 }
 
-/// Right-click on a server.
+/// Right-click on a server. Symbols on each item, as macOS 26's own menus have, so it scans quickly.
 private struct ServerMenu: View {
     @Environment(Browser.self) private var browser
     let server: RadarServer
 
     var body: some View {
         if server.isUp {
-            Button("Open") { RadarOpen.open(server, in: browser) }
-            Button("Open in New Tab") { RadarOpen.open(server, in: browser, newTab: true) }
+            Button("Open", systemImage: "arrow.up.forward.square") { RadarOpen.open(server, in: browser) }
+            Button("Open in New Tab", systemImage: "plus.square.on.square") { RadarOpen.open(server, in: browser, newTab: true) }
         } else if RadarStore.shared.canRestart(server) {
-            Button("Restart") { RadarStore.shared.restart(server, in: browser) }
+            Button("Restart", systemImage: "arrow.clockwise") { RadarStore.shared.restart(server, in: browser) }
         }
         Divider()
-        Button("Copy URL") {
+        Button("Copy URL", systemImage: "link") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(RadarOpen.url(server).absoluteString, forType: .string)
             browser.showToast("Copied localhost:\(server.port)")
         }
         if let root = server.root {
-            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: root)]) }
+            Button("Show in Finder", systemImage: "folder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: root)]) }
         }
-        if server.isUp, server.pid != nil { Button("Stop") { RadarStore.shared.stop(server) } }
-        if !server.isUp { Button("Forget") { RadarStore.shared.forget(server) } }
+        if server.isUp, server.pid != nil {
+            Button("Stop", systemImage: "stop.circle") { RadarStore.shared.stop(server) }
+        }
+        if !server.isUp {
+            Button("Forget", systemImage: "xmark.circle") { RadarStore.shared.forget(server) }
+        }
         Divider()
-        Button("Open Radar") { browser.showPanel("radar") }
+        Button("Open Radar", systemImage: "dot.radiowaves.left.and.right") { browser.showPanel("radar") }
     }
 }
 
