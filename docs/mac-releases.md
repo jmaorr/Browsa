@@ -43,6 +43,23 @@ themselves for a release. With updates on, the app menu has **Check for Updatesâ
 Settings > General has the two automatic-update switches. Everything else is Sparkle's own
 standard windows.
 
+## Testing an update
+
+The feed URL is the `BROWSA_FEED_URL` build setting, so a test can point Sparkle somewhere else.
+Build two versions under a throwaway bundle ID (so they never touch the real app's data), serve a
+feed locally and update one to the other:
+
+```sh
+xcodebuild â€¦ archive MARKETING_VERSION=0.0.1 CURRENT_PROJECT_VERSION=1000 BROWSA_UPDATES=YES \
+  PRODUCT_BUNDLE_IDENTIFIER=com.orriginal.browsa.updatetest BROWSA_APP_NAME="Browsa Update Test" \
+  BROWSA_FEED_URL=http://127.0.0.1:8798/appcast.xml
+```
+
+(and 0.0.2 / 1001 the same way), export both with Developer ID, zip 0.0.2 into a folder, run
+`generate_appcast --download-url-prefix http://127.0.0.1:8798/` on it and serve it with
+`python3 -m http.server 8798 --bind 127.0.0.1`. Last run 2026-11-09: 0.0.1 offered 0.0.2,
+downloaded it on Install Update, and relaunched as 0.0.2 with its signature intact.
+
 ## The signing key
 
 Sparkle's EdDSA private key lives in the login keychain on Josh's Mac (service

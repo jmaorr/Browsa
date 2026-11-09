@@ -118,7 +118,7 @@ targets:
         # Sparkle. Only builds from tools/release-mac.sh switch updates on (BROWSA_UPDATES=YES), so
         # Xcode and install-mac.sh builds never replace themselves with a release.
         BrowsaUpdates: $(BROWSA_UPDATES)
-        SUFeedURL: https://browsa.app/mac/appcast.xml
+        SUFeedURL: $(BROWSA_FEED_URL)
         SUPublicEDKey: AQ8Dht5/SdUhVZjYlAXjwRATTUdxol54BqhcjmyM2WM=
         SUEnableAutomaticChecks: true
         NSCameraUsageDescription: Websites you allow can use the camera, for example for video calls.
@@ -141,6 +141,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa
         BROWSA_APP_NAME: Browsa
         BROWSA_UPDATES: "NO"
+        # Overridden only by the update test (docs/mac-releases.md), which serves its own feed.
+        BROWSA_FEED_URL: https://browsa.app/mac/appcast.xml
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: Browsa
