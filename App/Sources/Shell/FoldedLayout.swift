@@ -50,12 +50,21 @@ struct FoldedLayout: View {
 }
 
 /// A new-tab button. Hold for a private tab or a tab in another space. The same menu in every layout.
+///
+/// A `Menu` with a primary action, like the back and tabs buttons, rather than a context menu: a
+/// context menu never fires in the system's vertical bar, and the interactive glass the floating
+/// bars sit in takes the long press for its own press effect.
 struct NewTabButton: View {
     @Environment(BrowserState.self) private var browser
 
     var body: some View {
-        Button("New Tab", systemImage: "plus") { browser.presentNewTab() }
-            .contextMenu { NewTabMenu() }
+        Menu {
+            NewTabMenu()
+        } label: {
+            Label("New Tab", systemImage: "plus")
+        } primaryAction: {
+            browser.presentNewTab()
+        }
     }
 }
 

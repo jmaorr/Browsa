@@ -47,7 +47,7 @@ struct SidebarContainer<Sidebar: View, Content: View>: View {
     var body: some View {
         ZStack(alignment: edge == .leading ? .leading : .trailing) {
             // The space's colour, behind the sidebar and around the inset page card.
-            tint.opacity(isDocked ? 0.14 : 0).ignoresSafeArea()
+            tint.opacity(isDocked ? SpacePalette.surfaceOpacity : 0).ignoresSafeArea()
 
             pageCard
 
