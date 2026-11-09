@@ -20,7 +20,9 @@ struct PageArea: View {
                     PageHost(view: browser.controller(for: tab).page.view, focusesPage: focuses,
                              holdsWidth: browser.isSidebarMoving)
                 }
-                if let error = tab.loadError, !browser.isReaderShowing {
+                if let server = RadarStore.shared.server(for: tab.url), !server.isUp, !browser.isReaderShowing {
+                    RadarStoppedPage(server: server)
+                } else if let error = tab.loadError, !browser.isReaderShowing {
                     ErrorPage(error: error)
                 }
             } else {

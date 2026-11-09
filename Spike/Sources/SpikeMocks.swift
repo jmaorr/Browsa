@@ -18,6 +18,9 @@ enum SpikeMocks {
         .init(port: 47943, project: "design-system", branch: "main", framework: "Storybook"),
     ]
 
+    /// The server `radarAdd` starts, to show one arriving.
+    static let extraServer = RadarServer(port: 47944, project: "docs", branch: "main", framework: "Astro")
+
     static func url(_ port: Int, _ path: String = "/") -> URL { URL(string: "http://localhost:\(port)\(path)")! }
 
     // MARK: Pages
@@ -26,6 +29,7 @@ enum SpikeMocks {
     static func page(port: Int, path: String) -> String {
         switch port {
         case 47943: return storybook(path: path)
+        case 47944: return shell(title: "Docs", brand: "docs", nav: [("Guide", "/")], body: "<h1>Getting started</h1><p>Install, run, ship.</p>")
         default: return checkout(path: path, variant: port == 47941)
         }
     }

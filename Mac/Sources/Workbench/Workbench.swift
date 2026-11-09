@@ -35,6 +35,10 @@ struct Tool: Identifiable {
     var stage: Stage = .live
     var panel: (@MainActor () -> AnyView)?
     var sidebar: (@MainActor () -> AnyView)?
+    /// What the sidebar card shows while collapsed, beside the title: a glanceable status.
+    var sidebarSummary: (@MainActor () -> AnyView)?
+    /// True when there's nothing to show: the card hides until there is.
+    var sidebarIsEmpty: (@MainActor () -> Bool)?
     var commands: [ToolCommand] = []
 }
 
