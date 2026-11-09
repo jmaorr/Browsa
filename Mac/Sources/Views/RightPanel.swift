@@ -45,6 +45,16 @@ struct RightPanel: View {
                     Image(systemName: t.symbol)
                         .font(.system(size: 12, weight: .medium))
                         .frame(width: 26, height: 24)
+                        .overlay(alignment: .topTrailing) {
+                            // Asks waiting for you, on the Agents button.
+                            if t.id == "agents", !browser.library.agents.requests.isEmpty {
+                                Text(verbatim: "\(browser.library.agents.requests.count)")
+                                    .font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
+                                    .frame(minWidth: 13, minHeight: 13)
+                                    .background(.orange, in: .capsule)
+                                    .offset(x: 2, y: -1)
+                            }
+                        }
                         .background(t.id == toolID ? AnyShapeStyle(.primary.opacity(0.08)) : AnyShapeStyle(.clear),
                                     in: .rect(cornerRadius: 6, style: .continuous))
                         .contentShape(.rect)
@@ -118,78 +128,164 @@ struct PreviewBadge: View {
 
 // MARK: - Agents
 
-/// Who's connected, what they're doing, and Stop.
+/// Who's connected, what they're doing, asks waiting for you, and Stop.
 struct AgentsPanel: View {
     @Environment(Browser.self) private var browser
     @Environment(\.openSettings) private var openSettings
+    @State private var connecting = false
     private var agents: AgentBridge { browser.library.agents }
 
     var body: some View {
         if !agents.isEnabled {
             PanelEmptyState(title: "Let Agents Use Browsa", symbol: AgentIdentity.symbol,
                             message: "Claude Code, Codex, Cursor and other MCP agents can read pages, test your localhost in an Agent space you can watch, and work through your notes.") {
-                Button("Set Up Agents…") { openSettings() }
+                Button("Turn On Agents") { withAnimation(Motion.snappy) { agents.isEnabled = true; connecting = true } }
             }
         } else {
-            VStack(alignment: .leading, spacing: 0) {
-                status.padding(12)
-                if !agents.requests.isEmpty {
-                    VStack(spacing: 8) {
-                        ForEach(agents.requests) { AgentRequestCard(request: $0) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    status
+                    if connecting || agents.connectedAgents.isEmpty {
+                        ConnectAgentCard { withAnimation(Motion.snappy) { connecting = false } }
+                            .transition(.move(edge: .top).combined(with: .opacity))
                     }
-                    .padding([.horizontal, .bottom], 12)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    if !agents.requests.isEmpty {
+                        VStack(spacing: 8) {
+                            ForEach(agents.requests) { AgentRequestCard(request: $0) }
+                        }
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    if !agents.activity.isEmpty {
+                        Text("Activity").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                            .padding(.top, 4)
+                        ForEach(Array(AgentRun.runs(agents.activity).enumerated()), id: \.element.id) { i, run in
+                            AgentRunView(run: run, startsOpen: i == 0)
+                        }
+                    }
                 }
-                Divider().opacity(0.5)
-                if agents.activity.isEmpty {
-                    PanelEmptyState(title: "No Activity Yet", symbol: AgentIdentity.symbol,
-                                    message: "When an agent reads a page, clicks, or resolves a note, it shows up here.")
-                } else {
-                    List(agents.activity) { ActivityRow(entry: $0) }
-                        .listStyle(.plain)
-                        .scrollContentBackground(.hidden)
-                }
+                .padding(12)
+                .animation(Motion.snappy, value: agents.requests.map(\.id))
             }
         }
     }
 
-    @ViewBuilder private var status: some View {
-        if !agents.isEnabled {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Let coding agents use Browsa").font(.headline)
-                Text("Claude Code, Codex, Cursor and other MCP agents can read pages, test your localhost in an Agent space you can watch, and work through your notes.")
-                    .font(.callout).foregroundStyle(.secondary)
-                Button("Set Up…") { openSettings() }
-            }
-        } else {
-            HStack {
-                Circle().fill(agents.isPaused ? .orange : agents.isRunning ? .green : .red).frame(width: 8, height: 8)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(agents.isPaused ? "Stopped" : !agents.isRunning ? "Not running" : agents.isDriving ? "Working in the Agent space" : "Ready")
-                        .font(.callout.weight(.semibold))
-                    if agents.connectedAgents.isEmpty {
-                        Text("No agent has acted yet").font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        HStack(spacing: 8) {
-                            ForEach(agents.connectedAgents, id: \.self) { name in
-                                Label { Text(name) } icon: { AgentIcon(caller: name, size: 12) }
-                            }
+    /// "Driving" only while calls are coming in; agents that went quiet a while ago grey out.
+    private var status: some View {
+        HStack(spacing: 10) {
+            Circle().fill(agents.isPaused ? .orange : !agents.isRunning ? .red : agents.isActing ? .purple : .green)
+                .frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(agents.isPaused ? "Stopped" : !agents.isRunning ? "Not running"
+                     : agents.isActing ? "Driving" : agents.connectedAgents.isEmpty ? "Ready to connect" : "Connected · idle")
+                    .font(.callout.weight(.semibold))
+                    .contentTransition(.opacity)
+                if !agents.connectedAgents.isEmpty {
+                    HStack(spacing: 8) {
+                        ForEach(agents.connectedAgents, id: \.self) { name in
+                            Label { Text(name) } icon: { AgentIcon(caller: name, size: 12) }
+                                .opacity(agents.isIdle(name) ? 0.45 : 1)
+                                .help(agents.isIdle(name) ? "\(name) hasn't called in a while" : name)
                         }
-                        .font(.caption).foregroundStyle(.secondary)
                     }
+                    .font(.caption).foregroundStyle(.secondary)
                 }
-                Spacer()
-                Button(agents.isPaused ? "Resume" : "Stop") {
-                    withAnimation(Motion.snappy) { agents.isPaused ? agents.resume() : agents.stopAll() }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(agents.isPaused ? .accentColor : .red)
             }
+            Spacer()
+            Menu {
+                Button("Connect an Agent…") { withAnimation(Motion.snappy) { connecting = true } }
+                Button("Clear Activity") { agents.clearActivity() }
+                Divider()
+                Button("Agent Settings…") { openSettings() }
+            } label: {
+                Image(systemName: "ellipsis").font(.system(size: 12, weight: .semibold)).frame(width: 22, height: 22).contentShape(.rect)
+            }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).foregroundStyle(.secondary).fixedSize()
+            Button(agents.isPaused ? "Resume" : "Stop") {
+                withAnimation(Motion.snappy) { agents.isPaused ? agents.resume() : agents.stopAll() }
+            }
+            .buttonStyle(.glassProminent)
+            .tint(agents.isPaused ? .accentColor : .red)
+            .controlSize(.small)
         }
     }
 }
 
-/// An agent waiting for you, inline: it never pops up or takes the keyboard, and the agent
+/// Set up where you'll use it: pick the agent, copy its line, and the card waits until it connects.
+private struct ConnectAgentCard: View {
+    enum Kind: String, CaseIterable { case claude = "Claude Code", codex = "Codex", cursor = "Cursor" }
+
+    @Environment(Browser.self) private var browser
+    let done: () -> Void
+    @State private var kind = Kind.claude
+    @State private var revealed = false
+    @State private var copied = false
+    private var agents: AgentBridge { browser.library.agents }
+
+    private var connected: Bool {
+        agents.connectedAgents.contains { $0.lowercased().contains(kind.rawValue.lowercased().components(separatedBy: " ")[0]) }
+    }
+    private var url: String { "http://127.0.0.1:\(AgentBridge.port)/mcp" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Connect an Agent").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Button(action: done) { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Close")
+            }
+            Picker("Agent", selection: $kind) {
+                ForEach(Kind.allCases, id: \.self) { Text($0.rawValue) }
+            }
+            .pickerStyle(.segmented).labelsHidden()
+            Text(kind == .claude ? "Run this once in a terminal:" : "Add an MCP server with this URL and header:")
+                .font(.caption).foregroundStyle(.secondary)
+            Text(revealed ? fullText : maskedText)
+                .font(.system(size: 11, design: .monospaced))
+                .textSelection(.enabled)
+                .lineLimit(revealed ? nil : 3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+                .background(.primary.opacity(0.05), in: .rect(cornerRadius: 7))
+            HStack(spacing: 8) {
+                Button(copied ? "Copied" : "Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(fullText, forType: .string)
+                    withAnimation(Motion.snappy) { copied = true }
+                }
+                .buttonStyle(.glassProminent).controlSize(.small)
+                Button(revealed ? "Hide Token" : "Show Token") { withAnimation(Motion.snappy) { revealed.toggle() } }
+                    .controlSize(.small)
+                Spacer()
+                if connected {
+                    Label("Connected", systemImage: "checkmark.circle.fill").font(.caption.weight(.semibold)).foregroundStyle(.green)
+                        .transition(.scale.combined(with: .opacity))
+                } else {
+                    HStack(spacing: 5) {
+                        ProgressView().controlSize(.mini)
+                        Text("Waiting for \(kind.rawValue)…").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .animation(Motion.snappy, value: connected)
+        }
+        .padding(12)
+        .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.primary.opacity(0.08)))
+        .shadow(color: .black.opacity(0.05), radius: 3, y: 1)
+        .onChange(of: kind) { copied = false }
+    }
+
+    private var header: String { "Authorization: Bearer \(agents.token)" }
+    private var fullText: String {
+        kind == .claude ? "claude mcp add --scope user --transport http browsa \(url) --header \"\(header)\""
+                        : "URL: \(url)\n\(header)"
+    }
+    private var maskedText: String {
+        fullText.replacingOccurrences(of: agents.token, with: String(repeating: "•", count: 12))
+    }
+}
+
 /// just waits until you answer (or press Stop).
 private struct AgentRequestCard: View {
     @Environment(Browser.self) private var browser
@@ -251,32 +347,87 @@ private struct AgentRequestCard: View {
     }
 }
 
-private struct ActivityRow: View {
-    let entry: AgentActivity
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            icon.frame(width: 14)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    AgentIcon(caller: entry.caller, size: 12)
-                    Text("\(entry.caller) · \(entry.tool)").font(.caption.weight(.semibold))
-                }
-                if !entry.summary.isEmpty { Text(entry.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
-                if case .failed(let why) = entry.outcome { Text(why).font(.caption).foregroundStyle(.red).lineLimit(2) }
+/// An agent's calls, grouped into runs: one agent, close together in time.
+struct AgentRun: Identifiable {
+    let id: UUID
+    let caller: String
+    let entries: [AgentActivity]
+    var at: Date { entries.first?.at ?? .now }
+
+    /// Newest first, like `activity`. A run breaks when the agent changes or after a 2-minute gap.
+    static func runs(_ activity: [AgentActivity]) -> [AgentRun] {
+        var runs: [AgentRun] = []
+        var current: [AgentActivity] = []
+        for e in activity {
+            if let last = current.last, last.caller != e.caller || last.at.timeIntervalSince(e.at) > 120 {
+                runs.append(AgentRun(id: current[0].id, caller: current[0].caller, entries: current))
+                current = []
             }
-            Spacer()
-            Text(entry.at, style: .time).font(.caption2).foregroundStyle(.tertiary)
+            current.append(e)
         }
-        .listRowBackground(Color.clear)
+        if !current.isEmpty { runs.append(AgentRun(id: current[0].id, caller: current[0].caller, entries: current)) }
+        return runs
+    }
+}
+
+private struct AgentRunView: View {
+    let run: AgentRun
+    let startsOpen: Bool
+    @State private var open: Bool?
+    @State private var showCalls = false
+    private var isOpen: Bool { open ?? startsOpen }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button { withAnimation(Motion.snappy) { open = !isOpen } } label: {
+                HStack(spacing: 7) {
+                    AgentIcon(caller: run.caller, size: 14)
+                    Text(run.caller).font(.system(size: 12, weight: .semibold))
+                    Text(run.at, style: .relative).font(.caption2).foregroundStyle(.tertiary)
+                    Spacer(minLength: 0)
+                    if !isOpen {
+                        Text(run.entries.count == 1 ? "1 step" : "\(run.entries.count) steps").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isOpen ? 90 : 0))
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            if isOpen {
+                VStack(alignment: .leading, spacing: 6) {
+                    // Oldest first inside a run, so it reads as a story.
+                    ForEach(run.entries.reversed()) { e in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            outcome(e).frame(width: 12)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(AgentWords.sentence(tool: e.tool, fields: AgentWords.fields(e.summary)))
+                                    .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                                if case .failed(let why) = e.outcome { Text(why).font(.caption).foregroundStyle(.red).lineLimit(2) }
+                                if showCalls {
+                                    Text("\(e.tool)  \(e.summary)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary).lineLimit(2)
+                                }
+                            }
+                        }
+                    }
+                    Button(showCalls ? "Hide Calls" : "Show Calls") { withAnimation(Motion.snappy) { showCalls.toggle() } }
+                        .buttonStyle(.plain).font(.caption2).foregroundStyle(.secondary)
+                }
+                .transition(.opacity)
+            }
+        }
+        .padding(10)
+        .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.primary.opacity(0.07)))
     }
 
-    @ViewBuilder private var icon: some View {
-        switch entry.outcome {
+    @ViewBuilder private func outcome(_ e: AgentActivity) -> some View {
+        switch e.outcome {
         case .running: ProgressView().controlSize(.mini)
-        case .done: Image(systemName: "checkmark").foregroundStyle(.green)
-        case .failed: Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
-        case .denied: Image(systemName: "hand.raised").foregroundStyle(.secondary)
-        case .stopped: Image(systemName: "stop.circle").foregroundStyle(.red)
+        case .done: Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.green)
+        case .failed: Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9)).foregroundStyle(.orange)
+        case .denied: Image(systemName: "hand.raised.fill").font(.system(size: 9)).foregroundStyle(.secondary)
+        case .stopped: Image(systemName: "stop.circle.fill").font(.system(size: 9)).foregroundStyle(.red)
         }
     }
 }

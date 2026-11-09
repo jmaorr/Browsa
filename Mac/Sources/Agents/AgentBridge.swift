@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Observation
 import BrowserCore
 import BrowserEngine
@@ -173,13 +174,29 @@ final class AgentBridge {
     var allTabs: [BrowserTab] { library.allTabs.filter { !$0.isPrivate } }
     func space(of tab: BrowserTab) -> Space? { library.space(containing: tab) }
 
+    /// Opens a page in the Agent space. It never switches your window there: the driving pill in
+    /// the sidebar offers Watch instead. (`show` is kept for the tool's schema.)
     func openTab(_ url: URL, show: Bool) -> BrowserTab {
         let tab = library.insertTab(url: url, in: agentSpace, source: .link)
-        if show, let window = library.activeWindow {
-            window.selectSpace(agentSpace)
-            window.select(tab)
-        }
+        follow(tab)
         return tab
+    }
+
+    /// A window that pressed Watch, while it's still looking at the Agent space: it follows the
+    /// agent from tab to tab.
+    @ObservationIgnored private weak var watcher: Browser?
+
+    private func follow(_ tab: BrowserTab) {
+        guard let w = watcher, w.selectedSpaceID == agentSpace.id, w.currentTab?.id != tab.id else { return }
+        withAnimation(Motion.snappy) { w.select(tab) }
+    }
+
+    /// Watch: shows the agent's current tab (or the Agent space) in the window you're using.
+    func watch(in window: Browser) {
+        let tab = currentStep?.tabID.flatMap { library.tab(id: $0) } ?? agentSpace.today.first
+        window.selectSpace(agentSpace)
+        if let tab { window.select(tab) }
+        watcher = window
     }
 
     // MARK: Asking
@@ -196,7 +213,55 @@ final class AgentBridge {
             if !allowed { return .deny("The user declined this in Browsa.") }
         }
         noteWork(tool, args: args, caller: caller.name)
+        await step(tool, args: args, caller: caller.name)
         return .allow
+    }
+
+    // MARK: Watching it act
+
+    /// What an agent is doing right now, for the caption on the page and the driving pill.
+    struct Step: Equatable {
+        let caller: String
+        let tabID: UUID?
+        let text: String
+        let at: Date
+    }
+
+    /// The last thing an agent did, while it's fresh.
+    private(set) var currentStep: Step?
+    /// An agent made a call in the last `actingFor` seconds: what "Driving" means.
+    private(set) var isActing = false
+    static let actingFor: TimeInterval = 15
+    /// When each agent last called, to grey out ones that have gone quiet.
+    private(set) var lastSeen: [String: Date] = [:]
+    @ObservationIgnored private var actingTask: Task<Void, Never>?
+
+    func isIdle(_ agent: String) -> Bool {
+        lastSeen[agent].map { Date().timeIntervalSince($0) > Self.idleAfter } ?? true
+    }
+
+    /// Records the step, and for a click or typing in a tab you can see, shows the agent's cursor
+    /// arriving there first, so you can follow it.
+    private func step(_ tool: AgentTool, args: JSONValue, caller: String) async {
+        lastSeen[caller] = Date()
+        let tab = tool.name.hasPrefix("page_") ? self.tab(args["tab"]?.string) : nil
+        if let tab, isInAgentSpace(tab) { follow(tab) }
+        let text = AgentWords.sentence(tool: tool.name, fields: AgentWords.fields(args), tabTitle: tab?.displayTitle)
+        withAnimation(Motion.snappy) {
+            currentStep = Step(caller: caller, tabID: tab?.id, text: text, at: Date())
+            isActing = true
+        }
+        actingTask?.cancel()
+        actingTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.actingFor))
+            guard !Task.isCancelled, let self else { return }
+            withAnimation(Motion.snappy) { self.isActing = false }
+        }
+        guard let tab, tool.name == "page_click" || tool.name == "page_type",
+              library.window(showing: tab) != nil, let page = library.existingController(for: tab)?.page else { return }
+        let target = AgentCursor.target(args)
+        _ = try? await page.evaluate(AgentCursor.script + "\nreturn await window.__browsaAgentCursor(\(target), \(tool.name == "page_click"));",
+                                     inWorld: "browsa.agent")
     }
 
     /// Pages an agent is working on right now, by `MarginStore.pageKey`, for the Notes panel's
@@ -242,7 +307,7 @@ final class AgentBridge {
             request = AgentRequest(caller: caller, action: action, grant: grant, tabTitle: title(of: grant))
             requests.append(request)
             updateDriving()
-            library.activeWindow?.showAgentsPanel()
+            // No panel switching: the ask shows as a bar on the tab you're on, and in the Agents panel.
         }
         return await withCheckedContinuation { cont in waiting[request.id, default: []].append(cont) }
     }
