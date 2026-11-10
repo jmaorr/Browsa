@@ -531,8 +531,19 @@ struct FavoritesGrid: View {
         return dragging.canFavourite(tab, browser: browser)
     }
 
+    /// A favourite being dragged: it stays in the grid as a dashed gap, which moves to where it
+    /// would land while it's over the grid. (Its tile carries the drag, so it never leaves.)
+    private var liftedFavouriteEntries: [GridEntry]? {
+        guard let lift = dragging.lift, lift.isFavourite,
+              let fav = browser.favorites.first(where: { $0.id == lift.tabID }) else { return nil }
+        var entries = browser.sortedFavorites.filter { $0.id != fav.id }.map(GridEntry.favorite)
+        let at = if case .favourite(let i)? = dragging.target { i } else { lift.origin.index }
+        entries.insert(.favorite(fav), at: min(at, entries.count))
+        return entries
+    }
+
     var body: some View {
-        let entries = liftedEntries ?? preview ?? browser.sortedFavorites.map(GridEntry.favorite)
+        let entries = liftedFavouriteEntries ?? liftedEntries ?? preview ?? browser.sortedFavorites.map(GridEntry.favorite)
         if showsDropZone, entries.isEmpty {
             FavouriteDropZone()
                 .frame(height: 50)
@@ -547,7 +558,8 @@ struct FavoritesGrid: View {
                     Group {
                         switch entry {
                         case .favorite(let fav):
-                            FavoriteTile(favorite: fav, isLifted: preview != nil && incoming == .favorite(fav.id))
+                            FavoriteTile(favorite: fav, isLifted: (preview != nil && incoming == .favorite(fav.id))
+                                                                    || dragging.isLiftedFavourite(fav.id))
                         case .pending(_, let url, let title):
                             PendingFavoriteTile(url: url, title: title)
                         }
@@ -555,7 +567,12 @@ struct FavoritesGrid: View {
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("favourites")) } action: { frames[entry.id] = $0 }
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: { r in
                         switch entry {
-                        case .favorite(let fav): dragging.tileFrames[fav.id] = r
+                        case .favorite(let fav):
+                            if dragging.isLiftedFavourite(fav.id) {
+                                if dragging.target?.isFavourite == true { dragging.gapFrame = r }
+                            } else {
+                                dragging.tileFrames[fav.id] = r
+                            }
                         case .pending: dragging.gapFrame = r
                         }
                     }
@@ -732,6 +749,8 @@ struct FavoriteTile: View {
     /// Being dragged to a new spot: drawn as a gap with a dashed outline.
     var isLifted = false
     @State private var hovering = false
+    @Environment(SidebarDragging.self) private var dragging
+    @GestureState private var held = false
 
     /// Showing its own tab (even after the site redirected elsewhere), or a tab on the same address.
     private var isCurrent: Bool {
@@ -756,10 +775,13 @@ struct FavoriteTile: View {
             .onTapGesture { browser.open(favorite) }
             .onHover { hovering = $0 }
             .help(favorite.displayName)
-            .draggable(SidebarDrag.favorite(favorite.id).payload) {
-                FaviconView(url: favorite.url, size: 26, chip: true, letter: favorite.customName ?? favorite.title)
-                    .frame(width: 56, height: 50)
-                    .background(.regularMaterial, in: .rect(cornerRadius: 12, style: .continuous))
+            .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .named(SidebarDragging.coordinateSpace))
+                .updating($held) { _, held, _ in held = true }
+                .onChanged { dragging.changed(favorite, from: $0.startLocation, to: $0.location, in: browser.currentSpace, browser: browser) }
+                .onEnded { _ in dragging.ended(favorite, in: browser.currentSpace, browser: browser) })
+            // A drag the system cancels (no onEnded) still puts it down.
+            .onChange(of: held) { _, now in
+                if !now, dragging.isLiftedFavourite(favorite.id) { dragging.ended(favorite, in: browser.currentSpace, browser: browser) }
             }
             .contextMenu {
                 Button("Open in New Tab", systemImage: "plus.square.on.square") { browser.newTab(url: favorite.url, source: .bookmark) }

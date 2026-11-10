@@ -24,7 +24,9 @@ final class SidebarDragging {
     }
 
     struct Lift {
+        /// A tab's id, or a favourite's when `isFavourite`.
         let tabID: UUID
+        var isFavourite = false
         /// Where it came from, for a drag that ends nowhere useful.
         let origin: Target
         /// From the row's top-left corner to the pointer, so the row doesn't jump to the pointer.
@@ -71,8 +73,19 @@ final class SidebarDragging {
         let a = CGPoint(x: from.x - originInWindow.x, y: from.y - originInWindow.y)
         let b = CGPoint(x: to.x - originInWindow.x, y: to.y - originInWindow.y)
         let space = browser.currentSpace
-        guard let tab = space.allTabs.first(where: { rowFrames[$0.id]?.contains(a) == true }) else { return false }
         let steps = max(2, Int(duration * 60))
+        if let fav = browser.favorites.first(where: { tileFrames[$0.id]?.contains(a) == true }) {
+            for i in 0...steps {
+                let t = Double(i) / Double(steps)
+                let e = t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2
+                changed(fav, from: a, to: CGPoint(x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e), in: space, browser: browser)
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+            try? await Task.sleep(for: .milliseconds(150))
+            ended(fav, in: space, browser: browser)
+            return true
+        }
+        guard let tab = space.allTabs.first(where: { rowFrames[$0.id]?.contains(a) == true }) else { return false }
         for i in 0...steps {
             // Ease in and out, like a hand.
             let t = Double(i) / Double(steps)
@@ -86,7 +99,8 @@ final class SidebarDragging {
     }
     #endif
 
-    func isLifted(_ id: UUID) -> Bool { lift?.tabID == id }
+    func isLifted(_ id: UUID) -> Bool { lift.map { !$0.isFavourite && $0.tabID == id } ?? false }
+    func isLiftedFavourite(_ id: UUID) -> Bool { lift.map { $0.isFavourite && $0.tabID == id } ?? false }
 
     /// The top-left corner the lifted row is drawn at.
     var liftedOrigin: CGPoint {
@@ -121,8 +135,100 @@ final class SidebarDragging {
         if next != target { withAnimation(Motion.snappy) { target = next } }
     }
 
+    // MARK: Favourites
+
+    /// A favourite picked up: it can move among the favourites, or come down into the list as a
+    /// tab, pinned or not, and stop being a favourite.
+    func changed(_ fav: Favorite, from start: CGPoint, to point: CGPoint, in space: Space, browser: Browser) {
+        guard !settling else { return }
+        if lift == nil {
+            guard let frame = tileFrames[fav.id] else { return }
+            let order = browser.sortedFavorites.map(\.id)
+            favouriteOrder = order.filter { $0 != fav.id }
+            favouritesAllowed = true
+            tileSize = frame.size
+            let origin = Target.favourite(order.firstIndex(of: fav.id) ?? 0)
+            location = point
+            // As a row it lines up with the list, held where the pointer is across it.
+            let rowWidth = newTabFrame.width > 0 ? newTabFrame.width : 240
+            withAnimation(Motion.snappy) {
+                lift = Lift(tabID: fav.id, isFavourite: true, origin: origin,
+                            grab: CGSize(width: min(max(start.x - newTabFrame.minX, 20), rowWidth - 20), height: 17),
+                            size: CGSize(width: rowWidth, height: 34))
+                target = origin
+            }
+            return
+        }
+        location = point
+        let next = resolveFavouriteTarget(in: space)
+        if next != target { withAnimation(Motion.snappy) { target = next } }
+    }
+
+    func ended(_ fav: Favorite, in space: Space, browser: Browser) {
+        guard let lift, lift.isFavourite, !settling else { return }
+        if target == nil { withAnimation(Motion.snappy) { target = lift.origin } }
+        settling = true
+        DispatchQueue.main.async { [self] in
+            let firstPin = target?.isPinned == true && space.pinned.isEmpty
+            let landing = firstPin ? pinZoneFrame : gapFrame
+            withAnimation(Motion.snappy) {
+                if target?.isFavourite == true {
+                    location = CGPoint(x: landing.midX, y: landing.midY)
+                } else {
+                    location = CGPoint(x: landing.minX + lift.grab.width, y: landing.minY + lift.grab.height)
+                }
+            } completion: { [self] in
+                commit(fav, in: space, browser: browser)
+            }
+        }
+    }
+
+    private func commit(_ fav: Favorite, in space: Space, browser: Browser) {
+        defer {
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { lift = nil; target = nil; settling = false }
+        }
+        guard let lift, let target, target != lift.origin else { return }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) {
+            if case .favourite(let i) = target {
+                browser.moveFavorite(fav, before: i < favouriteOrder.count ? browser.favorites.first { $0.id == favouriteOrder[i] } : nil)
+                return
+            }
+            // Down into the list: its own tab if it has one here, otherwise a new one, and it's no
+            // longer a favourite.
+            let others = target.isPinned ? space.pinned : space.listedToday
+            let before = target.index < others.count ? others[target.index] : nil
+            let tab = space.today.first { $0.favoriteID == fav.id }
+                ?? browser.newTab(url: fav.url, in: space, source: .bookmark, select: false)
+            browser.removeFavorite(fav)
+            browser.move(tab, before: before, pinned: target.isPinned)
+        }
+    }
+
+    /// Like a tab's, but every tab in the list is another tab, and there's no moving to a space.
+    private func resolveFavouriteTarget(in space: Space) -> Target? {
+        if favouritesFrame != .zero, location.y < favouritesFrame.maxY + 6 {
+            guard favouritesFrame.insetBy(dx: -12, dy: -12).contains(location) else { return nil }
+            let before = favouriteOrder.filter { id in
+                guard let r = tileFrames[id] else { return false }
+                return r.maxY < location.y || (r.minY <= location.y && r.midX < location.x)
+            }
+            return .favourite(before.count)
+        }
+        guard !space.isPrivate else { return nil }
+        let pinned = location.y < newTabFrame.midY
+        let others = pinned ? space.pinned : space.listedToday
+        let index = others.filter { (rowFrames[$0.id]?.midY ?? .infinity) < location.y }.count
+        return pinned ? .pinned(index) : .today(index)
+    }
+
+    // MARK: Ending a tab's drag
+
     func ended(_ tab: BrowserTab, in space: Space, browser: Browser) {
-        guard let lift, !settling else { return }
+        guard let lift, !lift.isFavourite, !settling else { return }
         // Nowhere useful: it goes home.
         if target == nil { withAnimation(Motion.snappy) { target = lift.origin } }
         settling = true
@@ -234,7 +340,9 @@ struct LiftedTabRow: View {
     @Environment(SidebarDragging.self) private var dragging
 
     var body: some View {
-        if let lift = dragging.lift,
+        if let lift = dragging.lift, lift.isFavourite, let fav = browser.favorites.first(where: { $0.id == lift.tabID }) {
+            liftedFavourite(fav, lift: lift)
+        } else if let lift = dragging.lift, !lift.isFavourite,
            let tab = browser.currentSpace.allTabs.first(where: { $0.id == lift.tabID }) {
             // Over the favourites it's a tile; over a space's dot, a small chip that leaves the dot in view.
             let overSpace = if case .space? = dragging.target { true } else { false }
@@ -268,5 +376,37 @@ struct LiftedTabRow: View {
             .allowsHitTesting(false)
             .transition(.identity)
         }
+    }
+
+    /// A favourite under the pointer: its tile among the favourites, a tab row over the list.
+    private func liftedFavourite(_ fav: Favorite, lift: SidebarDragging.Lift) -> some View {
+        let asRow = dragging.target?.isPinned == true || dragging.target?.isToday == true
+        let size = asRow ? lift.size : dragging.tileSize
+        let origin = asRow ? dragging.liftedOrigin
+            : CGPoint(x: dragging.location.x - size.width / 2, y: dragging.location.y - size.height / 2)
+        let name = fav.customName ?? fav.title
+        return ZStack {
+            HStack(spacing: 10) {
+                FaviconView(url: fav.url, size: 16, letter: name)
+                Text(name).lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .font(.system(size: 13))
+            .padding(.horizontal, 8)
+            .frame(width: lift.size.width, height: lift.size.height)
+            .opacity(asRow ? 1 : 0)
+            FaviconView(url: fav.url, size: 26, chip: true, letter: name)
+                .frame(width: size.width, height: size.height)
+                .opacity(asRow ? 0 : 1)
+        }
+        .frame(width: size.width, height: size.height)
+        .background(SelectedFill(), in: .rect(cornerRadius: asRow ? 9 : 12, style: .continuous))
+        .clipShape(.rect(cornerRadius: asRow ? 9 : 12, style: .continuous))
+        .shadow(color: .black.opacity(dragging.settling ? 0.06 : 0.16), radius: dragging.settling ? 2 : 10,
+                y: dragging.settling ? 1 : 5)
+        .scaleEffect(dragging.settling ? 1 : 1.04)
+        .offset(x: origin.x, y: origin.y)
+        .allowsHitTesting(false)
+        .transition(.identity)
     }
 }
