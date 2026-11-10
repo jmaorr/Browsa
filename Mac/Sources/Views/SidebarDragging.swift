@@ -366,6 +366,8 @@ struct LiftedTabRow: View {
                 }
             }
             .frame(width: size.width, height: size.height)
+            // Solid underneath, so the rows it passes over don't show through.
+            .background(PanelFill(), in: .rect(cornerRadius: asTile ? 12 : 9, style: .continuous))
             .clipShape(.rect(cornerRadius: asTile ? 12 : 9, style: .continuous))
             .shadow(color: .black.opacity(dragging.settling ? 0.06 : 0.16), radius: dragging.settling ? 2 : 10,
                     y: dragging.settling ? 1 : 5)
@@ -401,6 +403,7 @@ struct LiftedTabRow: View {
         }
         .frame(width: size.width, height: size.height)
         .background(SelectedFill(), in: .rect(cornerRadius: asRow ? 9 : 12, style: .continuous))
+        .background(PanelFill(), in: .rect(cornerRadius: asRow ? 9 : 12, style: .continuous))
         .clipShape(.rect(cornerRadius: asRow ? 9 : 12, style: .continuous))
         .shadow(color: .black.opacity(dragging.settling ? 0.06 : 0.16), radius: dragging.settling ? 2 : 10,
                 y: dragging.settling ? 1 : 5)

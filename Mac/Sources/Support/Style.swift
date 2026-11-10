@@ -129,6 +129,23 @@ struct FaviconView: View {
 
 /// The raised look of the selected tab or favourite: a light pill in light mode, a lifted
 /// translucent one in dark mode, never darker than the sidebar.
+/// A slot pressed into the sidebar, where something dragged will land: lit from above, so the top
+/// edge falls into shadow and the bottom edge catches the light. Deeper while it's the target.
+struct SunkenSlot: View {
+    var cornerRadius: CGFloat = 9
+    var active = false
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let dark = scheme == .dark
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(Color.black.opacity(dark ? (active ? 0.26 : 0.2) : (active ? 0.065 : 0.05))
+                .shadow(.inner(color: .black.opacity(dark ? 0.6 : (active ? 0.38 : 0.3)), radius: active ? 2.5 : 2, y: active ? 2 : 1.5))
+                .shadow(.inner(color: .white.opacity(dark ? 0.08 : 0.8), radius: 0.5, y: -1)))
+            .animation(Motion.snappy, value: active)
+    }
+}
+
 struct SelectedFill: ShapeStyle {
     func resolve(in environment: EnvironmentValues) -> Color {
         environment.colorScheme == .dark ? Color.white.opacity(0.14) : Color.white.opacity(0.88)

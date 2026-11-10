@@ -101,8 +101,7 @@ struct SpaceTabs: View {
         if let tab = slot.tab {
             DraggableTabRow(tab: tab, space: space, collapsed: slot.collapsed)
         } else {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(.primary.opacity(0.04))
+            SunkenSlot(cornerRadius: 9, active: true)
                 .frame(height: 34)
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
                     dragging.gapFrame = $0
@@ -169,11 +168,7 @@ private struct PinDropZone: View {
         .opacity(landing ? 0 : 1)
         .padding(.horizontal, 8)
         .frame(maxHeight: .infinity)
-        .background(targeted ? AnyShapeStyle(Color.accentColor.opacity(0.07)) : AnyShapeStyle(.primary.opacity(0.035)),
-                    in: .rect(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(targeted ? AnyShapeStyle(Color.accentColor.opacity(0.7)) : AnyShapeStyle(.primary.opacity(0.14)),
-                          style: StrokeStyle(lineWidth: targeted ? 1.5 : 1, dash: [4, 3])))
+        .background { SunkenSlot(cornerRadius: 10, active: targeted) }
         .animation(Motion.snappy, value: targeted)
     }
 }

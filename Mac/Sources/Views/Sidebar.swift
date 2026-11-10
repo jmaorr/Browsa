@@ -719,34 +719,26 @@ private struct FavouriteDropZone: View {
         }
         .padding(.horizontal, 8)
         .frame(maxHeight: .infinity)
-        .background(targeted ? AnyShapeStyle(Color.accentColor.opacity(0.07)) : AnyShapeStyle(.primary.opacity(0.035)),
-                    in: .rect(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(targeted ? AnyShapeStyle(Color.accentColor.opacity(0.7)) : AnyShapeStyle(.primary.opacity(0.14)),
-                          style: StrokeStyle(lineWidth: targeted ? 1.5 : 1, dash: [4, 3])))
+        .background { SunkenSlot(cornerRadius: 12, active: targeted) }
         .animation(Motion.snappy, value: targeted)
     }
 }
 
-/// Where a tab dropped on the grid would land: its icon, faded, in a dashed tile.
+/// Where a tab dropped on the grid would land: an empty slot pressed into the grid.
 private struct PendingFavoriteTile: View {
     let url: URL
     let title: String
 
     var body: some View {
-        FaviconView(url: url, size: 26, chip: true, letter: title)
-        .opacity(0.7)
-        .frame(maxWidth: .infinity, minHeight: 50)
-        .background(.primary.opacity(0.05), in: .rect(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(Color.accentColor.opacity(0.8), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])))
+        SunkenSlot(cornerRadius: 12, active: true)
+            .frame(maxWidth: .infinity, minHeight: 50)
     }
 }
 
 struct FavoriteTile: View {
     @Environment(Browser.self) private var browser
     let favorite: Favorite
-    /// Being dragged to a new spot: drawn as a gap with a dashed outline.
+    /// Being dragged to a new spot: drawn as the empty slot it will drop back into.
     var isLifted = false
     @State private var hovering = false
     @Environment(SidebarDragging.self) private var dragging
@@ -764,13 +756,8 @@ struct FavoriteTile: View {
             .background(isCurrent ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(hovering ? 0.09 : 0.05)),
                         in: .rect(cornerRadius: 12, style: .continuous))
             .shadow(color: .black.opacity(isCurrent ? 0.08 : 0), radius: 2, y: 1)
-            .opacity(isLifted ? 0.35 : 1)
-            .overlay {
-                if isLifted {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.accentColor.opacity(0.8), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
-                }
-            }
+            .opacity(isLifted ? 0 : 1)
+            .background { if isLifted { SunkenSlot(cornerRadius: 12, active: dragging.target?.isFavourite == true) } }
             .contentShape(.rect)
             .onTapGesture { browser.open(favorite) }
             .onHover { hovering = $0 }
