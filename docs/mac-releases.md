@@ -3,6 +3,21 @@
 Browsa for Mac ships outside the App Store: Developer ID signed, notarised by Apple, and kept up to
 date in the app by [Sparkle](https://sparkle-project.org).
 
+## Launch checklist (1.0)
+
+In this order, so nothing points at a page that isn't there yet:
+
+1. **Deploy the website** from main (`wrangler deploy` in `website/`). This makes live, for the
+   first time: `/mac/`, `/mac/developers/`, `/download/` (and `/download/mac`, `/download/ios`),
+   the `/mac/appcast.xml` and `/mac/releases/` routes, and **`/demo/`**, Supper.
+2. **Check Supper** at https://browsa.app/demo/: the page loads with all eight photos, and the
+   browser console shows no Content-Security-Policy errors. Browsa's Watch a Demo and the Try it
+   prompt use this address in every build (SpikeBrowsa too); they only fall back to the copy in the
+   app bundle while it can't be reached. Keep `website/public/demo/` and `Mac/Resources/Demo/`
+   the same.
+3. `tools/release-mac.sh 1.0`
+4. `tools/publish-mac.sh 1.0`
+
 ## Making a release
 
 ```sh
