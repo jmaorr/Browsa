@@ -110,7 +110,7 @@ struct FeatureTitle: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .modifier(Arrive(p: phase(t, 0.55, 0.9) - out, size: size))
         }
-        .frame(width: size.width * 0.27, alignment: .leading)
+        .frame(width: size.width * 0.235, alignment: .leading)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .padding(.leading, size.width * 0.065)
         .frame(width: size.width, height: size.height)
