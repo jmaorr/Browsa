@@ -37,8 +37,8 @@ struct ImportOptions: Hashable, Sendable {
         case searchAndFavourites, searchOnly, skip
         var label: String {
             switch self {
-            case .searchAndFavourites: "Search them with ⌘T, and add the top few as Favourites"
-            case .searchOnly: "Search them with ⌘T"
+            case .searchAndFavourites: "Find them with ⌘T, and pin the top few as Favourites"
+            case .searchOnly: "Just find them with ⌘T"
             case .skip: "Don't import bookmarks"
             }
         }
@@ -63,7 +63,9 @@ struct ImportOptions: Hashable, Sendable {
     }
 
     var profile: String?
-    var bookmarks: Bookmarks = .searchAndFavourites
+    var importBookmarks = true
+    var bookmarkMode: Bookmarks = .searchAndFavourites
+    var bookmarks: Bookmarks { importBookmarks ? bookmarkMode : .skip }
     var favouriteCount = 8
     var history = true
     var historyRange: HistoryRange = .threeMonths

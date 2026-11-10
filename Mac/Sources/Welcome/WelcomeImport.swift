@@ -1,5 +1,7 @@
 import SwiftUI
 import AppKit
+import BrowserCore
+import Suggest
 
 /// The import card's state: which browsers are here, which one is picked, the options, and the
 /// import itself. Shared, so the card's instruction, its hero and the Configure sheet agree.
@@ -38,13 +40,33 @@ import AppKit
         if !needsAccess { refreshPreview() }
     }
 
+    /// Reads what's there to bring over, with everything switched on, so the counts show before
+    /// importing and stay put as things are toggled. Only the profile and history range re-read.
     func refreshPreview() {
         guard let source = choice, !needsAccess else { return }
-        let options = options
+        var full = options
+        full.importBookmarks = true
+        full.history = true
+        full.arcSpaces = true
+        let profile = full.profile, range = full.historyRange
+        previewing = true
         Task {
-            let data = try? await BrowserImport.read(source, options: options)
-            if choice == source, self.options == options { preview = data }
+            let data = try? await BrowserImport.read(source, options: full)
+            guard choice == source, options.profile == profile, options.historyRange == range else { return }
+            preview = data
+            previewing = false
         }
+    }
+
+    private(set) var previewing = false
+
+    /// The counts the options would bring over, from the preview.
+    var counts: (bookmarks: Int, favourites: Int, history: Int, spaces: Int, tabs: Int)? {
+        guard let p = preview else { return nil }
+        var seen = Set<String>()
+        let marks = p.bookmarks.filter { seen.insert(URLNormalizer.key(for: $0.url)).inserted }.count
+        return (marks, min(p.bar.count, options.favouriteCount), p.history.count, p.spaces.count,
+                p.spaces.reduce(0) { $0 + $1.pinned.count + $1.open.count })
     }
 
     /// Reads and lands the import, then reports what came over.
@@ -67,6 +89,8 @@ import AppKit
     }
 
     func reset() {
+        // Testing: lets Reset Progress import the same spaces again.
+        UserDefaults.standard.removeObject(forKey: "importedSpaces")
         phase = .idle
         choice = nil
         preview = nil
@@ -89,94 +113,202 @@ extension ImportSource {
     }
 }
 
-// MARK: - The card's instruction
+// MARK: - The card
 
-/// "Choose your old browser": the browsers actually on this Mac as chips, Import, and Configure
-/// for the finer choices. Safari, before it has Full Disk Access, opens the sheet to explain.
-struct ImportInstruction: View {
+/// The left of the import card: what to do, in a line, under the Choose badge. The doing happens
+/// in the importer on the right.
+struct ImportLead: View {
     let done: Bool
-    let tint: Color
+    @State private var model = WelcomeImport.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TryBadge(kind: .choose, done: done)
+                .environment(\.colorScheme, .light)
+            Text(line)
+                .font(.system(size: 13, weight: .medium))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var line: String {
+        switch model.phase {
+        case .done: "All in. Your \(model.choice?.name ?? "other browser") stays just as it was."
+        case .importing: "Bringing everything over…"
+        default: "Pick the browser you're coming from, then Import."
+        }
+    }
+}
+
+/// The importer itself, set into the right of the card: the browsers on this Mac, what each one
+/// would bring over with real counts, and Import. Configure opens the finer choices.
+struct ImportPanel: View {
     @Environment(Browser.self) private var browser
     @State private var model = WelcomeImport.shared
 
     var body: some View {
-        Instruction(kind: .choose, done: done, title: title) {
-            Text(hint).foregroundStyle(.secondary)
-        } trailing: {
-            ActionButton(title: buttonTitle, tint: tint, enabled: model.choice != nil && model.phase != .importing) {
+        VStack(alignment: .leading, spacing: 14) {
+            sourcePicker
+            if model.needsAccess {
+                access
+            } else {
+                rows
+            }
+            Spacer(minLength: 0)
+            footer
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(.background.opacity(0.7), in: .rect(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.primary.opacity(0.08)))
+        .padding(.vertical, 20)
+        .padding(.trailing, 20)
+        .onAppear { if model.sources.isEmpty { model.scan() } }
+        .onChange(of: model.options.profile) { model.refreshPreview() }
+        .onChange(of: model.options.historyRange) { model.refreshPreview() }
+        .sheet(isPresented: $model.showingSheet) { ImportSheet().environment(browser) }
+    }
+
+    private var sourcePicker: some View {
+        HStack(spacing: 6) {
+            if model.sources.isEmpty {
+                Text("No other browsers on this Mac").font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+            ForEach(model.sources) { s in
+                SourceButton(source: s, selected: model.choice == s) { model.pick(s) }
+            }
+        }
+    }
+
+    private var rows: some View {
+        let c = model.counts
+        let o = model.options
+        return VStack(spacing: 0) {
+            CountRow(symbol: "bookmark", title: "Bookmarks", value: c?.bookmarks, on: o.importBookmarks, picked: model.choice != nil)
+            Divider()
+            CountRow(symbol: "star", title: "Favourites", value: o.bookmarks == .searchAndFavourites ? c?.favourites : 0,
+                     on: o.bookmarks == .searchAndFavourites, picked: model.choice != nil)
+            Divider()
+            CountRow(symbol: "clock", title: "History", unit: "pages", value: c?.history, on: o.history, picked: model.choice != nil)
+            if model.choice?.isArc == true {
+                Divider()
+                CountRow(symbol: "sidebar.squares.left", title: "Spaces", unit: c.map { "· \($0.tabs) tabs" }, value: c?.spaces,
+                         on: o.arcSpaces, picked: true)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if model.previewing { ProgressView().controlSize(.mini).offset(y: -22) }
+        }
+    }
+
+    private var access: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "lock.shield").font(.system(size: 18)).foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Safari needs Full Disk Access").font(.system(size: 12.5, weight: .semibold))
+                Text("macOS protects Safari's bookmarks and history. Set Up shows you how, in three steps.")
+                    .font(.system(size: 11.5)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 8) {
+            if case .done(let r) = model.phase {
+                Label("Imported", systemImage: "checkmark.circle.fill")
+                    .help("\(r.bookmarks.formatted()) bookmarks, \(r.history.formatted()) pages\(r.spaces > 0 ? ", \(r.spaces) spaces" : "")")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(.green)
+                    .lineLimit(1)
+            } else if model.phase == .importing {
+                ProgressView().controlSize(.small)
+                Text("Importing…").font(.system(size: 11.5)).foregroundStyle(.secondary)
+            } else if case .failed(let message) = model.phase {
+                Text(message).font(.system(size: 11)).foregroundStyle(.red).lineLimit(2)
+            }
+            Spacer(minLength: 4)
+            Button("Configure", systemImage: "slider.horizontal.3") {
+                if model.choice == nil, let first = model.sources.first { model.pick(first) }
+                model.showingSheet = true
+            }
+            .buttonStyle(.glass)
+            .controlSize(.regular)
+            .disabled(model.sources.isEmpty)
+            Button(primaryTitle) {
                 if model.needsAccess { model.showingSheet = true } else { Task { await model.run(into: browser.library) } }
             }
-        } below: {
-            if model.sources.isEmpty {
-                Text("No other browsers found on this Mac.").font(.system(size: 11)).foregroundStyle(.secondary)
-            } else {
-                HStack(spacing: 6) {
-                    ForEach(model.sources) { s in
-                        ChoiceChip(title: s.name, selected: model.choice == s) {
-                            MiniFavicon(letter: s.letter, color: s.color, size: 14)
-                        } action: { model.pick(s) }
-                    }
-                    Spacer(minLength: 4)
-                    Button {
-                        if model.choice == nil, let first = model.sources.first { model.pick(first) }
-                        model.showingSheet = true
-                    } label: {
-                        Label("Configure", systemImage: "slider.horizontal.3")
-                            .font(.system(size: 11, weight: .medium))
-                            .padding(.horizontal, 8).padding(.vertical, 5)
-                            .background(Color.black.opacity(0.04), in: .capsule)
-                            .overlay(Capsule().strokeBorder(Color.black.opacity(0.08)))
-                            .fixedSize()
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .help("Choose what to bring over")
-                    .accessibilityLabel("Configure import")
-                }
-            }
-        }
-        .onAppear { if model.sources.isEmpty { model.scan() } }
-        .sheet(isPresented: $model.showingSheet) {
-            ImportSheet().environment(browser)
+            .buttonStyle(.glassProminent)
+            .controlSize(.regular)
+            .disabled(model.choice == nil || model.phase == .importing)
         }
     }
 
-    private var title: String {
-        switch model.phase {
-        case .done: "Brought over from \(model.choice?.name ?? "your browser")"
-        case .failed: "That didn't work"
-        default: "Choose your old browser"
-        }
-    }
-
-    private var hint: String {
-        switch model.phase {
-        case .importing: "Bringing everything over…"
-        case .done(let r): summary(r)
-        case .failed(let message): message
-        default: model.needsAccess ? "Safari needs one permission first" : "Bookmarks, history and, from Arc, your spaces"
-        }
-    }
-
-    private var buttonTitle: String {
-        if model.phase == .importing { return "Importing…" }
+    private var primaryTitle: String {
         if model.needsAccess { return "Set Up" }
         return model.result == nil ? "Import" : "Import Again"
     }
+}
 
-    private func summary(_ r: ImportResult) -> String {
-        var parts: [String] = []
-        if r.bookmarks > 0 { parts.append("\(r.bookmarks.formatted()) bookmarks") }
-        if r.history > 0 { parts.append("\(r.history.formatted()) pages") }
-        if r.spaces > 0 { parts.append("\(r.spaces) spaces") }
-        return parts.isEmpty ? "Nothing new to bring over" : parts.joined(separator: " · ")
+/// A browser to import from: its icon and name in a small glass capsule, tinted when picked.
+private struct SourceButton: View {
+    let source: ImportSource
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                MiniFavicon(letter: source.letter, color: source.color, size: 15)
+                Text(source.name).font(.system(size: 12, weight: .medium)).fixedSize()
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .foregroundStyle(selected ? Color.primary : Color.secondary)
+        }
+        .buttonStyle(.plain)
+        .glassEffect(selected ? .regular.tint(Color.accentColor.opacity(0.25)).interactive() : .regular.interactive(), in: .capsule)
+        .overlay(Capsule().strokeBorder(selected ? Color.accentColor.opacity(0.7) : .clear, lineWidth: 1.5))
+        .animation(.smooth(duration: 0.2), value: selected)
+    }
+}
+
+/// One thing that would come over, with its real count.
+private struct CountRow: View {
+    let symbol: String
+    let title: String
+    var unit: String? = nil
+    let value: Int?
+    let on: Bool
+    let picked: Bool
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: symbol).font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 18)
+            Text(title).font(.system(size: 12.5))
+            Spacer()
+            Group {
+                if !on {
+                    Text("Off").foregroundStyle(.tertiary)
+                } else if let value {
+                    Text("\(value.formatted())\(unit.map { " \($0)" } ?? "")").foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
+                } else {
+                    Text(picked ? "…" : "–").foregroundStyle(.tertiary)
+                }
+            }
+            .font(.system(size: 12).monospacedDigit())
+            .animation(.smooth, value: value)
+        }
+        .frame(height: 30)
+        .opacity(on ? 1 : 0.6)
     }
 }
 
 // MARK: - Configure
 
-/// The fuller import: which profile, how bookmarks land, how much history, Arc's spaces, and for
-/// Safari the walk through granting Full Disk Access.
+/// The fuller import, laid out like System Settings: where from, then each kind of thing with a
+/// switch to bring it or not, and its finer choice underneath when it's on. Safari first walks
+/// through granting Full Disk Access.
 struct ImportSheet: View {
     @Environment(Browser.self) private var browser
     @Environment(\.dismiss) private var dismiss
@@ -184,22 +316,73 @@ struct ImportSheet: View {
     @State private var accessTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        @Bindable var model = model
+        VStack(spacing: 0) {
             header
-            Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    picker
-                    if model.needsAccess { access } else { options }
+            Form {
+                Section {
+                    HStack(spacing: 6) {
+                        ForEach(model.sources) { s in
+                            SourceButton(source: s, selected: model.choice == s) { model.pick(s) }
+                        }
+                    }
+                    if let source = model.choice, source.profiles.count > 1 {
+                        Picker("Profile", selection: Binding(get: { model.options.profile ?? "" }, set: { model.options.profile = $0 })) {
+                            ForEach(source.profiles) { Text($0.name).tag($0.folder) }
+                        }
+                    }
+                } header: { Text("Import from") }
+
+                if model.needsAccess {
+                    Section { access }
+                } else {
+                    let c = model.counts
+                    Section {
+                        Toggle(isOn: $model.options.importBookmarks) {
+                            row("Bookmarks", "bookmark", count: c.map { "\($0.bookmarks.formatted())" })
+                        }
+                        if model.options.importBookmarks {
+                            ChoiceList(selection: $model.options.bookmarkMode,
+                                       options: [.searchAndFavourites, .searchOnly], label: \.label)
+                        }
+                    }
+                    Section {
+                        Toggle(isOn: $model.options.history) {
+                            row("History", "clock", count: c.map { "\($0.history.formatted()) pages" })
+                        }
+                        if model.options.history {
+                            LabeledContent("How far back") {
+                                GlassSegmented(selection: $model.options.historyRange,
+                                               options: ImportOptions.HistoryRange.allCases, label: \.label)
+                            }
+                        }
+                    } footer: {
+                        Text("History helps ⌘T suggest the sites you visit most.").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    if model.choice?.isArc == true {
+                        Section {
+                            Toggle(isOn: $model.options.arcSpaces) {
+                                row("Spaces", "sidebar.squares.left", count: c.map { "\($0.spaces) spaces · \($0.tabs) tabs" })
+                            }
+                            if model.options.arcSpaces, let spaces = model.preview?.spaces, !spaces.isEmpty {
+                                Text(spaces.map(\.name).joined(separator: ", "))
+                                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                            }
+                        } footer: {
+                            Text("Your Arc spaces come over with their pinned and open tabs. Tabs load when you open them.")
+                                .font(.system(size: 11)).foregroundStyle(.secondary)
+                        }
+                    }
                 }
-                .padding(24)
             }
-            Divider()
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
             footer
         }
-        .frame(width: 520, height: 560)
+        .frame(width: 540, height: 600)
         .onReceive(accessTimer) { _ in if model.needsAccess { model.recheckAccess() } }
-        .onChange(of: model.options) { model.refreshPreview() }
+        .onChange(of: model.options.profile) { model.refreshPreview() }
+        .onChange(of: model.options.historyRange) { model.refreshPreview() }
     }
 
     private var header: some View {
@@ -212,7 +395,7 @@ struct ImportSheet: View {
                                            startPoint: .top, endPoint: .bottom), in: .rect(cornerRadius: 9, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
                 Text("Bring your stuff").font(.system(size: 16, weight: .semibold))
-                Text("Your other browser stays exactly as it is. Passwords aren't imported.")
+                Text("Your other browser stays just as it is. Passwords are never imported.")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
             Spacer()
@@ -222,77 +405,32 @@ struct ImportSheet: View {
                 .keyboardShortcut(.cancelAction)
                 .accessibilityLabel("Close")
         }
-        .padding(20)
+        .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 4)
     }
 
-    private var picker: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("From").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                ForEach(model.sources) { s in
-                    ChoiceChip(title: s.name, selected: model.choice == s) {
-                        MiniFavicon(letter: s.letter, color: s.color, size: 15)
-                    } action: { model.pick(s) }
-                }
-            }
-            if let source = model.choice, source.profiles.count > 1 {
-                Picker("Profile", selection: Binding(get: { model.options.profile ?? "" }, set: { model.options.profile = $0 })) {
-                    ForEach(source.profiles) { Text($0.name).tag($0.folder) }
-                }
-                .frame(maxWidth: 280)
-            }
-        }
-    }
-
-    @ViewBuilder private var options: some View {
-        @Bindable var model = model
-        section("Bookmarks", symbol: "bookmark") {
-            Picker("", selection: $model.options.bookmarks) {
-                ForEach(ImportOptions.Bookmarks.allCases, id: \.self) { Text($0.label).tag($0) }
-            }
-            .pickerStyle(.radioGroup)
-            .labelsHidden()
-        } count: { model.preview.map { "\($0.bookmarks.count.formatted())" } }
-
-        section("History", symbol: "clock") {
-            Toggle("Bring over your history, so ⌘T suggests the sites you visit", isOn: $model.options.history)
-            Picker("", selection: $model.options.historyRange) {
-                ForEach(ImportOptions.HistoryRange.allCases, id: \.self) { Text($0.label).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: 320)
-            .disabled(!model.options.history)
-        } count: { model.options.history ? model.preview.map { "\($0.history.count.formatted()) pages" } : nil }
-
-        if model.choice?.isArc == true {
-            section("Spaces", symbol: "sidebar.squares.left") {
-                Toggle("Recreate your Arc spaces, with their pinned and open tabs", isOn: $model.options.arcSpaces)
-                if let spaces = model.preview?.spaces, !spaces.isEmpty {
-                    Text(spaces.map { "\($0.name) (\($0.pinned.count + $0.open.count))" }.joined(separator: ", "))
-                        .font(.system(size: 11.5)).foregroundStyle(.secondary)
-                }
-            } count: { model.options.arcSpaces ? model.preview.map { "\($0.spaces.count)" } : nil }
+    private func row(_ title: String, _ symbol: String, count: String?) -> some View {
+        HStack {
+            Label(title, systemImage: symbol)
+            Spacer()
+            if let count { Text(count).foregroundStyle(.secondary).monospacedDigit() }
         }
     }
 
     /// Safari keeps its files in a protected folder, so the person grants Full Disk Access first.
     private var access: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "lock.shield")
-                    .font(.system(size: 22))
-                    .foregroundStyle(.orange)
+                Image(systemName: "lock.shield").font(.system(size: 22)).foregroundStyle(.orange)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Safari needs one permission").font(.system(size: 14, weight: .semibold))
-                    Text("macOS keeps Safari's bookmarks and history in a protected folder. To read them, Browsa needs Full Disk Access. Browsa only reads Safari's files, and only when you import.")
-                        .font(.system(size: 12.5)).foregroundStyle(.secondary)
+                    Text("Safari needs one permission").font(.system(size: 13.5, weight: .semibold))
+                    Text("macOS keeps Safari's bookmarks and history in a protected folder. To read them, Browsa needs Full Disk Access. It only reads Safari's files, and only when you import.")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 9) {
                 step(1, "Open Privacy & Security › Full Disk Access")
-                step(2, "Turn on Browsa. If it isn't listed, click + and choose Browsa in Applications")
+                step(2, "Turn on Browsa. If it isn't listed, click + and choose Browsa")
                 step(3, "Come back here. Browsa notices on its own")
             }
             HStack(spacing: 10) {
@@ -304,8 +442,7 @@ struct ImportSheet: View {
             Text("If it still waits after you've turned it on, quit and reopen Browsa.")
                 .font(.system(size: 11)).foregroundStyle(.tertiary)
         }
-        .padding(16)
-        .background(.orange.opacity(0.06), in: .rect(cornerRadius: 12, style: .continuous))
+        .padding(.vertical, 6)
     }
 
     private func step(_ n: Int, _ text: String) -> some View {
@@ -313,18 +450,6 @@ struct ImportSheet: View {
             Text("\(n)").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
                 .frame(width: 18, height: 18).background(Circle().fill(.orange))
             Text(text).font(.system(size: 12.5))
-        }
-    }
-
-    private func section<Content: View>(_ title: String, symbol: String, @ViewBuilder content: () -> Content,
-                                         count: () -> String?) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label(title, systemImage: symbol).font(.system(size: 13, weight: .semibold))
-                Spacer()
-                if let c = count() { Text(c).font(.system(size: 11.5).monospacedDigit()).foregroundStyle(.secondary) }
-            }
-            content()
         }
     }
 
@@ -342,9 +467,73 @@ struct ImportSheet: View {
                 }
             }
             .buttonStyle(.glassProminent)
+            .controlSize(.large)
             .keyboardShortcut(.defaultAction)
             .disabled(model.choice == nil || model.needsAccess || model.phase == .importing)
         }
-        .padding(16)
+        .padding(.horizontal, 24).padding(.vertical, 16)
+    }
+}
+
+/// A choice between a few options, as rows with a check on the chosen one, like Settings.
+private struct ChoiceList<T: Hashable>: View {
+    @Binding var selection: T
+    let options: [T]
+    let label: KeyPath<T, String>
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ForEach(options, id: \.self) { o in
+                Button { withAnimation(.smooth(duration: 0.2)) { selection = o } } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: selection == o ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 15))
+                            .foregroundStyle(selection == o ? Color.accentColor : Color.secondary.opacity(0.5))
+                            .contentTransition(.symbolEffect(.replace))
+                        Text(o[keyPath: label]).font(.system(size: 12.5))
+                        Spacer()
+                    }
+                    .padding(.vertical, 5)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.leading, 26)
+    }
+}
+
+/// A segmented choice in Liquid Glass: a glass track with the chosen segment as a tinted glass pill
+/// that slides between options.
+struct GlassSegmented<T: Hashable>: View {
+    @Binding var selection: T
+    let options: [T]
+    let label: KeyPath<T, String>
+    @Namespace private var ns
+
+    var body: some View {
+        GlassEffectContainer(spacing: 4) {
+            HStack(spacing: 2) {
+                ForEach(options, id: \.self) { o in
+                    Button { withAnimation(.bouncy(duration: 0.35)) { selection = o } } label: {
+                        Text(o[keyPath: label])
+                            .font(.system(size: 12, weight: selection == o ? .semibold : .regular))
+                            .padding(.horizontal, 12).padding(.vertical, 5)
+                            .foregroundStyle(selection == o ? Color.primary : Color.secondary)
+                            .background {
+                                if selection == o {
+                                    Capsule().fill(Color.accentColor.opacity(0.16))
+                                        .glassEffect(.regular.tint(Color.accentColor.opacity(0.2)), in: .capsule)
+                                        .matchedGeometryEffect(id: "pill", in: ns)
+                                }
+                            }
+                            .contentShape(.capsule)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(3)
+            .glassEffect(.regular, in: .capsule)
+        }
     }
 }

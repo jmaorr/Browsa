@@ -125,7 +125,7 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         case .spaces: "A place to keep your tabs organised for Work, Personal, and anything else."
         case .newTab: "Search, type an address, or jump to a tab you already have open."
         case .commands: "Split the view, pin a tab, ask an agent. Everything is a few letters away."
-        case .importing: "Bring over your bookmarks, history, passwords and open tabs. Your old browser stays just as it was."
+        case .importing: "Bring over your bookmarks and history, and from Arc, your spaces and tabs. Your old browser stays as it is."
         case .tour: "A quick look at split view, notes on any page, Radar and agents at work."
         case .library: "Verified extensions, bundled into kits, so you're set up for coding or agents in one click."
         case .agents: "Browsa runs an MCP server on your Mac, so your agents can open tabs, read pages and leave notes."
@@ -672,9 +672,8 @@ private struct GalleryCard: View {
         Color.clear
             .overlay {
                 if stop == .importing {
-                    StopHero(stop: stop, playing: importer.phase == .importing, start: importStart,
-                             choice: importer.choice?.name, result: importer.result)
-                        .environment(\.colorScheme, scheme)
+                    // The importer itself sits in the card's right side.
+                    ImportPanel().environment(\.colorScheme, scheme)
                 } else {
                     StopHero(stop: stop, playing: playing && stop != .spaces, start: playStart,
                              spacePos: stop == .spaces ? spacePos : nil,
@@ -683,7 +682,7 @@ private struct GalleryCard: View {
                 }
             }
             .clipped()
-            .allowsHitTesting(false)
+            .allowsHitTesting(stop == .importing)
     }
 
     // MARK: Text column
@@ -740,7 +739,7 @@ private struct GalleryCard: View {
                 HStack(spacing: 4) { BigKey(text: "⌘"); BigKey(text: t ? "T" : "K") }
             } below: { EmptyView() }
         case .importing:
-            ImportInstruction(done: done, tint: tint)
+            ImportLead(done: done)
         case .tour:
             Instruction(kind: .watch, done: done, title: "Watch the tour") {
                 Text("Ten seconds. No clicking needed.").foregroundStyle(.secondary)
