@@ -126,7 +126,7 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         case .newTab: "Search, type an address, or jump to a tab you already have open."
         case .commands: "Launch powerful plugins like Radar, Comments and more, without leaving the keyboard."
         case .importing: "Bring over your bookmarks and history, and from Arc, your spaces and tabs. Your old browser stays as it is."
-        case .tour: "A quick look at Reader, notes on any page, Radar and agents at work."
+        case .tour: "Browsa's film: Spaces, notes on any page, and your agents at work. Sound on."
         case .library: "Powerful plugins, extensions and MCPs built for the hustle."
         case .agents: "Browsa runs an MCP server on your Mac, so your agents can open tabs, read pages and leave notes."
         case .makeDefault: "Links from Mail, Slack and everywhere else will open here."
@@ -153,7 +153,7 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         case .newTab: "Press ⌘T"
         case .commands: "Press ⌘K"
         case .importing: "Import from another browser"
-        case .tour: "Watch the tour"
+        case .tour: "Watch the film"
         case .library: "Turn on the Agent Pack"
         case .agents: "Connect an agent"
         case .makeDefault: "Set Browsa as your default browser"
@@ -164,7 +164,7 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         switch self {
         case .newTab, .commands, .makeDefault: "10 sec"
         case .spaces: "30 sec"
-        case .tour: "10 sec"
+        case .tour: "30 sec"
         case .importing, .library, .agents: "1 min"
         }
     }
@@ -667,7 +667,7 @@ private struct GalleryCard: View {
         case .importing:
             if let name = choice, let s = importer.sources.first(where: { $0.name == name }) { importer.pick(s) }
             Task { await importer.run(into: browser.library) }
-        case .tour: playing ? stopPlaying() : play(completeAt: 0.98)
+        case .tour: WelcomeFilm.shared.toggle(finished: complete)
         case .library: break
         case .agents: break
         case .makeDefault: play(completeAt: 0.5)
@@ -684,6 +684,9 @@ private struct GalleryCard: View {
                 if stop == .importing {
                     // The importer itself sits in the card's right side.
                     ImportPanel().environment(\.colorScheme, scheme)
+                } else if stop == .tour {
+                    // The film itself, playing in the card.
+                    FilmPanel(complete: complete)
                 } else if stop == .library {
                     // The Agent Pack, for real: one switch turns on Radar, Notes and Agents.
                     AgentPackPanel(done: done, complete: complete).environment(\.colorScheme, scheme)
@@ -698,7 +701,7 @@ private struct GalleryCard: View {
                 }
             }
             .clipped()
-            .allowsHitTesting(stop == .importing || stop == .agents || stop == .library)
+            .allowsHitTesting(stop == .importing || stop == .agents || stop == .library || stop == .tour)
     }
 
     // MARK: Text column
@@ -757,11 +760,12 @@ private struct GalleryCard: View {
         case .importing:
             ImportLead(done: done, skip: complete)
         case .tour:
-            Instruction(kind: .watch, done: done, title: "Watch the tour") {
-                Text("Ten seconds. No clicking needed.").foregroundStyle(.secondary)
+            let filmPlaying = WelcomeFilm.shared.isPlaying
+            Instruction(kind: .watch, done: done, title: "Watch the film") {
+                Text("Thirty seconds, with sound.").foregroundStyle(.secondary)
             } trailing: {
                 Button(action: act) {
-                    Image(systemName: playing ? "pause.fill" : "play.fill")
+                    Image(systemName: filmPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 15))
                         .foregroundStyle(.white)
                         .frame(width: 42, height: 42)
@@ -770,7 +774,7 @@ private struct GalleryCard: View {
                         .contentTransition(.symbolEffect(.replace))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(playing ? "Pause the tour" : "Play the tour")
+                .accessibilityLabel(filmPlaying ? "Pause the film" : "Play the film")
             } below: { EmptyView() }
         case .library:
             LibraryLead(done: done)
