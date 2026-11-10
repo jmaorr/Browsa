@@ -67,6 +67,7 @@ struct AgentConnectPanel: View {
     @State private var copied = false
     @State private var revealed = false
     @State private var demoStarted = false
+    @State private var promptCopied = false
 
     private var agents: AgentBridge? { browser.library.agents }
 
@@ -113,25 +114,31 @@ struct AgentConnectPanel: View {
                 .font(.system(size: 12)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
-                Button {
-                    Task { await setup.add(name: AgentBridge.mcpName, url: agents.endpoint, token: agents.token) }
-                } label: {
-                    Label(setup.state == .added ? "Added to Claude Code" : "Add to Claude Code",
-                          systemImage: setup.state == .added ? "checkmark" : "plus")
+                if setup.state == .added {
+                    // Once added, the next step: a ready-made prompt to watch it drive Browsa.
+                    tryPrompt
+                } else {
+                    Button {
+                        Task { await setup.add(name: AgentBridge.mcpName, url: agents.endpoint, token: agents.token) }
+                    } label: {
+                        Label("Add to Claude Code", systemImage: "plus")
+                    }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.large)
+                    .disabled(setup.state == .working)
                 }
-                .buttonStyle(.glassProminent)
-                .buttonBorderShape(.capsule)
-                .controlSize(.large)
-                .disabled(setup.state == .working || setup.state == .added)
                 if setup.state == .working { ProgressView().controlSize(.small) }
             }
             Group {
                 switch setup.state {
                 case .added:
-                    if agents.isConnected(.claude) {
-                        Label("Connected", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                    if promptCopied {
+                        Text("Copied. Paste it into a new Claude Code chat and watch it drive Browsa in the Agent space.")
+                    } else if agents.isConnected(.claude) {
+                        Label("Added and connected", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                     } else {
-                        Text("Start a new Claude Code session. It connects on its first call.")
+                        Label("Added to Claude Code", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                     }
                 case .notInstalled:
                     Text("Claude Code isn't installed on this Mac. Install it, or copy the command from the Agents panel.")
@@ -176,7 +183,7 @@ struct AgentConnectPanel: View {
                     .controlSize(.large)
                 Spacer(minLength: 0)
                 if agents.isConnected(agent) {
-                    Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.green)
+                    tryPrompt
                 } else if copied {
                     HStack(spacing: 5) {
                         ProgressView().controlSize(.mini)
@@ -185,6 +192,19 @@ struct AgentConnectPanel: View {
                 }
             }
         }
+    }
+
+    /// Copies Browsa's example task, for the person to paste into their agent's chat.
+    private var tryPrompt: some View {
+        Button(promptCopied ? "Prompt Copied" : "Try Example Prompt", systemImage: promptCopied ? "checkmark" : "text.bubble") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(AgentDemo.prompt, forType: .string)
+            withAnimation(.smooth(duration: 0.2)) { promptCopied = true }
+        }
+        .buttonStyle(.glassProminent)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        .help(AgentDemo.prompt)
     }
 
     private var footer: some View {
