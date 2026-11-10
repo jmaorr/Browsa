@@ -35,16 +35,14 @@ enum AgentIdentity {
     }
 }
 
-/// An agent's app icon, or the fallback symbol.
+/// An agent's app icon, or Browsa's.
 struct AgentIcon: View {
     let caller: String
     var size: CGFloat = 14
 
     var body: some View {
-        if let image = AgentIdentity.icon(for: caller) {
-            Image(nsImage: image).resizable().interpolation(.high).frame(width: size, height: size)
-        } else {
-            Image(systemName: AgentIdentity.symbol).font(.system(size: size * 0.8)).frame(width: size, height: size)
-        }
+        // Known agents: their app's icon. Browsa's own demo, and agents we don't recognise: Browsa's.
+        Image(nsImage: AgentIdentity.icon(for: caller) ?? NSApp.applicationIconImage)
+            .resizable().interpolation(.high).frame(width: size, height: size)
     }
 }

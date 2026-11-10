@@ -5,11 +5,11 @@ import Extensibility
 
 // MARK: - Colour
 
-/// Red, like a recording light: an agent is acting live. (Agents' names stay purple; this is for
-/// "happening now": the pill, the cursor, the caption.)
+/// An agent acting live: the pill, the cursor, the caption. The same warm yellow as notes, so
+/// "an agent is here" and "a note is here" read as one family.
 enum AgentLive {
-    static let color = Color(red: 0.92, green: 0.23, blue: 0.20)
-    static let css = "#eb3b33"
+    static let color = Color(red: 0.96, green: 0.71, blue: 0.04)
+    static let css = "#f5b60b"
 }
 
 // MARK: - Words
@@ -79,7 +79,7 @@ enum AgentWords {
 
 // MARK: - Cursor on the page
 
-/// A red pointer (the iPad pointer symbol) that glides to what the agent is about to click or type
+/// A yellow pointer (the iPad pointer symbol) that glides to what the agent is about to click or type
 /// into, a ripple on a click, an outline on a field. Runs in its own world; waits until it arrives.
 enum AgentCursor {
     static func target(_ args: JSONValue) -> String {
@@ -142,7 +142,7 @@ enum AgentCursor {
       } else {
         Object.assign(mark.style, { position: 'fixed', zIndex: 2147483646, pointerEvents: 'none', left: (r.left - 4) + 'px', top: (r.top - 4) + 'px',
           width: (r.width + 8) + 'px', height: (r.height + 8) + 'px', borderRadius: '8px', border: '2px solid __LIVE__',
-          boxShadow: '0 0 0 4px rgba(235,59,51,.18)', transition: 'opacity .4s' });
+          boxShadow: '0 0 0 4px rgba(245,182,11,.22)', transition: 'opacity .4s' });
         root.appendChild(mark);
         setTimeout(() => { mark.style.opacity = '0'; setTimeout(() => mark.remove(), 400); }, 1600);
       }

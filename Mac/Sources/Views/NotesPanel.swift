@@ -5,7 +5,7 @@ import BrowserEngine
 import Extensibility
 import WebKitEngine
 
-/// Yellow, like a sticky note: it reads as "a note" on any site and stays clear of agents' red.
+/// Yellow, like a sticky note: it reads as "a note" on any site. Agents acting live share it.
 enum NoteColor {
     static let pin = Color(red: 0.96, green: 0.71, blue: 0.04)
     static let ink = Color(red: 0.11, green: 0.09, blue: 0)
@@ -417,7 +417,7 @@ private struct AgentWorkingLine: View {
             if let agent = browser.library.agents.working(on: browser.currentTab?.url) {
                 HStack(spacing: 8) {
                     Circle().fill(AgentLive.color).frame(width: 7, height: 7).symbolEffect(.pulse)
-                    Text("\(agent) is working on this page").font(.caption.weight(.medium)).foregroundStyle(AgentLive.color)
+                    Text("\(agent) is working on this page").font(.caption.weight(.medium))
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 10).padding(.vertical, 7)
@@ -802,7 +802,7 @@ private struct AuthorBadge: View {
         case .you: Text("You").font(.caption.weight(.semibold))
         case .agent(let name):
             Label { Text(name) } icon: { AgentIcon(caller: name, size: 12) }
-                .font(.caption.weight(.semibold)).foregroundStyle(.purple)
+                .font(.caption.weight(.semibold))
         }
     }
 }

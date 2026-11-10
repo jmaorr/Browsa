@@ -421,7 +421,7 @@ private struct TryItCard: View {
                 .textSelection(.enabled)
                 .padding(9)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.purple.opacity(0.07), in: .rect(cornerRadius: 8))
+                .background(AgentLive.color.opacity(0.12), in: .rect(cornerRadius: 8))
             Button(copied ? "Copied" : "Copy Prompt") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(AgentDemo.prompt, forType: .string)
