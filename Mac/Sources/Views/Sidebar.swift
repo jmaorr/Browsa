@@ -10,6 +10,7 @@ struct Sidebar: View {
     @Environment(Browser.self) private var browser
     /// Floating over the page (undocked), rather than beside it.
     var isFloating = false
+    @State private var dragging = SidebarDragging()
 
     var body: some View {
         VStack(spacing: 10) {
@@ -32,6 +33,13 @@ struct Sidebar: View {
                 .introArrival(5)
         }
         .background { SpaceSwipeArea { browser.selectAdjacentSpace($0) } }
+        .overlay(alignment: .topLeading) { LiftedTabRow() }
+        .coordinateSpace(.named(SidebarDragging.coordinateSpace))
+        .onGeometryChange(for: CGPoint.self) { $0.frame(in: .global).origin } action: { dragging.originInWindow = $0 }
+        .environment(dragging)
+        #if SPIKE
+        .onAppear { SidebarDragging.latest = dragging }
+        #endif
     }
 
     /// Room for the traffic lights, then back, forward and reload, like Arc.

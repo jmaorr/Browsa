@@ -272,6 +272,14 @@ enum SpikeHarness {
             f.origin.y += f.height - h
             f.size = CGSize(width: w, height: h)
             window.setFrame(f, display: true, animate: false)
+        case "sidebarDrag":
+            // SwiftUI drag gestures ignore posted events while SpikeBrowsa is in the background, so
+            // this drives the sidebar's own drag directly: same targeting, shuffle and settle.
+            guard let from = j["from"] as? [Double], let to = j["to"] as? [Double], from.count == 2, to.count == 2,
+                  let dragging = SidebarDragging.latest else { return .error("Give from [x,y] and to [x,y] in window points") }
+            let ok = await dragging.spikeDrag(from: CGPoint(x: from[0], y: from[1]), to: CGPoint(x: to[0], y: to[1]),
+                                              duration: j["duration"] as? Double ?? 1.2, browser: browser)
+            if !ok { return .error("No tab row at \(from)") }
         case "front":
             // The one action that's meant to bring SpikeBrowsa forward.
             NSApp.activate()
