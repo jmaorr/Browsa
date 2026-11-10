@@ -95,7 +95,10 @@ final class AgentServer {
         // Supper, the demo site agents can practise on. Public, read-only, and only on this Mac.
         if request.method == "GET", request.path == "/demo" || request.path == "/demo/",
            let url = Bundle.main.url(forResource: "supper", withExtension: "html"), let page = try? Data(contentsOf: url) {
-            return send(.init(status: 200, contentType: "text/html; charset=utf-8", data: page), on: connection)
+            var response = HTTPResponse(status: 200, contentType: "text/html; charset=utf-8", data: page)
+            // Always the copy in this build, never one a restored tab cached.
+            response.headers["Cache-Control"] = "no-store"
+            return send(response, on: connection)
         }
         guard request.headers["authorization"] == "Bearer \(token)" else {
             return send(.init(status: 401, body: "Add the token from Browsa's Settings"), on: connection)
