@@ -236,6 +236,7 @@ enum WelcomeLevel: Int, CaseIterable {
 
     func reset() {
         generation += 1
+        WelcomeImport.shared.reset()
         done = []
         UserDefaults.standard.removeObject(forKey: Self.key)
     }
@@ -489,6 +490,7 @@ private struct GalleryCard: View {
     var active = true
     let complete: () -> Void
     @Environment(\.colorScheme) private var scheme
+    @Environment(Browser.self) private var browser
     @State private var debug = WelcomeDebug.shared
     @State private var input = WelcomeInput.shared
 
@@ -498,6 +500,8 @@ private struct GalleryCard: View {
     @State private var playTasks: [Task<Void, Never>] = []
     /// The browser, kit or agent picked in the instruction card.
     @State private var choice: String?
+    @State private var importer = WelcomeImport.shared
+    @State private var importStart = Date.now
 
     // Spaces: the person drives the hero by swiping on the card or with ⌃1–3 / ⌥⌘← →.
     @State private var spacePos = 0.0
@@ -534,6 +538,11 @@ private struct GalleryCard: View {
         .shadow(color: .black.opacity(hovering ? 0.12 : 0.05), radius: hovering ? 16 : 6, y: hovering ? 8 : 3)
         .animation(.smooth(duration: 0.3), value: hovering)
         .onHover { hovering = $0 }
+        .onChange(of: importer.phase) { _, phase in
+            guard stop == .importing else { return }
+            if phase == .importing { importStart = .now }
+            if case .done = phase { complete() }
+        }
         .onChange(of: debug.act?.id) {
             guard let a = debug.act, a.stop == stop else { return }
             if let c = a.choice { choice = c }
@@ -646,7 +655,9 @@ private struct GalleryCard: View {
     /// The card's main action: import, play the tour, add the kit, connect the agent, make default.
     private func act() {
         switch stop {
-        case .importing: play(completeAt: 0.8)
+        case .importing:
+            if let name = choice, let s = importer.sources.first(where: { $0.name == name }) { importer.pick(s) }
+            Task { await importer.run(into: browser.library) }
         case .tour: playing ? stopPlaying() : play(completeAt: 0.98)
         case .library, .agents: play(completeAt: 0.6)
         case .makeDefault: play(completeAt: 0.5)
@@ -660,10 +671,16 @@ private struct GalleryCard: View {
         // An overlay on a clear view, so the hero's own size never widens the card.
         Color.clear
             .overlay {
-                StopHero(stop: stop, playing: playing && stop != .spaces, start: playStart,
-                         spacePos: stop == .spaces ? spacePos : nil,
-                         rest: done ? stop.doneRest : stop.rest, choice: choice)
-                    .environment(\.colorScheme, scheme)
+                if stop == .importing {
+                    StopHero(stop: stop, playing: importer.phase == .importing, start: importStart,
+                             choice: importer.choice?.name, result: importer.result)
+                        .environment(\.colorScheme, scheme)
+                } else {
+                    StopHero(stop: stop, playing: playing && stop != .spaces, start: playStart,
+                             spacePos: stop == .spaces ? spacePos : nil,
+                             rest: done ? stop.doneRest : stop.rest, choice: choice)
+                        .environment(\.colorScheme, scheme)
+                }
             }
             .clipped()
             .allowsHitTesting(false)
@@ -723,19 +740,7 @@ private struct GalleryCard: View {
                 HStack(spacing: 4) { BigKey(text: "⌘"); BigKey(text: t ? "T" : "K") }
             } below: { EmptyView() }
         case .importing:
-            Instruction(kind: .choose, done: done, title: "Choose your old browser") {
-                Text("Bookmarks, history, passwords and open tabs").foregroundStyle(.secondary)
-            } trailing: {
-                ActionButton(title: playing ? "Importing…" : "Import", tint: tint, enabled: choice != nil && !playing, action: act)
-            } below: {
-                HStack(spacing: 6) {
-                    ForEach(WelcomeBrowsers.all, id: \.name) { b in
-                        ChoiceChip(title: b.name, selected: choice == b.name) {
-                            MiniFavicon(letter: b.letter, color: b.color, size: 14)
-                        } action: { choice = b.name }
-                    }
-                }
-            }
+            ImportInstruction(done: done, tint: tint)
         case .tour:
             Instruction(kind: .watch, done: done, title: "Watch the tour") {
                 Text("Ten seconds. No clicking needed.").foregroundStyle(.secondary)
@@ -793,7 +798,7 @@ private struct GalleryCard: View {
 
 /// The instruction card every stop shares: a badge above a small white card with the action, a
 /// hint under it, the control or gesture on the right, and choices below when there are any.
-private struct Instruction<Hint: View, Trailing: View, Below: View>: View {
+struct Instruction<Hint: View, Trailing: View, Below: View>: View {
     let kind: TryBadge.Kind
     let done: Bool
     let title: String
@@ -826,7 +831,7 @@ private struct Instruction<Hint: View, Trailing: View, Below: View>: View {
 }
 
 /// A pick in an instruction card: a small white chip, outlined when chosen.
-private struct ChoiceChip<Icon: View>: View {
+struct ChoiceChip<Icon: View>: View {
     let title: String
     let selected: Bool
     @ViewBuilder let icon: Icon
@@ -849,7 +854,7 @@ private struct ChoiceChip<Icon: View>: View {
 }
 
 /// The instruction card's main button, in the stop's colour.
-private struct ActionButton: View {
+struct ActionButton: View {
     let title: String
     let tint: Color
     var enabled = true
@@ -938,7 +943,7 @@ private struct DoneTile: View {
 }
 
 /// "Try it", "Watch" or "Choose", or "Done" once learned: a small white pill above the instruction card.
-private struct TryBadge: View {
+struct TryBadge: View {
     enum Kind { case tryIt, watch, choose }
     let kind: Kind
     let done: Bool

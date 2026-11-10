@@ -176,7 +176,8 @@ targets:
     entitlements:
       path: Spike/SpikeBrowsa.entitlements
       properties:
-        com.apple.security.app-sandbox: true
+        # Not sandboxed, like Browsa itself, so the importer can read other browsers' files.
+        # Its data stays apart from Browsa's anyway: unsandboxed, AppFolders keys it by bundle ID.
         com.apple.security.network.client: true
         # The agent endpoint, the control channel and the mock dev servers, all on 127.0.0.1.
         com.apple.security.network.server: true

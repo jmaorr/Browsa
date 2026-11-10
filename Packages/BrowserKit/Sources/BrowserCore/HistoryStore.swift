@@ -68,6 +68,48 @@ public actor HistoryStore: HistoryIndex {
         scheduleSave()
     }
 
+    /// A page from another browser's history or bookmarks, for `importVisits`.
+    public struct ImportedVisit: Sendable {
+        public var url: URL
+        public var title: String
+        public var visitCount: Int
+        public var lastVisit: Date
+        public var isBookmark: Bool
+        public init(url: URL, title: String, visitCount: Int, lastVisit: Date, isBookmark: Bool) {
+            self.url = url
+            self.title = title
+            self.visitCount = visitCount
+            self.lastVisit = lastVisit
+            self.isBookmark = isBookmark
+        }
+    }
+
+    /// Brings in another browser's history and bookmarks. An imported page starts with a damped
+    /// score from its visit count, dated to its last visit, so it suggests well without crowding
+    /// out what's visited here. Returns how many pages were new.
+    @discardableResult
+    public func importVisits(_ items: [ImportedVisit]) -> Int {
+        var added = 0
+        for item in items {
+            guard let scheme = item.url.scheme, scheme == "http" || scheme == "https" else { continue }
+            let key = URLNormalizer.key(for: item.url)
+            let score = (item.isBookmark ? 1.6 : 0) + min(Double(item.visitCount), 30) * 0.6
+            if var r = records[key] {
+                r.frecency += frecency.decayed(score, from: item.lastVisit, to: r.lastUpdate)
+                r.visitCount += item.visitCount
+                r.isBookmark = r.isBookmark || item.isBookmark
+                if r.title.isEmpty { r.title = item.title }
+                records[key] = r
+            } else {
+                records[key] = Record(url: item.url, title: item.title, frecency: score, lastUpdate: item.lastVisit,
+                                      visitCount: item.visitCount, isBookmark: item.isBookmark)
+                added += 1
+            }
+        }
+        scheduleSave()
+        return added
+    }
+
     public func clearAll() {
         records.removeAll()
         scheduleSave()

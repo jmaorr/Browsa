@@ -182,6 +182,8 @@ struct StopHero: View {
     var rest: Double? = nil
     /// What the person picked: the browser, the kit or the agent.
     var choice: String? = nil
+    /// Import only: what really came over.
+    var result: ImportResult? = nil
     @State private var opened = Date.now
 
     var body: some View {
@@ -200,7 +202,7 @@ struct StopHero: View {
             case .spaces: SpacesHero(t: t, pos: spacePos)
             case .newTab: ShortcutHero(t: t, letter: "T", mode: .newTab)
             case .commands: ShortcutHero(t: t, letter: "K", mode: .commands)
-            case .importing: ImportHero(t: t, from: choice ?? "Chrome")
+            case .importing: ImportHero(t: t, from: choice ?? "Chrome", result: result, playing: playing)
             case .tour: TourHero(t: t, playing: playing)
             case .library: LibraryHero(t: t, kit: choice ?? "Developer")
             case .agents: AgentsHero(t: t, agent: choice ?? "Claude Code")
@@ -220,7 +222,8 @@ struct StopHero: View {
 enum WelcomeBrowsers {
     static let all: [(name: String, letter: String, color: Color)] = [
         ("Chrome", "C", Color(red: 0.86, green: 0.27, blue: 0.22)), ("Safari", "S", Color(red: 0.16, green: 0.5, blue: 0.95)),
-        ("Arc", "A", Color(red: 0.93, green: 0.3, blue: 0.5)), ("Firefox", "F", Color(red: 0.96, green: 0.48, blue: 0.1)),
+        ("Arc", "A", Color(red: 0.93, green: 0.3, blue: 0.5)), ("Edge", "E", Color(red: 0.05, green: 0.55, blue: 0.75)),
+        ("Brave", "B", Color(red: 0.98, green: 0.38, blue: 0.15)), ("Vivaldi", "V", Color(red: 0.86, green: 0.2, blue: 0.24)),
     ]
     static func info(_ name: String) -> (name: String, letter: String, color: Color) { all.first { $0.name == name } ?? all[0] }
 }
@@ -639,12 +642,16 @@ private struct SpacesHero: View, @MainActor Animatable {
 private struct ImportHero: View {
     let t: Double
     let from: String
+    /// Once imported, the real counts; until then, dashes.
+    var result: ImportResult?
+    var playing = false
 
     var body: some View {
-        let f = t / 4
-        let prog = welcomeEase((f - 0.1) / 0.65)
+        // While importing, the bar fills towards most of the way; the result finishes it.
+        let prog = result != nil ? 1 : playing ? 0.85 * welcomeEase(t / 2.2) : 0
         let browser = WelcomeBrowsers.info(from)
-        let items: [(String, String, Int)] = [("Bookmarks", "bookmark", 1284), ("History", "clock", 212), ("Passwords", "key", 46), ("Open tabs", "square.on.square", 9)]
+        let items: [(String, String, Int?)] = [("Bookmarks", "bookmark", result?.bookmarks), ("History", "clock", result?.history),
+                                               ("Favourites", "star", result?.favourites), ("Spaces", "sidebar.squares.left", result?.spaces)]
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "square.and.arrow.down").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
@@ -662,13 +669,12 @@ private struct ImportHero: View {
             VStack(spacing: 5) {
                 ForEach(items.indices, id: \.self) { i in
                     let it = items[i]
-                    let share = welcomeEase((prog - Double(i) * 0.15) / 0.45)
                     HStack(spacing: 7) {
                         Image(systemName: "checkmark.square.fill").font(.system(size: 12)).foregroundStyle(Color.accentColor)
                         Image(systemName: it.1).font(.system(size: 10)).foregroundStyle(.secondary).frame(width: 14)
                         Text(it.0).font(.system(size: 11))
                         Spacer()
-                        Text(prog == 0 ? "–" : Int(Double(it.2) * share).formatted())
+                        Text(it.2.map { $0.formatted() } ?? "–")
                             .font(.system(size: 10.5).monospacedDigit()).foregroundStyle(.secondary)
                     }
                 }
@@ -680,11 +686,11 @@ private struct ImportHero: View {
                 }
             HStack {
                 Spacer()
-                Text(prog >= 1 ? "Done" : prog > 0 ? "Importing…" : "Import")
+                Text(prog >= 1 ? "Done" : playing ? "Importing…" : "Import")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(prog >= 1 || prog == 0 ? .white : .secondary)
+                    .foregroundStyle(playing && prog < 1 ? .secondary : Color.white)
                     .padding(.horizontal, 12).padding(.vertical, 4)
-                    .background(prog >= 1 || prog == 0 ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary), in: .capsule)
+                    .background(playing && prog < 1 ? AnyShapeStyle(.quaternary) : AnyShapeStyle(Color.accentColor), in: .capsule)
             }
         }
         .padding(14)

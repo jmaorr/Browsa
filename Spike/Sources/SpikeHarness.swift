@@ -253,6 +253,25 @@ enum SpikeHarness {
         case "welcomeShortcut":
             // {"key":"t"} or {"key":"k"}: ⌘T / ⌘K as the welcome page catches them.
             WelcomeInput.shared.send(.shortcut(j["key"] as? String == "k" ? .commands : .newTab))
+        case "importScan":
+            // Reads (never lands) what each browser here would import, as counts.
+            var out: [[String: Any]] = []
+            for src in BrowserImport.detect() {
+                var row: [String: Any] = ["id": src.id, "profiles": src.profiles.map(\.name)]
+                do {
+                    let d = try await BrowserImport.read(src, options: ImportOptions())
+                    row["bookmarks"] = d.bookmarks.count; row["bar"] = d.bar.count; row["history"] = d.history.count
+                    row["spaces"] = d.spaces.map { ["pinned": $0.pinned.count, "open": $0.open.count] }
+                } catch { row["error"] = error.localizedDescription }
+                out.append(row)
+            }
+            return .json(["sources": out])
+        case "welcomeImportSheet":
+            // {"source":"Safari"}: picks that browser and opens Configure.
+            let m = WelcomeImport.shared
+            if m.sources.isEmpty { m.scan() }
+            if let name = j["source"] as? String, let src = m.sources.first(where: { $0.name == name }) { m.pick(src) }
+            m.showingSheet = j["open"] as? Bool ?? true
         case "welcomeAct":
             // {"stop":"importing","choice":"Arc"}: a card's main action, as if clicked.
             if let st = (j["stop"] as? String).flatMap(WelcomeStop.init(rawValue:)) {
