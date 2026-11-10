@@ -110,7 +110,7 @@ enum BrowserAgentTools {
 
         toolbox.register(AgentTool(
             name: "page_screenshot", title: "Screenshot",
-            description: "What the tab looks like now. The tab has to be on screen, so this brings it forward in its window.",
+            description: "What the tab looks like now. Works for tabs in the Agent space even when nobody is watching them.",
             inputSchema: ["type": "object", "properties": ["tab": tabArg]],
             readOnly: true
         ) { args, _ in
@@ -307,8 +307,35 @@ enum BrowserAgentTools {
         }
     }
 
+    /// What an element is called, the same way page_read names it.
+    static let labelJS = """
+        const browsaLabel = el => (el.getAttribute('aria-label') || (el.labels && el.labels[0] && el.labels[0].innerText)
+          || el.innerText || el.value || el.placeholder || el.title || el.alt || el.name || '').trim().replace(/\\s+/g, ' ').slice(0, 80);
+        """
+
+    /// The element for a ref from page_read. Pages that redraw (React, or Supper's cards) drop the
+    /// numbers page_read stamped on them, so a missing ref is found again from what page_read saw:
+    /// its id, else the same kind of element with the same name, in the same position.
+    static func refExpression(_ ref: Int) -> String {
+        """
+        (() => {
+          const found = document.querySelector('[data-browsa-ref="\(ref)"]'); if (found) return found;
+          \(labelJS)
+          let map = {}; try { map = JSON.parse(document.documentElement.dataset.browsaRefMap || '{}'); } catch (e) {}
+          const want = map['\(ref)']; if (!want) return null;
+          let el = want.id ? document.getElementById(want.id) : null;
+          if (!el) {
+            const same = [...document.querySelectorAll(want.sel)].filter(e => browsaLabel(e) === want.label);
+            el = same[want.nth] || same[0] || null;
+          }
+          if (el) el.setAttribute('data-browsa-ref', '\(ref)');
+          return el;
+        })()
+        """
+    }
+
     static func targetExpression(_ args: JSONValue) throws -> String {
-        if let ref = args["ref"]?.double { return "document.querySelector('[data-browsa-ref=\"\(Int(ref))\"]')" }
+        if let ref = args["ref"]?.double { return refExpression(Int(ref)) }
         if let sel = args["selector"]?.string { return "document.querySelector(\(jsString(sel)))" }
         throw AgentToolError("Give a ref from page_read or a CSS selector.")
     }
@@ -327,19 +354,25 @@ enum BrowserAgentTools {
         """
         const visible = el => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
           return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
-        const label = el => (el.getAttribute('aria-label') || el.innerText || el.value || el.placeholder
-          || el.title || el.alt || el.name || '').trim().replace(/\\s+/g, ' ').slice(0, 80);
+        \(labelJS)
+        const label = browsaLabel;
         document.querySelectorAll('[data-browsa-ref]').forEach(e => e.removeAttribute('data-browsa-ref'));
+        // How to find each element again if the page redraws (see refExpression).
+        const map = {}, seen = {};
         const els = [...document.querySelectorAll('a[href], button, input:not([type=hidden]), textarea, select, [role=button], [role=link], [contenteditable=true]')]
           .filter(visible).slice(0, 300);
         const elements = els.map((el, i) => {
           el.setAttribute('data-browsa-ref', String(i + 1));
+          const sel = el.tagName.toLowerCase() + (el.type && el.tagName === 'INPUT' ? '[type="' + el.type + '"]' : '');
+          const key = sel + '|' + label(el); seen[key] = (seen[key] || 0) + 1;
+          map[i + 1] = { id: el.id || null, sel, label: label(el), nth: seen[key] - 1 };
           const o = { ref: i + 1, kind: el.getAttribute('role') || el.tagName.toLowerCase(), label: label(el) };
           if (el.type && el.tagName === 'INPUT') o.type = el.type;
           if (el.href) o.href = el.href;
           if (el.disabled) o.disabled = true;
           return o;
         });
+        document.documentElement.dataset.browsaRefMap = JSON.stringify(map);
         const text = (document.body?.innerText || '').replace(/\\n{3,}/g, '\\n\\n');
         return { title: document.title, url: location.href, text: text.slice(0, \(max)),
                  truncated: text.length > \(max), elements };

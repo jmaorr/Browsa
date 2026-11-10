@@ -21,6 +21,15 @@ enum AgentIdentity {
         (["copilot", "vscode", "visual studio code"], ["com.microsoft.VSCode"]),
     ]
 
+    /// How to show an agent's name: "claude-code" reads as "Claude Code".
+    nonisolated static func displayName(_ caller: String) -> String {
+        let known = ["claude-code": "Claude Code", "claude code": "Claude Code", "codex": "Codex", "codex-mcp-client": "Codex",
+                     "cursor": "Cursor", "cursor-vscode": "Cursor", "windsurf": "Windsurf", "zed": "Zed"]
+        if let name = known[caller.lowercased()] { return name }
+        guard caller.contains("-") || caller == caller.lowercased() else { return caller }
+        return caller.split(whereSeparator: { $0 == "-" || $0 == "_" }).map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+    }
+
     private static var cache: [String: NSImage?] = [:]
 
     /// The installed app's icon for this agent, or nil.
@@ -35,12 +44,14 @@ enum AgentIdentity {
     }
 }
 
-/// An agent's app icon, or the fallback symbol.
+/// An agent's app icon, or the Agent space's sparkle pointer.
 struct AgentIcon: View {
     let caller: String
     var size: CGFloat = 14
 
     var body: some View {
+        // Known agents: their app's icon. Browsa's own demo, and agents we don't recognise: the
+        // Agent space's sparkle pointer.
         if let image = AgentIdentity.icon(for: caller) {
             Image(nsImage: image).resizable().interpolation(.high).frame(width: size, height: size)
         } else {
