@@ -88,6 +88,7 @@ extension Browser {
             out.append(BrowserCommand(id: "downloads", title: "Show Downloads", subtitle: "\(downloads.count) files", keywords: ["files"]))
         }
         out.append(BrowserCommand(id: "archive", title: "Show Archive", subtitle: "\(archive.count) archived tabs", keywords: ["history", "closed"]))
+        out.append(BrowserCommand(id: "library", title: "Library", keywords: ["extensions", "plugins", "add-ons", "packs", "manage extensions"]))
         out.append(BrowserCommand(id: "settings", title: "Settings", keywords: ["preferences", "search engine"]))
         out.append(BrowserCommand(id: "panel", title: panel == nil ? "Show Panel" : "Hide Panel", keywords: ["right", "side", "tools"]))
         // Every extension with a toolbar button.
@@ -123,7 +124,7 @@ extension Browser {
         "zoom-reset": "1.magnifyingglass", "blockers": "shield", "share": "square.and.arrow.up",
         "close-others": "xmark.square", "reopen": "arrow.uturn.backward", "sidebar": "sidebar.left",
         "panel": "sidebar.right", "private": "eye.slash", "close-private": "eye.slash", "new-space": "plus.rectangle.on.rectangle",
-        "downloads": "arrow.down.circle", "archive": "archivebox", "settings": "gearshape", "space": "square.stack",
+        "downloads": "arrow.down.circle", "archive": "archivebox", "settings": "gearshape", "library": "square.grid.2x2", "space": "square.stack",
         "move": "arrow.right.square", "restore": "archivebox", "ext": "puzzlepiece.extension",
     ]
 
@@ -158,6 +159,7 @@ extension Browser {
         case "new-space": addSpace()
         case "downloads": showPanel("downloads")
         case "archive": isArchivePresented = true
+        case "library": openLibrary()
         case "settings": NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         default:
             if id.hasPrefix("space:"), let uuid = UUID(uuidString: String(id.dropFirst(6))),
