@@ -7,6 +7,12 @@ import Extensibility
 /// plugins (Notes, Agents, Radar, and the privacy features), the extensions you've added, verified
 /// extensions to add in one click, and packs that switch on a set at once. Search first, toggles
 /// everywhere, and the whole page works from the keyboard, like Raycast's Store.
+/// A quiet cross-fade between the list and a plugin's page.
+@MainActor
+enum LibraryMotion {
+    static var page: Animation { Motion.reduced ? .linear(duration: 0.01) : .easeInOut(duration: 0.2) }
+}
+
 enum LibraryPage {
     static let url = URL(string: "browsa://library")!
     static func isLibrary(_ url: URL?) -> Bool { url == LibraryPage.url }
@@ -69,6 +75,9 @@ struct VerifiedExtension: Identifiable, Decodable, Hashable {
     let tint: String
     let tested: String
 
+    /// Its store icon, bundled as `ext-<id>.png`.
+    var icon: NSImage? { Bundle.main.image(forResource: "ext-\(id)") }
+
     var storeURL: URL { URL(string: "https://chromewebstore.google.com/detail/\(id)")! }
     var color: Color {
         let hex = Int(tint.dropFirst(), radix: 16) ?? 0x888888
@@ -114,6 +123,13 @@ enum LibraryCatalog {
         blurb: "Everything for building with an AI agent beside you: Radar finds your dev servers, Notes holds your feedback, and Agents lets Claude Code work through it while you watch.",
         plugins: ["radar", "notes", "agents"])
 
+    static let privacyPack = PluginPack(
+        id: "privacy-pack", title: "Browsa Privacy Pack",
+        blurb: "On from the start: ads and trackers blocked, cookie banners declined for you, and tracking stripped from links.",
+        plugins: ["privacy-blocking", "privacy-cookies", "privacy-links"])
+
+    static let packs = [agentPack, privacyPack]
+
     /// Bundled today; the same file can come from browsa.app later, so the list grows without an update.
     static let verified: [VerifiedExtension] = {
         struct File: Decodable { let extensions: [VerifiedExtension] }
@@ -154,8 +170,14 @@ enum LibraryActions {
     }
 
     /// The Agent Pack, for onboarding and the Library's pack card.
-    static func setAgentPack(_ on: Bool, in browser: Browser) {
-        for id in LibraryCatalog.agentPack.plugins { set(id, on: on, in: browser, announce: false) }
+    static func setAgentPack(_ on: Bool, in browser: Browser) { setPack(LibraryCatalog.agentPack, on: on, in: browser) }
+
+    static func setPack(_ pack: PluginPack, on: Bool, in browser: Browser) {
+        for id in pack.plugins { set(id, on: on, in: browser, announce: false) }
+    }
+
+    static func isPackOn(_ pack: PluginPack, in browser: Browser) -> Bool {
+        pack.plugins.allSatisfy { isOn($0, in: browser) }
     }
 }
 
@@ -163,7 +185,7 @@ enum LibraryActions {
 
 /// One thing the keyboard can land on, in page order.
 enum LibraryItem: Hashable {
-    case pack
+    case pack(String)
     case plugin(String)
     case verified(String)
     case installed(String)
@@ -187,7 +209,7 @@ struct LibraryView: View {
         return q.isEmpty || text.contains { $0.lowercased().contains(q) }
     }
 
-    private var showsPack: Bool { matches(LibraryCatalog.agentPack.title, LibraryCatalog.agentPack.blurb, "agent", "pack") }
+    private var packs: [PluginPack] { LibraryCatalog.packs.filter { matches($0.title, $0.blurb, "pack") } }
     private var tools: [PluginInfo] { LibraryCatalog.toolPlugins.filter { matches($0.title, $0.blurb) } }
     private var privacy: [PluginInfo] { LibraryCatalog.privacyPlugins.filter { matches($0.title, $0.blurb, "privacy") } }
     private var installed: [InstalledExtension] { library.extensionCatalog.items.filter { matches($0.name, $0.source.label) } }
@@ -198,7 +220,7 @@ struct LibraryView: View {
 
     /// Everything the arrow keys move through, in reading order.
     private var order: [LibraryItem] {
-        (showsPack ? [.pack] : []) + tools.map { .plugin($0.id) } + privacy.map { .plugin($0.id) }
+        packs.map { .pack($0.id) } + tools.map { .plugin($0.id) } + privacy.map { .plugin($0.id) }
             + verified.map { .verified($0.id) } + installed.map { .installed($0.id) }
     }
 
@@ -206,9 +228,9 @@ struct LibraryView: View {
         ZStack {
             if let detail, let plugin = LibraryCatalog.plugin(detail) {
                 PluginDetail(plugin: plugin) { close() }
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .transition(.opacity)
             } else {
-                list.transition(.move(edge: .leading).combined(with: .opacity))
+                list.transition(.opacity)
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
@@ -224,7 +246,7 @@ struct LibraryView: View {
     }
 
     private func close() {
-        withAnimation(Motion.snappy) { detail = nil }
+        withAnimation(LibraryMotion.page) { detail = nil }
     }
 
     private var list: some View {
@@ -232,8 +254,8 @@ struct LibraryView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     header
-                    if showsPack {
-                        PackCard(pack: LibraryCatalog.agentPack, isFocused: focused == .pack).id(LibraryItem.pack)
+                    ForEach(packs) { pack in
+                        PackCard(pack: pack, isFocused: focused == .pack(pack.id)).id(LibraryItem.pack(pack.id))
                     }
                     pluginGrid(title: "Browsa Plugins", detail: "Made for Browsa. Turn off what you don't use.", plugins: tools)
                     pluginGrid(title: "Privacy", detail: "Built in and on from the start. Here's what each one does for you.", plugins: privacy)
@@ -306,10 +328,11 @@ struct LibraryView: View {
 
     private func toggleFocused() -> KeyPress.Result {
         switch focused {
-        case .pack:
-            let on = LibraryCatalog.agentPack.plugins.allSatisfy { LibraryActions.isOn($0, in: browser) }
-            withAnimation(Motion.snappy) { LibraryActions.setAgentPack(!on, in: browser) }
-            browser.showToast(on ? "Turned off the \(LibraryCatalog.agentPack.title)" : "Added the \(LibraryCatalog.agentPack.title)")
+        case .pack(let id):
+            guard let pack = LibraryCatalog.packs.first(where: { $0.id == id }) else { return .ignored }
+            let on = LibraryActions.isPackOn(pack, in: browser)
+            withAnimation(Motion.snappy) { LibraryActions.setPack(pack, on: !on, in: browser) }
+            browser.showToast(on ? "Turned off the \(pack.title)" : "Turned on the \(pack.title)")
         case .plugin(let id):
             withAnimation(Motion.snappy) { LibraryActions.set(id, on: !LibraryActions.isOn(id, in: browser), in: browser) }
         case .installed(let id):
@@ -323,7 +346,7 @@ struct LibraryView: View {
 
     private func openFocused() -> KeyPress.Result {
         if case .plugin(let id) = focused {
-            withAnimation(Motion.snappy) { detail = id }
+            withAnimation(LibraryMotion.page) { detail = id }
             return .handled
         }
         return toggleFocused()
@@ -348,7 +371,6 @@ struct LibraryView: View {
                     Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain).foregroundStyle(.tertiary)
                 }
-                Text("↓ to browse").font(.system(size: 11)).foregroundStyle(.tertiary)
             }
             .padding(.horizontal, 14).frame(height: 38)
             .glassEffect(.regular, in: .capsule)
@@ -362,7 +384,7 @@ struct LibraryView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 14)], spacing: 14) {
                     ForEach(plugins) { p in
                         PluginCard(plugin: p, isFocused: focused == .plugin(p.id)) {
-                            withAnimation(Motion.snappy) { self.detail = p.id }
+                            withAnimation(LibraryMotion.page) { self.detail = p.id }
                         }
                         .id(LibraryItem.plugin(p.id))
                     }
@@ -377,7 +399,7 @@ struct LibraryView: View {
                 SectionTitle(title: "Extensions", detail: "Chrome extensions, running on Browsa's WebKit engine.")
                 Spacer()
                 Button { problem = nil; addingChrome = true } label: { Label("Add Chrome Extension", systemImage: "plus") }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.glass).controlSize(.large).buttonBorderShape(.capsule)
             }
             if let problem, !addingChrome { Text(problem).font(.caption).foregroundStyle(.red) }
             if !verified.isEmpty {
@@ -479,22 +501,57 @@ private struct SectionTitle: View {
     }
 }
 
-/// A plugin's icon: its symbol on a tinted rounded square, like an app icon.
+/// A plugin's icon: a neutral glyph on Browsa's white (or black) base, with soft blurred colour at
+/// its edges. Each plugin gets its own arrangement, led by its tint.
 struct PluginIcon: View {
     let symbol: String
     let tint: Color
+    let seed: Int
     var size: CGFloat = 40
+    @Environment(\.colorScheme) private var scheme
 
-    init(plugin: PluginInfo, size: CGFloat = 40) { symbol = plugin.symbol; tint = plugin.tint; self.size = size }
-    init(symbol: String, tint: Color, size: CGFloat = 40) { self.symbol = symbol; self.tint = tint; self.size = size }
+    init(plugin: PluginInfo, size: CGFloat = 40) {
+        symbol = plugin.symbol; tint = plugin.tint; self.size = size
+        seed = plugin.id.unicodeScalars.reduce(0) { $0 + Int($1.value) }
+    }
+    init(symbol: String, tint: Color, seed: Int = 0, size: CGFloat = 40) {
+        self.symbol = symbol; self.tint = tint; self.seed = seed; self.size = size
+    }
+
+    private static let palette: [Color] = [.orange, .yellow, .pink, .mint, .purple, .red, .teal]
+    /// Corners and edges a blob can sit on, as unit offsets from the centre.
+    private static let spots: [CGPoint] = [.init(x: -0.5, y: -0.5), .init(x: 0.5, y: 0.5), .init(x: 0.5, y: -0.5),
+                                           .init(x: -0.5, y: 0.5), .init(x: 0, y: 0.6), .init(x: 0.6, y: 0)]
+
+    private var blobs: [(Color, CGPoint)] {
+        let second = Self.palette[seed % Self.palette.count]
+        let third = Self.palette[(seed / 3 + 2) % Self.palette.count]
+        return [(tint, Self.spots[seed % 4]),
+                (second, Self.spots[(seed + 1) % Self.spots.count]),
+                (third, Self.spots[(seed / 5 + 3) % Self.spots.count])]
+    }
 
     var body: some View {
-        Image(systemName: symbol)
-            .font(.system(size: size * 0.45, weight: .semibold))
-            .foregroundStyle(.white)
-            .frame(width: size, height: size)
-            .background(tint.gradient, in: .rect(cornerRadius: size * 0.26, style: .continuous))
-            .shadow(color: tint.opacity(0.3), radius: 3, y: 1)
+        let shape = RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
+        ZStack {
+            shape.fill(scheme == .dark ? Color.black : Color.white)
+            ZStack {
+                ForEach(Array(blobs.enumerated()), id: \.offset) { i, blob in
+                    Circle().fill(blob.0)
+                        .frame(width: size * (i == 0 ? 0.75 : 0.55), height: size * (i == 0 ? 0.75 : 0.55))
+                        .offset(x: blob.1.x * size, y: blob.1.y * size)
+                }
+            }
+            .blur(radius: size * 0.2)
+            .opacity(scheme == .dark ? 0.55 : 0.45)
+            Image(systemName: symbol)
+                .font(.system(size: size * 0.42, weight: .medium))
+                .foregroundStyle(.primary.opacity(0.85))
+        }
+        .frame(width: size, height: size)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(.primary.opacity(0.1), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
     }
 }
 
@@ -522,7 +579,7 @@ private struct PackCard: View {
     @Environment(Browser.self) private var browser
     let pack: PluginPack
     let isFocused: Bool
-    private var allOn: Bool { pack.plugins.allSatisfy { LibraryActions.isOn($0, in: browser) } }
+    private var on: Bool { LibraryActions.isPackOn(pack, in: browser) }
 
     var body: some View {
         HStack(alignment: .center, spacing: 22) {
@@ -543,32 +600,39 @@ private struct PackCard: View {
                         .background(.primary.opacity(0.08), in: .capsule)
                 }
                 Text(pack.blurb).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 10) {
-                    if allOn {
-                        Label("Added", systemImage: "checkmark.circle.fill").font(.system(size: 13, weight: .semibold)).foregroundStyle(.green)
-                        Button("Turn Off") { setAll(false) }
-                            .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary)
-                    } else {
-                        Button { setAll(true) } label: { Label("Add Pack", systemImage: "plus") }
-                            .buttonStyle(.glassProminent).controlSize(.large)
-                    }
-                }
-                .padding(.top, 4)
             }
             Spacer(minLength: 0)
+            Toggle("", isOn: Binding(get: { on }, set: { set($0) }))
+                .toggleStyle(.switch).labelsHidden()
         }
         .padding(22)
-        .background(
-            LinearGradient(colors: [Color.orange.opacity(0.12), Color.yellow.opacity(0.08), Color.green.opacity(0.08)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing),
-            in: .rect(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.primary.opacity(0.06)))
+        .background { ZStack { Color(nsColor: .textBackgroundColor); PackGlow(pack: pack) } }
+        .clipShape(.rect(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.primary.opacity(0.08)))
         .modifier(FocusRing(on: isFocused, radius: 20))
     }
 
-    private func setAll(_ on: Bool) {
-        withAnimation(Motion.snappy) { LibraryActions.setAgentPack(on, in: browser) }
-        browser.showToast(on ? "Added the \(pack.title)" : "Turned off the \(pack.title)")
+    private func set(_ on: Bool) {
+        withAnimation(Motion.snappy) { LibraryActions.setPack(pack, on: on, in: browser) }
+        browser.showToast(on ? "Turned on the \(pack.title)" : "Turned off the \(pack.title)")
+    }
+}
+
+/// The pack card's base: the same soft colour at the edges as its plugins' icons, a little larger.
+private struct PackGlow: View {
+    let pack: PluginPack
+    var body: some View {
+        GeometryReader { g in
+            let tints = pack.plugins.compactMap { LibraryCatalog.plugin($0)?.tint }
+            ZStack {
+                ForEach(Array(tints.enumerated()), id: \.offset) { i, t in
+                    Circle().fill(t).frame(width: 160, height: 160)
+                        .position(x: CGFloat(i) * 70 + 20, y: i.isMultiple(of: 2) ? 0 : g.size.height)
+                }
+            }
+            .blur(radius: 50)
+            .opacity(0.22)
+        }
     }
 }
 
@@ -624,10 +688,14 @@ private struct VerifiedCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Text(String(ext.name.prefix(1)))
-                .font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
-                .frame(width: 40, height: 40)
-                .background(ext.color.gradient, in: .rect(cornerRadius: 10, style: .continuous))
+            if let icon = ext.icon {
+                Image(nsImage: icon).resizable().interpolation(.high).frame(width: 40, height: 40)
+            } else {
+                Text(String(ext.name.prefix(1)))
+                    .font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(ext.color.gradient, in: .rect(cornerRadius: 10, style: .continuous))
+            }
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(ext.name).font(.system(size: 14, weight: .semibold))
@@ -637,7 +705,8 @@ private struct VerifiedCard: View {
                 Text(ext.blurb).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 4)
-            Button("Add", action: add).buttonStyle(.glass).controlSize(.small)
+            Button("Add", action: add)
+                .buttonStyle(.glassProminent).controlSize(.large).buttonBorderShape(.capsule)
         }
         .padding(14)
         .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 14, style: .continuous))
@@ -700,7 +769,7 @@ private struct AddChromeExtensionSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) {
-                PluginIcon(symbol: "puzzlepiece.extension.fill", tint: .blue, size: 44)
+                PluginIcon(symbol: "puzzlepiece.extension.fill", tint: .blue, seed: 4, size: 44)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Add a Chrome Extension").font(.system(size: 17, weight: .semibold))
                     Text("Most Chrome extensions run in Browsa.").font(.system(size: 13)).foregroundStyle(.secondary)
@@ -708,7 +777,8 @@ private struct AddChromeExtensionSheet: View {
             }
             VStack(alignment: .leading, spacing: 14) {
                 step(1, "Find the extension in the Chrome Web Store.") {
-                    Button("Open the Chrome Web Store", action: openStore).buttonStyle(.link)
+                    Button(action: openStore) { Label("Open the Chrome Web Store", systemImage: "arrow.up.forward.app") }
+                        .buttonStyle(.glass).controlSize(.large).buttonBorderShape(.capsule)
                 }
                 step(2, "On its page, copy the address from the address bar.") { EmptyView() }
                 step(3, "Paste it here.") {
@@ -716,11 +786,11 @@ private struct AddChromeExtensionSheet: View {
                         HStack(spacing: 8) {
                             TextField("https://chromewebstore.google.com/detail/…", text: $link)
                                 .textFieldStyle(.plain)
-                                .padding(.horizontal, 10).frame(height: 30)
-                                .background(.primary.opacity(0.06), in: .rect(cornerRadius: 8, style: .continuous))
+                                .padding(.horizontal, 12).frame(height: 32)
+                                .background(.primary.opacity(0.06), in: .capsule)
                                 .onSubmit { if canAdd { add(link) } }
                             Button("Add") { add(link) }
-                                .buttonStyle(.glassProminent)
+                                .buttonStyle(.glassProminent).controlSize(.large).buttonBorderShape(.capsule)
                                 .disabled(!canAdd)
                         }
                         if let problem { Text(problem).font(.caption).foregroundStyle(.red) }
@@ -737,7 +807,12 @@ private struct AddChromeExtensionSheet: View {
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.primary.opacity(0.04), in: .rect(cornerRadius: 8, style: .continuous))
-            HStack { Spacer(); Button("Done", action: done).keyboardShortcut(.cancelAction) }
+            HStack {
+                Spacer()
+                Button("Done", action: done)
+                    .buttonStyle(.glass).controlSize(.large).buttonBorderShape(.capsule)
+                    .keyboardShortcut(.cancelAction)
+            }
         }
         .padding(24)
         .frame(width: 480)
