@@ -76,8 +76,23 @@ final class Workbench {
 
     func tool(_ id: String) -> Tool? { tools.first { $0.id == id } }
 
-    var panelTools: [Tool] { tools.filter { $0.panel != nil } }
-    var sidebarTools: [Tool] { sidebarToolIDs.compactMap { tool($0) }.filter { $0.sidebar != nil } }
+    /// Tools turned off in the Library. They stay registered (so the Library can list them) but
+    /// leave the panel rail, the sidebar and ⌘K. Saved.
+    private(set) var disabledIDs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "disabledTools") ?? []) {
+        didSet { UserDefaults.standard.set(Array(disabledIDs), forKey: "disabledTools") }
+    }
+
+    func isEnabled(_ id: String) -> Bool { !disabledIDs.contains(id) }
+
+    func setEnabled(_ id: String, _ on: Bool) {
+        if on { disabledIDs.remove(id) } else { disabledIDs.insert(id) }
+    }
+
+    /// Registered and turned on.
+    var activeTools: [Tool] { tools.filter { isEnabled($0.id) } }
+
+    var panelTools: [Tool] { activeTools.filter { $0.panel != nil } }
+    var sidebarTools: [Tool] { sidebarToolIDs.compactMap { tool($0) }.filter { $0.sidebar != nil && isEnabled($0.id) } }
 
     func toggleSidebar(_ id: String) {
         if let i = sidebarToolIDs.firstIndex(of: id) { sidebarToolIDs.remove(at: i) } else { sidebarToolIDs.append(id) }
@@ -85,7 +100,7 @@ final class Workbench {
 
     /// For the command bar. Each panel tool gets an "Open …" row for free.
     var commands: [(tool: Tool, command: ToolCommand)] {
-        tools.flatMap { tool -> [(tool: Tool, command: ToolCommand)] in
+        activeTools.flatMap { tool -> [(tool: Tool, command: ToolCommand)] in
             var list = (tool.commands + (tool.liveCommands?() ?? [])).map { (tool: tool, command: $0) }
             if tool.panel != nil {
                 list.insert((tool: tool, command: ToolCommand(id: "open", title: "Open \(tool.title)", subtitle: tool.summary,
