@@ -35,14 +35,18 @@ enum AgentIdentity {
     }
 }
 
-/// An agent's app icon, or Browsa's.
+/// An agent's app icon, or the Agent space's sparkle pointer.
 struct AgentIcon: View {
     let caller: String
     var size: CGFloat = 14
 
     var body: some View {
-        // Known agents: their app's icon. Browsa's own demo, and agents we don't recognise: Browsa's.
-        Image(nsImage: AgentIdentity.icon(for: caller) ?? NSApp.applicationIconImage)
-            .resizable().interpolation(.high).frame(width: size, height: size)
+        // Known agents: their app's icon. Browsa's own demo, and agents we don't recognise: the
+        // Agent space's sparkle pointer.
+        if let image = AgentIdentity.icon(for: caller) {
+            Image(nsImage: image).resizable().interpolation(.high).frame(width: size, height: size)
+        } else {
+            Image(systemName: AgentIdentity.symbol).font(.system(size: size * 0.8)).frame(width: size, height: size)
+        }
     }
 }
