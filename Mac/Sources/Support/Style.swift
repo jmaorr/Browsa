@@ -129,8 +129,10 @@ struct FaviconView: View {
 
 /// The raised look of the selected tab or favourite: a light pill in light mode, a lifted
 /// translucent one in dark mode, never darker than the sidebar.
-/// A slot pressed into the sidebar, where something dragged will land: lit from above, so the top
-/// edge falls into shadow and the bottom edge catches the light. Deeper while it's the target.
+/// A slot routed into the sidebar, where something dragged will land. Lit from above: a chamfered
+/// rim that's dark along the top edge and catches the light along the bottom, a soft shadow cast
+/// down inside from the top lip, and a floor a shade darker at the top than the bottom. Deeper
+/// while it's the target.
 struct SunkenSlot: View {
     var cornerRadius: CGFloat = 9
     var active = false
@@ -138,10 +140,23 @@ struct SunkenSlot: View {
 
     var body: some View {
         let dark = scheme == .dark
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(Color.black.opacity(dark ? (active ? 0.26 : 0.2) : (active ? 0.065 : 0.05))
-                .shadow(.inner(color: .black.opacity(dark ? 0.6 : (active ? 0.38 : 0.3)), radius: active ? 2.5 : 2, y: active ? 2 : 1.5))
-                .shadow(.inner(color: .white.opacity(dark ? 0.08 : 0.8), radius: 0.5, y: -1)))
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        let depth = active ? 1.0 : 0.8
+        shape
+            .fill(LinearGradient(colors: dark
+                                    ? [.black.opacity(0.34 * depth), .black.opacity(0.2 * depth)]
+                                    : [.black.opacity(0.085 * depth), .black.opacity(0.03 * depth)],
+                                 startPoint: .top, endPoint: .bottom)
+                .shadow(.inner(color: .black.opacity((dark ? 0.6 : 0.22) * depth), radius: 3, y: 2.5)))
+            .overlay {
+                // The chamfer: shadowed where it faces down, lit where it faces up.
+                shape.strokeBorder(LinearGradient(stops: dark
+                    ? [.init(color: .black.opacity(0.7 * depth), location: 0), .init(color: .black.opacity(0.3 * depth), location: 0.45),
+                       .init(color: .white.opacity(0.14), location: 1)]
+                    : [.init(color: .black.opacity(0.2 * depth), location: 0), .init(color: .black.opacity(0.06 * depth), location: 0.45),
+                       .init(color: .white.opacity(0.95), location: 1)],
+                    startPoint: .top, endPoint: .bottom), lineWidth: 1.5)
+            }
             .animation(Motion.snappy, value: active)
     }
 }
