@@ -10,6 +10,7 @@ struct Sidebar: View {
     @Environment(Browser.self) private var browser
     /// Floating over the page (undocked), rather than beside it.
     var isFloating = false
+    @State private var dragging = SidebarDragging()
 
     var body: some View {
         VStack(spacing: 10) {
@@ -32,6 +33,13 @@ struct Sidebar: View {
                 .introArrival(5)
         }
         .background { SpaceSwipeArea { browser.selectAdjacentSpace($0) } }
+        .overlay(alignment: .topLeading) { LiftedTabRow() }
+        .coordinateSpace(.named(SidebarDragging.coordinateSpace))
+        .onGeometryChange(for: CGPoint.self) { $0.frame(in: .global).origin } action: { dragging.originInWindow = $0 }
+        .environment(dragging)
+        #if SPIKE
+        .onAppear { SidebarDragging.latest = dragging }
+        #endif
     }
 
     /// Room for the traffic lights, then back, forward and reload, like Arc.
@@ -485,13 +493,9 @@ private struct ExtensionFooterButton: View {
 /// Favourites, shared by every space: a grid of site icons, like Arc's top row.
 struct FavoritesGrid: View {
     @Environment(Browser.self) private var browser
+    @Environment(SidebarDragging.self) private var dragging
     private let columns = [GridItem(.adaptive(minimum: 48, maximum: 80), spacing: 6)]
 
-    /// While something is dragged over the grid: the order to show, with the dragged favourite (or
-    /// a placeholder for a tab becoming one) where it would land.
-    @State private var preview: [GridEntry]?
-    @State private var incoming: SidebarDrag?
-    @State private var frames: [GridEntry.ID: CGRect] = [:]
 
     enum GridEntry: Identifiable, Equatable {
         case favorite(Favorite)
@@ -506,156 +510,127 @@ struct FavoritesGrid: View {
         static func == (a: GridEntry, b: GridEntry) -> Bool { a.id == b.id }
     }
 
+    /// A tab dragged from the list, shown where it would join the favourites.
+    private var liftedEntries: [GridEntry]? {
+        guard case .favourite(let i)? = dragging.target, let lift = dragging.lift,
+              let tab = browser.currentSpace.allTabs.first(where: { $0.id == lift.tabID }), let url = tab.url else { return nil }
+        var entries = browser.sortedFavorites.map(GridEntry.favorite)
+        entries.insert(.pending(tab.id, url, tab.displayTitle), at: min(i, entries.count))
+        return entries
+    }
+
+    /// While a tab that could be a favourite is dragged and there are none yet: somewhere to drop it.
+    private var showsDropZone: Bool {
+        guard let lift = dragging.lift, browser.favorites.isEmpty,
+              let tab = browser.currentSpace.allTabs.first(where: { $0.id == lift.tabID }) else { return false }
+        return dragging.canFavourite(tab, browser: browser)
+    }
+
+    /// A favourite being dragged: it stays in the grid as a dashed gap, which moves to where it
+    /// would land while it's over the grid. (Its tile carries the drag, so it never leaves.)
+    private var liftedFavouriteEntries: [GridEntry]? {
+        guard let lift = dragging.lift, lift.isFavourite,
+              let fav = browser.favorites.first(where: { $0.id == lift.tabID }) else { return nil }
+        var entries = browser.sortedFavorites.filter { $0.id != fav.id }.map(GridEntry.favorite)
+        let at = if case .favourite(let i)? = dragging.target { i } else { lift.origin.index }
+        entries.insert(.favorite(fav), at: min(at, entries.count))
+        return entries
+    }
+
     var body: some View {
-        let entries = preview ?? browser.sortedFavorites.map(GridEntry.favorite)
-        if !entries.isEmpty || incoming != nil {
+        let entries = liftedFavouriteEntries ?? liftedEntries ?? browser.sortedFavorites.map(GridEntry.favorite)
+        if showsDropZone, entries.isEmpty {
+            FavouriteDropZone()
+                .frame(height: 50)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
+                    dragging.favouritesFrame = $0
+                }
+                .onDisappear { dragging.favouritesFrame = .zero }
+                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+        } else if !entries.isEmpty {
             LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(entries) { entry in
                     Group {
                         switch entry {
                         case .favorite(let fav):
-                            FavoriteTile(favorite: fav, isLifted: preview != nil && incoming == .favorite(fav.id))
+                            FavoriteTile(favorite: fav, isLifted: dragging.isLiftedFavourite(fav.id))
                         case .pending(_, let url, let title):
                             PendingFavoriteTile(url: url, title: title)
                         }
                     }
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("favourites")) } action: { frames[entry.id] = $0 }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: { r in
+                        switch entry {
+                        case .favorite(let fav):
+                            if dragging.isLiftedFavourite(fav.id) {
+                                if dragging.target?.isFavourite == true { dragging.gapFrame = r }
+                            } else {
+                                dragging.tileFrames[fav.id] = r
+                            }
+                        case .pending: dragging.gapFrame = r
+                        }
+                    }
                 }
             }
-            .coordinateSpace(.named("favourites"))
-            .onDrop(of: [.utf8PlainText, .plainText], delegate: GridDrop(grid: self))
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
+                dragging.favouritesFrame = $0
+            }
+            .onDisappear { dragging.favouritesFrame = .zero }
         } else {
             // Somewhere to drop the first favourite.
             EmptyView()
         }
     }
 
-    // MARK: Drag over the grid
+}
 
-    fileprivate func entered(_ info: DropInfo) {
-        guard let provider = info.itemProviders(for: [.utf8PlainText, .plainText]).first else { return }
-        let location = info.location
-        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
-            guard let string = object as? String else { return }
-            Task { @MainActor in
-                guard let drag = SidebarDrag(string) else { return }
-                incoming = drag
-                updated(at: location)
+/// Shown while a tab is dragged and there are no favourites yet.
+private struct FavouriteDropZone: View {
+    @Environment(SidebarDragging.self) private var dragging
+
+    var body: some View {
+        let targeted = dragging.target?.isFavourite == true
+        HStack(spacing: 9) {
+            Image(systemName: "star.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(targeted ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+                .frame(width: 24, height: 24)
+                .background(targeted ? AnyShapeStyle(Color.accentColor.opacity(0.14)) : AnyShapeStyle(.primary.opacity(0.06)), in: .circle)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Drop here for Favourites")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("One click away in every space.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
+            .lineLimit(1)
+            Spacer(minLength: 0)
         }
-    }
-
-    fileprivate func updated(at location: CGPoint) {
-        guard let incoming else { return }
-        var entries = preview ?? browser.sortedFavorites.map(GridEntry.favorite)
-        let moving: GridEntry
-        switch incoming {
-        case .favorite(let id):
-            guard let fav = browser.favorites.first(where: { $0.id == id }) else { return }
-            moving = .favorite(fav)
-        case .tab(let id):
-            guard let tab = browser.spaces.flatMap(\.allTabs).first(where: { $0.id == id }), let url = tab.url,
-                  !browser.library.isFavorite(url) else { return }
-            moving = .pending(tab.id, url, tab.displayTitle)
-        }
-        // Over another tile: take its place. Past the last tile: go to the end. Over itself: stay.
-        let hovered = entries.first { frames[$0.id]?.insetBy(dx: -3, dy: -3).contains(location) == true }
-        if hovered == moving { if preview == nil { preview = entries }; return }
-        entries.removeAll { $0 == moving }
-        let index = hovered.flatMap { h in entries.firstIndex(of: h) } ?? entries.endIndex
-        entries.insert(moving, at: index)
-        if entries != preview { withAnimation(Motion.snappy) { preview = entries } }
-    }
-
-    fileprivate func exited() {
-        withAnimation(Motion.snappy) { preview = nil }
-        incoming = nil
-    }
-
-    fileprivate func perform() -> Bool {
-        defer { incoming = nil }
-        guard let preview, let incoming else { return false }
-        let landed = preview
-        withAnimation(Motion.snappy) {
-            switch incoming {
-            case .favorite(let id):
-                if let fav = browser.favorites.first(where: { $0.id == id }) {
-                    let after = landed.drop { $0 != .favorite(fav) }.dropFirst().first
-                    if case .favorite(let next)? = after { browser.moveFavorite(fav, before: next) }
-                    else { browser.moveFavorite(fav, before: nil) }
-                }
-            case .tab(let id):
-                if let tab = browser.spaces.flatMap(\.allTabs).first(where: { $0.id == id }), let url = tab.url {
-                    browser.addFavorite(url: url, title: tab.displayTitle)
-                    if let fav = browser.favorites.first(where: { URLNormalizer.key(for: $0.url) == URLNormalizer.key(for: url) }) {
-                        let after = landed.drop { $0.id != "tab:\(tab.id)" }.dropFirst().first
-                        if case .favorite(let next)? = after { browser.moveFavorite(fav, before: next) }
-                    }
-                }
-            }
-            self.preview = nil
-        }
-        return true
-    }
-
-    fileprivate func dropAtEnd(_ drag: SidebarDrag) {
-        withAnimation(Motion.snappy) {
-            switch drag {
-            case .favorite(let id):
-                if let fav = browser.favorites.first(where: { $0.id == id }) { browser.moveFavorite(fav, before: nil) }
-            case .tab(let id):
-                if let tab = browser.spaces.flatMap(\.allTabs).first(where: { $0.id == id }), let url = tab.url {
-                    browser.addFavorite(url: url, title: tab.displayTitle)
-                }
-            }
-            preview = nil
-        }
-    }
-
-    private struct GridDrop: DropDelegate {
-        let grid: FavoritesGrid
-        func dropEntered(info: DropInfo) { grid.entered(info) }
-        func dropUpdated(info: DropInfo) -> DropProposal? {
-            grid.updated(at: info.location)
-            return DropProposal(operation: .move)
-        }
-        func dropExited(info: DropInfo) { grid.exited() }
-        func performDrop(info: DropInfo) -> Bool {
-            if grid.perform() { return true }
-            // The payload never arrived while hovering: drop it at the end, the old way.
-            guard let provider = info.itemProviders(for: [.utf8PlainText, .plainText]).first else { return false }
-            _ = provider.loadObject(ofClass: NSString.self) { object, _ in
-                guard let string = object as? String else { return }
-                Task { @MainActor in
-                    if let drag = SidebarDrag(string) { grid.dropAtEnd(drag) }
-                }
-            }
-            return true
-        }
+        .padding(.horizontal, 8)
+        .frame(maxHeight: .infinity)
+        .background { SunkenSlot(cornerRadius: 12, active: targeted) }
+        .animation(Motion.snappy, value: targeted)
     }
 }
 
-/// Where a tab dropped on the grid would land: its icon, faded, in a dashed tile.
+/// Where a tab dropped on the grid would land: an empty slot pressed into the grid.
 private struct PendingFavoriteTile: View {
     let url: URL
     let title: String
 
     var body: some View {
-        FaviconView(url: url, size: 26, chip: true, letter: title)
-        .opacity(0.7)
-        .frame(maxWidth: .infinity, minHeight: 50)
-        .background(.primary.opacity(0.05), in: .rect(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(Color.accentColor.opacity(0.8), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])))
+        SunkenSlot(cornerRadius: 12, active: true)
+            .frame(maxWidth: .infinity, minHeight: 50)
     }
 }
 
 struct FavoriteTile: View {
     @Environment(Browser.self) private var browser
     let favorite: Favorite
-    /// Being dragged to a new spot: drawn as a gap with a dashed outline.
+    /// Being dragged to a new spot: drawn as the empty slot it will drop back into.
     var isLifted = false
     @State private var hovering = false
+    @Environment(SidebarDragging.self) private var dragging
+    @GestureState private var held = false
 
     /// Showing its own tab (even after the site redirected elsewhere), or a tab on the same address.
     private var isCurrent: Bool {
@@ -669,21 +644,19 @@ struct FavoriteTile: View {
             .background(isCurrent ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(hovering ? 0.09 : 0.05)),
                         in: .rect(cornerRadius: 12, style: .continuous))
             .shadow(color: .black.opacity(isCurrent ? 0.08 : 0), radius: 2, y: 1)
-            .opacity(isLifted ? 0.35 : 1)
-            .overlay {
-                if isLifted {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.accentColor.opacity(0.8), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
-                }
-            }
+            .opacity(isLifted ? 0 : 1)
+            .background { if isLifted { SunkenSlot(cornerRadius: 12, active: dragging.target?.isFavourite == true) } }
             .contentShape(.rect)
             .onTapGesture { browser.open(favorite) }
             .onHover { hovering = $0 }
             .help(favorite.displayName)
-            .draggable(SidebarDrag.favorite(favorite.id).payload) {
-                FaviconView(url: favorite.url, size: 26, chip: true, letter: favorite.customName ?? favorite.title)
-                    .frame(width: 56, height: 50)
-                    .background(.regularMaterial, in: .rect(cornerRadius: 12, style: .continuous))
+            .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .named(SidebarDragging.coordinateSpace))
+                .updating($held) { _, held, _ in held = true }
+                .onChanged { dragging.changed(favorite, from: $0.startLocation, to: $0.location, in: browser.currentSpace, browser: browser) }
+                .onEnded { _ in dragging.ended(favorite, in: browser.currentSpace, browser: browser) })
+            // A drag the system cancels (no onEnded) still puts it down.
+            .onChange(of: held) { _, now in
+                if !now, dragging.isLiftedFavourite(favorite.id) { dragging.ended(favorite, in: browser.currentSpace, browser: browser) }
             }
             .contextMenu {
                 Button("Open in New Tab", systemImage: "plus.square.on.square") { browser.newTab(url: favorite.url, source: .bookmark) }
@@ -699,29 +672,11 @@ struct FavoriteTile: View {
     }
 }
 
-/// What's being dragged around the sidebar, as a plain string so it works with `draggable`.
-enum SidebarDrag: Equatable {
-    case tab(UUID)
-    case favorite(UUID)
-
-    var payload: String {
-        switch self {
-        case .tab(let id): "browsa-tab:\(id.uuidString)"
-        case .favorite(let id): "browsa-fav:\(id.uuidString)"
-        }
-    }
-
-    init?(_ string: String) {
-        if string.hasPrefix("browsa-tab:"), let id = UUID(uuidString: String(string.dropFirst(11))) { self = .tab(id) }
-        else if string.hasPrefix("browsa-fav:"), let id = UUID(uuidString: String(string.dropFirst(11))) { self = .favorite(id) }
-        else { return nil }
-    }
-}
-
 // MARK: - Space switcher
 
 struct SpaceSwitcher: View {
     @Environment(Browser.self) private var browser
+    @Environment(SidebarDragging.self) private var dragging
 
     var body: some View {
         HStack(spacing: 2) {
@@ -735,13 +690,23 @@ struct SpaceSwitcher: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(selected ? .primary : .tertiary)
-                .help(i < 9 ? "\(s.name) (⌃\(i + 1))" : s.name)
-                .dropDestination(for: String.self) { items, _ in
-                    guard let item = items.first, case .tab(let id)? = SidebarDrag(item),
-                          let tab = browser.spaces.flatMap(\.allTabs).first(where: { $0.id == id }) else { return false }
-                    withAnimation(Motion.spring) { browser.move(tab, to: s) }
-                    return true
+                // A tab dragged over the dot: the space shows its icon, ready to take it.
+                .overlay {
+                    if dragging.target == .space(s.id) {
+                        Image(systemName: s.symbol)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 26, height: 26)
+                            .background(Color.accentColor.opacity(0.14), in: .circle)
+                            .transition(.scale.combined(with: .opacity))
+                    }
                 }
+                .animation(Motion.bouncy, value: dragging.target == .space(s.id))
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
+                    dragging.spaceFrames[s.id] = $0
+                }
+                .onDisappear { dragging.spaceFrames[s.id] = nil }
+                .help(i < 9 ? "\(s.name) (⌃\(i + 1))" : s.name)
                 .contextMenu {
                     if s.isPrivate {
                         Button("Close Private Tabs", systemImage: "xmark", role: .destructive) {
