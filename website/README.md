@@ -17,6 +17,10 @@ npx wrangler deploy   # publish to browsa.app
   there's a clip; the film placeholder on `/mac/` has a comment showing how.
 - Sizes in the window are the app's own points (one `--u` is a point of a 1280 × 800 window), so
   when the Mac UI changes, change the matching number in `desktop.css`.
+- The feature bento near the bottom of `/mac/` draws corners of the real window (sidebar, favourites,
+  Downloads panel) with real sites' icons from `public/media/fav/`. The ad, cookie and Reader tiles
+  use real page captures in `public/media/bento/`, made on a Mac with an offscreen WKWebView. Ads
+  don't load on that network, so the ad in the Verge tile is drawn into the page's real ad slot.
 - The pages inside it are made up (`desktop-sites.js`): Wander & Salt, a travel journal; Tern, a
   developer docs site; and Northwind, the localhost shop SpikeBrowsa also serves, so a film
   recorded from SpikeBrowsa shows the same content.
