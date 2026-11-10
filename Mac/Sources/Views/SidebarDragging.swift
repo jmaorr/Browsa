@@ -37,6 +37,8 @@ final class SidebarDragging {
     var rowFrames: [UUID: CGRect] = [:]
     var newTabFrame: CGRect = .zero
     var gapFrame: CGRect = .zero
+    /// The "Drop here to pin" zone, while it shows.
+    var pinZoneFrame: CGRect = .zero
     /// The sidebar's top-left corner in the window, for tools that think in window points.
     var originInWindow: CGPoint = .zero
 
@@ -102,10 +104,13 @@ final class SidebarDragging {
         // Nowhere useful: it goes home.
         if target == nil { withAnimation(Motion.snappy) { target = lift.origin } }
         settling = true
-        // Let the gap find its final place before gliding into it.
+        // Let the gap find its final place before gliding into it. Pinning the first tab lands at
+        // the top of the pin zone, where its row will be.
         DispatchQueue.main.async { [self] in
+            let firstPin = target?.isPinned == true && !space.pinned.contains { $0.id != lift.tabID }
+            let landing = firstPin ? pinZoneFrame : gapFrame
             withAnimation(Motion.snappy) {
-                location = CGPoint(x: gapFrame.minX + lift.grab.width, y: gapFrame.minY + lift.grab.height)
+                location = CGPoint(x: landing.minX + lift.grab.width, y: landing.minY + lift.grab.height)
             } completion: { [self] in
                 commit(tab, in: space, browser: browser)
             }

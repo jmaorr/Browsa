@@ -30,7 +30,9 @@ struct SpaceTabs: View {
     var body: some View {
         let space = browser.currentSpace
         let forward = browser.lastSpaceSwitch?.forward ?? true
-        let pinned = slots(space.pinned, pinned: true)
+        // Dragging with nothing else pinned: a zone to drop on stands in for the Pinned section.
+        let pinZone = dragging.lift != nil && !space.isPrivate && !space.pinned.contains { !dragging.isLifted($0.id) }
+        let pinned = pinZone ? [] : slots(space.pinned, pinned: true)
         let today = slots(space.listedToday, pinned: false)
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 2) {
@@ -40,6 +42,18 @@ struct SpaceTabs: View {
                         .padding(.bottom, 4)
                 } else {
                     Color.clear.frame(height: 6)
+                }
+
+                // Dragging with nothing pinned yet: somewhere to pin, and what pinning means.
+                if pinZone {
+                    PinDropZone(targeted: dragging.target?.isPinned == true,
+                                landing: dragging.settling && dragging.target?.isPinned == true)
+                        // As tall as a pinned row and the air under it, so nothing jumps when it lands.
+                        .frame(height: 44)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
+                            dragging.pinZoneFrame = $0
+                        }
+                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
                 }
 
                 ForEach(Array(pinned.enumerated()), id: \.element.id) { i, slot in
@@ -92,6 +106,41 @@ struct SpaceTabs: View {
                 }
                 .transition(.opacity)
         }
+    }
+}
+
+/// Shown while a tab is dragged and nothing is pinned yet: drop above New Tab to pin.
+private struct PinDropZone: View {
+    var targeted: Bool
+    /// The tab is settling into the zone: the words step aside for it.
+    var landing = false
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "pin.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(targeted ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+                .frame(width: 24, height: 24)
+                .background(targeted ? AnyShapeStyle(Color.accentColor.opacity(0.14)) : AnyShapeStyle(.primary.opacity(0.06)), in: .circle)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Drop here to pin")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Pinned tabs are never cleared.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .opacity(landing ? 0 : 1)
+        .padding(.horizontal, 8)
+        .frame(maxHeight: .infinity)
+        .background(targeted ? AnyShapeStyle(Color.accentColor.opacity(0.07)) : AnyShapeStyle(.primary.opacity(0.035)),
+                    in: .rect(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .strokeBorder(targeted ? AnyShapeStyle(Color.accentColor.opacity(0.7)) : AnyShapeStyle(.primary.opacity(0.14)),
+                          style: StrokeStyle(lineWidth: targeted ? 1.5 : 1, dash: [4, 3])))
+        .animation(Motion.snappy, value: targeted)
     }
 }
 

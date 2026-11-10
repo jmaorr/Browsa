@@ -107,9 +107,11 @@ struct FaviconView: View {
     }
 
     var body: some View {
-        AsyncImage(url: iconURL) { phase in
-            if let image = phase.image {
-                image.resizable().interpolation(.high).scaledToFit()
+        // Cached in memory, so a row that's rebuilt (dragged to another section, a space switch)
+        // shows its icon straight away instead of flashing its letter while it loads again.
+        FaviconImage(url: iconURL) { image in
+            if let image {
+                Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
                     .padding(chip ? size * 0.12 : 0)
                     .background(chip ? AnyShapeStyle(Color.white.opacity(0.92)) : AnyShapeStyle(.clear),
                                 in: .rect(cornerRadius: size * 0.28, style: .continuous))
@@ -141,6 +143,29 @@ struct PanelFill: ShapeStyle {
 }
 
 /// A tab's icon: its favicon, or a globe before it has a page.
+@MainActor private enum FaviconCache { static var images: [URL: NSImage] = [:] }
+
+/// Loads a site icon once per launch and keeps it in memory.
+private struct FaviconImage<Content: View>: View {
+    let url: URL?
+    @ViewBuilder let content: (NSImage?) -> Content
+    @State private var image: NSImage?
+
+    var body: some View {
+        content(image ?? url.flatMap { FaviconCache.images[$0] })
+            .task(id: url) {
+                guard let url else { image = nil; return }
+                if let hit = FaviconCache.images[url] { image = hit; return }
+                image = nil
+                guard let (data, response) = try? await URLSession.shared.data(from: url),
+                      (response as? HTTPURLResponse)?.statusCode ?? 200 < 400,
+                      let loaded = NSImage(data: data) else { return }
+                FaviconCache.images[url] = loaded
+                image = loaded
+            }
+    }
+}
+
 struct TabIcon: View {
     let tab: BrowserTab
     var size: CGFloat = 16
