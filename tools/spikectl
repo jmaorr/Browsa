@@ -4,7 +4,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/DerivedData/Build/Products/Debug/SpikeBrowsa.app"
-C="http://127.0.0.1:${SPIKE_PORT:-47930}"
+C="http://127.0.0.1:${SPIKE_PORT:-47960}"
 
 post() { curl -sS -X POST "$C$1" -H 'Content-Type: application/json' -d "${2:-{\}}"; echo; }
 get() { curl -sS "$C$1"; echo; }
@@ -28,7 +28,7 @@ case "$cmd" in
   launch)   # in the background, without taking focus
     open -g "$APP" && up && echo "up on $C" ;;
   quit)
-    osascript -e 'tell application id "com.orriginal.browsa.spike" to quit' 2>/dev/null || pkill -x SpikeBrowsa || true ;;
+    osascript -e 'tell application id "com.orriginal.browsa.spikedrag" to quit' 2>/dev/null || pkill -f "$APP/Contents/MacOS" || true ;;
   relaunch)
     "$0" quit; sleep 1; "$0" launch ;;
   reset)    # wipe to fresh mock data and relaunch

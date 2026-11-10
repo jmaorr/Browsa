@@ -192,12 +192,12 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.developer-tools
         # Not the daily driver's 47913, so both can run at once.
-        BrowsaAgentPort: 47914
-        SpikeControlPort: 47930
+        BrowsaAgentPort: 47916
+        SpikeControlPort: 47960
     settings:
       base:
         PRODUCT_NAME: SpikeBrowsa
-        PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa.spike
+        PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa.spikedrag
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: SpikeBrowsa
