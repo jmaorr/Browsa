@@ -124,9 +124,9 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         switch self {
         case .spaces: "A place to keep your tabs organised for Work, Personal, and anything else."
         case .newTab: "Search, type an address, or jump to a tab you already have open."
-        case .commands: "Split the view, pin a tab, ask an agent. Everything is a few letters away."
+        case .commands: "Pin a tab, take a note, ask an agent. Everything is a few letters away."
         case .importing: "Bring over your bookmarks and history, and from Arc, your spaces and tabs. Your old browser stays as it is."
-        case .tour: "A quick look at split view, notes on any page, Radar and agents at work."
+        case .tour: "A quick look at tools beside the page, notes on any page, Radar and agents at work."
         case .library: "Verified extensions, bundled into kits, so you're set up for coding or agents in one click."
         case .agents: "Browsa runs an MCP server on your Mac, so your agents can open tabs, read pages and leave notes."
         case .makeDefault: "Links from Mail, Slack and everywhere else will open here."
@@ -342,7 +342,7 @@ struct WelcomePage: View {
         }
     }
 
-    /// While onboarding, ⌃1–9, ⌥⌘← →, ⌘T and ⌘K play on the cards instead of leaving the page,
+    /// While onboarding, ⌃1–9, the space keys (⌥⌘← →), ⌘T and ⌘K play on the cards instead of leaving the page,
     /// so people can try them freely. Once every stop is done they go back to normal.
     private func catchShortcuts() {
         guard keyMonitor == nil else { return }
@@ -355,12 +355,13 @@ struct WelcomePage: View {
                 if n <= 3 { input.send(.space(n - 1)) }
                 return nil
             }
-            if mods == [.command, .option], event.keyCode == 123 || event.keyCode == 124 {
-                input.send(.spaceStep(event.keyCode == 124 ? 1 : -1))
+            let keys = Shortcuts.shared
+            if keys.matches(.nextSpace, event) || keys.matches(.previousSpace, event) {
+                input.send(.spaceStep(keys.matches(.nextSpace, event) ? 1 : -1))
                 return nil
             }
-            if mods == .command, key == "t" || key == "k" {
-                let mode: CommandBarMode = key == "t" ? .newTab : .commands
+            if keys.matches(.newTab, event) || keys.matches(.commands, event) {
+                let mode: CommandBarMode = keys.matches(.newTab, event) ? .newTab : .commands
                 input.send(.shortcut(mode))
                 complete(mode == .newTab ? .newTab : .commands)
                 return nil
@@ -740,7 +741,7 @@ private struct GalleryCard: View {
         case .newTab, .commands:
             let t = stop == .newTab
             Instruction(kind: .tryIt, done: done, title: t ? "Press ⌘T to open anything" : "Press ⌘K for every command") {
-                Text(t ? "Type a site, a search, or a tab's name" : "Split view, pin a tab, ask an agent").foregroundStyle(.secondary)
+                Text(t ? "Type a site, a search, or a tab's name" : "Pin a tab, take a note, ask an agent").foregroundStyle(.secondary)
             } trailing: {
                 HStack(spacing: 4) { BigKey(text: "⌘"); BigKey(text: t ? "T" : "K") }
             } below: { EmptyView() }

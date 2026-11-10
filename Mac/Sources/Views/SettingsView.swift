@@ -13,6 +13,7 @@ struct SettingsView: View {
         TabView(selection: $tab) {
             GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }.tag("general")
             SpacesSettings().tabItem { Label("Spaces", systemImage: "square.stack") }.tag("spaces")
+            ShortcutSettings().tabItem { Label("Shortcuts", systemImage: "keyboard") }.tag("shortcuts")
             PrivacySettings().tabItem { Label("Privacy", systemImage: "hand.raised") }.tag("privacy")
             AgentSettings().tabItem { Label("Agents", systemImage: AgentIdentity.symbol) }.tag("agents")
             EngineSettings().tabItem { Label("Engine", systemImage: "cpu") }.tag("engine")
@@ -301,7 +302,7 @@ private struct EngineSettings: View {
                 Section {
                     Toggle("Show Inspect Element in the page menu", isOn: Bindable(browser).developerTools)
                 } footer: {
-                    Text("Opens the Web Inspector from a right-click on any page.")
+                    Text("Opens the Web Inspector from a right-click on any page, or with View › Web Inspector.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -480,3 +481,142 @@ private struct AgentSettings: View {
     }
 }
 
+
+// MARK: - Shortcuts
+
+/// Settings › Shortcuts: a preset (Arc's keys, Chrome's or Safari's), then any key you like.
+private struct ShortcutSettings: View {
+    private var shortcuts: Shortcuts { Shortcuts.shared }
+    /// What the last recording did to another action ("Taken from Pin Tab").
+    @State private var notes: [ShortcutAction: String] = [:]
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Preset", selection: Binding(get: { shortcuts.preset }, set: { p in
+                    notes = [:]
+                    shortcuts.usePreset(p)
+                })) {
+                    ForEach(ShortcutPreset.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+            } footer: {
+                Text(shortcuts.preset.summary + " Changing the preset clears the keys you've changed.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(ShortcutAction.Group.allCases) { group in
+                Section(group.rawValue) {
+                    ForEach(ShortcutAction.allCases.filter { $0.group == group }) { action in
+                        row(action)
+                    }
+                }
+            }
+            Section {
+                LabeledContent("Always") {
+                    Text("⌘1–9 tabs · ⌃1–9 spaces · ⌃⇥ next tab · ⌘+ ⌘− ⌘0 zoom")
+                        .foregroundStyle(.secondary)
+                }
+            } footer: {
+                HStack {
+                    Text("Click a shortcut, then press the keys. Delete removes it, Esc cancels.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Restore Preset") { notes = [:]; shortcuts.resetAll() }
+                        .disabled(!shortcuts.hasChanges)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(height: 540)
+    }
+
+    private func row(_ action: ShortcutAction) -> some View {
+        LabeledContent {
+            HStack(spacing: 6) {
+                ShortcutRecorder(action: action) { message in
+                    notes = [:]
+                    if let message { notes[action] = message }
+                }
+                Button { notes[action] = nil; shortcuts.reset(action) } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .buttonStyle(.borderless)
+                .help("Use the preset's key")
+                .opacity(shortcuts.isCustom(action) ? 1 : 0)
+                .disabled(!shortcuts.isCustom(action))
+            }
+        } label: {
+            Text(action.title)
+            if let note = notes[action] {
+                Text(note).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// The key field: shows the action's keys, and records new ones while it's on.
+private struct ShortcutRecorder: View {
+    let action: ShortcutAction
+    /// Called after recording, with a line to show under the row, if any.
+    let recorded: (String?) -> Void
+    @State private var recording = false
+    @State private var monitor: Any?
+
+    private var shortcuts: Shortcuts { Shortcuts.shared }
+
+    var body: some View {
+        Button { recording ? stop() : start() } label: {
+            Text(label)
+                .foregroundStyle(recording || shortcuts.keys(for: action).isEmpty ? .secondary : .primary)
+                .frame(minWidth: 96)
+        }
+        .buttonStyle(.bordered)
+        .tint(recording ? .accentColor : nil)
+        .accessibilityLabel("\(action.title) shortcut")
+        .accessibilityValue(label)
+        .onDisappear(perform: stop)
+    }
+
+    private var label: String {
+        if recording { return "Type Shortcut" }
+        let keys = shortcuts.keys(for: action)
+        return keys.isEmpty ? "None" : keys.map(\.display).joined(separator: "  ")
+    }
+
+    private func start() {
+        guard monitor == nil else { return }
+        recording = true
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            handle(event)
+            return nil
+        }
+    }
+
+    private func stop() {
+        recording = false
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+    }
+
+    private func handle(_ event: NSEvent) {
+        let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        if flags.isEmpty, event.keyCode == 53 { stop(); return }                         // Esc
+        if flags.isEmpty, event.keyCode == 51 || event.keyCode == 117 {                  // Delete
+            shortcuts.set(action, to: nil)
+            recorded(nil)
+            stop()
+            return
+        }
+        // A shortcut needs ⌘ or ⌃, so typing on a page never sets one off.
+        guard let combo = KeyCombo(event: event),
+              !combo.modifiers.isDisjoint(with: [.command, .control]) else { NSSound.beep(); return }
+        if let owner = KeyCombo.reserved[combo] {
+            recorded("\(combo.display) is kept for \(owner)")
+            stop()
+            return
+        }
+        let taken = shortcuts.set(action, to: combo)
+        recorded(taken.map { "Taken from \($0.title)" })
+        stop()
+    }
+}
