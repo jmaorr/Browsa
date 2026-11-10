@@ -208,8 +208,6 @@ targets:
         SpikeControlPort: 47930
         # Adds itself to Claude Code under its own name, never replacing Browsa's.
         BrowsaMCPName: browsa-spike
-        # Supper from the app bundle, not browsa.app.
-        BrowsaDemoURL: local
         # Never updates itself.
         BrowsaUpdates: "NO"
     settings:
