@@ -509,6 +509,7 @@ private struct ShortcutSettings: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 360)
             }
             .padding(.horizontal, 24)
             .padding(.top, 12)
