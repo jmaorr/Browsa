@@ -443,6 +443,8 @@ private struct AgentRequestCard: View {
 private struct TryItCard: View {
     let dismiss: () -> Void
     @State private var copied = false
+    /// browsa.app/demo/ once it's live; the bundled copy before that.
+    @State private var prompt = AgentDemo.prompt
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -454,7 +456,7 @@ private struct TryItCard: View {
             }
             Text("Give your agent this, then watch it plan a dinner party in the Agent space.")
                 .font(.caption).foregroundStyle(.secondary)
-            Text(AgentDemo.prompt)
+            Text(prompt)
                 .font(.system(size: 12))
                 .italic()
                 .textSelection(.enabled)
@@ -463,7 +465,7 @@ private struct TryItCard: View {
                 .background(AgentLive.color.opacity(0.12), in: .rect(cornerRadius: 8))
             Button(copied ? "Copied" : "Copy Prompt") {
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(AgentDemo.prompt, forType: .string)
+                NSPasteboard.general.setString(prompt, forType: .string)
                 withAnimation(Motion.snappy) { copied = true }
             }
             .buttonStyle(.glassProminent).controlSize(.small)
@@ -471,6 +473,7 @@ private struct TryItCard: View {
         .padding(12)
         .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.primary.opacity(0.08)))
+        .task { await AgentDemo.refresh(); prompt = AgentDemo.prompt }
     }
 }
 
