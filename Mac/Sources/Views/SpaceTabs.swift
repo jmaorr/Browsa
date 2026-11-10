@@ -14,15 +14,24 @@ struct SpaceTabs: View {
         let id: String
         /// Nil for the gap.
         let tab: BrowserTab?
+        /// The tab being dragged, folded to nothing where it was. Its row has to stay in the view
+        /// tree, or SwiftUI drops the drag gesture that's carrying it.
+        var collapsed = false
         static let gap = Slot(id: "gap", tab: nil)
-        @MainActor static func tab(_ tab: BrowserTab) -> Slot { Slot(id: tab.id.uuidString, tab: tab) }
+        @MainActor static func tab(_ tab: BrowserTab, collapsed: Bool = false) -> Slot {
+            Slot(id: tab.id.uuidString, tab: tab, collapsed: collapsed)
+        }
     }
 
-    /// The section's tabs without the one being dragged, with a gap where it would land.
-    private func slots(_ tabs: [BrowserTab], pinned: Bool) -> [Slot] {
-        var slots = tabs.filter { !dragging.isLifted($0.id) }.map(Slot.tab)
-        if let target = dragging.target, pinned ? target.isPinned : target.isToday {
+    /// The section's tabs with a gap where the dragged one would land, and the dragged one folded
+    /// away at its old place.
+    private func slots(_ tabs: [BrowserTab], pinned: Bool, gapAllowed: Bool = true) -> [Slot] {
+        var slots = tabs.filter { !dragging.isLifted($0.id) }.map { Slot.tab($0) }
+        if gapAllowed, let target = dragging.target, pinned ? target.isPinned : target.isToday {
             slots.insert(.gap, at: min(target.index, slots.count))
+        }
+        if let i = tabs.firstIndex(where: { dragging.isLifted($0.id) }) {
+            slots.insert(.tab(tabs[i], collapsed: true), at: min(i, slots.count))
         }
         return slots
     }
@@ -32,7 +41,7 @@ struct SpaceTabs: View {
         let forward = browser.lastSpaceSwitch?.forward ?? true
         // Dragging with nothing else pinned: a zone to drop on stands in for the Pinned section.
         let pinZone = dragging.lift != nil && !space.isPrivate && !space.pinned.contains { !dragging.isLifted($0.id) }
-        let pinned = pinZone ? [] : slots(space.pinned, pinned: true)
+        let pinned = slots(space.pinned, pinned: true, gapAllowed: !pinZone)
         let today = slots(space.listedToday, pinned: false)
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 2) {
@@ -62,7 +71,7 @@ struct SpaceTabs: View {
                 }
 
                 // A little air between pinned and Today, rather than a rule.
-                if !pinned.isEmpty {
+                if pinned.contains(where: { !$0.collapsed }) {
                     Color.clear.frame(height: 8)
                 }
 
@@ -90,13 +99,7 @@ struct SpaceTabs: View {
 
     @ViewBuilder private func row(_ slot: Slot, in space: Space) -> some View {
         if let tab = slot.tab {
-            TabRow(tab: tab, selected: tab.id == browser.selectedTabID(in: space))
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
-                    dragging.rowFrames[tab.id] = $0
-                }
-                .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .named(SidebarDragging.coordinateSpace))
-                    .onChanged { dragging.changed(tab, $0, in: space, browser: browser) }
-                    .onEnded { _ in dragging.ended(tab, in: space, browser: browser) })
+            DraggableTabRow(tab: tab, space: space, collapsed: slot.collapsed)
         } else {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(.primary.opacity(0.04))
@@ -106,6 +109,37 @@ struct SpaceTabs: View {
                 }
                 .transition(.opacity)
         }
+    }
+}
+
+/// A tab row that can be picked up and dragged around the sidebar.
+private struct DraggableTabRow: View {
+    @Environment(Browser.self) private var browser
+    @Environment(SidebarDragging.self) private var dragging
+    let tab: BrowserTab
+    let space: Space
+    /// Being dragged: folded to nothing, but kept so its gesture lives on.
+    let collapsed: Bool
+    @GestureState private var held = false
+
+    var body: some View {
+        TabRow(tab: tab, selected: tab.id == browser.selectedTabID(in: space))
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
+                if !collapsed { dragging.rowFrames[tab.id] = $0 }
+            }
+            .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .named(SidebarDragging.coordinateSpace))
+                .updating($held) { _, held, _ in held = true }
+                .onChanged { dragging.changed(tab, $0, in: space, browser: browser) }
+                .onEnded { _ in dragging.ended(tab, in: space, browser: browser) })
+            // A drag the system cancels (no onEnded) still puts the tab down.
+            .onChange(of: held) { _, now in
+                if !now, dragging.isLifted(tab.id) { dragging.ended(tab, in: space, browser: browser) }
+            }
+            .frame(height: collapsed ? 0 : nil, alignment: .top)
+            .opacity(collapsed ? 0 : 1)
+            .clipped()
+            // Cancels the stack's spacing, so the folded row takes no room at all.
+            .padding(.bottom, collapsed ? -2 : 0)
     }
 }
 
