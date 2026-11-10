@@ -1,13 +1,16 @@
 import SwiftUI
 import BrowserCore
 import BrowserEngine
-import UniformTypeIdentifiers
 
 /// The part of the sidebar that belongs to the current space. It slides out and the new space's
 /// tabs cascade in when the space changes, and all of it stays clipped inside the sidebar.
 struct SpaceTabs: View {
     @Environment(Browser.self) private var browser
     @Environment(SidebarDragging.self) private var dragging
+    @State private var scroll = ScrollPosition()
+    @State private var listFrame: CGRect = .zero
+    @State private var offset: CGFloat = 0
+    @State private var maxOffset: CGFloat = 0
 
     /// A row in a section: a tab, or the gap a dragged tab would land in.
     private struct Slot: Identifiable {
@@ -92,6 +95,26 @@ struct SpaceTabs: View {
             .transition(.spaceListChange(forward: forward))
         }
         .scrollIndicators(.never)
+        .scrollPosition($scroll)
+        .onScrollGeometryChange(for: [CGFloat].self) { g in
+            [g.contentOffset.y, max(0, g.contentSize.height - g.containerSize.height)]
+        } action: { _, v in offset = v[0]; maxOffset = v[1] }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: { listFrame = $0 }
+        // Dragging near the top or bottom edge scrolls the list, so any slot can be reached.
+        .task(id: dragging.lift != nil) {
+            guard dragging.lift != nil else { return }
+            while !Task.isCancelled {
+                let speed = dragging.autoscrollSpeed(in: listFrame)
+                if speed != 0, maxOffset > 0 {
+                    let next = min(max(offset + speed, 0), maxOffset)
+                    if next != offset {
+                        scroll.scrollTo(y: next)
+                        dragging.retarget?()
+                    }
+                }
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+        }
         .frame(maxHeight: .infinity)
         // Tabs sliding between spaces never spill out of the sidebar.
         .clipped()

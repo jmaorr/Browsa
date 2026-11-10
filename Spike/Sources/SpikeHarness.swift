@@ -278,7 +278,8 @@ enum SpikeHarness {
             guard let from = j["from"] as? [Double], let to = j["to"] as? [Double], from.count == 2, to.count == 2,
                   let dragging = SidebarDragging.latest else { return .error("Give from [x,y] and to [x,y] in window points") }
             let ok = await dragging.spikeDrag(from: CGPoint(x: from[0], y: from[1]), to: CGPoint(x: to[0], y: to[1]),
-                                              duration: j["duration"] as? Double ?? 1.2, browser: browser)
+                                              duration: j["duration"] as? Double ?? 1.2,
+                                              hold: j["hold"] as? Double ?? 0, browser: browser)
             if !ok { return .error("No tab row at \(from)") }
         case "front":
             // The one action that's meant to bring SpikeBrowsa forward.

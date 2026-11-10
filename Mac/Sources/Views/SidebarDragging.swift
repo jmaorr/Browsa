@@ -69,7 +69,7 @@ final class SidebarDragging {
     static weak var latest: SidebarDragging?
 
     /// Drags the tab under `from` to `to` (window points) as a person would, over `duration`.
-    func spikeDrag(from: CGPoint, to: CGPoint, duration: Double, browser: Browser) async -> Bool {
+    func spikeDrag(from: CGPoint, to: CGPoint, duration: Double, hold: Double = 0, browser: Browser) async -> Bool {
         let a = CGPoint(x: from.x - originInWindow.x, y: from.y - originInWindow.y)
         let b = CGPoint(x: to.x - originInWindow.x, y: to.y - originInWindow.y)
         let space = browser.currentSpace
@@ -93,6 +93,7 @@ final class SidebarDragging {
             changed(tab, from: a, to: CGPoint(x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e), in: space, browser: browser)
             try? await Task.sleep(for: .milliseconds(16))
         }
+        try? await Task.sleep(for: .seconds(hold))
         try? await Task.sleep(for: .milliseconds(150))
         ended(tab, in: space, browser: browser)
         return true
@@ -131,8 +132,27 @@ final class SidebarDragging {
             return
         }
         location = point
+        retarget = { [weak self] in self?.update(tab, in: space) }
+        update(tab, in: space)
+    }
+
+    private func update(_ tab: BrowserTab, in space: Space) {
+        guard lift != nil, !settling else { return }
         let next = resolveTarget(for: tab, in: space)
         if next != target { withAnimation(Motion.snappy) { target = next } }
+    }
+
+    /// Picks the slot again with the pointer where it is, after the list scrolled under it.
+    private(set) var retarget: (() -> Void)?
+
+    /// How fast the tab list should scroll, in points per frame, with the pointer near its top or
+    /// bottom edge during a drag: faster the closer it gets. Zero elsewhere.
+    func autoscrollSpeed(in list: CGRect) -> CGFloat {
+        guard lift != nil, !settling, list.height > 0, list.minX - 20 ... list.maxX + 20 ~= location.x else { return 0 }
+        let band: CGFloat = 36
+        if location.y > list.minY, location.y < list.minY + band { return -8 * (1 - (location.y - list.minY) / band) - 1 }
+        if location.y < list.maxY, location.y > list.maxY - band { return 8 * (1 - (list.maxY - location.y) / band) + 1 }
+        return 0
     }
 
     // MARK: Favourites
@@ -160,8 +180,12 @@ final class SidebarDragging {
             return
         }
         location = point
-        let next = resolveFavouriteTarget(in: space)
-        if next != target { withAnimation(Motion.snappy) { target = next } }
+        retarget = { [weak self] in
+            guard let self, lift != nil, !settling else { return }
+            let next = resolveFavouriteTarget(in: space)
+            if next != target { withAnimation(Motion.snappy) { target = next } }
+        }
+        retarget?()
     }
 
     func ended(_ fav: Favorite, in space: Space, browser: Browser) {
