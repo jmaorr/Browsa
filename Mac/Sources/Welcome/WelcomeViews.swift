@@ -661,7 +661,8 @@ private struct GalleryCard: View {
             if let name = choice, let s = importer.sources.first(where: { $0.name == name }) { importer.pick(s) }
             Task { await importer.run(into: browser.library) }
         case .tour: playing ? stopPlaying() : play(completeAt: 0.98)
-        case .library, .agents: play(completeAt: 0.6)
+        case .library: play(completeAt: 0.6)
+        case .agents: break
         case .makeDefault: play(completeAt: 0.5)
         case .newTab, .commands: pressPlay()
         case .spaces: break
@@ -676,6 +677,9 @@ private struct GalleryCard: View {
                 if stop == .importing {
                     // The importer itself sits in the card's right side.
                     ImportPanel().environment(\.colorScheme, scheme)
+                } else if stop == .agents {
+                    // So does the real agent connector, on the card's dark surface.
+                    AgentConnectPanel(done: done, complete: complete).environment(\.colorScheme, .dark)
                 } else {
                     StopHero(stop: stop, playing: playing && stop != .spaces, start: playStart,
                              spacePos: stop == .spaces ? spacePos : nil,
@@ -684,7 +688,7 @@ private struct GalleryCard: View {
                 }
             }
             .clipped()
-            .allowsHitTesting(stop == .importing)
+            .allowsHitTesting(stop == .importing || stop == .agents)
     }
 
     // MARK: Text column
@@ -773,17 +777,7 @@ private struct GalleryCard: View {
                 }
             }
         case .agents:
-            Instruction(kind: .choose, done: done, title: "Connect your coding agent") {
-                Text("Browsa adds itself to its MCP settings").foregroundStyle(.secondary)
-            } trailing: {
-                ActionButton(title: "Connect", tint: tint, enabled: choice != nil && !playing, action: act)
-            } below: {
-                HStack(spacing: 6) {
-                    ForEach(WelcomeAgents.all, id: \.self) { a in
-                        ChoiceChip(title: a, selected: choice == a) { EmptyView() } action: { choice = a }
-                    }
-                }
-            }
+            AgentsLead(done: done)
         case .makeDefault:
             Instruction(kind: .tryIt, done: done, title: "Make Browsa your default") {
                 Text("macOS will ask you to confirm").foregroundStyle(.secondary)
