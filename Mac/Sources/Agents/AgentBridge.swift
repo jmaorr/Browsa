@@ -31,6 +31,8 @@ final class AgentBridge {
         // The debug checks run beside your everyday Browsa, which holds the usual port.
         if let p = ProcessInfo.processInfo.environment["BROWSA_AGENT_PORT"].flatMap(UInt16.init) { return p }
         #endif
+        // SpikeBrowsa sets its own in Info.plist, so it can run beside Browsa too.
+        if let p = (Bundle.main.object(forInfoDictionaryKey: "BrowsaAgentPort") as? NSNumber)?.uint16Value { return p }
         return 47913
     }()
     /// An agent counts as driving for this long after its last call.

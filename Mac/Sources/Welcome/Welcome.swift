@@ -9,28 +9,31 @@ enum Welcome {
 }
 
 /// The first-launch intro, in order. It plays on the real window, so nothing is swapped at the end:
-/// the orb fills the window, then slowly washes out to the page colour while closing in on the page
-/// card, the sidebar arrives, then a glow in the welcome tab brings up its cards.
+/// liquid metal grows out of the page colour until it fills the window and the welcome title blurs
+/// in, then the frame pulls slowly onto the page card while the metal slows to a crawl, the sidebar
+/// arrives, and the getting-started page rises as the metal fades away.
 enum IntroPhase: Int, Comparable {
-    /// The orb fills the window, edge to edge under the traffic lights.
+    /// The metal grows from two sources until it fills the window, edge to edge under the traffic lights.
     case fill
-    /// A slow wash to the page colour while the frame closes in on the page card, leaving the
-    /// window around it neutral.
+    /// The frame pulls in onto the page card on a long ease, the metal still in full colour but
+    /// slowing to a crawl as the page lands.
     case settle
     /// The frame takes the space's tint and the sidebar's contents come in.
     case sidebar
-    /// A glow rises from the bottom of the welcome tab and its cards come up.
-    case glow
+    /// The page's title and cards rise while the metal fades to nothing.
+    case cards
 
     static func < (a: IntroPhase, b: IntroPhase) -> Bool { a.rawValue < b.rawValue }
 
     /// When each phase starts, in seconds from the beginning; `nil` is the end.
-    static let timeline: [(IntroPhase?, Double)] = [(.settle, 1.6), (.sidebar, 4.2), (.glow, 4.5), (nil, 7.4)]
-    /// How long the frame takes to close in on the page card, and the wash to reach the page colour.
-    static let settleDuration = 2.6
-    static let washDuration = 2.4
-    /// The glow swells and sinks back over this long.
-    static let glowDuration = 2.8
+    static let timeline: [(IntroPhase?, Double)] = [(.settle, 5.8), (.sidebar, 7.9), (.cards, 8.4), (nil, 11.2)]
+    /// The welcome title blurs in once the metal has spread across most of the window.
+    static let titleDelay = 2.7
+    /// The frame's pull onto the page card: fast at first, then a crawl as it lands.
+    static let settleDuration = 4.4
+    static var settleCurve: Animation { .timingCurve(0.45, 0, 0.12, 1, duration: settleDuration) }
+    /// The metal fading out under the rising page.
+    static let fadeDuration = 2.6
 }
 
 extension Browser {
