@@ -244,6 +244,15 @@ enum SpikeHarness {
     private static func perform(_ action: String, _ j: [String: Any], library: Library) async -> HTTPResponse {
         guard let browser = library.activeWindow else { return .error("No window", status: 503) }
         switch action {
+        case "reelPage":
+            // {"url":"…","width":1168,"height":888,"out":"/path.png"}: an offscreen page snapshot for the reel.
+            guard let u = (j["url"] as? String).flatMap(URL.init(string:)), let out = j["out"] as? String else { return .error("Give url and out") }
+            let size = CGSize(width: j["width"] as? Double ?? 1168, height: j["height"] as? Double ?? 888)
+            do {
+                let image = try await ReelCapture.snapshot(url: u, size: size, settle: j["settle"] as? Double ?? 1.6)
+                try ReelCapture.write(image, to: URL(fileURLWithPath: out))
+                return .json(["ok": true, "out": out])
+            } catch { return .error("\(error)") }
         case "welcomeFocus":
             // {"stop":"spaces"} opens that card as if hovered; {} lets go.
             WelcomeDebug.shared.focus = (j["stop"] as? String).flatMap(WelcomeStop.init(rawValue:))
