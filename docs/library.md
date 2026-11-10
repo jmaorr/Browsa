@@ -33,7 +33,7 @@ The Add Chrome Extension sheet says plainly that only verified extensions are te
 
 ## Safari extensions
 
-Browsa can load Safari extensions bundled in apps on the Mac (`WKWebExtension(appExtensionBundle:)`), behind an "experimental" checkbox at the bottom of the Library. Extensions that talk to their own app through native messaging don't work: WebKit reports "Native messaging is not supported", and 1Password's helper rejects the `webkit-extension://` origin. So password managers need their Chrome extension instead. Extensions that work on their own may be fine but are untested.
+Browsa can load Safari extensions bundled in apps on the Mac (`WKWebExtension(appExtensionBundle:)`). It's off for everyone (reset once, for people who had it on) and isn't in the Library: the switch is in Settings › Engine, marked experimental. When it's on, they're listed under Added, and a verified card offers the Chrome version; once that's added, the engine skips the Safari copy. Extensions that talk to their own app through native messaging don't work: WebKit reports "Native messaging is not supported", and 1Password's helper rejects the `webkit-extension://` origin. So password managers need their Chrome extension instead. Extensions that work on their own may be fine but are untested.
 
 ## Third-party plugins (not shown yet)
 

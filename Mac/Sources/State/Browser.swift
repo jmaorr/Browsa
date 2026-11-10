@@ -467,13 +467,16 @@ enum Preferences {
     }
 
     /// Safari web extensions installed on this Mac (1Password for Safari and the like). On in Debug builds.
+    /// Experimental and off: most Safari extensions are companions to a Mac app, and that link
+    /// doesn't work in Browsa. Settings › Engine has the switch.
     static var useSafariExtensions: Bool {
         get {
-            #if DEBUG
-            d.object(forKey: "useSafariExtensions") as? Bool ?? true
-            #else
-            d.bool(forKey: "useSafariExtensions")
-            #endif
+            // Everyone starts again with it off, once, including people who had it on.
+            if !d.bool(forKey: "safariExtensionsReset1") {
+                d.set(true, forKey: "safariExtensionsReset1")
+                d.set(false, forKey: "useSafariExtensions")
+            }
+            return d.bool(forKey: "useSafariExtensions")
         }
         set { d.set(newValue, forKey: "useSafariExtensions") }
     }
