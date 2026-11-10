@@ -573,19 +573,21 @@ private struct GalleryCard: View {
     private func listen() {
         guard monitors.isEmpty else { return }
         if let swipe = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel, handler: { event in
+            // Each new gesture starts fresh, whichever way it begins.
+            if event.phase == .began { swipeTravel = 0; swipeLatched = false }
             // Sideways two-finger swipes over this card only; vertical scrolling still moves the page.
             guard hovering || debug.focus == stop,
                   abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) * 1.2 || swipeTravel != 0 else { return event }
-            if event.phase == .began { swipeTravel = 0; swipeLatched = false }
+            // One space per gesture: the momentum after a quick flick never moves another.
+            if event.momentumPhase != [] { return nil }
             swipeTravel += event.scrollingDeltaX
             if !swipeLatched, abs(swipeTravel) > 60 {
                 swipeLatched = true
                 // Natural direction: fingers moving left bring in the next space.
                 step(swipeTravel < 0 ? 1 : -1)
             }
-            if event.phase == .ended || event.phase == .cancelled || event.momentumPhase == .ended {
+            if event.phase == .ended || event.phase == .cancelled {
                 swipeTravel = 0
-                swipeLatched = false
             }
             return nil
         }) { monitors.append(swipe) }

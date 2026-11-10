@@ -61,12 +61,13 @@ import Suggest
     private(set) var previewing = false
 
     /// The counts the options would bring over, from the preview.
-    var counts: (bookmarks: Int, favourites: Int, history: Int, spaces: Int, tabs: Int)? {
+    var counts: (bookmarks: Int, favourites: Int, history: Int, spaces: Int, tabs: Int, pinned: Int)? {
         guard let p = preview else { return nil }
         var seen = Set<String>()
         let marks = p.bookmarks.filter { seen.insert(URLNormalizer.key(for: $0.url)).inserted }.count
-        return (marks, min(p.bar.count, options.favouriteCount), p.history.count, p.spaces.count,
-                p.spaces.reduce(0) { $0 + $1.pinned.count + $1.open.count })
+        let spaces = p.spaces.filter { options.includes($0.sourceID) }
+        return (marks, min(p.bar.count, options.favouriteCount), p.history.count, spaces.count,
+                spaces.reduce(0) { $0 + $1.pinned.count + $1.open.count }, spaces.reduce(0) { $0 + $1.pinned.count })
     }
 
     /// Reads and lands the import, then reports what came over.
@@ -192,7 +193,7 @@ struct ImportPanel: View {
             CountRow(symbol: "clock", title: "History", unit: "pages", value: c?.history, on: o.history, picked: model.choice != nil)
             if model.choice?.isArc == true {
                 Divider()
-                CountRow(symbol: "sidebar.squares.left", title: "Spaces", unit: c.map { "· \($0.tabs) tabs" }, value: c?.spaces,
+                CountRow(symbol: "sidebar.squares.left", title: "Spaces", unit: c.map { "· \($0.pinned) pinned, \($0.tabs - $0.pinned) open" }, value: c?.spaces,
                          on: o.arcSpaces, picked: true)
             }
         }
@@ -233,13 +234,15 @@ struct ImportPanel: View {
                 model.showingSheet = true
             }
             .buttonStyle(.glass)
-            .controlSize(.regular)
+            .buttonBorderShape(.capsule)
+            .controlSize(.large)
             .disabled(model.sources.isEmpty)
             Button(primaryTitle) {
                 if model.needsAccess { model.showingSheet = true } else { Task { await model.run(into: browser.library) } }
             }
             .buttonStyle(.glassProminent)
-            .controlSize(.regular)
+            .buttonBorderShape(.capsule)
+            .controlSize(.large)
             .disabled(model.choice == nil || model.phase == .importing)
         }
     }
@@ -264,6 +267,7 @@ private struct SourceButton: View {
             }
             .padding(.horizontal, 10).padding(.vertical, 6)
             .foregroundStyle(selected ? Color.primary : Color.secondary)
+            .contentShape(.capsule)
         }
         .buttonStyle(.plain)
         .glassEffect(selected ? .regular.tint(Color.accentColor.opacity(0.25)).interactive() : .regular.interactive(), in: .capsule)
@@ -365,11 +369,23 @@ struct ImportSheet: View {
                                 row("Spaces", "sidebar.squares.left", count: c.map { "\($0.spaces) spaces · \($0.tabs) tabs" })
                             }
                             if model.options.arcSpaces, let spaces = model.preview?.spaces, !spaces.isEmpty {
-                                Text(spaces.map(\.name).joined(separator: ", "))
-                                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                                ForEach(spaces, id: \.sourceID) { sp in
+                                    Toggle(isOn: Binding(get: { model.options.includes(sp.sourceID) },
+                                                         set: { model.options.set(sp.sourceID, included: $0, all: spaces.map(\.sourceID)) })) {
+                                        HStack {
+                                            Text(sp.name)
+                                            Spacer()
+                                            Text("\(sp.pinned.count) pinned · \(sp.open.count) open")
+                                                .foregroundStyle(.secondary).monospacedDigit()
+                                        }
+                                        .font(.system(size: 12.5))
+                                    }
+                                    .toggleStyle(.checkbox)
+                                    .padding(.leading, 26)
+                                }
                             }
                         } footer: {
-                            Text("Your Arc spaces come over with their pinned and open tabs. Tabs load when you open them.")
+                            Text("Each space comes over with its pinned tabs pinned and its open tabs as Today. Tabs load when you open them.")
                                 .font(.system(size: 11)).foregroundStyle(.secondary)
                         }
                     }
@@ -499,7 +515,6 @@ private struct ChoiceList<T: Hashable>: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.leading, 26)
     }
 }
 

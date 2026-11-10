@@ -71,6 +71,16 @@ struct ImportOptions: Hashable, Sendable {
     var historyRange: HistoryRange = .threeMonths
     /// Arc only: its spaces become Browsa spaces, with their pinned and open tabs.
     var arcSpaces = true
+    /// Arc only: the spaces left out, by Arc's id. Empty brings them all.
+    var skippedSpaces: Set<String> = []
+
+    func includes(_ spaceID: String) -> Bool { !skippedSpaces.contains(spaceID) }
+
+    mutating func set(_ spaceID: String, included: Bool, all: [String]) {
+        if included { skippedSpaces.remove(spaceID) } else { skippedSpaces.insert(spaceID) }
+        // Leaving every space out is the same as turning Spaces off.
+        if Set(all).isSubset(of: skippedSpaces) { arcSpaces = false; skippedSpaces = [] }
+    }
 }
 
 /// What came over, for the card's counts.
@@ -407,7 +417,7 @@ extension Library {
         }
         let importedKey = "importedSpaces"
         var already = Set(UserDefaults.standard.stringArray(forKey: importedKey) ?? [])
-        for imported in data.spaces where !already.contains("\(source.id):\(imported.sourceID)") {
+        for imported in data.spaces where options.includes(imported.sourceID) && !already.contains("\(source.id):\(imported.sourceID)") {
             already.insert("\(source.id):\(imported.sourceID)")
             let taken = Set(spaces.map(\.name))
             let name = taken.contains(imported.name) ? "\(imported.name) (\(source.name))" : imported.name
