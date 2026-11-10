@@ -38,9 +38,66 @@ def keyed(img):
                 px[x, y] = (r, g, b, int(a * (d - 10) / 20))
     return img
 
+WINDOW_RADIUS = 46   # the real window's corner in 2x px, measured from the shot
+
+
+def rounded_mask(w, h, r, inset=0):
+    """An anti-aliased rounded-rect mask: drawn at 4x, scaled down."""
+    k = 4
+    m = Image.new("L", (w * k, h * k), 0)
+    ImageDraw.Draw(m).rounded_rectangle((inset * k, inset * k, (w - inset) * k - 1, (h - inset) * k - 1), radius=r * k, fill=255)
+    return m.resize((w, h), Image.LANCZOS)
+
+
+def bleed(img):
+    """Give fully transparent pixels their neighbours' colour, so filtering at an angle can't drag
+    black in around the edges (the dark fringe on corners)."""
+    rgb = img.convert("RGB")
+    a = img.getchannel("A")
+    solid = a.point(lambda v: 255 if v > 0 else 0)
+    spread = rgb
+    for _ in range(6):
+        blurred = spread.filter(ImageFilter.MaxFilter(5))
+        spread = Image.composite(spread, blurred, solid)
+        solid = solid.filter(ImageFilter.MaxFilter(5))
+    # Anything still unset gets the average edge colour.
+    out = Image.composite(spread, Image.new("RGB", img.size, bg), solid)
+    out.putalpha(a)
+    return out
+
+
+def find_lights(img):
+    """The three traffic lights: grey discs on the toolbar, left to right, as (cx, cy, r)."""
+    px = img.load()
+    cols = []
+    for x in range(10, 150):
+        if any(abs(px[x, y][0] - 190) < 6 and px[x, y][3] == 255 for y in range(20, 50)):
+            cols.append(x)
+    groups, cur = [], [cols[0]]
+    for x in cols[1:]:
+        if x - cur[-1] > 2:
+            groups.append(cur); cur = [x]
+        else:
+            cur.append(x)
+    groups.append(cur)
+    out = []
+    for g in groups[:3]:
+        cx = (g[0] + g[-1]) // 2
+        ys = [y for y in range(10, 70) if abs(px[cx, y][0] - 190) < 6]
+        out.append((cx, (ys[0] + ys[-1]) // 2, (g[-1] - g[0]) // 2 + 2))
+    return out
+
+
 meta = {"window": [W // 2, H // 2], "layers": {}}
+lights = find_lights(base)
 for name, box in R.items():
     crop = keyed(base.crop(box).copy())
+    if name == "toolbar":
+        # The grey lights live on their own layer, in colour.
+        cd = ImageDraw.Draw(crop)
+        for cx, cy, r in lights:
+            cd.ellipse((cx - r - 2, cy - r - 2, cx + r + 2, cy + r + 2), fill=bg + (0,))
+    crop = bleed(crop)
     crop.save(f"{out}/{name}.png")
     meta["layers"][name] = [box[0] / 2, box[1] / 2, (box[2] - box[0]) / 2, (box[3] - box[1]) / 2]
 
@@ -53,19 +110,31 @@ for box in list(R.values()) + [CARD]:
         d.rectangle((150, 0, box[2], box[3]), fill=bg + (255,))
         continue
     d.rectangle((box[0] - 4, box[1] - 4, box[2] + 4, box[3] + 4), fill=bg + (255,))
-# Rounded window corners.
-mask = Image.new("L", (W, H), 0)
-ImageDraw.Draw(mask).rounded_rectangle((0, 0, W - 1, H - 1), radius=22, fill=255)
-bare.putalpha(mask)
+# Traffic lights in colour, as on an active window.
+ld = ImageDraw.Draw(bare)
+for (cx, cy, r), col in zip(lights, ((255, 95, 87), (254, 188, 46), (40, 200, 64))):
+    ld.ellipse((cx - r - 4, cy - r - 4, cx + r + 4, cy + r + 4), fill=bg + (255,))
+# Rounded window corners, drawn at 4x and scaled down so the curve is smooth, not stair-stepped.
+bare.putalpha(rounded_mask(W, H, WINDOW_RADIUS))
+bare = bleed(bare)
 bare.save(f"{out}/window.png")
+# The lights go on their own layer so they stay crisp circles.
+lw = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+for (cx, cy, r), col in zip(lights, ((255, 95, 87), (254, 188, 46), (40, 200, 64))):
+    disc = rounded_mask(int(2 * r + 4), int(2 * r + 4), r, inset=2)
+    lw.paste(Image.new("RGBA", disc.size, col + (255,)), (cx - r - 2, cy - r - 2), disc)
+lw = bleed(lw)
+box = (0, 0, 160, 80)
+lw.crop(box).save(f"{out}/lights.png")
+meta["layers"]["lights"] = [0, 0, 80, 40]
 meta["layers"]["window"] = [0, 0, W / 2, H / 2]
 
 # The page card: the page snapshot in a rounded card.
 cw, ch = CARD[2] - CARD[0], CARD[3] - CARD[1]
 page = Image.open(page_path).convert("RGBA").resize((cw, ch), Image.LANCZOS)
 cmask = Image.new("L", (cw, ch), 0)
-ImageDraw.Draw(cmask).rounded_rectangle((0, 0, cw - 1, ch - 1), radius=18, fill=255)
-page.putalpha(cmask)
+page.putalpha(rounded_mask(cw, ch, 20))
+page = bleed(page)
 page.save(f"{out}/card.png")
 meta["layers"]["card"] = [CARD[0] / 2, CARD[1] / 2, cw / 2, ch / 2]
 
