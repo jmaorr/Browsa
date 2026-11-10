@@ -34,7 +34,7 @@ final class SidebarDragging {
         let size: CGSize
     }
 
-    static let coordinateSpace = "sidebar"
+    nonisolated static let coordinateSpace = "sidebar"
 
     private(set) var lift: Lift?
     /// The pointer, in the sidebar's coordinate space.
