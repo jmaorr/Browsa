@@ -314,7 +314,7 @@ func act1(_ t: Double) {
     carve.geometry!.firstMaterial!.transparency = 0.18 * smooth(phase(t, 1.9, 1.0))
     let sw = phase(t, 1.9, 1.5)
     let half = Double(meta.layers["address"]![2]) / 2 - 45
-    sweep.opacity = 0.8 * sin(.pi * sw)
+    sweep.opacity = 0   // the light sweep read as a cheap shimmer; the bar just settles in
     sweep.position = SCNVector3(Double(ap.x) - half + 2 * half * easeInOutSine(sw), Double(ap.y), 3)
 
     for (i, f) in favs.enumerated() { drop(f, at: 2.3 + Double(i) * 0.14, length: 1.5, height: 60) }
