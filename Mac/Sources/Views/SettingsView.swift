@@ -491,8 +491,9 @@ private struct ShortcutSettings: View {
     @State private var notes: [ShortcutAction: String] = [:]
 
     var body: some View {
-        Form {
-            Section {
+        VStack(spacing: 0) {
+            // The preset sits on its own above the list, not boxed in a section like a setting.
+            VStack(spacing: 8) {
                 Picker("Preset", selection: Binding(get: { shortcuts.preset }, set: { p in
                     notes = [:]
                     shortcuts.usePreset(p)
@@ -503,13 +504,21 @@ private struct ShortcutSettings: View {
                 .labelsHidden()
                 // Large is the macOS 26 capsule in Liquid Glass; regular is the older squared control.
                 .controlSize(.large)
-                .frame(maxWidth: .infinity)
-            } header: {
-                Text("Preset")
-            } footer: {
+                .fixedSize()
                 Text(shortcuts.preset.summary + " Changing the preset clears the keys you've changed.")
                     .font(.caption).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+            shortcutList
+        }
+        .frame(height: 560)
+    }
+
+    private var shortcutList: some View {
+        Form {
             ForEach(ShortcutAction.Group.allCases) { group in
                 Section(group.rawValue) {
                     ForEach(ShortcutAction.allCases.filter { $0.group == group }) { action in
@@ -533,7 +542,6 @@ private struct ShortcutSettings: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 540)
     }
 
     private func row(_ action: ShortcutAction) -> some View {
