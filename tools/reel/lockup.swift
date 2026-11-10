@@ -92,6 +92,33 @@ struct Card: View {
     }
 }
 
+/// The opening (REEL_INTRO=1): the icon alone in the dark, the liquid metal blooming softly
+/// behind it, then the icon lifts and fades as the window takes over.
+struct Intro: View {
+    let t: Double, seconds: Double, library: ShaderLibrary, icon: NSImage, size: CGSize
+    var body: some View {
+        let inP = phase(t, 0.15, 1.1)
+        let outP = phase(t, seconds - 0.9, 0.9)
+        let glow = easeOut(phase(t, 0.0, 1.6)) * (1 - easeInOut(outP))
+        ZStack {
+            Color(red: 0.03, green: 0.03, blue: 0.035)
+            Rectangle()
+                .colorEffect(library.twinMetal(.float2(size), .float(2.4 + t * 0.5), .float3(0.06, 0.06, 0.07), .float(0.22)))
+                .mask(RadialGradient(colors: [.white, .white.opacity(0.35), .clear], center: .center,
+                                     startRadius: 0, endRadius: size.height * (0.28 + 0.12 * glow)))
+                .opacity(0.85 * glow)
+            Image(nsImage: icon)
+                .resizable()
+                .frame(width: size.height * 0.22, height: size.height * 0.22)
+                .shadow(color: .black.opacity(0.55), radius: size.height * 0.03, y: size.height * 0.015)
+                .modifier(Arrive(p: inP, size: size))
+                .scaleEffect(1 + 0.25 * easeInOut(outP))
+                .opacity(1 - easeInOut(outP))
+        }
+        .frame(width: size.width, height: size.height)
+    }
+}
+
 /// A feature title beside the window (REEL_TITLE="Radar|Keeping your localhosts organised."),
 /// on a clear background, for laying over a staged beat. REEL_TITLE_OUT=0 keeps it to the end.
 struct FeatureTitle: View {
@@ -137,7 +164,8 @@ struct Main {
             let card = ProcessInfo.processInfo.environment["REEL_CARD"]
             let feature = ProcessInfo.processInfo.environment["REEL_TITLE"].map { $0.split(separator: "|").map(String.init) }
             let leaves = ProcessInfo.processInfo.environment["REEL_TITLE_OUT"] != "0"
-            let r = feature.map { ImageRenderer(content: AnyView(FeatureTitle(t: t, seconds: seconds, title: $0[0], line: $0.count > 1 ? $0[1] : "", size: size, leaves: leaves))) }
+            let intro = ProcessInfo.processInfo.environment["REEL_INTRO"] == "1"
+            let r = intro ? ImageRenderer(content: AnyView(Intro(t: t, seconds: seconds, library: library, icon: icon, size: size))) : feature.map { ImageRenderer(content: AnyView(FeatureTitle(t: t, seconds: seconds, title: $0[0], line: $0.count > 1 ? $0[1] : "", size: size, leaves: leaves))) }
                 ?? card.map { ImageRenderer(content: AnyView(Card(t: t, seconds: seconds, text: $0, size: size))) }
                 ?? ImageRenderer(content: AnyView(Lockup(t: t, library: library, icon: icon, size: size)))
             r.scale = 2

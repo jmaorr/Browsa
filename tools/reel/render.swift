@@ -200,6 +200,36 @@ addShadow(for: "card", radius: 18, blur: 22)
 for n in ["address", "fav0", "fav1", "fav2", "fav3"] { addShadow(for: n, radius: 14, blur: 26) }
 shadows["window"]!.position.z = -2
 
+// A soft glow round the window's edge in the liquid metal's colours, so the frame never sits
+// stale on black: bright as it lands, settling to a faint halo.
+let frameGlow: SCNNode = {
+    let w = winW + 260, h = winH + 260
+    let img = NSImage(size: NSSize(width: w, height: h))
+    img.lockFocus()
+    let shadow = NSShadow()
+    shadow.shadowBlurRadius = 110
+    shadow.shadowOffset = NSSize(width: 0, height: -10000)
+    let rect = NSRect(x: 130, y: 130 + 10000, width: winW, height: winH)
+    for (col, dx, dy) in [(NSColor(srgbRed: 1.0, green: 0.45, blue: 0.18, alpha: 0.9), -40.0, 30.0),
+                          (NSColor(srgbRed: 0.98, green: 0.25, blue: 0.35, alpha: 0.7), 40.0, -30.0),
+                          (NSColor(srgbRed: 0.55, green: 0.85, blue: 0.35, alpha: 0.35), 0.0, 0.0)] {
+        shadow.shadowColor = col; shadow.shadowOffset = NSSize(width: dx, height: dy - 10000)
+        NSGraphicsContext.saveGraphicsState(); shadow.set()
+        NSColor.black.setFill(); NSBezierPath(roundedRect: rect, xRadius: 23, yRadius: 23).fill()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+    img.unlockFocus()
+    let geo = SCNPlane(width: w, height: h)
+    let m = SCNMaterial(); m.diffuse.contents = img; m.lightingModel = .constant
+    m.blendMode = .add; m.writesToDepthBuffer = false; m.readsFromDepthBuffer = false
+    geo.materials = [m]
+    let n = SCNNode(geometry: geo)
+    n.renderingOrder = -20
+    n.position = SCNVector3(0, 0, -3)
+    stage.addChildNode(n)
+    return n
+}()
+
 // The address bar's carve: a soft dark inset that deepens under it as it sinks in.
 let carve: SCNNode = {
     let f = meta.layers["address"]!
@@ -304,6 +334,8 @@ func act1(_ t: Double) {
     }
 
     drop(window, at: 0.0, length: 2.4, height: 220)
+    frameGlow.position.z = window.position.z - 3
+    frameGlow.opacity = window.opacity * (0.12 + 0.3 * (1 - smooth(phase(t, 1.0, 3.5))))
     drop(card, at: 0.5, length: 2.4, height: 90)
     drop(bottom, at: 1.0)
 
@@ -506,6 +538,53 @@ func placeCursor(_ t: Double) {
     } else { ring.isHidden = true }
 }
 
+// A second cursor (REEL_CURSOR2, same key format, always the agent's pointer): a collaborator
+// arriving while your own cursor is still on screen.
+let cursorKeys2: [CursorKey] = (ProcessInfo.processInfo.environment["REEL_CURSOR2"] ?? "").split(separator: ";").compactMap { k in
+    let v = k.split(separator: ":")
+    guard v.count >= 3 else { return nil }
+    return CursorKey(t: Double(v[0])!, x: Double(v[1])!, y: Double(v[2])!, agent: true, click: v.count > 4 && v[4] == "1")
+}
+let agentCursor2 = spritePlane(agentCursorImage, width: 30, order: 9002)
+
+func placeCursor2(_ t: Double) {
+    guard let first = cursorKeys2.first, t >= first.t - 0.01 else { agentCursor2.isHidden = true; return }
+    var a = first
+    for k in cursorKeys2 where k.t <= t { a = k }
+    let b = cursorKeys2.first { $0.t > t } ?? a
+    let f = b.t > a.t ? easeInOutCubic((t - a.t) / (b.t - a.t)) : 0
+    let x = mix(a.x, b.x, f), y = mix(a.y, b.y, f)
+    let aw = 30.0, ah = aw * agentCursorImage.size.height / agentCursorImage.size.width
+    agentCursor2.isHidden = false
+    agentCursor2.position = stagePoint(x + aw * 0.36, y + ah * 0.32, z: 4.3)
+    // Arrives with a little pop.
+    let p = clamp((t - first.t) / 0.4)
+    let pop = 0.6 + 0.4 * easeOutCubic(p) + 0.18 * sin(.pi * p)
+    agentCursor2.scale = SCNVector3(pop, pop, 1)
+    agentCursor2.opacity = smooth(p)
+}
+
+// Hand-animated pieces over a recording: REEL_SPRITES="file@cx:cy:w:h:t0:t1:t2,…" (window points):
+// the image slides down into place and fades in from t0 to t1, and stays until t2.
+struct Sprite { let node: SCNNode; let cx, cy, t0, t1, t2: Double }
+let sprites: [Sprite] = (ProcessInfo.processInfo.environment["REEL_SPRITES"] ?? "").split(separator: ",").compactMap { spec in
+    let parts = spec.split(separator: "@")
+    guard parts.count == 2, let img = NSImage(contentsOfFile: String(parts[0])) else { return nil }
+    let v = parts[1].split(separator: ":").map { Double($0)! }
+    let n = spritePlane(img, width: v[2], order: 8000)
+    n.geometry = SCNPlane(width: v[2], height: v[3]); n.geometry!.materials = [{ let m = SCNMaterial(); m.diffuse.contents = img; m.lightingModel = .constant; sharp(m); m.writesToDepthBuffer = false; return m }()]
+    return Sprite(node: n, cx: v[0], cy: v[1], t0: v[4], t1: v[5], t2: v[6])
+}
+func placeSprites(_ t: Double) {
+    for s in sprites {
+        guard t >= s.t0, t < s.t2 else { s.node.isHidden = true; continue }
+        let f = easeOutCubic((t - s.t0) / (s.t1 - s.t0))
+        s.node.isHidden = false
+        s.node.position = stagePoint(s.cx, s.cy - 14 * (1 - f), z: 1.0)
+        s.node.opacity = f
+    }
+}
+
 /// REEL_LIGHTS="r,g,b" (the sidebar's colour) paints the traffic lights back over a recording:
 /// while ScreenCaptureKit records, macOS swaps them for its screen-sharing pill.
 let lightsOverlay: SCNNode? = ProcessInfo.processInfo.environment["REEL_LIGHTS"].map { spec in
@@ -532,7 +611,10 @@ let lightsOverlay: SCNNode? = ProcessInfo.processInfo.environment["REEL_LIGHTS"]
 
 func act2(_ t: Double, frame: Int) {
     for n in stage.childNodes where n !== screen && n.name != nil { n.isHidden = true }
+    frameGlow.isHidden = true
     placeCursor(t)
+    placeCursor2(t)
+    placeSprites(t)
     for (_, sh) in shadows { sh.isHidden = true }
     shadows["window"]?.isHidden = false
     shadows["window"]?.opacity = 0.35
