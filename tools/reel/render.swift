@@ -220,7 +220,23 @@ let carve: SCNNode = {
 
 // MARK: - Light and camera
 
-scene.background.contents = NSColor(calibratedRed: 0.93, green: 0.92, blue: 0.94, alpha: 1)
+// A dark stage (REEL_STAGE=light for the old one): deep graphite with a soft lift in the middle,
+// so the window sits in a pool of light, and it meets the dark liquid metal reveal.
+scene.background.contents = {
+    if ProcessInfo.processInfo.environment["REEL_STAGE"] == "light" {
+        return NSColor(calibratedRed: 0.93, green: 0.92, blue: 0.94, alpha: 1) as Any
+    }
+    let size = NSSize(width: 1600, height: 900)
+    let img = NSImage(size: size)
+    img.lockFocus()
+    NSGradient(colors: [NSColor(calibratedRed: 0.105, green: 0.108, blue: 0.125, alpha: 1),
+                        NSColor(calibratedRed: 0.045, green: 0.045, blue: 0.055, alpha: 1),
+                        NSColor(calibratedRed: 0.02, green: 0.02, blue: 0.025, alpha: 1)],
+               atLocations: [0, 0.6, 1], colorSpace: .sRGB)!
+        .draw(in: NSRect(origin: .zero, size: size), relativeCenterPosition: NSPoint(x: 0, y: 0.1))
+    img.unlockFocus()
+    return img as Any
+}()
 
 // A light sweep: a soft white streak that crosses the address bar as it carves in.
 let sweep: SCNNode = {
