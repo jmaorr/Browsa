@@ -46,9 +46,12 @@ struct SurfaceBackground: View {
             LinearGradient(colors: [a, b], startPoint: .topLeading, endPoint: .bottomTrailing)
                 .overlay(Grain(opacity: 0.09))
         case .aluminium:
-            LinearGradient(colors: scheme == .dark ? [Color(white: 0.26), Color(white: 0.18)] : [Color(white: 0.93), Color(white: 0.84)],
+            // Softly brushed: a gentle sheen and faint grain, not hard stripes.
+            LinearGradient(colors: scheme == .dark ? [Color(white: 0.24), Color(white: 0.19)] : [Color(white: 0.965), Color(white: 0.9)],
                            startPoint: .top, endPoint: .bottom)
-                .overlay(Brushed(dark: scheme == .dark))
+                .overlay(LinearGradient(colors: [.white.opacity(scheme == .dark ? 0.04 : 0.35), .clear, .white.opacity(scheme == .dark ? 0.02 : 0.15)],
+                                        startPoint: .topLeading, endPoint: .bottomTrailing))
+                .overlay(Brushed(dark: scheme == .dark).opacity(0.35))
         }
     }
 }
@@ -118,8 +121,7 @@ extension WelcomeStop {
         switch self {
         case .spaces: .meshLight([Color(red: 0.99, green: 0.66, blue: 0.3), Color(red: 1.0, green: 0.86, blue: 0.42),
                                   Color(red: 0.62, green: 0.86, blue: 0.5), Color(red: 0.98, green: 0.76, blue: 0.36)])
-        case .newTab: .paper
-        case .commands: .aluminium
+        case .newTab, .commands: .aluminium
         case .importing: .paper
         case .tour: .grain(Color(red: 0.36, green: 0.06, blue: 0.16), Color(red: 0.12, green: 0.04, blue: 0.1))
         case .library: .paper
