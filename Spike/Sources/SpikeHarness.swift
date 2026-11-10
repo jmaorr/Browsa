@@ -292,6 +292,41 @@ enum SpikeHarness {
             // {"intro":true,"reset":true}: open the welcome tab, optionally clearing its progress first.
             if j["reset"] as? Bool == true { WelcomeProgress.shared.reset() }
             browser.openWelcome(playingIntro: j["intro"] as? Bool ?? true)
+        case "cutroomNotes":
+            // Three notes pinned on Cutroom, as a person reviewing the cut would leave them.
+            let url = URL(string: "http://127.0.0.1:\(AgentBridge.port)/demo/cutroom")!
+            for n in library.margin.notes where n.url.contains("/demo/cutroom") { library.margin.delete(n.id) }
+            let notes = [
+                ("#clip-peach", "Peaches drags. Tighten this cut by a few seconds?"),
+                ("#v2", "Open on a title: \"Sunday Table\", with \"A film by Supper\" under it."),
+                ("#screen", "Grade feels cold. Warmer, more golden, like late light."),
+            ]
+            for (sel, body) in notes {
+                _ = library.margin.add(MarginNote(url: url, pageTitle: "Cutroom · Sunday Table", anchor: .init(selector: sel), body: body))
+            }
+        case "cutroomAgent":
+            // Claude works through the Cutroom notes for real, through Browsa's own MCP tools: read the
+            // notes, open the editor, make each edit, resolve each note with what it did.
+            let gap = j["gap"] as? Double ?? 1.4
+            Task { @MainActor in
+                let url = "http://127.0.0.1:\(AgentBridge.port)/demo/cutroom"
+                @MainActor func call(_ tool: String, _ args: [String: Any]) async {
+                    _ = await callTool(tool, args: args, agent: "Claude Code", library: library)
+                    try? await Task.sleep(for: .seconds(gap))
+                }
+                await call("notes_list", ["urlPrefix": url])
+                // The cut you're looking at: the agent works in your tab, so you watch every edit land.
+                let tab = browser.currentSpace.allTabs.first { $0.url?.absoluteString.contains("/demo/cutroom") == true }?.id.uuidString ?? ""
+                await call("page_read", ["tab": tab])
+                let ids = library.margin.openNotes(under: url).map(\.id.uuidString)
+                func note(_ i: Int) -> String { ids.indices.contains(i) ? ids[i] : "" }
+                await call("page_eval", ["tab": tab, "script": "cutroom.seek(9); return await cutroom.trim('peach', -3.5, { ms: 1400 })"])
+                await call("notes_resolve", ["id": note(0), "comment": "Trimmed Peaches from 8s to 4.5s; the cut now runs 20s."])
+                await call("page_eval", ["tab": tab, "script": "cutroom.seek(0.2); return await cutroom.addTitle('Sunday Table', { at: 0.2, sub: 'A film by Supper', dur: 3.5 })"])
+                await call("notes_resolve", ["id": note(1), "comment": "Added a lower third at the top: Sunday Table, A film by Supper."])
+                await call("page_eval", ["tab": tab, "script": "cutroom.seek(9.5); await cutroom.setGrade({ temp: 42 }, { ms: 1400 }); await cutroom.setWheel('gain', 0.32, -0.22, { ms: 1400 }); return await cutroom.setWheel('lift', -0.12, 0.1, { ms: 900 })"])
+                await call("notes_resolve", ["id": note(2), "comment": "Warmed the grade: temp +42, gain toward amber, a touch of teal in the shadows."])
+            }
         case "reelStage":
             // {"favorites":[[url,title]…], "tabs":[url…], "select":n}: the current space dressed with
             // real sites for the reel; its old tabs and every favourite go.

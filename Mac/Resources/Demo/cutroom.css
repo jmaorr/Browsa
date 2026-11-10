@@ -171,3 +171,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
   background: rgba(40,41,46,.92); backdrop-filter: blur(20px); box-shadow: 0 10px 30px rgba(0,0,0,.5), inset 0 0 0 1px var(--line-2); }
 
 [hidden] { display: none !important; }
+
+/* Narrower windows (a notes panel open beside it): the bin and inspector give way to the viewer. */
+@media (max-width: 1320px) {
+  .app { grid-template-columns: 188px 1fr 248px; }
+  .bins { grid-template-columns: 1fr; }
+  .project span { display: none; }
+  .saved { display: none; }
+  .field { grid-template-columns: 54px 1fr auto; }
+}

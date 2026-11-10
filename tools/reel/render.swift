@@ -362,6 +362,52 @@ func act1(_ t: Double) {
     camera.fStop = mix(1.8, 5.6, whole)
 }
 
+// MARK: - Act 2: the real app, recorded, on the same stage
+
+/// REEL_ACT=2 with REEL_FRAMES=<dir of s00001.jpg…>: a recording of the live window (ScreenCaptureKit)
+/// played on the window's plane, with the window's own corners as its mask, and the camera moving
+/// in to follow each edit. REEL_KEYS="t:x:y:distance,…" sets the camera path (window points).
+let act = Int(ProcessInfo.processInfo.environment["REEL_ACT"] ?? "1")!
+let framesDir = ProcessInfo.processInfo.environment["REEL_FRAMES"].map { URL(fileURLWithPath: $0) }
+let screen: SCNNode? = act == 2 ? {
+    let f = meta.layers["window"]!
+    let geo = SCNPlane(width: f[2], height: f[3])
+    let m = SCNMaterial()
+    m.lightingModel = .constant
+    m.transparencyMode = .aOne
+    // The window's alpha (rounded corners, edge) as the mask over the recording's square frames.
+    m.transparent.contents = NSImage(contentsOf: (bDir ?? layersDir).appending(path: "window.png"))
+    sharp(m)
+    m.transparent.mipFilter = .linear
+    geo.materials = [m]
+    let n = SCNNode(geometry: geo)
+    n.name = "screen"
+    n.renderingOrder = 1
+    stage.addChildNode(n)
+    return n
+}() : nil
+let keys: [(t: Double, x: Double, y: Double, d: Double)] = (ProcessInfo.processInfo.environment["REEL_KEYS"] ?? "0:30:-20:2050")
+    .split(separator: ",").map { k in let v = k.split(separator: ":").map { Double($0)! }; return (v[0], v[1], v[2], v[3]) }
+
+func act2(_ t: Double, frame: Int) {
+    for n in stage.childNodes where n !== screen && n.name != nil { n.isHidden = true }
+    for (_, sh) in shadows { sh.isHidden = true }
+    shadows["window"]?.isHidden = false
+    shadows["window"]?.opacity = 0.35
+    carve.isHidden = true; sweep.isHidden = true
+    if let dir = framesDir {
+        let url = dir.appending(path: String(format: "s%05d.jpg", frame + 1))
+        if let img = NSImage(contentsOf: url) { screen!.geometry!.firstMaterial!.diffuse.contents = img }
+    }
+    stage.eulerAngles = SCNVector3(-0.08 + 0.03 * sin(t / seconds * .pi), 0.02 * sin(t / seconds * .pi * 2), 0)
+    // Between camera keys, a sine ease: it leans in, holds a beat, leans out.
+    var a = keys[0], b = keys[0]
+    for i in keys.indices where keys[i].t <= t { a = keys[i]; b = i + 1 < keys.count ? keys[i + 1] : keys[i] }
+    let f = b.t > a.t ? easeInOutSine((t - a.t) / (b.t - a.t)) : 0
+    aim(at: SCNVector3(mix(a.x, b.x, f), mix(a.y, b.y, f), 0), distance: mix(a.d, b.d, f), pitch: 0, yaw: 0)
+    camera.fStop = 5.6
+}
+
 // MARK: - Render
 
 let renderer = SCNRenderer(device: MTLCreateSystemDefaultDevice(), options: nil)
@@ -375,7 +421,7 @@ let stills = ProcessInfo.processInfo.environment["REEL_STILLS"].map { $0.split(s
 let todo: [Int] = stills.map { $0.map { Int($0 * fps) } } ?? Array(0..<frames)
 for i in todo {
     let t = Double(i) / fps
-    act1(t)
+    if act == 2 { act2(t, frame: i) } else { act1(t) }
     let image = renderer.snapshot(atTime: t, with: CGSize(width: Double(width) * ss, height: Double(height) * ss), antialiasingMode: .multisampling4X)
     guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
           let png = rep.representation(using: .png, properties: [:]) else { continue }
