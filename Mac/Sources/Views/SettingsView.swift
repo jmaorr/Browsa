@@ -292,12 +292,9 @@ private struct EngineSettings: View {
             }
             if info.capabilities.contains(.webExtensions) {
                 Section {
-                    Toggle("Use installed Safari extensions", isOn: Bindable(browser).useSafariExtensions)
-                    ForEach(browser.extensions) { ext in
-                        LabeledContent(ext.name, value: ext.version)
-                    }
+                    Toggle("Safari extensions from apps (experimental)", isOn: Bindable(browser).useSafariExtensions)
                 } footer: {
-                    Text("Runs the Safari web extensions that apps on this Mac include, such as 1Password for Safari.")
+                    Text("Runs the Safari extensions that apps on this Mac include. Most need to talk to their app, which doesn't work in Browsa, so add the Chrome Web Store version from the Library instead. If both are added, Browsa uses the Chrome one.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -337,12 +334,6 @@ private struct ExtensionSettings: View {
                 }
             } footer: {
                 Text("Extensions and Browsa's own plugins now live in the Library, a page of their own.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section {
-                Toggle("Use Safari extensions from apps on this Mac", isOn: Bindable(library).useSafariExtensions)
-            } footer: {
-                Text("Password managers like 1Password, Bitwarden and Proton Pass ship a Safari extension inside their app. In Browsa these can't reach their desktop app, so sign-in may not work: add the Chrome Web Store version instead. When both are added, Browsa uses the store one.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Add from a store") {

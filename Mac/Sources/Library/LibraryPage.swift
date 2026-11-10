@@ -453,10 +453,6 @@ struct LibraryView: View {
             HStack(spacing: 14) {
                 Button("Check for Updates") { Task { await library.updateExtensions(force: true) } }
                 Button("Add Unpacked Folder…", action: pickFolder)
-                Spacer()
-                Toggle("Safari extensions from your apps (experimental)", isOn: Bindable(library).useSafariExtensions)
-                    .toggleStyle(.checkbox)
-                    .help("Loads Safari extensions bundled in apps on this Mac. Ones that talk to their app, like password managers, can't reach it from Browsa.")
             }
             .buttonStyle(.link).font(.caption)
         }

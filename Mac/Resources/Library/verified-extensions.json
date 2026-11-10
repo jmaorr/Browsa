@@ -4,7 +4,7 @@
     {
       "id": "aeblfdkhhhdcdjpifhhbdiojplfjncoa",
       "name": "1Password",
-      "blurb": "Fill passwords, passkeys and cards. Sign in to the extension itself; the desktop app's unlock doesn't reach Browsa.",
+      "blurb": "Passwords, passkeys and cards, filled for you.",
       "category": "Passwords",
       "tint": "#1a8cff",
       "tested": "2026-11-08"
