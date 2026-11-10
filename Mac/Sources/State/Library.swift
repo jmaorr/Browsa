@@ -228,7 +228,7 @@ final class Library {
         let c = TabController(tab: tab, library: self) { delegate in
             engine.makePage(options: PageOptions(profile: tab.isPrivate ? .ephemeral : .standard,
                                                  // The welcome tab is native; its page starts blank.
-                                                 url: Welcome.isWelcome(tab.url) ? nil : tab.url,
+                                                 url: Welcome.isWelcome(tab.url) || LibraryPage.isLibrary(tab.url) ? nil : tab.url,
                                                  sessionState: tab.interactionState),
                             delegate: delegate)
         }

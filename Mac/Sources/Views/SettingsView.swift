@@ -331,6 +331,15 @@ private struct ExtensionSettings: View {
     var body: some View {
         Form {
             Section {
+                Button("Open the Library") {
+                    library.activeWindow?.openLibrary()
+                    NSApp.keyWindow?.close()
+                }
+            } footer: {
+                Text("Extensions and Browsa's own plugins now live in the Library, a page of their own.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section {
                 Toggle("Use Safari extensions from apps on this Mac", isOn: Bindable(library).useSafariExtensions)
             } footer: {
                 Text("Password managers like 1Password, Bitwarden and Proton Pass ship a Safari extension inside their app. In Browsa these can't reach their desktop app, so sign-in may not work: add the Chrome Web Store version instead. When both are added, Browsa uses the store one.")

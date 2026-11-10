@@ -12,6 +12,8 @@ struct PageArea: View {
         ZStack {
             if browser.currentTab.map({ Welcome.isWelcome($0.url) }) == true {
                 WelcomePage()
+            } else if browser.currentTab.map({ LibraryPage.isLibrary($0.url) }) == true {
+                LibraryView()
             } else if let tab = browser.currentTab {
                 let focuses = browser.commandBar == nil && browser.find == nil
                 if browser.isReaderShowing, let reader = browser.reader {

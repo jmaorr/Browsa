@@ -127,7 +127,7 @@ struct AddressPill: View {
     var body: some View {
         let tab = browser.currentTab
         let zoom = browser.currentZoom
-        let isWelcome = Welcome.isWelcome(tab?.url)
+        let isWelcome = Welcome.isWelcome(tab?.url) || LibraryPage.isLibrary(tab?.url)
         HStack(spacing: 8) {
             SiteMenu()
             let devServer = RadarStore.shared.server(for: tab?.url)
@@ -135,7 +135,7 @@ struct AddressPill: View {
                 Image(systemName: "arrow.triangle.branch").font(.system(size: 10)).foregroundStyle(.secondary)
                     .help(Text(verbatim: "Worktree of \(devServer.project), on localhost:\(devServer.port)"))
             }
-            Text(isWelcome ? "Welcome to Browsa" : devServer?.shortName ?? tab?.url.map(URLNormalizer.displayHost) ?? "Search or enter address")
+            Text(LibraryPage.isLibrary(tab?.url) ? "Library" : isWelcome ? "Welcome to Browsa" : devServer?.shortName ?? tab?.url.map(URLNormalizer.displayHost) ?? "Search or enter address")
                 .lineLimit(1)
                 .help(devServer.map { Text(verbatim: "\($0.details) · localhost:\($0.port)") } ?? Text(verbatim: ""))
                 .foregroundStyle(tab?.url == nil ? .secondary : .primary)

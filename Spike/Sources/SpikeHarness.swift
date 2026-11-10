@@ -339,6 +339,8 @@ enum SpikeHarness {
             }
         case "demo":
             library.agents.demo.start(bridge: library.agents, in: browser)
+        case "library":
+            browser.openLibrary()
         case "resetToken":
             await library.agents.resetToken()
             return .json(["ok": true, "tokenPrefix": String(library.agents.token.prefix(12))])
