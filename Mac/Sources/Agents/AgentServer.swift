@@ -84,21 +84,10 @@ final class AgentServer {
         if let origin = request.headers["origin"], !origin.hasPrefix("http://127.0.0.1"), !origin.hasPrefix("http://localhost") {
             return send(.init(status: 403, body: "Forbidden"), on: connection)
         }
-        // Supper's photos, from the app bundle.
-        if request.method == "GET", request.path.hasPrefix("/demo/img/") {
-            let name = (request.path as NSString).lastPathComponent
-            guard name.hasPrefix("supper-"), name.hasSuffix(".jpg"),
-                  let url = Bundle.main.url(forResource: (name as NSString).deletingPathExtension, withExtension: "jpg"),
-                  let data = try? Data(contentsOf: url) else { return send(.init(status: 404, body: "Not found"), on: connection) }
-            return send(.init(status: 200, contentType: "image/jpeg", data: data), on: connection)
-        }
-        // Supper, the demo site agents can practise on. Public, read-only, and only on this Mac.
-        if request.method == "GET", request.path == "/demo" || request.path == "/demo/",
-           let url = Bundle.main.url(forResource: "supper", withExtension: "html"), let page = try? Data(contentsOf: url) {
-            var response = HTTPResponse(status: 200, contentType: "text/html; charset=utf-8", data: page)
-            // Always the copy in this build, never one a restored tab cached.
-            response.headers["Cache-Control"] = "no-store"
-            return send(response, on: connection)
+        // Supper, the demo site agents can practise on, from the app bundle: public, read-only and
+        // only on this Mac. (Release builds point the demo at browsa.app/demo/ instead.)
+        if request.method == "GET", request.path == "/demo" || request.path.hasPrefix("/demo/") {
+            return send(Self.demoFile(request.path), on: connection)
         }
         guard request.headers["authorization"] == "Bearer \(token)" else {
             return send(.init(status: 401, body: "Add the token from Browsa's Settings"), on: connection)
@@ -118,6 +107,21 @@ final class AgentServer {
             // No server-to-client event stream yet.
             send(.init(status: 405, body: "Method not allowed"), on: connection)
         }
+    }
+
+    /// /demo → supper.html; /demo/supper.css, /demo/supper.js, /demo/img/supper-*.jpg → those files.
+    private static func demoFile(_ path: String) -> HTTPResponse {
+        let name = path == "/demo" || path == "/demo/" ? "supper.html" : (path as NSString).lastPathComponent
+        let types = ["html": "text/html; charset=utf-8", "css": "text/css; charset=utf-8",
+                     "js": "text/javascript; charset=utf-8", "jpg": "image/jpeg"]
+        let ext = (name as NSString).pathExtension
+        guard name.hasPrefix("supper"), let type = types[ext],
+              let url = Bundle.main.url(forResource: (name as NSString).deletingPathExtension, withExtension: ext),
+              let data = try? Data(contentsOf: url) else { return HTTPResponse(status: 404, body: "Not found") }
+        var response = HTTPResponse(status: 200, contentType: type, data: data)
+        // Always the copy in this build, never one a restored tab cached.
+        response.headers["Cache-Control"] = ext == "jpg" ? "max-age=86400" : "no-store"
+        return response
     }
 
     private func send(_ response: HTTPResponse, on connection: NWConnection) {

@@ -10,8 +10,13 @@ final class AgentDemo {
     private(set) var isRunning = false
     @ObservationIgnored private var task: Task<Void, Never>?
 
-    /// Supper, served by the agent endpoint on this Mac.
-    static var url: URL { URL(string: "http://127.0.0.1:\(AgentBridge.port)/demo")! }
+    /// Supper. Release builds use browsa.app/demo/; SpikeBrowsa and dev builds set `BrowsaDemoURL`
+    /// to "local", the copy the agent endpoint serves from the app bundle.
+    static var url: URL {
+        let setting = Bundle.main.object(forInfoDictionaryKey: "BrowsaDemoURL") as? String ?? ""
+        if setting == "local" { return URL(string: "http://127.0.0.1:\(AgentBridge.port)/demo")! }
+        return URL(string: setting.isEmpty ? "https://browsa.app/demo/" : setting)!
+    }
 
     /// What to give your own agent, to see it do the same thing its own way.
     static var prompt: String {

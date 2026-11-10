@@ -110,7 +110,7 @@ enum BrowserAgentTools {
 
         toolbox.register(AgentTool(
             name: "page_screenshot", title: "Screenshot",
-            description: "What the tab looks like now. The tab has to be on screen, so this brings it forward in its window.",
+            description: "What the tab looks like now. Works for tabs in the Agent space even when nobody is watching them.",
             inputSchema: ["type": "object", "properties": ["tab": tabArg]],
             readOnly: true
         ) { args, _ in

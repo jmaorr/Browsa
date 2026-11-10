@@ -157,11 +157,9 @@ enum SpikeMocks {
         switch name {
         // A short history, so the Agents panel isn't empty on launch.
         case "history":
-            // Stays in the Agent space, so it never asks: what a well-behaved agent does.
+            // Reads notes only: no tabs opened on every launch, and never asks.
             return ("Claude Code", [
                 .init(tool: "notes_list", args: [:]),
-                .init(tool: "tab_open", args: ["url": url(47940).absoluteString, "show": false]),
-                .init(tool: "page_read", args: [:]),
             ])
         // Works through the checkout notes: open, read, click, type, reply.
         case "fix-notes":

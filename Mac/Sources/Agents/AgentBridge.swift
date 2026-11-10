@@ -226,6 +226,8 @@ final class AgentBridge {
         return .allow
     }
 
+    @ObservationIgnored private let stage = AgentStage()
+
     // MARK: Watching it act
 
     /// What an agent is doing right now, for the caption on the page and the driving pill.
@@ -254,6 +256,11 @@ final class AgentBridge {
     private func step(_ tool: AgentTool, args: JSONValue, caller: String) async {
         lastSeen[caller] = Date()
         let tab = tool.name.hasPrefix("page_") ? self.tab(args["tab"]?.string) : nil
+        // A tab nobody is looking at still gets a window, a hidden one, so it lays out, paints and
+        // can be screenshotted like a tab on screen.
+        if let tab, library.window(showing: tab) == nil {
+            stage.host(library.controller(for: tab).page.view)
+        }
         if let tab, isInAgentSpace(tab) { follow(tab) }
         let text = AgentWords.sentence(tool: tool.name, fields: AgentWords.fields(args), tabTitle: tab?.displayTitle)
         withAnimation(Motion.snappy) {
@@ -378,5 +385,34 @@ extension Preferences {
     static var agentSpaceID: UUID? {
         get { UserDefaults.standard.string(forKey: "agentSpaceID").flatMap(UUID.init(uuidString:)) }
         set { UserDefaults.standard.set(newValue?.uuidString, forKey: "agentSpaceID") }
+    }
+}
+
+
+/// A window off every screen where agent tabs nobody is watching are drawn. WebKit only lays out,
+/// paints and screenshots a page that's in a window; this one is never seen, never takes clicks or
+/// focus, and isn't in the Window menu or Mission Control. A tab moves out of it the moment you
+/// look at it (PageHost adopts its view).
+@MainActor
+final class AgentStage {
+    private lazy var window: NSWindow = {
+        let w = NSWindow(contentRect: NSRect(x: -40_000, y: -40_000, width: 1200, height: 820),
+                         styleMask: [.borderless], backing: .buffered, defer: false)
+        w.isReleasedWhenClosed = false
+        w.ignoresMouseEvents = true
+        w.hasShadow = false
+        w.isExcludedFromWindowsMenu = true
+        w.collectionBehavior = [.transient, .ignoresCycle, .stationary, .fullScreenNone]
+        w.title = "Agent Stage"
+        return w
+    }()
+
+    func host(_ view: NSView) {
+        guard view.window == nil, let content = window.contentView else { return }
+        content.subviews.forEach { $0.removeFromSuperview() }
+        view.frame = content.bounds
+        view.autoresizingMask = [.width, .height]
+        content.addSubview(view)
+        if !window.isVisible { window.orderFrontRegardless() }
     }
 }
