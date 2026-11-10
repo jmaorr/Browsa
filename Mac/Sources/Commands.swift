@@ -1,8 +1,9 @@
 import SwiftUI
 import BrowserCore
 
-/// The menu bar. Every action has a key, most of them the same as Arc's or Safari's.
-/// Menus act on the key window's browser; with no window open, the ones that need one are off.
+/// The menu bar. Keys come from `Shortcuts` (Settings › Shortcuts): Arc's by default, or Chrome's
+/// or Safari's, plus your own changes. Menus act on the key window's browser; with no window
+/// open, the ones that need one are off.
 struct BrowserCommands: Commands {
     let library: Library
     let updates: Updates
@@ -11,6 +12,7 @@ struct BrowserCommands: Commands {
     private var browser: Browser? { focused ?? library.activeWindow }
     private var tab: BrowserTab? { browser?.currentTab }
     private var hasPage: Bool { tab?.url != nil }
+    private var keys: Shortcuts { Shortcuts.shared }
 
     var body: some Commands {
         CommandGroup(after: .appInfo) {
@@ -22,23 +24,23 @@ struct BrowserCommands: Commands {
 
         CommandGroup(replacing: .newItem) {
             Button("New Tab") { newTab(.newTab) }
-                .keyboardShortcut("t")
+                .keyboardShortcut(keys.shortcut(.newTab))
             Button("New Window") { library.openWindow() }
-                .keyboardShortcut("n")
+                .keyboardShortcut(keys.shortcut(.newWindow))
             Button("New Private Tab") {
                 if let browser { browser.run(command: "private") } else { library.openWindow(.privateTab) }
             }
-            .keyboardShortcut("n", modifiers: [.command, .shift])
+            .keyboardShortcut(keys.shortcut(.privateTab))
             Button("Open Location…") { newTab(.editCurrent) }
-                .keyboardShortcut("l")
+                .keyboardShortcut(keys.shortcut(.openLocation))
             Button("Commands and Tools") { newTab(.commands) }
-                .keyboardShortcut("k")
+                .keyboardShortcut(keys.shortcut(.commands))
             Divider()
             Button("Close Tab") { if let browser, let tab { withAnimation(Motion.snappy) { browser.close(tab) } } }
-                .keyboardShortcut("w")
+                .keyboardShortcut(keys.shortcut(.close))
                 .disabled(tab == nil)
             Button("Reopen Closed Tab") { browser?.reopenClosedTab() }
-                .keyboardShortcut("t", modifiers: [.command, .shift])
+                .keyboardShortcut(keys.shortcut(.reopen))
                 .disabled(browser == nil || library.recentlyClosed.isEmpty)
             Button("Move Tab to New Window") { if let tab { browser?.openInNewWindow(tab) } }
                 .disabled(tab == nil)
@@ -47,20 +49,23 @@ struct BrowserCommands: Commands {
         CommandGroup(after: .pasteboard) {
             Divider()
             Button("Copy Link") { browser?.copyCurrentLink() }
-                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .keyboardShortcut(keys.shortcut(.copyLink))
+                .disabled(!hasPage)
+            Button("Copy Link as Markdown") { browser?.copyCurrentLinkAsMarkdown() }
+                .keyboardShortcut(keys.shortcut(.copyMarkdown))
                 .disabled(!hasPage)
         }
 
         CommandGroup(after: .textEditing) {
             Divider()
             Button("Find…") { browser?.showFind() }
-                .keyboardShortcut("f")
+                .keyboardShortcut(keys.shortcut(.find))
                 .disabled(!hasPage)
             Button("Find Next") { browser?.findNext() }
-                .keyboardShortcut("g")
+                .keyboardShortcut(keys.shortcut(.findNext))
                 .disabled(browser?.find == nil)
             Button("Find Previous") { browser?.findNext(backwards: true) }
-                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .keyboardShortcut(keys.shortcut(.findPrevious))
                 .disabled(browser?.find == nil)
         }
 
@@ -69,29 +74,29 @@ struct BrowserCommands: Commands {
                 guard let browser else { return }
                 withAnimation(Motion.dock) { browser.toggleSidebar() }
             }
-            .keyboardShortcut("s")
+            .keyboardShortcut(keys.shortcut(.sidebar))
             .disabled(browser == nil)
             Button(browser?.panel == nil ? "Show Panel" : "Hide Panel") { browser?.togglePanel() }
-                .keyboardShortcut("s", modifiers: [.command, .option])
+                .keyboardShortcut(keys.shortcut(.panel))
                 .disabled(browser == nil)
             Button("Notes") { browser?.showPanel("notes", toggles: true) }
-                .keyboardShortcut("m", modifiers: [.command, .shift])
+                .keyboardShortcut(keys.shortcut(.notes))
                 .disabled(browser == nil)
         }
 
         CommandGroup(before: .toolbar) {
             Button(browser?.isReaderShowing == true ? "Hide Reader" : "Show Reader") { browser?.toggleReader() }
-                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .keyboardShortcut(keys.shortcut(.reader))
                 .disabled(!hasPage)
             Divider()
             Button("Reload Page") { browser?.reload() }
-                .keyboardShortcut("r")
+                .keyboardShortcut(keys.shortcut(.reload))
                 .disabled(!hasPage)
             Button("Reload Without Cache") { browser?.reloadFromOrigin() }
-                .keyboardShortcut("r", modifiers: [.command, .option])
+                .keyboardShortcut(keys.shortcut(.hardReload))
                 .disabled(!hasPage)
             Button("Stop") { browser?.stopLoading() }
-                .keyboardShortcut(".")
+                .keyboardShortcut(keys.shortcut(.stop))
                 .disabled(tab?.isLoading != true)
             Divider()
             Button("Zoom In") { browser?.zoom(1) }
@@ -105,21 +110,24 @@ struct BrowserCommands: Commands {
                 browser?.toggleBlockingForCurrentSite()
             }
             .disabled(!hasPage)
+            Button("Web Inspector") { browser?.showWebInspector() }
+                .keyboardShortcut(keys.shortcut(.inspector))
+                .disabled(!hasPage)
             Divider()
         }
 
         CommandMenu("History") {
             Button("Back") { browser?.goBack() }
-                .keyboardShortcut("[")
+                .keyboardShortcut(keys.shortcut(.back))
                 .disabled(tab?.canGoBack != true && browser?.isReaderShowing != true)
             Button("Forward") { browser?.goForward() }
-                .keyboardShortcut("]")
+                .keyboardShortcut(keys.shortcut(.forward))
                 .disabled(tab?.canGoForward != true)
             Divider()
             Button("Reopen Closed Tab") { browser?.reopenClosedTab() }
                 .disabled(browser == nil || library.recentlyClosed.isEmpty)
             Button("Archived Tabs…") { browser?.isArchivePresented = true }
-                .keyboardShortcut("y")
+                .keyboardShortcut(keys.shortcut(.archive))
                 .disabled(browser == nil)
         }
 
@@ -129,23 +137,26 @@ struct BrowserCommands: Commands {
             Button("Previous Tab") { browser?.selectAdjacentTab(-1) }
                 .keyboardShortcut(.tab, modifiers: [.control, .shift])
             Button("Next Tab") { browser?.selectAdjacentTab(1) }
-                .keyboardShortcut("]", modifiers: [.command, .shift])
+                .keyboardShortcut(keys.shortcut(.nextTab))
             Button("Previous Tab") { browser?.selectAdjacentTab(-1) }
-                .keyboardShortcut("[", modifiers: [.command, .shift])
+                .keyboardShortcut(keys.shortcut(.previousTab))
             Divider()
             Button(tab?.isPinned == true ? "Unpin Tab" : "Pin Tab") {
                 if let browser, let tab { withAnimation(Motion.snappy) { browser.togglePinned(tab) } }
             }
-            .keyboardShortcut("d", modifiers: [.command, .shift])
+            .keyboardShortcut(keys.shortcut(.pin))
             .disabled(tab == nil || tab?.isPrivate == true)
             Button(tab?.url.map { library.isFavorite($0) } == true ? "Remove from Favourites" : "Add to Favourites") {
                 browser?.toggleFavoriteForCurrentTab()
             }
-            .keyboardShortcut("d")
+            .keyboardShortcut(keys.shortcut(.favourite))
             .disabled(!hasPage)
             Button("Close Other Tabs") { if let browser, let tab { browser.closeOtherTabs(than: tab) } }
-                .keyboardShortcut("w", modifiers: [.command, .option])
+                .keyboardShortcut(keys.shortcut(.closeOthers))
                 .disabled((browser?.currentSpace.today.count ?? 0) < 2)
+            Button("Clear Today's Tabs") { if let browser { withAnimation(Motion.snappy) { browser.clearToday() } } }
+                .keyboardShortcut(keys.shortcut(.clearToday))
+                .disabled(browser?.currentSpace.listedToday.contains { $0.id != tab?.id } != true)
             Divider()
             ForEach(1...9, id: \.self) { n in
                 Button(n == 9 ? "Last Tab" : "Tab \(n)") { browser?.selectTab(number: n) }
@@ -155,9 +166,9 @@ struct BrowserCommands: Commands {
 
         CommandMenu("Spaces") {
             Button("Next Space") { browser?.selectAdjacentSpace(1) }
-                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                .keyboardShortcut(keys.shortcut(.nextSpace))
             Button("Previous Space") { browser?.selectAdjacentSpace(-1) }
-                .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+                .keyboardShortcut(keys.shortcut(.previousSpace))
             Divider()
             ForEach(Array(library.spaces.prefix(9).enumerated()), id: \.element.id) { i, s in
                 Button(s.name) { browser?.selectSpace(number: i + 1) }
@@ -178,7 +189,7 @@ struct BrowserCommands: Commands {
 
         CommandGroup(before: .windowList) {
             Button("Downloads") { browser?.showPanel("downloads", toggles: true) }
-                .keyboardShortcut("j", modifiers: [.command, .option])
+                .keyboardShortcut(keys.shortcut(.downloads))
                 .disabled(browser == nil)
             Divider()
         }
