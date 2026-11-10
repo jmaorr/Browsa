@@ -245,6 +245,7 @@ const syncMotion = () => {
   motion.setAttribute("aria-pressed", String(paused));
   motion.querySelector("span").textContent = paused ? "Play motion" : "Pause motion";
   window._syncHero?.();
+  window._syncBento?.();
 };
 motion?.addEventListener("click", () => {
   paused = !paused;
@@ -254,6 +255,64 @@ motion?.addEventListener("click", () => {
   syncMotion();
 });
 syncMotion();
+
+// The little things: the bento's loops start once it's in view, and the shortcut keys take turns.
+const bento = document.querySelector("[data-bento]");
+if (bento) {
+  // Each one is in Commands.swift. Modifiers in the Mac's order: ⌃ ⌥ ⇧ ⌘.
+  const KEYS = [
+    ["⌘K", "Commands and tools"],
+    ["⌘T", "New tab"],
+    ["⌘S", "Hide the sidebar"],
+    ["⌘D", "Add to Favourites"],
+    ["⇧⌘D", "Pin tab"],
+    ["⌃1", "First space"],
+    ["⇧⌘R", "Reader"],
+    ["⌥⌘J", "Downloads"],
+    ["⇧⌘T", "Reopen closed tab"],
+    ["⌘Y", "Archived tabs"],
+    ["⇧⌘N", "Private tab"],
+    ["⇧⌘M", "Notes"],
+  ];
+  const caps = bento.querySelector(".v-caps");
+  const act = bento.querySelector(".v-act");
+  const cheat = bento.querySelector(".v-cheat");
+  cheat.innerHTML = KEYS.map(([k, name]) => `<span><kbd>${k}</kbd>${name}</span>`).join("");
+  const chips = [...cheat.children];
+  let k = 0;
+  let inView = false;
+  let timer = 0;
+  const showKey = (n) => {
+    k = n;
+    chips.forEach((c, i) => c.classList.toggle("on", i === n));
+    const [combo, name] = KEYS[n];
+    caps.innerHTML = [...combo].map((c) => `<kbd class="cap is-new">${c}</kbd>`).join("");
+    act.classList.add("is-out");
+    setTimeout(() => {
+      act.textContent = name;
+      act.classList.remove("is-out");
+    }, 150);
+    // Press the keys down together, a beat after they land.
+    setTimeout(() => caps.querySelectorAll(".cap").forEach((c) => c.classList.replace("is-new", "is-down")), 520);
+    setTimeout(() => caps.querySelectorAll(".cap").forEach((c) => c.classList.remove("is-down")), 760);
+  };
+  chips.forEach((c, i) => c.classList.toggle("on", i === 0));
+  const sync = () => {
+    const run = inView && !paused && !document.hidden;
+    if (run) bento.classList.add("is-on");
+    if (run && !timer) timer = setInterval(() => showKey((k + 1) % KEYS.length), 2000);
+    else if (!run && timer) {
+      clearInterval(timer);
+      timer = 0;
+    }
+  };
+  new IntersectionObserver(([e]) => {
+    inView = e.isIntersecting;
+    sync();
+  }, { threshold: 0.15 }).observe(bento);
+  document.addEventListener("visibilitychange", sync);
+  window._syncBento = sync;
+}
 
 // The developer page: pointing at a manifest key, or its legend entry, outlines where it lands.
 const anatomy = document.querySelector("[data-anatomy]");

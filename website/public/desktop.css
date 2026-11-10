@@ -514,3 +514,282 @@
 @media (prefers-reduced-motion: reduce) {
   .flow-lines path.dash, .wire-arrow::after, .film-card img { animation: none; }
 }
+
+/* ---------- The little things: a bento of small features ----------
+   Every visual is drawn here, at rest in its "after" state, so a still or reduced-motion page
+   still says what each feature does. desktop.js adds .is-on once the grid is in view (and motion
+   isn't paused); each loop then plays the "before" and lands back on that state. */
+.bento {
+  --b-fill: rgb(118 118 128 / .12); --b-fill-2: rgb(118 118 128 / .22); --b-pane: var(--ground);
+  --b-ok: light-dark(#1d8a46, #5fd38a); --b-t: 7s; --b-ease: cubic-bezier(.22, 1, .36, 1);
+  margin-top: clamp(32px, 4vw, 56px);
+  display: grid; gap: 14px; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: minmax(250px, auto);
+  grid-template-areas:
+    "keys keys keys spaces spaces pin"
+    "keys keys keys fav dl dl"
+    "ads ads cookie cookie reader reader"
+    "link link link archive reader reader"
+    "import import import private private private";
+}
+.bt-keys { grid-area: keys; } .bt-spaces { grid-area: spaces; } .bt-pin { grid-area: pin; } .bt-fav { grid-area: fav; }
+.bt-dl { grid-area: dl; } .bt-ads { grid-area: ads; } .bt-cookie { grid-area: cookie; } .bt-reader { grid-area: reader; }
+.bt-link { grid-area: link; } .bt-archive { grid-area: archive; } .bt-import { grid-area: import; } .bt-private { grid-area: private; }
+
+.bt { --hue: #5856d6; position: relative; isolation: isolate; overflow: hidden; display: flex; flex-direction: column; padding: 20px 22px 22px; border-radius: 22px; background: var(--raised); box-shadow: 0 0 0 1px var(--line); }
+/* A soft wash of colour behind each drawing, like the Library's icons. */
+.bt::before { content: ""; position: absolute; z-index: -1; inset: -30% -10% auto; height: 80%; background: radial-gradient(50% 50% at 50% 50%, var(--hue), transparent 70%); opacity: .13; filter: blur(20px); }
+@media (prefers-color-scheme: dark) { .bt::before { opacity: .2; } }
+.bt h3 { margin: 18px 0 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: -.016em; line-height: 1.25; }
+.bt p { margin-top: 5px; color: var(--ink-2); font-size: .9375rem; line-height: 1.42; max-width: 46ch; }
+.bt p kbd { color: var(--ink-2); }
+.bt-vis { position: relative; flex: 1; min-height: 140px; display: grid; place-items: center; }
+.bt-vis kbd, .bt-vis b, .bt-vis em, .bt-vis u, .bt-vis i { font-style: normal; text-decoration: none; }
+.bento-note { margin-top: 20px; color: var(--ink-2); font-size: .9375rem; }
+
+/* Pieces they share. */
+.bento .c1 { background: #5856d6; } .bento .c2 { background: #ff9f0a; } .bento .c3 { background: #30b158; }
+.bento .c4 { background: #0a84ff; } .bento .c5 { background: #ff375f; } .bento .c6 { background: #af52de; }
+.bento .v-row { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 8px; border-radius: 8px; }
+.bento .v-row > i { flex: none; width: 12px; height: 12px; border-radius: 4px; }
+.bento .v-row > u { flex: 1; height: 6px; border-radius: 3px; background: var(--b-fill-2); max-width: 90px; }
+.bt-vis:has(.v-chip) { padding-bottom: 30px; }
+.v-chip { position: absolute; right: 0; bottom: 0; padding: 2px 8px; border-radius: 7px; background: var(--b-fill); color: var(--ink-2); font-size: .75rem; font-weight: 600; letter-spacing: .02em; }
+.v-page { position: relative; width: min(100%, 230px); height: 150px; padding: 10px; border-radius: 12px; background: var(--b-pane); box-shadow: 0 0 0 1px var(--line); overflow: hidden; display: flex; flex-direction: column; gap: 7px; }
+.v-nav { flex: none; height: 10px; border-radius: 4px; background: var(--b-fill-2); width: 60%; }
+.v-line { flex: none; height: 6px; border-radius: 3px; background: var(--b-fill-2); }
+.v-line.s { width: 62%; }
+.v-hero { flex: none; height: 38px; border-radius: 7px; background: linear-gradient(120deg, #f6c38c, #c7a6f2); opacity: .8; }
+.v-shield { position: absolute; left: 50%; bottom: 2px; translate: -50% 0; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px 5px 8px; border-radius: 99px; background: var(--raised); box-shadow: 0 0 0 1px var(--line), 0 6px 16px -6px rgb(0 0 0 / .25); font-size: .75rem; font-weight: 600; white-space: nowrap; }
+.v-shield i { width: 14px; height: 14px; background: #0a84ff; clip-path: path("M7 0 13 2.2V7c0 3.6-2.6 6-6 7-3.4-1-6-3.4-6-7V2.2z"); }
+.v-shield.ok i { background: var(--b-ok); clip-path: circle(50%); }
+
+/* Shortcuts: big keycaps, and the cheat sheet under them. */
+.bt-keys { --hue: #0a84ff; }
+.bt-keys .bt-vis { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 28px; }
+.v-keys { display: grid; justify-items: center; gap: 18px; }
+.v-caps { display: flex; gap: 10px; }
+.cap {
+  display: grid; place-items: center; min-width: 76px; height: 76px; padding: 0 18px; border-radius: 16px;
+  font: 500 2rem/1 -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; color: var(--ink);
+  background: linear-gradient(180deg, var(--raised), color-mix(in srgb, var(--raised) 92%, #000));
+  box-shadow: 0 0 0 1px var(--line), 0 3px 0 color-mix(in srgb, var(--ink) 14%, transparent), 0 8px 18px -8px rgb(0 0 0 / .3);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+@media (prefers-color-scheme: dark) { .cap { background: linear-gradient(180deg, #2c2c2a, #232321); } }
+.cap.is-down { transform: translateY(3px); box-shadow: 0 0 0 1px var(--line), 0 0 0 color-mix(in srgb, var(--ink) 14%, transparent), 0 3px 8px -4px rgb(0 0 0 / .3); }
+.cap.is-new { animation: capIn .32s var(--b-ease) both; }
+@keyframes capIn { from { opacity: 0; transform: translateY(-6px) scale(.94); } }
+.v-act { font-size: 1.125rem; font-weight: 600; letter-spacing: -.015em; transition: opacity .15s, filter .15s, transform .15s; }
+.v-act.is-out { opacity: 0; filter: blur(2px); transform: translateY(4px); }
+.v-cheat { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: 520px; }
+.v-cheat span { display: inline-flex; gap: 6px; padding: 4px 9px; border-radius: 8px; background: var(--b-fill); color: var(--ink-2); font-size: .75rem; white-space: nowrap; transition: background .25s, color .25s; }
+.v-cheat span kbd { color: inherit; font-weight: 600; }
+.v-cheat span.on { background: color-mix(in srgb, #0a84ff 16%, transparent); color: light-dark(#0a5fd6, #7ab4ff); }
+
+/* Spaces: the sidebar's colour and tabs change together. */
+.bt-spaces { --hue: #ff9f0a; }
+.v-side { position: relative; width: 170px; height: 150px; padding: 12px 8px; border-radius: 14px; overflow: hidden; background: color-mix(in srgb, #5856d6 16%, var(--b-pane)); box-shadow: 0 0 0 1px var(--line); }
+.v-sp { position: absolute; inset: 12px 8px auto; display: flex; flex-direction: column; gap: 3px; }
+.v-head { display: flex; align-items: center; gap: 6px; padding: 0 8px 4px; font-size: .75rem; font-weight: 700; color: var(--ink-2); }
+.v-head i { width: 8px; height: 8px; border-radius: 50%; background: #5856d6; }
+.v-sp.w .v-head i { background: #ff9f0a; }
+.v-sp .v-row:first-of-type { background: color-mix(in srgb, var(--raised) 80%, transparent); }
+.v-sp.w { opacity: 0; }
+.v-dots { position: absolute; left: 0; right: 0; bottom: 10px; display: flex; justify-content: center; gap: 6px; }
+.v-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); opacity: .7; }
+.v-dots i + i { opacity: .2; }
+.bento.is-on .v-side { animation: spBg var(--b-t) ease infinite; }
+.bento.is-on .v-sp.p { animation: spOut var(--b-t) var(--b-ease) infinite; }
+.bento.is-on .v-sp.w { animation: spIn var(--b-t) var(--b-ease) infinite; }
+.bento.is-on .v-dots i:first-child { animation: dotA var(--b-t) ease infinite; }
+.bento.is-on .v-dots i + i { animation: dotB var(--b-t) ease infinite; }
+@keyframes spBg { 0%, 40% { background: color-mix(in srgb, #5856d6 16%, var(--b-pane)); } 48%, 90% { background: color-mix(in srgb, #ff9f0a 18%, var(--b-pane)); } 98% { background: color-mix(in srgb, #5856d6 16%, var(--b-pane)); } }
+@keyframes spOut { 0%, 40% { opacity: 1; transform: none; } 47%, 90% { opacity: 0; transform: translateX(-40px); } 91% { transform: translateX(40px); } 98%, 100% { opacity: 1; transform: none; } }
+@keyframes spIn { 0%, 41% { opacity: 0; transform: translateX(40px); } 48%, 90% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; transform: translateX(-40px); } }
+@keyframes dotA { 0%, 40%, 98%, 100% { opacity: .7; } 48%, 90% { opacity: .2; } }
+@keyframes dotB { 0%, 40%, 98%, 100% { opacity: .2; } 48%, 90% { opacity: .7; } }
+
+/* Pinning: a Today tab lifts into the pinned section above the rule. */
+.bt-pin { --hue: #ff375f; }
+.v-pins { position: relative; width: 150px; height: 128px; }
+.v-pins > * { position: absolute; left: 0; right: 0; }
+.v-pins .a { top: 0; } .v-pins .b { top: 28px; } .v-pins .m { top: 56px; } .v-pins .c { top: 102px; }
+.v-pins .v-rule { top: 90px; height: 1px; margin: 0 8px; background: var(--b-fill-2); }
+.v-pins .a, .v-pins .b, .v-pins .m { background: var(--b-fill); }
+.bento.is-on .v-pins .m { animation: pinUp var(--b-t) var(--b-ease) infinite; }
+.bento.is-on .v-pins .v-rule { animation: ruleDown var(--b-t) var(--b-ease) infinite; }
+.bento.is-on .bt-pin .v-chip { animation: chip var(--b-t) ease infinite; }
+@keyframes pinUp {
+  0%, 26% { transform: translateY(44px); background: transparent; box-shadow: none; }
+  34% { transform: translateY(44px) scale(1.05); background: var(--raised); box-shadow: 0 8px 18px -8px rgb(0 0 0 / .35); }
+  52% { transform: scale(1.05); background: var(--raised); box-shadow: 0 8px 18px -8px rgb(0 0 0 / .35); }
+  60%, 90% { transform: none; background: var(--b-fill); box-shadow: none; }
+  100% { transform: translateY(44px); background: transparent; }
+}
+@keyframes ruleDown { 0%, 34% { transform: translateY(-28px); } 52%, 90% { transform: none; } 100% { transform: translateY(-28px); } }
+@keyframes chip { 0%, 22% { opacity: .35; } 28%, 56% { opacity: 1; background: color-mix(in srgb, var(--hue) 18%, transparent); color: var(--ink); } 70%, 100% { opacity: .35; } }
+
+/* Favourites: a site drops into the last sunken slot. */
+.bt-fav { --hue: #30b158; }
+.v-favs { display: grid; grid-template-columns: repeat(2, 48px); gap: 8px; }
+.v-favs span { display: grid; place-items: center; height: 48px; border-radius: 12px; background: var(--b-fill); }
+.v-favs i { width: 18px; height: 18px; border-radius: 5px; }
+/* An empty slot is sunken, lit from above, not outlined. */
+.v-favs .slot { background: var(--b-fill); box-shadow: inset 0 2px 3px rgb(0 0 0 / .14), inset 0 -1px 0 rgb(255 255 255 / .5); }
+@media (prefers-color-scheme: dark) { .v-favs .slot { box-shadow: inset 0 2px 3px rgb(0 0 0 / .5), inset 0 -1px 0 rgb(255 255 255 / .08); } }
+.bento.is-on .v-favs .slot i { animation: favIn var(--b-t) cubic-bezier(.3, 1.5, .5, 1) infinite; }
+.bento.is-on .bt-fav .v-chip { animation: chip var(--b-t) ease infinite; }
+@keyframes favIn { 0%, 30% { opacity: 0; transform: translateY(-26px) scale(.6); } 42%, 90% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; transform: scale(.6); } }
+
+/* Downloads: one file finishing, one from yesterday. */
+.bt-dl { --hue: #0a84ff; }
+.v-dl { display: grid; gap: 8px; width: min(100%, 300px); }
+.v-file { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--b-pane); box-shadow: 0 0 0 1px var(--line); }
+.v-file > span { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.v-file b { font-size: .8125rem; font-weight: 600; }
+.v-file em { position: relative; height: 1.2em; color: var(--ink-2); font-size: .75rem; }
+.v-file em > span { position: absolute; inset: 0; }
+.v-file .going { opacity: 0; }
+.v-file .prog { height: 4px; margin-top: 4px; border-radius: 2px; background: var(--b-fill-2); overflow: hidden; opacity: 0; }
+.v-file .prog i { display: block; height: 100%; border-radius: 2px; background: #0a84ff; }
+.v-file .doc { flex: none; width: 26px; height: 32px; border-radius: 4px 9px 4px 4px; background: linear-gradient(225deg, var(--b-fill-2) 7px, #ff453a 7px); }
+.v-file .doc.img { background: linear-gradient(160deg, #6ac4f0, #b28df2); }
+.v-file .tick { flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--b-ok); clip-path: circle(50%); }
+.v-file.old { opacity: .7; }
+.bento.is-on .v-file .going { animation: dlGoing var(--b-t) ease infinite; }
+.bento.is-on .v-file .done { animation: dlDone var(--b-t) ease infinite; }
+.bento.is-on .v-file .prog { animation: dlBar var(--b-t) ease infinite; }
+.bento.is-on .v-file .prog i { animation: dlFill var(--b-t) cubic-bezier(.4, 0, .3, 1) infinite; }
+.bento.is-on .v-file .tick { animation: dlTick var(--b-t) cubic-bezier(.3, 1.5, .5, 1) infinite; }
+@keyframes dlGoing { 0%, 56% { opacity: 1; } 60%, 100% { opacity: 0; } }
+@keyframes dlDone { 0%, 57% { opacity: 0; } 62%, 96% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes dlBar { 0%, 56% { opacity: 1; } 62%, 100% { opacity: 0; } }
+@keyframes dlFill { 0%, 6% { width: 0; } 30% { width: 46%; } 40% { width: 58%; } 56%, 100% { width: 100%; } }
+@keyframes dlTick { 0%, 57% { transform: scale(0); } 64%, 96% { transform: none; } 100% { transform: scale(0); } }
+
+/* Ad blocking: the ad slots fold away before the page settles. */
+.bt-ads { --hue: #0a84ff; }
+.bt-ads .bt-vis, .bt-cookie .bt-vis { padding-bottom: 18px; }
+.v-ad { flex: none; display: grid; place-items: center; height: 0; margin: -7px 0 0; border-radius: 6px; overflow: hidden; opacity: 0; font-size: .625rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: light-dark(#a35b00, #f2b45c); background: repeating-linear-gradient(135deg, color-mix(in srgb, #ff9f0a 22%, transparent) 0 6px, color-mix(in srgb, #ff9f0a 12%, transparent) 6px 12px); }
+.bento.is-on .v-ad { animation: adGone var(--b-t) var(--b-ease) infinite; }
+.bento.is-on .bt-ads .v-shield { animation: badge var(--b-t) var(--b-ease) infinite; }
+@keyframes adGone { 0%, 30% { height: 30px; margin-top: 0; opacity: 1; } 42%, 92% { height: 0; margin-top: -7px; opacity: 0; } 100% { height: 30px; margin-top: 0; opacity: 1; } }
+@keyframes badge { 0%, 34% { opacity: 0; transform: translateY(6px) scale(.96); } 44%, 90% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; transform: translateY(6px) scale(.96); } }
+
+/* Cookie banners: up comes the banner, Reject all is pressed for you, away it goes. */
+.bt-cookie { --hue: #30b158; }
+.v-banner { position: absolute; left: 8px; right: 8px; bottom: 8px; display: grid; gap: 7px; padding: 9px 10px; border-radius: 9px; background: var(--raised); box-shadow: 0 0 0 1px var(--line), 0 -6px 18px -8px rgb(0 0 0 / .25); font-size: .6875rem; transform: translateY(130%); }
+.v-banner > span { display: flex; gap: 6px; }
+.v-banner u { flex: 1; padding: 4px 0; border-radius: 6px; text-align: center; font-weight: 600; }
+.v-banner .yes { background: var(--press); color: var(--press-ink); }
+.v-banner .no { background: var(--b-fill); }
+.bento.is-on .v-banner { animation: banner var(--b-t) var(--b-ease) infinite; }
+.bento.is-on .v-banner .no { animation: reject var(--b-t) ease infinite; }
+.bento.is-on .bt-cookie .v-shield { animation: badge2 var(--b-t) var(--b-ease) infinite; }
+@keyframes banner { 0%, 8% { transform: translateY(130%); } 16%, 34% { transform: none; } 42%, 100% { transform: translateY(130%); } }
+@keyframes reject { 0%, 24% { background: var(--b-fill); transform: none; } 27% { transform: scale(.94); background: color-mix(in srgb, var(--b-ok) 30%, transparent); } 32%, 40% { transform: none; background: color-mix(in srgb, var(--b-ok) 30%, transparent); } 44%, 100% { background: var(--b-fill); } }
+@keyframes badge2 { 0%, 40% { opacity: 0; transform: translateY(6px) scale(.96); } 48%, 90% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; transform: translateY(6px) scale(.96); } }
+
+/* Reader: a busy page gives way to a calm column. */
+.bt-reader { --hue: #c7853a; }
+.bt-reader .bt-vis { min-height: 260px; }
+.v-page.busy { width: min(100%, 300px); height: 230px; }
+.v-cols { display: flex; gap: 10px; flex: 1; }
+.v-cols > span:first-child { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+.v-rail { width: 30%; display: flex; flex-direction: column; gap: 7px; }
+.v-rail i { height: 40px; border-radius: 6px; background: repeating-linear-gradient(135deg, var(--b-fill-2) 0 5px, var(--b-fill) 5px 10px); }
+.v-pop { position: absolute; right: 14px; bottom: 14px; width: 46%; height: 52px; border-radius: 9px; background: var(--raised); box-shadow: 0 0 0 1px var(--line), 0 8px 18px -8px rgb(0 0 0 / .3); }
+.v-read { position: absolute; width: min(100%, 300px); height: 230px; padding: 18px 26px; border-radius: 12px; background: #f8f3ea; color: #2a211b; box-shadow: 0 0 0 1px rgb(42 33 27 / .1), 0 14px 30px -14px rgb(60 40 20 / .35); display: flex; flex-direction: column; gap: 7px; }
+@media (prefers-color-scheme: dark) { .v-read { background: #23201c; color: #ece4d8; } }
+.v-read em { font-size: .625rem; letter-spacing: .1em; text-transform: uppercase; color: #b8582b; font-weight: 600; }
+.v-read b { font: 600 1.125rem/1.1 ui-serif, "New York", Georgia, serif; letter-spacing: -.01em; margin-bottom: 4px; }
+.v-pic { height: 54px; border-radius: 6px; background: linear-gradient(170deg, #2a3b5c, #6b8fb8 55%, #e9c49a); }
+.v-read .v-line { background: color-mix(in srgb, currentColor 18%, transparent); height: 5px; }
+.bento.is-on .v-read { animation: reader var(--b-t) var(--b-ease) infinite; }
+.bento.is-on .v-pop { animation: popIn var(--b-t) var(--b-ease) infinite; }
+.bento.is-on .bt-reader .v-chip { animation: chip var(--b-t) ease infinite; }
+@keyframes reader { 0%, 32% { opacity: 0; transform: translateY(10px) scale(.97); } 42%, 90% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; transform: translateY(10px) scale(.97); } }
+@keyframes popIn { 0%, 8% { opacity: 0; transform: translateY(8px); } 14%, 100% { opacity: 1; transform: none; } }
+
+/* Clean links: the tracking tail lights up, then folds away. */
+.bt-link { --hue: #ff375f; }
+.bt-link .bt-vis { grid-template-rows: 1fr auto; gap: 14px; }
+.v-url { align-self: end; display: flex; align-items: center; max-width: 100%; padding: 10px 16px 10px 12px; border-radius: 12px; background: var(--b-pane); box-shadow: 0 0 0 1px var(--line); font: .875rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; overflow: hidden; }
+.v-url > i { flex: none; width: 11px; height: 12px; margin-right: 10px; border-radius: 2px; background: var(--ink-2); clip-path: path("M2 5V3.5a3.5 3.5 0 0 1 7 0V5h2v7H0V5zM3.6 5h3.8V3.5a1.9 1.9 0 0 0-3.8 0z"); }
+.v-url .trk { display: inline-block; max-width: 0; overflow: hidden; vertical-align: bottom; border-radius: 4px; color: light-dark(#c4223f, #ff8095); }
+.v-clean { align-self: start; display: inline-flex; align-items: center; gap: 6px; color: var(--b-ok); font-size: .8125rem; font-weight: 600; }
+.v-clean::before { content: ""; width: 14px; height: 14px; border-radius: 50%; background: currentColor; }
+.bento.is-on .v-url .trk { animation: trk var(--b-t) cubic-bezier(.6, 0, .2, 1) infinite; }
+.bento.is-on .v-clean { animation: badge var(--b-t) var(--b-ease) infinite; }
+@keyframes trk { 0%, 6% { max-width: 420px; background: transparent; } 16%, 26% { max-width: 420px; background: color-mix(in srgb, #ff375f 16%, transparent); } 36%, 92% { max-width: 0; background: color-mix(in srgb, #ff375f 16%, transparent); } 100% { max-width: 420px; background: transparent; } }
+
+/* Archive: the stalest tab slips into the archive. */
+.bt-archive { --hue: #af52de; }
+.v-arch { position: relative; width: 150px; display: grid; gap: 2px; padding-bottom: 40px; }
+.v-arch .v-row em { margin-left: auto; color: var(--ink-2); font-size: .6875rem; font-variant-numeric: tabular-nums; }
+.v-arch .v-row:first-child { background: var(--b-fill); }
+.v-arch .old { opacity: 0; transform: translate(0, 34px) scale(.3); }
+.v-box { position: absolute; left: 50%; bottom: 0; width: 34px; height: 26px; margin-left: -17px; border-radius: 4px 4px 7px 7px; background: var(--b-fill-2); }
+.v-box::before { content: ""; position: absolute; left: -3px; right: -3px; top: -6px; height: 8px; border-radius: 3px; background: var(--b-fill-2); }
+.v-box::after { content: ""; position: absolute; left: 11px; right: 11px; top: 8px; height: 3px; border-radius: 2px; background: var(--ink-2); opacity: .5; }
+.bento.is-on .v-arch .old { animation: archive var(--b-t) cubic-bezier(.5, 0, .3, 1) infinite; }
+.bento.is-on .v-box { animation: boxBump var(--b-t) ease infinite; }
+@keyframes archive { 0%, 28% { opacity: 1; transform: none; } 34% { opacity: .55; transform: none; } 50% { opacity: 0; transform: translate(0, 34px) scale(.3); } 94% { opacity: 0; transform: translate(0, 34px) scale(.3); } 100% { opacity: 1; transform: none; } }
+@keyframes boxBump { 0%, 48% { transform: none; } 53% { transform: scale(1.12); } 60%, 100% { transform: none; } }
+
+/* Import: what comes across, from the browser you're leaving. */
+.bt-import { --hue: #5856d6; }
+.v-import { display: grid; grid-template-columns: auto minmax(60px, 1fr) auto; align-items: center; gap: 16px; width: 100%; max-width: 520px; }
+.v-from { display: grid; grid-template-columns: repeat(2, auto); gap: 6px; }
+.v-from u { padding: 5px 10px; border-radius: 8px; background: var(--b-pane); box-shadow: 0 0 0 1px var(--line); font-size: .75rem; font-weight: 600; text-align: center; }
+.v-from u:first-child { background: color-mix(in srgb, #5856d6 14%, var(--b-pane)); }
+.v-lane { position: relative; height: 120px; }
+.v-lane::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1.5px; background: repeating-linear-gradient(90deg, var(--b-fill-2) 0 4px, transparent 4px 10px); }
+.v-lane i { position: absolute; left: 50%; top: 50%; translate: -50% -50%; padding: 3px 9px; border-radius: 99px; background: var(--raised); box-shadow: 0 0 0 1px var(--line), 0 4px 10px -4px rgb(0 0 0 / .2); font-size: .6875rem; font-weight: 600; white-space: nowrap; opacity: 0; }
+.v-lane i:first-child { opacity: 1; }
+.bt-import .v-import img { width: 56px; height: 56px; filter: drop-shadow(0 8px 16px rgb(30 25 20 / .25)); }
+.bento.is-on .v-lane i { animation: travel var(--b-t) cubic-bezier(.45, 0, .3, 1) infinite; }
+.bento.is-on .v-lane i:nth-child(2) { animation-delay: calc(var(--b-t) * .25); }
+.bento.is-on .v-lane i:nth-child(3) { animation-delay: calc(var(--b-t) * .5); }
+.bento.is-on .v-lane i:nth-child(4) { animation-delay: calc(var(--b-t) * .75); }
+.bento.is-on .bt-import img { animation: gulp calc(var(--b-t) / 4) ease infinite; }
+@keyframes travel { 0% { left: 12%; opacity: 0; } 6% { opacity: 1; } 22% { opacity: 1; } 30%, 100% { left: 78%; opacity: 0; } }
+@keyframes gulp { 0%, 70% { transform: none; } 82% { transform: scale(1.07); } 100% { transform: none; } }
+
+/* Private: a private tab, and the switches that keep things quiet. */
+.bt-private { --hue: #8e8e93; }
+.v-toggles { display: grid; gap: 8px; width: min(100%, 340px); }
+.v-toggles > span { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-radius: 12px; background: var(--b-pane); box-shadow: 0 0 0 1px var(--line); font-size: .8125rem; }
+.v-toggles b { font-weight: 500; }
+.v-toggles kbd { color: var(--ink-2); font-weight: 600; font-size: .75rem; }
+.v-toggles > span:first-child { background: #1c1c1e; color: #f2f1ee; box-shadow: none; }
+.v-toggles > span:first-child kbd { color: rgb(242 241 238 / .6); }
+@media (prefers-color-scheme: dark) { .v-toggles > span:first-child { background: color-mix(in srgb, #5e5ce6 34%, #141414); } }
+.sw { position: relative; flex: none; width: 30px; height: 18px; border-radius: 9px; background: var(--b-ok); }
+.sw::after { content: ""; position: absolute; top: 2px; left: 14px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / .25); }
+.bento.is-on .sw.flip { animation: swBg var(--b-t) ease infinite; }
+.bento.is-on .sw.flip::after { animation: swKnob var(--b-t) var(--b-ease) infinite; }
+@keyframes swBg { 0%, 36% { background: var(--b-fill-2); } 42%, 92% { background: var(--b-ok); } 98%, 100% { background: var(--b-fill-2); } }
+@keyframes swKnob { 0%, 36% { left: 2px; } 44%, 92% { left: 14px; } 98%, 100% { left: 2px; } }
+
+/* Off the beat, so the tiles don't all move at once. */
+.bento.is-on :is(.bt-pin, .bt-cookie, .bt-archive) * { animation-delay: -2.3s; }
+.bento.is-on :is(.bt-fav, .bt-reader, .bt-private) * { animation-delay: -4.6s; }
+
+/* Paused: every loop holds its frame. */
+.is-still .bento * { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) { .cap, .v-act, .v-cheat span { transition-duration: 1ms; } }
+
+@media (max-width: 1060px) {
+  .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: none; grid-auto-flow: dense; }
+  .bento > .bt { grid-area: auto; }
+  .bento > :is(.bt-keys, .bt-reader, .bt-import, .bt-private, .bt-link, .bt-dl) { grid-column: span 2; }
+}
+@media (max-width: 600px) {
+  .bento { grid-template-columns: minmax(0, 1fr); }
+  .bento > :is(.bt-keys, .bt-reader, .bt-import, .bt-private, .bt-link, .bt-dl) { grid-column: auto; }
+  .cap { min-width: 54px; height: 54px; font-size: 1.5rem; }
+  .v-import { grid-template-columns: minmax(0, 1fr) auto; gap: 14px 10px; }
+  .v-from { grid-column: 1 / -1; grid-template-columns: repeat(3, auto); justify-content: center; }
+  .v-lane { height: 40px; }
+}
