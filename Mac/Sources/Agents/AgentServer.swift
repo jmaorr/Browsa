@@ -115,15 +115,16 @@ final class AgentServer {
     private static func demoFile(_ path: String) -> HTTPResponse {
         var name = path == "/demo" || path == "/demo/" ? "supper.html" : (path as NSString).lastPathComponent
         if name == "cutroom" { name = "cutroom.html" }
+        if name == "browsa" { name = "browsa-hello.html" }
         let types = ["html": "text/html; charset=utf-8", "css": "text/css; charset=utf-8",
-                     "js": "text/javascript; charset=utf-8", "jpg": "image/jpeg"]
+                     "js": "text/javascript; charset=utf-8", "jpg": "image/jpeg", "png": "image/png"]
         let ext = (name as NSString).pathExtension
-        guard name.hasPrefix("supper") || name.hasPrefix("cutroom"), let type = types[ext],
+        guard name.hasPrefix("supper") || name.hasPrefix("cutroom") || name.hasPrefix("browsa"), let type = types[ext],
               let url = Bundle.main.url(forResource: (name as NSString).deletingPathExtension, withExtension: ext),
               let data = try? Data(contentsOf: url) else { return HTTPResponse(status: 404, body: "Not found") }
         var response = HTTPResponse(status: 200, contentType: type, data: data)
         // Always the copy in this build, never one a restored tab cached.
-        response.headers["Cache-Control"] = ext == "jpg" ? "max-age=86400" : "no-store"
+        response.headers["Cache-Control"] = ext == "jpg" || ext == "png" ? "max-age=86400" : "no-store"
         return response
     }
 

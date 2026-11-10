@@ -296,6 +296,7 @@ enum SpikeHarness {
             // Three notes pinned on Cutroom, as a person reviewing the cut would leave them.
             let url = URL(string: "http://127.0.0.1:\(AgentBridge.port)/demo/cutroom")!
             for n in library.margin.notes where n.url.contains("/demo/cutroom") { library.margin.delete(n.id) }
+            if j["clear"] as? Bool == true { break }
             let notes = [
                 ("#clip-peach", "Peaches drags. Tighten this cut by a few seconds?"),
                 ("#v2", "Open on a title: \"Sunday Table\", with \"A film by Supper\" under it."),
@@ -318,6 +319,13 @@ enum SpikeHarness {
                 // The cut you're looking at: the agent works in your tab, so you watch every edit land.
                 let tab = browser.currentSpace.allTabs.first { $0.url?.absoluteString.contains("/demo/cutroom") == true }?.id.uuidString ?? ""
                 await call("page_read", ["tab": tab])
+                if j["warmup"] as? Bool == true { return }
+                if j["trimOnly"] as? Bool == true {
+                    let id = library.margin.openNotes(under: url).first?.id.uuidString ?? ""
+                    await call("page_eval", ["tab": tab, "script": "return await cutroom.trim('peach', -3.5, { ms: 1600 })"])
+                    await call("notes_resolve", ["id": id, "comment": "Trimmed Peaches from 8s to 4.5s; the cut now runs 20s."])
+                    return
+                }
                 let ids = library.margin.openNotes(under: url).map(\.id.uuidString)
                 func note(_ i: Int) -> String { ids.indices.contains(i) ? ids[i] : "" }
                 await call("page_eval", ["tab": tab, "script": "cutroom.seek(9); return await cutroom.trim('peach', -3.5, { ms: 1400 })"])

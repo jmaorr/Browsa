@@ -196,7 +196,8 @@ for (k, v) in rest { rest["b:" + k] = v }
 let home = Dictionary(uniqueKeysWithValues: stage.childNodes.map { ($0.name!, $0.position) })
 addShadow(for: "window", radius: 22, blur: 40)
 addShadow(for: "card", radius: 18, blur: 22)
-for n in ["address", "fav0", "fav1", "fav2", "fav3"] { addShadow(for: n, radius: 10, blur: 10) }
+// Small layers get a wide, faint shadow: soft and gentle, never a hard rim.
+for n in ["address", "fav0", "fav1", "fav2", "fav3"] { addShadow(for: n, radius: 14, blur: 26) }
 shadows["window"]!.position.z = -2
 
 // The address bar's carve: a soft dark inset that deepens under it as it sinks in.
@@ -311,7 +312,7 @@ func act1(_ t: Double) {
     let ap = home["address"]!
     address.position = SCNVector3(ap.x, ap.y, 1.5 + 50 * (1 - easeOutQuint(a)))
     address.opacity = smooth(a / 0.15)
-    carve.geometry!.firstMaterial!.transparency = 0.18 * smooth(phase(t, 1.9, 1.0))
+    carve.isHidden = true   // the dark inset read as a clipped, hard shadow
     let sw = phase(t, 1.9, 1.5)
     let half = Double(meta.layers["address"]![2]) / 2 - 45
     sweep.opacity = 0   // the light sweep read as a cheap shimmer; the bar just settles in
@@ -352,7 +353,8 @@ func act1(_ t: Double) {
         let h = Double(n.position.z) - (rest[name] ?? 0)
         let k = clamp(h / 200)
         let shown = name == "card" || name == "window" ? 1 : n.opacity
-        sh.opacity = (name == "window" || name == "card" ? 1 : n.opacity) * (name == "window" ? 0.35 : 0.22) * (1 - 0.7 * k) * shown
+        let strength = name == "window" ? 0.35 : name == "card" ? 0.22 : 0.12
+        sh.opacity = (name == "window" || name == "card" ? 1 : n.opacity) * strength * (1 - 0.7 * k) * shown
         sh.scale = SCNVector3(1 + 0.25 * k, 1 + 0.25 * k, 1)
     }
 
@@ -389,8 +391,148 @@ let screen: SCNNode? = act == 2 ? {
 let keys: [(t: Double, x: Double, y: Double, d: Double)] = (ProcessInfo.processInfo.environment["REEL_KEYS"] ?? "0:30:-20:2050")
     .split(separator: ",").map { k in let v = k.split(separator: ":").map { Double($0)! }; return (v[0], v[1], v[2], v[3]) }
 
+// MARK: Cursor: animated over the recording, so its motion is smooth and it can hand over from
+// your Mac cursor to the agent's amber pointer. REEL_CURSOR="t:x:y:kind:click;…" in window points,
+// kind m (Mac) or a (agent), click 1 for a ring at that key.
+
+struct CursorKey { let t: Double, x: Double, y: Double, agent: Bool, click: Bool }
+let cursorKeys: [CursorKey] = (ProcessInfo.processInfo.environment["REEL_CURSOR"] ?? "").split(separator: ";").compactMap { k in
+    let v = k.split(separator: ":")
+    guard v.count >= 4 else { return nil }
+    return CursorKey(t: Double(v[0])!, x: Double(v[1])!, y: Double(v[2])!, agent: v[3] == "a", click: v.count > 4 && v[4] == "1")
+}
+
+func spritePlane(_ img: NSImage, width: Double, order: Int) -> SCNNode {
+    let geo = SCNPlane(width: width, height: width * img.size.height / img.size.width)
+    let m = SCNMaterial()
+    m.diffuse.contents = img
+    m.lightingModel = .constant
+    m.transparencyMode = .aOne
+    sharp(m)
+    m.writesToDepthBuffer = false
+    geo.materials = [m]
+    let n = SCNNode(geometry: geo)
+    n.renderingOrder = order
+    n.isHidden = true
+    stage.addChildNode(n)
+    return n
+}
+
+/// macOS's own arrow, and Browsa's agent pointer (pointer.arrow.ipad in the agents' amber).
+let macCursorImage: NSImage = {
+    // The classic arrow, drawn as vectors (NSCursor's image needs a running app): black with a
+    // white keyline and a soft shadow, at 4x.
+    let k = 4.0, pad = 3.0
+    let pts: [(Double, Double)] = [(0, 0), (0, 17), (4.2, 13.1), (7, 19.6), (9.4, 18.6), (6.7, 12.3), (12, 12.3)]
+    let size = NSSize(width: (14 + pad * 2) * k, height: (22 + pad * 2) * k)
+    let img = NSImage(size: size)
+    img.lockFocus()
+    let path = NSBezierPath()
+    for (i, p) in pts.enumerated() {
+        let q = NSPoint(x: (p.0 + pad) * k, y: size.height - (p.1 + pad) * k)
+        i == 0 ? path.move(to: q) : path.line(to: q)
+    }
+    path.close()
+    path.lineJoinStyle = .round
+    let shadow = NSShadow(); shadow.shadowColor = NSColor.black.withAlphaComponent(0.4); shadow.shadowBlurRadius = 2.5 * k; shadow.shadowOffset = NSSize(width: 0, height: -1 * k)
+    NSGraphicsContext.saveGraphicsState(); shadow.set()
+    NSColor.white.setStroke(); path.lineWidth = 1.6 * k; path.stroke()
+    NSGraphicsContext.restoreGraphicsState()
+    NSColor.white.setStroke(); path.lineWidth = 1.6 * k; path.stroke()
+    NSColor.black.setFill(); path.fill()
+    img.unlockFocus()
+    return img
+}()
+let agentCursorImage: NSImage = {
+    let amber = NSColor(red: 0.96, green: 0.71, blue: 0.04, alpha: 1)
+    let config = NSImage.SymbolConfiguration(pointSize: 64, weight: .regular).applying(.init(paletteColors: [amber]))
+    let sym = NSImage(systemSymbolName: "pointer.arrow.ipad", accessibilityDescription: nil)!.withSymbolConfiguration(config)!
+    let pad = 14.0
+    let img = NSImage(size: NSSize(width: sym.size.width + pad * 2, height: sym.size.height + pad * 2))
+    img.lockFocus()
+    let shadow = NSShadow(); shadow.shadowColor = NSColor.black.withAlphaComponent(0.45); shadow.shadowBlurRadius = 6; shadow.shadowOffset = NSSize(width: 0, height: -3)
+    shadow.set()
+    sym.draw(in: NSRect(x: pad, y: pad, width: sym.size.width, height: sym.size.height))
+    img.unlockFocus()
+    return img
+}()
+let ringImage: NSImage = {
+    let img = NSImage(size: NSSize(width: 200, height: 200))
+    img.lockFocus()
+    NSColor.white.withAlphaComponent(0.9).setStroke()
+    let p = NSBezierPath(ovalIn: NSRect(x: 12, y: 12, width: 176, height: 176)); p.lineWidth = 10; p.stroke()
+    img.unlockFocus()
+    return img
+}()
+let macCursor = spritePlane(macCursorImage, width: 22, order: 9000)
+let agentCursor = spritePlane(agentCursorImage, width: 30, order: 9001)
+let ring = spritePlane(ringImage, width: 40, order: 8999)
+
+/// Window points (top-left origin) to stage, a little above the glass.
+func stagePoint(_ x: Double, _ y: Double, z: Double = 4) -> SCNVector3 { SCNVector3(x - winW / 2, winH / 2 - y, z) }
+
+func placeCursor(_ t: Double) {
+    guard let first = cursorKeys.first else { return }
+    var a = first, b = first
+    for k in cursorKeys where k.t <= t { a = k }
+    b = cursorKeys.first { $0.t > t } ?? a
+    let f = b.t > a.t ? easeInOutCubic((t - a.t) / (b.t - a.t)) : 0
+    let x = mix(a.x, b.x, f), y = mix(a.y, b.y, f)
+    // Agent-ness eases over a third of a second around the key where it changes.
+    let switchKey = cursorKeys.first { $0.agent } 
+    let agentMix = switchKey.map { smooth((t - $0.t + 0.15) / 0.35) } ?? 0
+    let visible = smooth((t - first.t) / 0.3)
+    // Each sprite's hotspot is its top-left tip.
+    // Mac arrow: its tip sits pad (3 of 20 units) in from the top-left.
+    let mw = 22.0, mh = mw * macCursorImage.size.height / macCursorImage.size.width
+    macCursor.position = stagePoint(x + mw / 2 - mw * 3 / 20, y + mh / 2 - mh * 3 / 28)
+    macCursor.opacity = visible * (1 - agentMix)
+    macCursor.isHidden = false
+    let aw = 30.0, ah = aw * agentCursorImage.size.height / agentCursorImage.size.width
+    agentCursor.position = stagePoint(x + aw * 0.36, y + ah * 0.32, z: 4.2)
+    let pop = 1 + 0.35 * sin(.pi * clamp(agentMix)) 
+    agentCursor.scale = SCNVector3(pop, pop, 1)
+    agentCursor.opacity = visible * agentMix
+    agentCursor.isHidden = false
+    // Click ring: the last click key within the past half second.
+    if let c = cursorKeys.last(where: { $0.click && $0.t <= t && t - $0.t < 0.5 }) {
+        let p = (t - c.t) / 0.5
+        ring.isHidden = false
+        ring.position = stagePoint(c.x, c.y, z: 3.8)
+        let s = 0.4 + 1.2 * easeOutCubic(p)
+        ring.scale = SCNVector3(s, s, 1)
+        ring.opacity = 0.8 * (1 - p)
+        ring.geometry!.firstMaterial!.diffuse.contents = ringImage
+    } else { ring.isHidden = true }
+}
+
+/// REEL_LIGHTS="r,g,b" (the sidebar's colour) paints the traffic lights back over a recording:
+/// while ScreenCaptureKit records, macOS swaps them for its screen-sharing pill.
+let lightsOverlay: SCNNode? = ProcessInfo.processInfo.environment["REEL_LIGHTS"].map { spec in
+    let c = spec.split(separator: ",").map { Double($0)! / 255 }
+    let img = NSImage(size: NSSize(width: 160, height: 64))
+    img.lockFocus()
+    // The sidebar under the pill, with the window's own top-left corner (radius 23pt = 46px).
+    NSColor(srgbRed: c[0], green: c[1], blue: c[2], alpha: 1).setFill()
+    let patch = NSBezierPath()
+    patch.move(to: NSPoint(x: 0, y: 0)); patch.line(to: NSPoint(x: 160, y: 0)); patch.line(to: NSPoint(x: 160, y: 62))
+    patch.line(to: NSPoint(x: 46, y: 62)); patch.appendArc(withCenter: NSPoint(x: 46, y: 16), radius: 46, startAngle: 90, endAngle: 180)
+    patch.close(); patch.fill()
+    for (cx, col) in [(32.0, NSColor(srgbRed: 234/255, green: 103/255, blue: 101/255, alpha: 1)),
+                      (78.0, NSColor(srgbRed: 241/255, green: 202/255, blue: 61/255, alpha: 1)),
+                      (124.0, NSColor(srgbRed: 105/255, green: 196/255, blue: 99/255, alpha: 1))] {
+        col.setFill(); NSBezierPath(ovalIn: NSRect(x: cx - 12.5, y: 64 - 32 - 12.5, width: 25, height: 25)).fill()
+    }
+    img.unlockFocus()
+    let n = spritePlane(img, width: 80, order: 5)
+    n.isHidden = false
+    n.position = stagePoint(40, 16, z: 0.5)
+    return n
+}
+
 func act2(_ t: Double, frame: Int) {
     for n in stage.childNodes where n !== screen && n.name != nil { n.isHidden = true }
+    placeCursor(t)
     for (_, sh) in shadows { sh.isHidden = true }
     shadows["window"]?.isHidden = false
     shadows["window"]?.opacity = 0.35
@@ -399,7 +541,9 @@ func act2(_ t: Double, frame: Int) {
         let url = dir.appending(path: String(format: "s%05d.jpg", frame + 1))
         if let img = NSImage(contentsOf: url) { screen!.geometry!.firstMaterial!.diffuse.contents = img }
     }
-    stage.eulerAngles = SCNVector3(-0.08 + 0.03 * sin(t / seconds * .pi), 0.02 * sin(t / seconds * .pi * 2), 0)
+    // A fixed, gentle three-quarter turn (REEL_YAW) so the window faces the title beside it.
+    let yaw = Double(ProcessInfo.processInfo.environment["REEL_YAW"] ?? "0")!
+    stage.eulerAngles = SCNVector3(-0.06 + 0.02 * sin(t / seconds * .pi), yaw, 0)
     // Between camera keys, a sine ease: it leans in, holds a beat, leans out.
     var a = keys[0], b = keys[0]
     for i in keys.indices where keys[i].t <= t { a = keys[i]; b = i + 1 < keys.count ? keys[i + 1] : keys[i] }

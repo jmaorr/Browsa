@@ -92,6 +92,31 @@ struct Card: View {
     }
 }
 
+/// A feature title beside the window (REEL_TITLE="Radar|Keeping your localhosts organised."),
+/// on a clear background, for laying over a staged beat. REEL_TITLE_OUT=0 keeps it to the end.
+struct FeatureTitle: View {
+    let t: Double, seconds: Double, title: String, line: String, size: CGSize, leaves: Bool
+    var body: some View {
+        let out = leaves ? phase(t, seconds - 0.7, 0.6) : 0
+        VStack(alignment: .leading, spacing: size.height * 0.018) {
+            Text(title)
+                .font(.system(size: size.height * 0.074, weight: .semibold))
+                .tracking(-size.height * 0.0025)
+                .foregroundStyle(.white)
+                .modifier(Arrive(p: phase(t, 0.25, 0.9) - out, size: size))
+            Text(line)
+                .font(.system(size: size.height * 0.03, weight: .regular))
+                .foregroundStyle(.white.opacity(0.68))
+                .fixedSize(horizontal: false, vertical: true)
+                .modifier(Arrive(p: phase(t, 0.55, 0.9) - out, size: size))
+        }
+        .frame(width: size.width * 0.27, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .padding(.leading, size.width * 0.065)
+        .frame(width: size.width, height: size.height)
+    }
+}
+
 @main
 struct Main {
     @MainActor static func main() throws {
@@ -110,7 +135,10 @@ struct Main {
             let t = Double(i) / fps
             let size = CGSize(width: w, height: h)
             let card = ProcessInfo.processInfo.environment["REEL_CARD"]
-            let r = card.map { ImageRenderer(content: AnyView(Card(t: t, seconds: seconds, text: $0, size: size))) }
+            let feature = ProcessInfo.processInfo.environment["REEL_TITLE"].map { $0.split(separator: "|").map(String.init) }
+            let leaves = ProcessInfo.processInfo.environment["REEL_TITLE_OUT"] != "0"
+            let r = feature.map { ImageRenderer(content: AnyView(FeatureTitle(t: t, seconds: seconds, title: $0[0], line: $0.count > 1 ? $0[1] : "", size: size, leaves: leaves))) }
+                ?? card.map { ImageRenderer(content: AnyView(Card(t: t, seconds: seconds, text: $0, size: size))) }
                 ?? ImageRenderer(content: AnyView(Lockup(t: t, library: library, icon: icon, size: size)))
             r.scale = 2
             guard let cg = r.cgImage else { print("no image at \(i)"); continue }
