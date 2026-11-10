@@ -1,4 +1,5 @@
-// Entry point for the cookie-banner script injected into every frame (see build.sh).
+// Entry point for the cookie-banner script injected into main frames, and into the subframes
+// that frame-gate.mjs's gate picks out (see build.sh).
 //
 // Runs DuckDuckGo's autoconsent (MPL-2.0) in an isolated content world. It finds the site's
 // consent manager, clicks through to "reject all", and hides the banner meanwhile. Messages go to
