@@ -492,7 +492,7 @@ private struct ShortcutSettings: View {
 
     var body: some View {
         Form {
-            Section {
+            Section("Preset") {
                 Picker("Preset", selection: Binding(get: { shortcuts.preset }, set: { p in
                     notes = [:]
                     shortcuts.usePreset(p)
@@ -500,6 +500,10 @@ private struct ShortcutSettings: View {
                     ForEach(ShortcutPreset.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
+                // Large is the macOS 26 capsule in Liquid Glass; regular is the older squared control.
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
             } footer: {
                 Text(shortcuts.preset.summary + " Changing the preset clears the keys you've changed.")
                     .font(.caption).foregroundStyle(.secondary)
