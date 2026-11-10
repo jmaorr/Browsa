@@ -110,13 +110,15 @@ final class AgentServer {
         }
     }
 
-    /// /demo → supper.html; /demo/supper.css, /demo/supper.js, /demo/img/supper-*.jpg → those files.
+    /// /demo → supper.html, /demo/cutroom → cutroom.html; /demo/supper.css, /demo/cutroom.js,
+    /// /demo/img/supper-*.jpg and the like → those files.
     private static func demoFile(_ path: String) -> HTTPResponse {
-        let name = path == "/demo" || path == "/demo/" ? "supper.html" : (path as NSString).lastPathComponent
+        var name = path == "/demo" || path == "/demo/" ? "supper.html" : (path as NSString).lastPathComponent
+        if name == "cutroom" { name = "cutroom.html" }
         let types = ["html": "text/html; charset=utf-8", "css": "text/css; charset=utf-8",
                      "js": "text/javascript; charset=utf-8", "jpg": "image/jpeg"]
         let ext = (name as NSString).pathExtension
-        guard name.hasPrefix("supper"), let type = types[ext],
+        guard name.hasPrefix("supper") || name.hasPrefix("cutroom"), let type = types[ext],
               let url = Bundle.main.url(forResource: (name as NSString).deletingPathExtension, withExtension: ext),
               let data = try? Data(contentsOf: url) else { return HTTPResponse(status: 404, body: "Not found") }
         var response = HTTPResponse(status: 200, contentType: type, data: data)

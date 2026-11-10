@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cutroom · Sunday Table</title>
+<link rel="stylesheet" href="/demo/cutroom.css">
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand"><span class="mark"></span>Cutroom</div>
+    <div class="project"><b>Sunday Table</b><span>Supper brand film · 1080p · 24 fps</span></div>
+    <nav class="pages" aria-label="Pages">
+      <button class="page on" data-page="edit">Edit</button>
+      <button class="page" data-page="color">Color</button>
+      <button class="page" data-page="deliver">Deliver</button>
+    </nav>
+    <div class="saved" id="saved">All changes saved</div>
+    <button class="export" id="export">Export</button>
+  </header>
+
+  <aside class="media" aria-label="Media">
+    <div class="pane-title">Media <span>8 clips</span></div>
+    <div class="bins" id="bins"></div>
+  </aside>
+
+  <section class="viewer" aria-label="Viewer">
+    <div class="screen-wrap">
+      <div class="screen" id="screen">
+        <canvas id="frame" width="1920" height="1080" aria-label="Program monitor"></canvas>
+        <div class="title-safe" id="title-layer"></div>
+      </div>
+    </div>
+    <div class="transport">
+      <div class="tc" id="tc">00:00:00:00</div>
+      <div class="buttons">
+        <button id="to-start" aria-label="Go to start">⏮</button>
+        <button id="play" class="play" aria-label="Play">▶</button>
+        <button id="to-end" aria-label="Go to end">⏭</button>
+      </div>
+      <div class="tc dim" id="dur">00:00:00:00</div>
+    </div>
+  </section>
+
+  <aside class="inspector" aria-label="Inspector">
+    <div class="tabs" role="tablist">
+      <button class="tab on" data-tab="clip" role="tab">Clip</button>
+      <button class="tab" data-tab="title" role="tab">Title</button>
+      <button class="tab" data-tab="color" role="tab">Color</button>
+    </div>
+    <div class="tab-body" id="tab-clip">
+      <div class="field"><label>Clip</label><div class="value" id="clip-name">—</div></div>
+      <div class="field"><label>Duration</label><div class="value mono" id="clip-dur">—</div></div>
+      <div class="field"><label>Scale</label><input type="range" id="clip-scale" min="100" max="130" value="108"><span class="mono" id="clip-scale-v">108%</span></div>
+      <div class="field"><label>Speed</label><div class="value mono">100%</div></div>
+      <p class="hint">Drag a clip's edge in the timeline to trim it.</p>
+    </div>
+    <div class="tab-body" id="tab-title" hidden>
+      <div class="field col"><label for="title-text">Text</label><input id="title-text" placeholder="Add a title to the timeline first"></div>
+      <div class="field"><label>Style</label>
+        <div class="seg" id="title-style">
+          <button data-style="lower" class="on">Lower third</button><button data-style="center">Centre</button>
+        </div>
+      </div>
+      <button class="btn" id="add-title">Add Title at Playhead</button>
+    </div>
+    <div class="tab-body" id="tab-color" hidden>
+      <div class="wheels" id="wheels"></div>
+      <div class="field"><label>Temp</label><input type="range" id="temp" min="-100" max="100" value="0"><span class="mono" id="temp-v">0</span></div>
+      <div class="field"><label>Sat</label><input type="range" id="sat" min="0" max="200" value="100"><span class="mono" id="sat-v">100</span></div>
+      <button class="btn ghost" id="reset-grade">Reset Grade</button>
+    </div>
+  </aside>
+
+  <section class="timeline" aria-label="Timeline">
+    <div class="tl-head">
+      <div class="tl-tools">
+        <button class="tool on" title="Select">Select</button>
+        <button class="tool" title="Trim">Trim</button>
+        <button class="tool" title="Blade">Blade</button>
+      </div>
+      <div class="tl-zoom"><span>Zoom</span><input type="range" id="zoom" min="40" max="160" value="86"></div>
+    </div>
+    <div class="tl-body">
+      <div class="track-heads">
+        <div class="ruler-pad"></div>
+        <div class="th"><b>V2</b><span>Titles</span></div>
+        <div class="th tall"><b>V1</b><span>Video</span></div>
+        <div class="th"><b>A1</b><span>Score</span></div>
+      </div>
+      <div class="tracks" id="tracks">
+        <div class="ruler" id="ruler"></div>
+        <div class="track" id="v2"></div>
+        <div class="track tall" id="v1"></div>
+        <div class="track" id="a1"><canvas id="wave" height="56"></canvas></div>
+        <div class="playhead" id="playhead"><i></i></div>
+      </div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script src="/demo/cutroom.js"></script>
+</body>
+</html>
