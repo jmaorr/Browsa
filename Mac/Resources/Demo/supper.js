@@ -81,13 +81,25 @@ function renderSlots() {
   slots.forEach(([id]) => $('#' + id).onchange = () => { state.slot = id; renderMenu(); });
 }
 
+// Cards are drawn once and then updated in place, so buttons keep their identity (and anything
+// that pointed at them, like an agent's page_read numbers, keeps working).
+function updateCards() {
+  recipes.forEach(r => {
+    const card = $('#recipe-' + r.id), on = state.chosen.includes(r.id), btn = $('#add-' + r.id);
+    card.classList.toggle('chosen', on);
+    card.classList.toggle('hidden', state.vegOnly && !r.veg);
+    btn.textContent = on ? 'On the menu ✓' : 'Add to menu';
+    btn.setAttribute('aria-label', (on ? 'Remove ' : 'Add ') + r.name);
+  });
+}
+
 function toggle(id) {
   state.chosen = state.chosen.includes(id) ? state.chosen.filter(x => x !== id) : [...state.chosen, id];
-  renderRecipes(); renderMenu();
+  updateCards(); renderMenu();
 }
 
 $('#guests').oninput = (e) => { state.guests = Math.max(1, Math.min(20, Number(e.target.value) || 1)); renderMenu(); };
-$('#diet-veg').onclick = (e) => { state.vegOnly = !state.vegOnly; e.target.setAttribute('aria-pressed', state.vegOnly); renderRecipes(); };
+$('#diet-veg').onclick = (e) => { state.vegOnly = !state.vegOnly; e.target.setAttribute('aria-pressed', state.vegOnly); updateCards(); };
 $('#place-order').onclick = () => { state.ordered = true; renderMenu();
   $('#order-note').innerHTML = '<p class="done">All set for Saturday. (This is a demo: nothing was ordered.)</p>'; };
 renderRecipes(); renderSlots(); renderMenu();

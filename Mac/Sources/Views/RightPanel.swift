@@ -190,7 +190,7 @@ struct AgentsPanel: View {
                 if !agents.connectedAgents.isEmpty {
                     HStack(spacing: 8) {
                         ForEach(agents.connectedAgents, id: \.self) { name in
-                            Label { Text(name) } icon: { AgentIcon(caller: name, size: 12) }
+                            Label { Text(AgentIdentity.displayName(name)) } icon: { AgentIcon(caller: name, size: 12) }
                                 .opacity(agents.isIdle(name) ? 0.45 : 1)
                                 .help(agents.isIdle(name) ? "\(name) hasn't called in a while" : name)
                         }
@@ -381,8 +381,8 @@ private struct AgentRequestCard: View {
 
     private var headline: String {
         switch request.grant {
-        case .yourTab: "\(request.caller) wants to \(request.action.lowercased()) in your tab"
-        case .yourTabs: "\(request.caller) wants to see your open tabs"
+        case .yourTab: "\(AgentIdentity.displayName(request.caller)) wants to \(request.action.lowercased()) in your tab"
+        case .yourTabs: "\(AgentIdentity.displayName(request.caller)) wants to see your open tabs"
         }
     }
 
@@ -510,7 +510,9 @@ struct AgentRun: Identifiable {
 }
 
 private struct AgentRunView: View {
+    @Environment(Browser.self) private var browser
     let run: AgentRun
+    private var texts: [UUID: String] { browser.library.agents.activityText }
     let startsOpen: Bool
     @State private var open: Bool?
     @State private var showCalls = false
@@ -521,7 +523,7 @@ private struct AgentRunView: View {
             Button { withAnimation(Motion.snappy) { open = !isOpen } } label: {
                 HStack(spacing: 7) {
                     AgentIcon(caller: run.caller, size: 14)
-                    Text(run.caller).font(.system(size: 12, weight: .semibold))
+                    Text(AgentIdentity.displayName(run.caller)).font(.system(size: 12, weight: .semibold))
                     Text(run.at, style: .relative).font(.caption2).foregroundStyle(.tertiary)
                     Spacer(minLength: 0)
                     if !isOpen {
@@ -540,7 +542,7 @@ private struct AgentRunView: View {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             outcome(e).frame(width: 12)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(AgentWords.sentence(tool: e.tool, fields: AgentWords.fields(e.summary)))
+                                Text(texts[e.id] ?? AgentWords.sentence(tool: e.tool, fields: AgentWords.fields(e.summary)))
                                     .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
                                 if case .failed(let why) = e.outcome { Text(why).font(.caption).foregroundStyle(.red).lineLimit(2) }
                                 if showCalls {

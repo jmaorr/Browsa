@@ -417,7 +417,7 @@ private struct AgentWorkingLine: View {
             if let agent = browser.library.agents.working(on: browser.currentTab?.url) {
                 HStack(spacing: 8) {
                     Circle().fill(AgentLive.color).frame(width: 7, height: 7).symbolEffect(.pulse)
-                    Text("\(agent) is working on this page").font(.caption.weight(.medium))
+                    Text("\(AgentIdentity.displayName(agent)) is working on this page").font(.caption.weight(.medium))
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 10).padding(.vertical, 7)
@@ -801,7 +801,7 @@ private struct AuthorBadge: View {
         switch author {
         case .you: Text("You").font(.caption.weight(.semibold))
         case .agent(let name):
-            Label { Text(name) } icon: { AgentIcon(caller: name, size: 12) }
+            Label { Text(AgentIdentity.displayName(name)) } icon: { AgentIcon(caller: name, size: 12) }
                 .font(.caption.weight(.semibold))
         }
     }

@@ -34,7 +34,7 @@ enum AgentWords {
 
     static func sentence(tool: String, fields f: [String: String], tabTitle: String? = nil) -> String {
         let page = tabTitle.map { "‘\($0)’" } ?? "the page"
-        let target = f["selector"].map(readable) ?? f["ref"].map { "item \($0)" } ?? "it"
+        let target = f["label"].map { "‘\($0)’" } ?? f["selector"].map(readable) ?? f["ref"].map { "item \($0)" } ?? "it"
         switch tool {
         case "tabs_list": return "Looked at your open tabs"
         case "tab_open": return "Opened \(f["url"].map(shortURL) ?? "a page")"
@@ -82,8 +82,8 @@ enum AgentWords {
 /// A yellow pointer (the iPad pointer symbol) that glides to what the agent is about to click or type
 /// into, a ripple on a click, an outline on a field. Runs in its own world; waits until it arrives.
 enum AgentCursor {
-    static func target(_ args: JSONValue) -> String {
-        if let ref = args["ref"]?.double { return "document.querySelector('[data-browsa-ref=\"\(Int(ref))\"]')" }
+    @MainActor static func target(_ args: JSONValue) -> String {
+        if let ref = args["ref"]?.double { return BrowserAgentTools.refExpression(Int(ref)) }
         if let sel = args["selector"]?.string,
            let data = try? JSONSerialization.data(withJSONObject: [sel]), let json = String(data: data, encoding: .utf8) {
             return "(() => { try { return document.querySelector(\(json)[0]); } catch (e) { return null; } })()"
@@ -176,12 +176,12 @@ struct AgentDrivingPill: View {
                             .symbolEffect(.pulse)
                     }
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(step.caller).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                    Text(AgentIdentity.displayName(step.caller)).font(.system(size: 12, weight: .semibold)).lineLimit(1)
                     Text(agents.requests.isEmpty ? step.text : "Waiting for you to allow")
                         .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                         .contentTransition(.opacity)
                 }
-                .help("\(step.caller) is driving: \(step.text)")
+                .help("\(AgentIdentity.displayName(step.caller)) is driving: \(step.text)")
                 Spacer(minLength: 4)
                 if !watching {
                     Button { withAnimation(Motion.snappy) { agents.watch(in: browser) } } label: {
@@ -282,10 +282,11 @@ struct AgentAskBar: View {
 
 enum AgentAsk {
     static func headline(_ r: AgentRequest, here: Bool) -> String {
-        switch r.grant {
-        case .yourTab: here ? "\(r.caller) wants to \(r.action.lowercased()) in this tab"
-                            : "\(r.caller) wants to \(r.action.lowercased()) in “\(r.tabTitle ?? "one of your tabs")”"
-        case .yourTabs: "\(r.caller) wants to see your open tabs"
+        let who = AgentIdentity.displayName(r.caller)
+        return switch r.grant {
+        case .yourTab: here ? "\(who) wants to \(r.action.lowercased()) in this tab"
+                            : "\(who) wants to \(r.action.lowercased()) in “\(r.tabTitle ?? "one of your tabs")”"
+        case .yourTabs: "\(who) wants to see your open tabs"
         }
     }
 

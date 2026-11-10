@@ -262,7 +262,15 @@ final class AgentBridge {
             stage.host(library.controller(for: tab).page.view)
         }
         if let tab, isInAgentSpace(tab) { follow(tab) }
-        let text = AgentWords.sentence(tool: tool.name, fields: AgentWords.fields(args), tabTitle: tab?.displayTitle)
+        var fields = AgentWords.fields(args)
+        // Name what it's about to click or type into, as the page does ("Add to menu"), not "item 5".
+        if let tab, tool.name == "page_click" || tool.name == "page_type", args["ref"] != nil || args["selector"] != nil {
+            let js = "const el = \(AgentCursor.target(args)); \(BrowserAgentTools.labelJS) return el ? browsaLabel(el) : null;"
+            if let label = try? await library.controller(for: tab).page.evaluate(js, inWorld: "browsa.agent") as? String, !label.isEmpty {
+                fields["label"] = label
+            }
+        }
+        let text = AgentWords.sentence(tool: tool.name, fields: fields, tabTitle: tab?.displayTitle)
         withAnimation(Motion.snappy) {
             currentStep = Step(caller: caller, tabID: tab?.id, text: text, at: Date())
             isActing = true
@@ -348,7 +356,14 @@ final class AgentBridge {
         if now != isDriving { isDriving = now }
     }
 
+    /// The plain sentence for each activity row, written when the call started (with names the
+    /// page had then).
+    private(set) var activityText: [UUID: String] = [:]
+
     private func record(_ entry: AgentActivity) {
+        if activityText[entry.id] == nil, let step = currentStep, step.caller == entry.caller, Date().timeIntervalSince(step.at) < 3 {
+            activityText[entry.id] = step.text
+        }
         var entry = entry
         // "tab: 600B939B-…" says nothing to you; the tab's title does.
         if let range = entry.summary.range(of: #"tab: [0-9A-F-]{36}"#, options: .regularExpression),
