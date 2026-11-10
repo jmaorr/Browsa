@@ -21,7 +21,7 @@ struct SpaceTabs: View {
     /// The section's tabs without the one being dragged, with a gap where it would land.
     private func slots(_ tabs: [BrowserTab], pinned: Bool) -> [Slot] {
         var slots = tabs.filter { !dragging.isLifted($0.id) }.map(Slot.tab)
-        if let target = dragging.target, target.isPinned == pinned {
+        if let target = dragging.target, pinned ? target.isPinned : target.isToday {
             slots.insert(.gap, at: min(target.index, slots.count))
         }
         return slots
@@ -95,7 +95,7 @@ struct SpaceTabs: View {
                     dragging.rowFrames[tab.id] = $0
                 }
                 .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .named(SidebarDragging.coordinateSpace))
-                    .onChanged { dragging.changed(tab, $0, in: space) }
+                    .onChanged { dragging.changed(tab, $0, in: space, browser: browser) }
                     .onEnded { _ in dragging.ended(tab, in: space, browser: browser) })
         } else {
             RoundedRectangle(cornerRadius: 9, style: .continuous)

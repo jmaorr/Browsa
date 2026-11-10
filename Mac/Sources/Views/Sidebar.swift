@@ -493,6 +493,7 @@ private struct ExtensionFooterButton: View {
 /// Favourites, shared by every space: a grid of site icons, like Arc's top row.
 struct FavoritesGrid: View {
     @Environment(Browser.self) private var browser
+    @Environment(SidebarDragging.self) private var dragging
     private let columns = [GridItem(.adaptive(minimum: 48, maximum: 80), spacing: 6)]
 
     /// While something is dragged over the grid: the order to show, with the dragged favourite (or
@@ -514,9 +515,33 @@ struct FavoritesGrid: View {
         static func == (a: GridEntry, b: GridEntry) -> Bool { a.id == b.id }
     }
 
+    /// A tab dragged from the list, shown where it would join the favourites.
+    private var liftedEntries: [GridEntry]? {
+        guard case .favourite(let i)? = dragging.target, let lift = dragging.lift,
+              let tab = browser.currentSpace.allTabs.first(where: { $0.id == lift.tabID }), let url = tab.url else { return nil }
+        var entries = browser.sortedFavorites.map(GridEntry.favorite)
+        entries.insert(.pending(tab.id, url, tab.displayTitle), at: min(i, entries.count))
+        return entries
+    }
+
+    /// While a tab that could be a favourite is dragged and there are none yet: somewhere to drop it.
+    private var showsDropZone: Bool {
+        guard let lift = dragging.lift, browser.favorites.isEmpty,
+              let tab = browser.currentSpace.allTabs.first(where: { $0.id == lift.tabID }) else { return false }
+        return dragging.canFavourite(tab, browser: browser)
+    }
+
     var body: some View {
-        let entries = preview ?? browser.sortedFavorites.map(GridEntry.favorite)
-        if !entries.isEmpty || incoming != nil {
+        let entries = liftedEntries ?? preview ?? browser.sortedFavorites.map(GridEntry.favorite)
+        if showsDropZone, entries.isEmpty {
+            FavouriteDropZone()
+                .frame(height: 50)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
+                    dragging.favouritesFrame = $0
+                }
+                .onDisappear { dragging.favouritesFrame = .zero }
+                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+        } else if !entries.isEmpty || incoming != nil {
             LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(entries) { entry in
                     Group {
@@ -528,9 +553,19 @@ struct FavoritesGrid: View {
                         }
                     }
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("favourites")) } action: { frames[entry.id] = $0 }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: { r in
+                        switch entry {
+                        case .favorite(let fav): dragging.tileFrames[fav.id] = r
+                        case .pending: dragging.gapFrame = r
+                        }
+                    }
                 }
             }
             .coordinateSpace(.named("favourites"))
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
+                dragging.favouritesFrame = $0
+            }
+            .onDisappear { dragging.favouritesFrame = .zero }
             .onDrop(of: [.utf8PlainText, .plainText], delegate: GridDrop(grid: self))
         } else {
             // Somewhere to drop the first favourite.
@@ -643,6 +678,39 @@ struct FavoritesGrid: View {
     }
 }
 
+/// Shown while a tab is dragged and there are no favourites yet.
+private struct FavouriteDropZone: View {
+    @Environment(SidebarDragging.self) private var dragging
+
+    var body: some View {
+        let targeted = dragging.target?.isFavourite == true
+        HStack(spacing: 9) {
+            Image(systemName: "star.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(targeted ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+                .frame(width: 24, height: 24)
+                .background(targeted ? AnyShapeStyle(Color.accentColor.opacity(0.14)) : AnyShapeStyle(.primary.opacity(0.06)), in: .circle)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Drop here for Favourites")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("One click away in every space.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .frame(maxHeight: .infinity)
+        .background(targeted ? AnyShapeStyle(Color.accentColor.opacity(0.07)) : AnyShapeStyle(.primary.opacity(0.035)),
+                    in: .rect(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .strokeBorder(targeted ? AnyShapeStyle(Color.accentColor.opacity(0.7)) : AnyShapeStyle(.primary.opacity(0.14)),
+                          style: StrokeStyle(lineWidth: targeted ? 1.5 : 1, dash: [4, 3])))
+        .animation(Motion.snappy, value: targeted)
+    }
+}
+
 /// Where a tab dropped on the grid would land: its icon, faded, in a dashed tile.
 private struct PendingFavoriteTile: View {
     let url: URL
@@ -730,6 +798,7 @@ enum SidebarDrag: Equatable {
 
 struct SpaceSwitcher: View {
     @Environment(Browser.self) private var browser
+    @Environment(SidebarDragging.self) private var dragging
 
     var body: some View {
         HStack(spacing: 2) {
@@ -743,6 +812,22 @@ struct SpaceSwitcher: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(selected ? .primary : .tertiary)
+                // A tab dragged over the dot: the space shows its icon, ready to take it.
+                .overlay {
+                    if dragging.target == .space(s.id) {
+                        Image(systemName: s.symbol)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 26, height: 26)
+                            .background(Color.accentColor.opacity(0.14), in: .circle)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .animation(Motion.bouncy, value: dragging.target == .space(s.id))
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
+                    dragging.spaceFrames[s.id] = $0
+                }
+                .onDisappear { dragging.spaceFrames[s.id] = nil }
                 .help(i < 9 ? "\(s.name) (⌃\(i + 1))" : s.name)
                 .dropDestination(for: String.self) { items, _ in
                     guard let item = items.first, case .tab(let id)? = SidebarDrag(item),
