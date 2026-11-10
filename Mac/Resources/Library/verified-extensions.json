@@ -1,0 +1,13 @@
+{
+  "_about": "Extensions Browsa has tested and shows in the Library with one-click Add. To promote one: test it (see docs/library.md), then add an entry here (and to website/public/library/verified-extensions.json once that feed is live). id is the Chrome Web Store id.",
+  "extensions": [
+    {
+      "id": "aeblfdkhhhdcdjpifhhbdiojplfjncoa",
+      "name": "1Password",
+      "blurb": "Fill passwords, passkeys and cards. Sign in to the extension itself; the desktop app's unlock doesn't reach Browsa.",
+      "category": "Passwords",
+      "tint": "#1a8cff",
+      "tested": "2026-11-08"
+    }
+  ]
+}

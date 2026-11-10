@@ -31,6 +31,8 @@ enum SpikeHarness {
         RadarSample.servers = SpikeMocks.servers
         if env["SPIKE_WELCOME"] != "1" { Preferences.hasSeenWelcome = true }
         if defaults.object(forKey: "agentsEnabled") == nil { defaults.set(true, forKey: "agentsEnabled") }
+        // SpikeBrowsa starts with every plugin on, so its mocks have somewhere to show.
+        if defaults.object(forKey: "disabledTools") == nil { defaults.set([String](), forKey: "disabledTools") }
     }
 
     static func start(delegate: AppDelegate) {

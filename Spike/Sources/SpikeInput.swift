@@ -144,7 +144,7 @@ enum SpikeInput {
                                         charactersIgnoringModifiers: ignoring, isARepeat: false, keyCode: code) {
                 // In the background the app has no key window, so NSApp would drop posted keys.
                 // Straight to the window reaches its first responder (a focused field) either way.
-                if NSApp.isActive || !openMenus.isEmpty { NSApp.postEvent(e, atStart: false) } else { window.sendEvent(e) }
+                if NSApp.isActive || !openMenus.isEmpty { NSApp.postEvent(e, atStart: false) } else if e.type != .keyDown || !(LibraryKeys.current?(e) ?? false) { window.sendEvent(e) }
             }
         }
     }
