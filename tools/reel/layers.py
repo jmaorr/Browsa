@@ -15,7 +15,6 @@ bg = base.getpixel((240, 1200))[:3]
 
 # Regions in 2x pixels, from a 1440x900 window.
 R = {
-    "toolbar": (0, 0, 520, 72),
     "address": (22, 79, 499, 142),
     "fav0": (22, 163, 130, 259), "fav1": (144, 163, 252, 259),
     "fav2": (266, 163, 374, 259), "fav3": (391, 163, 499, 259),
@@ -37,9 +36,6 @@ def keyed(img):
             elif d < 30:
                 px[x, y] = (r, g, b, int(a * (d - 10) / 20))
     return img
-
-WINDOW_RADIUS = 46   # the real window's corner in 2x px, measured from the shot
-
 
 def rounded_mask(w, h, r, inset=0):
     """An anti-aliased rounded-rect mask: drawn at 4x, scaled down."""
@@ -66,65 +62,35 @@ def bleed(img):
     return out
 
 
-def find_lights(img):
-    """The three traffic lights: discs on the toolbar that differ from the sidebar, as (cx, cy, r)."""
-    px = img.load()
-    off = lambda x, y: px[x, y][3] == 255 and sum(abs(px[x, y][i] - bg[i]) for i in range(3)) > 24
-    cols = [x for x in range(10, 150) if sum(off(x, y) for y in range(15, 50)) > 3]
-    groups, cur = [], [cols[0]]
-    for x in cols[1:]:
-        if x - cur[-1] > 2:
-            groups.append(cur); cur = [x]
-        else:
-            cur.append(x)
-    groups.append(cur)
-    out = []
-    for g in groups[:3]:
-        cx = (g[0] + g[-1]) // 2
-        ys = [y for y in range(5, 70) if off(cx, y)]
-        out.append((cx, (ys[0] + ys[-1]) // 2, (g[-1] - g[0]) // 2 + 2))
-    return out
-
-
 meta = {"window": [W // 2, H // 2], "layers": {}}
-lights = find_lights(base)
 for name, box in R.items():
     crop = keyed(base.crop(box).copy())
-    if name == "toolbar":
-        # The grey lights live on their own layer, in colour.
-        cd = ImageDraw.Draw(crop)
-        for cx, cy, r in lights:
-            cd.ellipse((cx - r - 2, cy - r - 2, cx + r + 2, cy + r + 2), fill=bg + (0,))
     crop = bleed(crop)
     crop.save(f"{out}/{name}.png")
     meta["layers"][name] = [box[0] / 2, box[1] / 2, (box[2] - box[0]) / 2, (box[3] - box[1]) / 2]
+
+# The whole sidebar below the toolbar, as one panel, for the space swipe (it slides as a piece).
+# Favourites are shared by every space, so they're cleared here and stay put on their own layers.
+SIDE = (0, 74, 532, 1781)
+side = base.crop(SIDE).copy()
+sd = ImageDraw.Draw(side)
+for i in range(4):
+    b = R[f"fav{i}"]
+    sd.rectangle((b[0] - 4, b[1] - 4 - SIDE[1], b[2] + 4, b[3] + 4 - SIDE[1]), fill=bg + (255,))
+side.save(f"{out}/sidebar.png")
+meta["layers"]["sidebar"] = [SIDE[0] / 2, SIDE[1] / 2, (SIDE[2] - SIDE[0]) / 2, (SIDE[3] - SIDE[1]) / 2]
 
 # The bare window: the sidebar's pieces and the page card cleared to the window's own surface.
 bare = base.copy()
 d = ImageDraw.Draw(bare)
 for box in list(R.values()) + [CARD]:
-    if box == R["toolbar"]:
-        # Keep the traffic lights; clear the toolbar buttons beside them.
-        d.rectangle((150, 0, box[2], box[3]), fill=bg + (255,))
-        continue
     d.rectangle((box[0] - 4, box[1] - 4, box[2] + 4, box[3] + 4), fill=bg + (255,))
-# Traffic lights in colour, as on an active window.
-ld = ImageDraw.Draw(bare)
-for (cx, cy, r), col in zip(lights, ((255, 95, 87), (254, 188, 46), (40, 200, 64))):
-    ld.ellipse((cx - r - 4, cy - r - 4, cx + r + 4, cy + r + 4), fill=bg + (255,))
-# Rounded window corners, drawn at 4x and scaled down so the curve is smooth, not stair-stepped.
-bare.putalpha(rounded_mask(W, H, WINDOW_RADIUS))
+# The toolbar row (traffic lights, sidebar, back, reload) stays as shot: part of the window, not a layer.
+bare.paste(base.crop((0, 0, 530, 74)), (0, 0))
+# The window's own corners and edge, exactly as macOS drew them: keep the shot's alpha.
+bare.putalpha(base.getchannel("A"))
 bare = bleed(bare)
 bare.save(f"{out}/window.png")
-# The lights go on their own layer so they stay crisp circles.
-lw = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-for (cx, cy, r), col in zip(lights, ((255, 95, 87), (254, 188, 46), (40, 200, 64))):
-    disc = rounded_mask(int(2 * r + 4), int(2 * r + 4), r, inset=2)
-    lw.paste(Image.new("RGBA", disc.size, col + (255,)), (cx - r - 2, cy - r - 2), disc)
-lw = bleed(lw)
-box = (0, 0, 160, 80)
-lw.crop(box).save(f"{out}/lights.png")
-meta["layers"]["lights"] = [0, 0, 80, 40]
 meta["layers"]["window"] = [0, 0, W / 2, H / 2]
 
 # The page card: the page snapshot in a rounded card.

@@ -22,6 +22,8 @@ func land(_ x: Double) -> Double {
     return 1 + (s + 1) * pow(c - 1, 3) + s * pow(c - 1, 2)
 }
 func easeOutQuint(_ x: Double) -> Double { 1 - pow(1 - clamp(x), 5) }
+func easeInOutCubic(_ x: Double) -> Double { let c = clamp(x); return c < 0.5 ? 4 * c * c * c : 1 - pow(-2 * c + 2, 3) / 2 }
+func easeOutSine(_ x: Double) -> Double { sin(.pi / 2 * clamp(x)) }
 func easeInOutSine(_ x: Double) -> Double { -(cos(.pi * clamp(x)) - 1) / 2 }
 func phase(_ t: Double, _ start: Double, _ length: Double) -> Double { clamp((t - start) / length) }
 func mix(_ a: Double, _ b: Double, _ f: Double) -> Double { a + (b - a) * f }
@@ -64,13 +66,15 @@ func sharp(_ m: SCNMaterial) {
 }
 
 /// Draw order, back to front.
-let stack = ["window", "lights", "card", "toolbar", "bottom", "address", "fav0", "fav1", "fav2", "fav3",
+let stack = ["window", "card", "bottom", "address", "fav0", "fav1", "fav2", "fav3",
              "newtab", "tab0", "tab1", "tab2", "tab3", "tab4", "tab5"]
 
 /// A layer as a plane at its place in the window, in points, centred on the window.
-func plane(_ name: String) -> SCNNode {
+/// `from` a second layer set (the space swiped to) names the node "b:<name>" and draws it just
+/// above its twin.
+func plane(_ name: String, from dir: URL? = nil) -> SCNNode {
     let f = meta.layers[name]!
-    let image = NSImage(contentsOf: layersDir.appending(path: "\(name).png"))!
+    let image = NSImage(contentsOf: (dir ?? layersDir).appending(path: "\(name).png"))!
     let geo = SCNPlane(width: f[2], height: f[3])
     let m = SCNMaterial()
     m.diffuse.contents = image
@@ -81,9 +85,9 @@ func plane(_ name: String) -> SCNNode {
     sharp(m)
     geo.materials = [m]
     let node = SCNNode(geometry: geo)
-    node.name = name
+    node.name = dir == nil ? name : "b:" + name
     node.castsShadow = false
-    node.renderingOrder = 10 * (stack.firstIndex(of: name) ?? 0)
+    node.renderingOrder = 10 * (stack.firstIndex(of: name) ?? 0) + (dir == nil ? 0 : 2)
     // Window points (top-left origin) to stage (centre origin, y up).
     node.position = SCNVector3(f[0] + f[2] / 2 - winW / 2, winH / 2 - (f[1] + f[3] / 2), 0)
     stage.addChildNode(node)
@@ -127,22 +131,72 @@ func addShadow(for name: String, radius: Double, blur: Double = 18) {
 }
 
 let window = plane("window")
-let lights = plane("lights")
 let card = plane("card")
-let toolbar = plane("toolbar")
 let address = plane("address")
 let favs = (0..<4).map { plane("fav\($0)") }
 let newTab = plane("newtab")
 let tabs = (0..<6).map { plane("tab\($0)") }
 let bottom = plane("bottom")
 
+// The space swiped to at the end (REEL_B: its layer dir). The favourites are shared across spaces.
+let bDir = ProcessInfo.processInfo.environment["REEL_B"].map { URL(fileURLWithPath: $0) }
+let swapNames = ["window", "card", "bottom", "address", "newtab"] + (0..<6).map { "tab\($0)" }
+let bNodes: [String: SCNNode] = bDir.map { d in Dictionary(uniqueKeysWithValues: swapNames.map { ($0, plane($0, from: d)) }) } ?? [:]
+for n in bNodes.values { n.opacity = 0 }
+for (k, n) in bNodes where k != "window" { n.isHidden = true }
+
+/// A region that slides from one space's picture to the next's, clipped to its own frame: redrawn
+/// each frame as one image, so nothing ever shows outside it.
+final class SwipePanel {
+    let node: SCNNode
+    let a: CGImage, b: CGImage
+    let size: CGSize
+    let radius: CGFloat
+    init(_ name: String, a: URL, b: URL, radius: CGFloat, order: Int, z: Double) {
+        func load(_ u: URL) -> CGImage { NSImage(contentsOf: u)!.cgImage(forProposedRect: nil, context: nil, hints: nil)! }
+        self.a = load(a.appending(path: "\(name).png"))
+        self.b = load(b.appending(path: "\(name).png"))
+        size = CGSize(width: self.a.width, height: self.a.height)
+        self.radius = radius
+        let f = meta.layers[name]!
+        let geo = SCNPlane(width: f[2], height: f[3])
+        let m = SCNMaterial()
+        m.lightingModel = .constant
+        m.transparencyMode = .aOne
+        sharp(m)
+        geo.materials = [m]
+        node = SCNNode(geometry: geo)
+        node.renderingOrder = order
+        node.name = "panel:" + name
+        node.position = SCNVector3(f[0] + f[2] / 2 - winW / 2, winH / 2 - (f[1] + f[3] / 2), z)
+        node.isHidden = true
+        stage.addChildNode(node)
+    }
+    /// f = 0: all the first space; 1: all the next.
+    func show(_ f: Double) {
+        let ctx = CGContext(data: nil, width: Int(size.width), height: Int(size.height), bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        let r = CGRect(origin: .zero, size: size)
+        if radius > 0 { ctx.addPath(CGPath(roundedRect: r, cornerWidth: radius, cornerHeight: radius, transform: nil)); ctx.clip() }
+        let x = size.width * f
+        ctx.draw(a, in: r.offsetBy(dx: -x, dy: 0))
+        ctx.draw(b, in: r.offsetBy(dx: size.width - x, dy: 0))
+        node.geometry!.firstMaterial!.diffuse.contents = ctx.makeImage()
+    }
+}
+let panels: (side: SwipePanel, page: SwipePanel)? = bDir.map { d in
+    (SwipePanel("sidebar", a: layersDir, b: d, radius: 0, order: 10 * stack.firstIndex(of: "address")! - 4, z: 1.5),
+     SwipePanel("card", a: layersDir, b: d, radius: 40, order: 10 * stack.firstIndex(of: "card")! + 1, z: 3))
+}
+
 /// Each layer's resting height above the glass, in points.
-let rest: [String: Double] = ["window": 0, "lights": 0.5, "card": 3, "toolbar": 1, "address": 1.5, "newtab": 1, "bottom": 1,
+var rest: [String: Double] = ["window": 0, "card": 3, "address": 1.5, "newtab": 1, "bottom": 1,
                                "fav0": 2, "fav1": 2, "fav2": 2, "fav3": 2, "tab0": 1.5, "tab1": 1.5, "tab2": 1.5, "tab3": 1.5, "tab4": 1.5, "tab5": 1.5]
+for (k, v) in rest { rest["b:" + k] = v }
 let home = Dictionary(uniqueKeysWithValues: stage.childNodes.map { ($0.name!, $0.position) })
 addShadow(for: "window", radius: 22, blur: 40)
 addShadow(for: "card", radius: 18, blur: 22)
-for n in ["address", "fav0", "fav1", "fav2", "fav3", "tab0"] { addShadow(for: n, radius: 10, blur: 10) }
+for n in ["address", "fav0", "fav1", "fav2", "fav3"] { addShadow(for: n, radius: 10, blur: 10) }
 shadows["window"]!.position.z = -2
 
 // The address bar's carve: a soft dark inset that deepens under it as it sinks in.
@@ -219,47 +273,61 @@ func aim(at target: SCNVector3, distance: Double, pitch: Double, yaw: Double, ro
 
 /// Places every layer for time t. Layers fall from above the glass onto it, one after another.
 func act1(_ t: Double) {
-    // One continuous move: the slab rights itself and the camera pulls back the whole time, never
-    // stopping and never snapping. Gentle at both ends, steady in the middle.
+    // One continuous move over the whole shot: the slab rights itself and the camera pulls back,
+    // never stopping and never snapping.
     let whole = easeInOutSine(t / seconds)
-    stage.eulerAngles = SCNVector3(mix(-1.0, -0.1, whole), 0, 0)
+    stage.eulerAngles = SCNVector3(mix(-1.0, -0.08, easeOutSine(t / 6.0)), 0, 0)
 
     // Layers lower onto the glass and settle: a long ease-out, no overshoot.
-    func drop(_ node: SCNNode, at start: Double, length: Double = 2.2, height: Double = 140) {
+    func drop(_ node: SCNNode, at start: Double, length: Double = 1.8, height: Double = 120) {
         let f = phase(t, start, length)
         let p = home[node.name!]!
         node.position = SCNVector3(p.x, p.y, (rest[node.name!] ?? 0) + height * (1 - easeOutQuint(f)))
         node.opacity = smooth(f / 0.2)
     }
 
-    drop(window, at: 0.0, length: 3.0, height: 260)
-    lights.position = SCNVector3(home["lights"]!.x, home["lights"]!.y, window.position.z + 0.5)
-    lights.opacity = window.opacity
-    drop(card, at: 0.8, length: 3.0, height: 220)
-    drop(toolbar, at: 1.4)
-    drop(bottom, at: 1.6)
+    drop(window, at: 0.0, length: 2.4, height: 220)
+    drop(card, at: 0.5, length: 2.4, height: 90)
+    drop(bottom, at: 1.0)
 
-    // The address bar lowers in glowing and sinks just into the surface; the carve deepens under it.
-    let a = phase(t, 2.1, 2.2)
+    // The address bar lowers in and sinks just into the surface; the carve deepens under it.
+    let a = phase(t, 1.4, 1.8)
     let ap = home["address"]!
-    address.position = SCNVector3(ap.x, ap.y, 1.5 + 60 * (1 - easeOutQuint(a)))
+    address.position = SCNVector3(ap.x, ap.y, 1.5 + 50 * (1 - easeOutQuint(a)))
     address.opacity = smooth(a / 0.15)
-    address.geometry!.firstMaterial!.emission.contents = NSColor(white: 1, alpha: 1)
-    address.geometry!.firstMaterial!.emission.intensity = 0.12 * (1 - smooth(phase(t, 2.6, 1.8)))
-    carve.geometry!.firstMaterial!.transparency = 0.18 * smooth(phase(t, 2.8, 1.2))
-    let sw = phase(t, 2.7, 1.8)
+    carve.geometry!.firstMaterial!.transparency = 0.18 * smooth(phase(t, 1.9, 1.0))
+    let sw = phase(t, 1.9, 1.5)
     let half = Double(meta.layers["address"]![2]) / 2 - 45
-    sweep.opacity = sin(.pi * sw)
+    sweep.opacity = 0.8 * sin(.pi * sw)
     sweep.position = SCNVector3(Double(ap.x) - half + 2 * half * easeInOutSine(sw), Double(ap.y), 3)
 
-    for (i, f) in favs.enumerated() { drop(f, at: 3.3 + Double(i) * 0.18, length: 1.8, height: 70) }
+    for (i, f) in favs.enumerated() { drop(f, at: 2.3 + Double(i) * 0.14, length: 1.5, height: 60) }
 
     // Tabs glide in from the left, one after another.
     for (i, n) in ([newTab] + tabs).enumerated() {
-        let f = phase(t, 4.2 + Double(i) * 0.18, 1.8)
+        let f = phase(t, 2.9 + Double(i) * 0.12, 1.5)
         let p = home[n.name!]!
-        n.position = SCNVector3(p.x - 140 * (1 - easeOutQuint(f)), p.y, rest[n.name!] ?? 1)
+        n.position = SCNVector3(p.x - 120 * (1 - easeOutQuint(f)), p.y, rest[n.name!] ?? 1)
         n.opacity = smooth(f / 0.3)
+    }
+
+    // A beat after everything lands, a swipe to the next space, as Browsa does it: the sidebar
+    // slides across as one piece (the favourites stay, they're in every space) and the page slides
+    // with it, the new space's following in from the right.
+    let swipeAt = seconds - 2.2
+    if let panels {
+        let f = easeInOutCubic(phase(t, swipeAt, 0.75))
+        let on = t >= swipeAt
+        for n in [address, newTab, bottom, carve] + tabs { n.isHidden = on }
+        panels.side.node.isHidden = !on
+        panels.page.node.isHidden = !on
+        card.isHidden = on
+        if on {
+            panels.side.show(f)
+            panels.page.show(f)
+            bNodes["window"]!.opacity = smooth(phase(t, swipeAt, 0.75))
+            sweep.opacity = 0
+        }
     }
 
     // Shadows: faint and wide while a layer is high, tight once it lands.
@@ -267,13 +335,14 @@ func act1(_ t: Double) {
         guard let n = stage.childNode(withName: name, recursively: false) else { continue }
         let h = Double(n.position.z) - (rest[name] ?? 0)
         let k = clamp(h / 200)
-        sh.opacity = n.opacity * (name == "window" ? 0.35 : 0.22) * (1 - 0.7 * k)
+        let shown = name == "card" || name == "window" ? 1 : n.opacity
+        sh.opacity = (name == "window" || name == "card" ? 1 : n.opacity) * (name == "window" ? 0.35 : 0.22) * (1 - 0.7 * k) * shown
         sh.scale = SCNVector3(1 + 0.25 * k, 1 + 0.25 * k, 1)
     }
 
-    // Camera: low over the sidebar's top corner, pulling back the whole time to the full window.
+    // Camera: low over the window's top corner, pulling back the whole time to the full window.
     let target = SCNVector3(mix(-560, 30, whole), mix(330, -20, whole), 0)
-    aim(at: target, distance: mix(620, 2000, whole), pitch: mix(0.10, 0.0, whole), yaw: mix(-0.14, 0.0, whole))
+    aim(at: target, distance: mix(620, 2050, whole), pitch: mix(0.10, 0.0, whole), yaw: mix(-0.14, 0.0, whole))
     camera.fStop = mix(1.8, 5.6, whole)
 }
 
