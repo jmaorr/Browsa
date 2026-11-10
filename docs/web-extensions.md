@@ -79,9 +79,23 @@ Installed from the Chrome Web Store through Browsa's own add flow and checked wi
 | uBlock Origin Lite | 2026.1103 | ✅ | ✅ | Blocks ad and tracker scripts (googlesyndication, google-analytics) | ✅ Works |
 | Dark Reader | 4.9.135 | ✅ | ✅ | Pages go dark | ✅ Works |
 | Paper Snapshot | 0.4.13 | ✅ | button, no popup | The button starts its element picker ("click to start") | ✅ Works; pasting into Paper not tried |
-| Google Translate | 2.0.18 | ✅ | ✅ | Says page translation is "built into Chrome". The selected-text bubble didn't appear for a scripted selection (it may need a real mouse) | ⚠️ Partial, needs a hands-on try |
+| Google Translate | 2.0.18 | ✅ | ✅ | Says page translation is "built into Chrome". The selected-text bubble didn't appear for a scripted selection (it may need a real mouse) | ⚠️ Partial (see 2026-11-11 below) |
 | Bitwarden | 2026.10.2 | ✅ after the user-agent fix | ❌ stays on a spinner, no errors logged | Its in-page autofill script connects on every page | ❌ Popup doesn't finish loading |
 | Proton Pass | 1.43.0 | ✅ | ❌ "having difficulties activating" | Not reached | ❌ Popup can't reach its background |
+
+### Second pass (2026-11-11)
+
+Browsa Dev from main (ad4002e), same harness, now with real AppKit key and mouse events for
+extensions that ignore scripted ones (`isTrusted`).
+
+| Extension | Version | Result | Status |
+|---|---|---|---|
+| uBlock Origin Lite | 2026.1103.1743 | Popup works; googlesyndication and google-analytics blocked | ✅ Verified |
+| Dark Reader | 4.9.135 | Popup works; example.com goes dark | ✅ Verified |
+| JSON Formatter | 0.10.2 | api.github.com shows formatted JSON with its Raw/Parsed toggle | ✅ Verified |
+| Vimium | 2.4.2 | A real `f` key shows link hints; its popup works. A scripted key does nothing, as in Chrome. WebKit logs "content_scripts entry has no specified matches" for its second entry (`file:///` CSS only), which doesn't matter | ✅ Verified |
+| Paper Snapshot | 0.4.13 | The button starts the element picker | ✅ Picker works; pasting into Paper still to try |
+| Google Translate | 2.0.18 | A real double-click selects a word, but the translate icon never appears. Right-click "Translate" not tried | ⚠️ Partial |
 
 Open leads for the two that don't work yet:
 

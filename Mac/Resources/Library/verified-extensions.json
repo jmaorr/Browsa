@@ -8,6 +8,38 @@
       "category": "Passwords",
       "tint": "#1a8cff",
       "tested": "2026-11-08"
+    },
+    {
+      "id": "ddkjiahejlhfcafbddmgiahcphecmpfh",
+      "name": "uBlock Origin Lite",
+      "blurb": "Blocks ads and trackers, with no setup.",
+      "category": "Privacy",
+      "tint": "#800000",
+      "tested": "2026-11-11"
+    },
+    {
+      "id": "eimadpbcbfnmbkopoojfekhnkhdbieeh",
+      "name": "Dark Reader",
+      "blurb": "Dark mode for every website.",
+      "category": "Appearance",
+      "tint": "#e96c4c",
+      "tested": "2026-11-11"
+    },
+    {
+      "id": "dbepggeogbaibhgnhhndojpepiihcmeb",
+      "name": "Vimium",
+      "blurb": "Browse with the keyboard: press f to click any link.",
+      "category": "Productivity",
+      "tint": "#2f7d32",
+      "tested": "2026-11-11"
+    },
+    {
+      "id": "bcjindcccaagfpapjjmafapmmgkkhgoa",
+      "name": "JSON Formatter",
+      "blurb": "Readable, collapsible JSON in the browser.",
+      "category": "Developers",
+      "tint": "#6b5bd2",
+      "tested": "2026-11-11"
     }
   ]
 }

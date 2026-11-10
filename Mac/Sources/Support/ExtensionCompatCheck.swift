@@ -100,6 +100,18 @@ struct ExtensionCompatCheck {
               setTimeout(() => r(JSON.stringify({ selected: String(sel).length, bubble: [...document.querySelectorAll('[id^="gtx"], [class*="gtx"]')].map(e => e.tagName.toLowerCase() + '#' + e.id).slice(0, 5) })), 4000);
             })
             """),
+            ("json viewer", "https://api.github.com/", """
+            JSON.stringify({ formatted: !!document.querySelector('#jsonFormatterParsed, #jsonFormatterRaw, .json-formatter-container, [class*="jsonFormatter"]'),
+              bodyStart: (document.body && document.body.innerText || '').slice(0, 60), styles: document.querySelectorAll('style').length })
+            """),
+            ("keyboard hints", "https://example.com", """
+            new Promise(r => {
+              document.body.focus();
+              for (const type of ['keydown', 'keypress', 'keyup']) document.dispatchEvent(new KeyboardEvent(type, { key: 'f', code: 'KeyF', bubbles: true }));
+              setTimeout(() => r(JSON.stringify({ vimiumHosts: [...document.querySelectorAll('[class*="vimium"], [id*="vimium"]')].map(e => e.tagName.toLowerCase() + '.' + e.className).slice(0, 5),
+                hints: document.querySelectorAll('.vimiumHintMarker').length + [...document.querySelectorAll('*')].filter(e => e.shadowRoot).reduce((n, e) => n + e.shadowRoot.querySelectorAll('.vimiumHintMarker').length, 0) })), 2000);
+            })
+            """),
         ]
         for (name, url, js) in probes {
             guard let target = URL(string: url), let page = library.openExtensionTab(url: target, windowID: nil, active: true) else { continue }
@@ -118,8 +130,65 @@ struct ExtensionCompatCheck {
                 await saveImage(await page.snapshot(), "action-\(ext.name.lowercased().filter { $0.isLetter }.prefix(16))")
             }
         }
+        // Real input: some extensions ignore scripted events (isTrusted false), so these go through AppKit.
+        if let target = URL(string: "https://example.com"), let page = library.openExtensionTab(url: target, windowID: nil, active: true) {
+            await pause(6)
+            let before = await evaluate(page, "document.querySelectorAll('*').length")
+            press(page.view, "f", keyCode: 3)
+            await pause(1.5)
+            note("[real key f] example.com: elements \(before) -> \(await evaluate(page, "document.querySelectorAll('*').length")), new: \(await evaluate(page, "JSON.stringify([...document.documentElement.children, ...document.body.children].slice(-3).map(e => e.tagName.toLowerCase() + '.' + e.className + (e.shadowRoot ? ' shadow:' + e.shadowRoot.querySelectorAll('*').length : '')))"))")
+            await saveImage(await page.snapshot(), "real-key-f")
+            press(page.view, "\u{1b}", keyCode: 53)
+        }
+        if let target = URL(string: "https://de.wikipedia.org/wiki/Webbrowser"), let page = library.openExtensionTab(url: target, windowID: nil, active: true) {
+            await pause(8)
+            let spot = await evaluate(page, "(() => { const p = document.querySelector('#mw-content-text p:not(.mw-empty-elt)'); p.scrollIntoView({ block: 'center' }); const r = document.createRange(); r.setStart(p.firstChild.nodeType === 3 ? p.firstChild : p, 0); const b = p.getBoundingClientRect(); return JSON.stringify([b.left + 2, b.top + 8, b.left + Math.min(b.width - 4, 300), b.top + 8]); })()")
+            await pause(1)
+            if let data = spot.data(using: .utf8), let xy = try? JSONSerialization.jsonObject(with: data) as? [Double], xy.count == 4 {
+                await dragSelect(page.view, from: NSPoint(x: xy[0], y: xy[1]), to: NSPoint(x: xy[2], y: xy[3]))
+                await pause(3)
+                note("[real selection] de.wikipedia: \(await evaluate(page, "JSON.stringify({ selected: String(getSelection()).slice(0, 40), new: [...document.documentElement.children, ...document.body.children].slice(-3).map(e => e.tagName.toLowerCase() + '#' + e.id + '.' + e.className), gtx: document.querySelectorAll('[id^=\"gtx\"], [class*=\"gtx\"]').length })"))")
+                await saveImage(await page.snapshot(), "real-selection")
+            } else { note("[real selection] couldn't place the mouse: \(spot)") }
+        }
         note("done")
         exit(0)
+    }
+
+    private func press(_ view: NSView, _ chars: String, keyCode: UInt16) {
+        guard let window = view.window else { note("no window for key"); return }
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(view)
+        for type in [NSEvent.EventType.keyDown, .keyUp] {
+            if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                        windowNumber: window.windowNumber, context: nil, characters: chars,
+                                        charactersIgnoringModifiers: chars, isARepeat: false, keyCode: keyCode) { window.sendEvent(e) }
+        }
+    }
+
+    /// Mouse down, drag and up in page (CSS pixel, top-left) coordinates.
+    private func dragSelect(_ view: NSView, from a: NSPoint, to b: NSPoint) async {
+        guard let window = view.window else { note("no window for mouse"); return }
+        window.makeKeyAndOrderFront(nil)
+        func point(_ p: NSPoint) -> NSPoint { view.convert(view.isFlipped ? p : NSPoint(x: p.x, y: view.bounds.height - p.y), to: nil) }
+        func event(_ type: NSEvent.EventType, _ p: NSPoint) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: point(p), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)
+        }
+        note("mouse: flipped=\(view.isFlipped) bounds=\(view.bounds.size) a=\(point(a)) hit=\(window.contentView?.hitTest(point(a)).map { "\(type(of: $0))" } ?? "nil")")
+        if let e = event(.leftMouseDown, a) { window.sendEvent(e) }
+        for i in 1...10 {
+            await pause(0.02)
+            if let e = event(.leftMouseDragged, NSPoint(x: a.x + (b.x - a.x) * Double(i) / 10, y: a.y + (b.y - a.y) * Double(i) / 10)) { window.sendEvent(e) }
+        }
+        if let e = event(.leftMouseUp, b) { window.sendEvent(e) }
+        // Then a double-click on a word, the other usual way to select.
+        await pause(1)
+        for (type, count) in [(NSEvent.EventType.leftMouseDown, 1), (.leftMouseUp, 1), (.leftMouseDown, 2), (.leftMouseUp, 2)] {
+            if let e = NSEvent.mouseEvent(with: type, location: point(NSPoint(x: a.x + 40, y: a.y)), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: count, pressure: type == .leftMouseUp ? 0 : 1) { window.sendEvent(e) }
+            await pause(0.05)
+        }
     }
 
     private func evaluate(_ page: any EnginePage, _ js: String) async -> String {
