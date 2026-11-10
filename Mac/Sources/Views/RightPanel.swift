@@ -133,6 +133,7 @@ struct AgentsPanel: View {
     @Environment(Browser.self) private var browser
     @Environment(\.openSettings) private var openSettings
     @State private var connecting = false
+    @State private var confirmingReset = false
     @AppStorage("agentPromptDismissed") private var promptDismissed = false
     private var agents: AgentBridge { browser.library.agents }
 
@@ -174,6 +175,16 @@ struct AgentsPanel: View {
                 .padding(12)
                 .animation(Motion.snappy, value: agents.requests.map(\.id))
             }
+            .confirmationDialog("Reset Browsa's agent token?", isPresented: $confirmingReset) {
+                Button("Reset Token", role: .destructive) {
+                    Task {
+                        await agents.resetToken()
+                        browser.showToast("New token. Claude Code is updated; other agents need the new one.")
+                    }
+                }
+            } message: {
+                Text("Agents using the old token stop working at once. Claude Code is updated for you; Codex, Cursor and others need the new token pasted in.")
+            }
         }
     }
 
@@ -183,6 +194,9 @@ struct AgentsPanel: View {
             Circle().fill(agents.isPaused ? .orange : !agents.isRunning ? .red : agents.isActing ? AgentLive.color : .green)
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 2) {
+                if let problem = agents.problemDescription, !agents.isRunning {
+                    Text(problem).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                }
                 Text(agents.isPaused ? "Stopped" : !agents.isRunning ? "Not running"
                      : agents.isActing ? "Driving" : agents.connectedAgents.isEmpty ? "Ready to connect" : "Connected · idle")
                     .font(.callout.weight(.semibold))
@@ -204,6 +218,14 @@ struct AgentsPanel: View {
                 Button("Watch a Demo") { agents.demo.start(bridge: agents, in: browser) }
                 Button("Show the Demo Prompt") { withAnimation(Motion.snappy) { promptDismissed = false } }
                 Button("Clear Activity") { agents.clearActivity() }
+                Divider()
+                Button("Remove from Claude Code") {
+                    Task {
+                        let ok = await agents.claudeCodeSetup.remove(name: AgentBridge.mcpName)
+                        browser.showToast(ok ? "Removed Browsa from Claude Code" : "Claude Code didn't have Browsa")
+                    }
+                }
+                Button("Reset Token…") { confirmingReset = true }
                 Divider()
                 Button("Agent Settings…") { openSettings() }
             } label: {
@@ -271,7 +293,8 @@ private struct ConnectAgentCard: View {
                 DisclosureGroup("Or run it yourself") { commandBlock.padding(.top, 6) }
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                Text("Add an MCP server with this URL and header:").font(.caption).foregroundStyle(.secondary)
+                Text(kind == .codex ? "Add this to ~/.codex/config.toml, then restart Codex:" : "Add this to ~/.cursor/mcp.json, then restart Cursor:")
+                    .font(.caption).foregroundStyle(.secondary)
                 commandBlock
                 HStack {
                     Spacer()
@@ -331,8 +354,24 @@ private struct ConnectAgentCard: View {
 
     private var header: String { "Authorization: Bearer \(agents.token)" }
     private var fullText: String {
-        kind == .claude ? agents.claudeCodeCommand
-                        : "URL: \(url)\n\(header)"
+        switch kind {
+        case .claude: agents.claudeCodeCommand
+        case .codex: """
+            [mcp_servers.\(AgentBridge.mcpName)]
+            url = "\(url)"
+            http_headers = { Authorization = "Bearer \(agents.token)" }
+            """
+        case .cursor: """
+            {
+              "mcpServers": {
+                "\(AgentBridge.mcpName)": {
+                  "url": "\(url)",
+                  "headers": { "Authorization": "Bearer \(agents.token)" }
+                }
+              }
+            }
+            """
+        }
     }
     private var maskedText: String {
         fullText.replacingOccurrences(of: agents.token, with: String(repeating: "•", count: 12))

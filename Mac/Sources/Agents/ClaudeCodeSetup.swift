@@ -36,6 +36,20 @@ final class ClaudeCodeSetup {
 
     func reset() { state = .idle }
 
+    /// Takes Browsa out of Claude Code again.
+    func remove(name: String) async -> Bool {
+        guard let claude = await Self.findClaude() else { state = .notInstalled; return false }
+        let ok = await Self.run(claude, ["mcp", "remove", "--scope", "user", name]).status == 0
+        if ok { state = .idle }
+        return ok
+    }
+
+    /// Whether Claude Code has a server by this name at user scope.
+    nonisolated static func isAdded(_ name: String) async -> Bool {
+        guard let claude = await findClaude() else { return false }
+        return await run(claude, ["mcp", "get", name]).status == 0
+    }
+
     // MARK: Finding claude
 
     /// Apps don't get your shell's PATH, so look where the installers put it, then ask a login shell.

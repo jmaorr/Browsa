@@ -9,7 +9,8 @@ final class AgentServer {
     typealias Handler = @MainActor (_ body: Data, _ session: String) async -> Data?
 
     let port: UInt16
-    private let token: String
+    /// Changes take effect on the next request (Reset Token).
+    var token: String
     private let handler: Handler
     private var listener: NWListener?
     private(set) var isRunning = false

@@ -54,7 +54,7 @@ final class AgentBridge {
     var isRunning: Bool { server?.isRunning ?? false }
     var problem: String? { server?.problem }
 
-    let token: String
+    private(set) var token: String
     @ObservationIgnored let toolbox: AgentToolbox
     @ObservationIgnored private var server: AgentServer?
     @ObservationIgnored private unowned let library: Library
@@ -102,6 +102,26 @@ final class AgentBridge {
         }
         server.start()
         self.server = server
+    }
+
+    /// A new token: the old one stops working at once. If Claude Code has Browsa, it's updated too.
+    func resetToken() async {
+        UserDefaults.standard.removeObject(forKey: "agentToken")
+        token = Preferences.agentToken
+        // The listener keeps running; only the token it checks changes.
+        server?.token = token
+        if await ClaudeCodeSetup.isAdded(Self.mcpName) {
+            await claudeCodeSetup.add(name: Self.mcpName, url: endpoint, token: token)
+        }
+    }
+
+    /// Why the endpoint isn't up, in words a person can act on.
+    var problemDescription: String? {
+        guard let problem else { return nil }
+        if problem.localizedCaseInsensitiveContains("address already in use") || problem.contains("48") {
+            return "Another app is using port \(Self.port), so agents can't reach Browsa. Quit that app, then turn agents off and on again."
+        }
+        return problem
     }
 
     func stop() {

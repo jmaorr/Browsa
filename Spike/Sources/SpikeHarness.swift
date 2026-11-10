@@ -339,6 +339,9 @@ enum SpikeHarness {
             }
         case "demo":
             library.agents.demo.start(bridge: library.agents, in: browser)
+        case "resetToken":
+            await library.agents.resetToken()
+            return .json(["ok": true, "tokenPrefix": String(library.agents.token.prefix(12))])
         case "claudeAdd":
             // The same code path as the Add to Claude Code button.
             let a = library.agents!
