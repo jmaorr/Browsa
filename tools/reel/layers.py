@@ -20,7 +20,7 @@ R = {
     "fav0": (22, 163, 130, 259), "fav1": (144, 163, 252, 259),
     "fav2": (266, 163, 374, 259), "fav3": (391, 163, 499, 259),
     "newtab": (22, 307, 499, 358),
-    "tab0": (22, 374, 499, 434), "tab1": (22, 446, 499, 506), "tab2": (22, 518, 499, 578),
+    **{f"tab{i}": (22, 372 + 72 * i, 499, 436 + 72 * i) for i in range(6)},
     "bottom": (0, 1723, 532, 1781),
 }
 CARD = (533, 12, W - 12, H - 12)
@@ -67,12 +67,10 @@ def bleed(img):
 
 
 def find_lights(img):
-    """The three traffic lights: grey discs on the toolbar, left to right, as (cx, cy, r)."""
+    """The three traffic lights: discs on the toolbar that differ from the sidebar, as (cx, cy, r)."""
     px = img.load()
-    cols = []
-    for x in range(10, 150):
-        if any(abs(px[x, y][0] - 190) < 6 and px[x, y][3] == 255 for y in range(20, 50)):
-            cols.append(x)
+    off = lambda x, y: px[x, y][3] == 255 and sum(abs(px[x, y][i] - bg[i]) for i in range(3)) > 24
+    cols = [x for x in range(10, 150) if sum(off(x, y) for y in range(15, 50)) > 3]
     groups, cur = [], [cols[0]]
     for x in cols[1:]:
         if x - cur[-1] > 2:
@@ -83,7 +81,7 @@ def find_lights(img):
     out = []
     for g in groups[:3]:
         cx = (g[0] + g[-1]) // 2
-        ys = [y for y in range(10, 70) if abs(px[cx, y][0] - 190) < 6]
+        ys = [y for y in range(5, 70) if off(cx, y)]
         out.append((cx, (ys[0] + ys[-1]) // 2, (g[-1] - g[0]) // 2 + 2))
     return out
 
@@ -131,7 +129,8 @@ meta["layers"]["window"] = [0, 0, W / 2, H / 2]
 
 # The page card: the page snapshot in a rounded card.
 cw, ch = CARD[2] - CARD[0], CARD[3] - CARD[1]
-page = Image.open(page_path).convert("RGBA").resize((cw, ch), Image.LANCZOS)
+# "-" takes the page straight from the window shot (when it painted); else a separate snapshot.
+page = (base.crop(CARD) if page_path == "-" else Image.open(page_path).convert("RGBA").resize((cw, ch), Image.LANCZOS)).copy()
 cmask = Image.new("L", (cw, ch), 0)
 page.putalpha(rounded_mask(cw, ch, 20))
 page = bleed(page)

@@ -21,6 +21,8 @@ func land(_ x: Double) -> Double {
     let s = 1.25
     return 1 + (s + 1) * pow(c - 1, 3) + s * pow(c - 1, 2)
 }
+func easeOutQuint(_ x: Double) -> Double { 1 - pow(1 - clamp(x), 5) }
+func easeInOutSine(_ x: Double) -> Double { -(cos(.pi * clamp(x)) - 1) / 2 }
 func phase(_ t: Double, _ start: Double, _ length: Double) -> Double { clamp((t - start) / length) }
 func mix(_ a: Double, _ b: Double, _ f: Double) -> Double { a + (b - a) * f }
 
@@ -63,7 +65,7 @@ func sharp(_ m: SCNMaterial) {
 
 /// Draw order, back to front.
 let stack = ["window", "lights", "card", "toolbar", "bottom", "address", "fav0", "fav1", "fav2", "fav3",
-             "newtab", "tab0", "tab1", "tab2"]
+             "newtab", "tab0", "tab1", "tab2", "tab3", "tab4", "tab5"]
 
 /// A layer as a plane at its place in the window, in points, centred on the window.
 func plane(_ name: String) -> SCNNode {
@@ -131,12 +133,12 @@ let toolbar = plane("toolbar")
 let address = plane("address")
 let favs = (0..<4).map { plane("fav\($0)") }
 let newTab = plane("newtab")
-let tabs = (0..<3).map { plane("tab\($0)") }
+let tabs = (0..<6).map { plane("tab\($0)") }
 let bottom = plane("bottom")
 
 /// Each layer's resting height above the glass, in points.
 let rest: [String: Double] = ["window": 0, "lights": 0.5, "card": 3, "toolbar": 1, "address": 1.5, "newtab": 1, "bottom": 1,
-                               "fav0": 2, "fav1": 2, "fav2": 2, "fav3": 2, "tab0": 1.5, "tab1": 1.5, "tab2": 1.5]
+                               "fav0": 2, "fav1": 2, "fav2": 2, "fav3": 2, "tab0": 1.5, "tab1": 1.5, "tab2": 1.5, "tab3": 1.5, "tab4": 1.5, "tab5": 1.5]
 let home = Dictionary(uniqueKeysWithValues: stage.childNodes.map { ($0.name!, $0.position) })
 addShadow(for: "window", radius: 22, blur: 40)
 addShadow(for: "card", radius: 18, blur: 22)
@@ -217,63 +219,62 @@ func aim(at target: SCNVector3, distance: Double, pitch: Double, yaw: Double, ro
 
 /// Places every layer for time t. Layers fall from above the glass onto it, one after another.
 func act1(_ t: Double) {
-    // The window tilts back like a slab on a table, then slowly rights itself.
-    let lift = smooth(phase(t, 6.5, 5.5))
-    stage.eulerAngles = SCNVector3(mix(-1.05, -0.12, lift), 0, 0)
+    // One continuous move: the slab rights itself and the camera pulls back the whole time, never
+    // stopping and never snapping. Gentle at both ends, steady in the middle.
+    let whole = easeInOutSine(t / seconds)
+    stage.eulerAngles = SCNVector3(mix(-1.0, -0.1, whole), 0, 0)
 
-    func drop(_ node: SCNNode, at start: Double, length: Double = 1.4, height: Double = 260) {
+    // Layers lower onto the glass and settle: a long ease-out, no overshoot.
+    func drop(_ node: SCNNode, at start: Double, length: Double = 2.2, height: Double = 140) {
         let f = phase(t, start, length)
         let p = home[node.name!]!
-        node.position = SCNVector3(p.x, p.y, (rest[node.name!] ?? 0) + height * (1 - land(f)))
-        node.opacity = smooth(f / 0.12)
+        node.position = SCNVector3(p.x, p.y, (rest[node.name!] ?? 0) + height * (1 - easeOutQuint(f)))
+        node.opacity = smooth(f / 0.2)
     }
 
-    drop(window, at: 0.0, length: 1.8, height: 520)
+    drop(window, at: 0.0, length: 3.0, height: 260)
     lights.position = SCNVector3(home["lights"]!.x, home["lights"]!.y, window.position.z + 0.5)
     lights.opacity = window.opacity
-    drop(card, at: 0.9, length: 1.9, height: 420)
-    drop(toolbar, at: 1.5)
-    drop(bottom, at: 1.7)
+    drop(card, at: 0.8, length: 3.0, height: 220)
+    drop(toolbar, at: 1.4)
+    drop(bottom, at: 1.6)
 
-    // The address bar comes down glowing and sinks just into the surface; the carve deepens under it.
-    let a = phase(t, 2.3, 1.6)
+    // The address bar lowers in glowing and sinks just into the surface; the carve deepens under it.
+    let a = phase(t, 2.1, 2.2)
     let ap = home["address"]!
-    address.position = SCNVector3(ap.x, ap.y, 1.5 + 70 * (1 - easeOutCubic(a)))
-    address.opacity = smooth(a / 0.12)
+    address.position = SCNVector3(ap.x, ap.y, 1.5 + 60 * (1 - easeOutQuint(a)))
+    address.opacity = smooth(a / 0.15)
     address.geometry!.firstMaterial!.emission.contents = NSColor(white: 1, alpha: 1)
-    address.geometry!.firstMaterial!.emission.intensity = 0.5 * (1 - smooth(phase(t, 2.8, 1.4)))
-    carve.geometry!.firstMaterial!.transparency = 0.12 * smooth(phase(t, 3.0, 0.9))
-    let s = phase(t, 2.9, 1.5)
-    // Stays within the bar: rides from its left edge to its right.
+    address.geometry!.firstMaterial!.emission.intensity = 0.12 * (1 - smooth(phase(t, 2.6, 1.8)))
+    carve.geometry!.firstMaterial!.transparency = 0.18 * smooth(phase(t, 2.8, 1.2))
+    let sw = phase(t, 2.7, 1.8)
     let half = Double(meta.layers["address"]![2]) / 2 - 45
-    sweep.opacity = sin(.pi * s)
-    sweep.position = SCNVector3(Double(ap.x) - half + 2 * half * easeInOutQuint(s), Double(ap.y), 3)
+    sweep.opacity = sin(.pi * sw)
+    sweep.position = SCNVector3(Double(ap.x) - half + 2 * half * easeInOutSine(sw), Double(ap.y), 3)
 
-    for (i, f) in favs.enumerated() { drop(f, at: 3.6 + Double(i) * 0.14, length: 1.0, height: 90) }
+    for (i, f) in favs.enumerated() { drop(f, at: 3.3 + Double(i) * 0.18, length: 1.8, height: 70) }
 
-    // Tabs slide in from the left edge, staggered.
+    // Tabs glide in from the left, one after another.
     for (i, n) in ([newTab] + tabs).enumerated() {
-        let f = phase(t, 4.6 + Double(i) * 0.16, 1.1)
+        let f = phase(t, 4.2 + Double(i) * 0.18, 1.8)
         let p = home[n.name!]!
-        n.position = SCNVector3(p.x - 180 * (1 - easeOutCubic(f)), p.y, rest[n.name!] ?? 1)
-        n.opacity = smooth(f / 0.25)
+        n.position = SCNVector3(p.x - 140 * (1 - easeOutQuint(f)), p.y, rest[n.name!] ?? 1)
+        n.opacity = smooth(f / 0.3)
     }
 
     // Shadows: faint and wide while a layer is high, tight once it lands.
     for (name, sh) in shadows {
         guard let n = stage.childNode(withName: name, recursively: false) else { continue }
         let h = Double(n.position.z) - (rest[name] ?? 0)
-        let k = clamp(h / 300)
+        let k = clamp(h / 200)
         sh.opacity = n.opacity * (name == "window" ? 0.35 : 0.22) * (1 - 0.7 * k)
         sh.scale = SCNVector3(1 + 0.25 * k, 1 + 0.25 * k, 1)
     }
 
-    // Camera: close and low over the sidebar's top, then a long dolly out to the whole window.
-    let pull = easeInOutQuint(phase(t, 0, 11))
-    let target = SCNVector3(mix(-560, 30, pull), mix(330, -20, pull), 0)
-    // Level horizon throughout: a low, slightly-left start that straightens, never a roll.
-    aim(at: target, distance: mix(620, 2000, pull), pitch: mix(0.10, 0.0, pull), yaw: mix(-0.14, 0.0, pull))
-    camera.fStop = mix(1.6, 5.6, pull)
+    // Camera: low over the sidebar's top corner, pulling back the whole time to the full window.
+    let target = SCNVector3(mix(-560, 30, whole), mix(330, -20, whole), 0)
+    aim(at: target, distance: mix(620, 2000, whole), pitch: mix(0.10, 0.0, whole), yaw: mix(-0.14, 0.0, whole))
+    camera.fStop = mix(1.8, 5.6, whole)
 }
 
 // MARK: - Render

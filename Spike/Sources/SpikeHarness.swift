@@ -292,6 +292,21 @@ enum SpikeHarness {
             // {"intro":true,"reset":true}: open the welcome tab, optionally clearing its progress first.
             if j["reset"] as? Bool == true { WelcomeProgress.shared.reset() }
             browser.openWelcome(playingIntro: j["intro"] as? Bool ?? true)
+        case "reelStage":
+            // {"favorites":[[url,title]…], "tabs":[url…], "select":n}: the current space dressed with
+            // real sites for the reel; its old tabs and every favourite go.
+            let space = browser.currentSpace
+            for tab in space.today + space.pinned { library.close(tab) }
+            for fav in library.favorites { library.removeFavorite(fav) }
+            for pair in (j["favorites"] as? [[String]] ?? []) where pair.count == 2 {
+                if let url = URL(string: pair[0]) { library.addFavorite(url: url, title: pair[1]) }
+            }
+            var opened: [BrowserTab] = []
+            for (i, u) in (j["tabs"] as? [String] ?? []).enumerated() {
+                if let url = URL(string: u) { opened.append(library.insertTab(url: url, in: space, source: .link, at: i)) }
+            }
+            let n = j["select"] as? Int ?? 0
+            if opened.indices.contains(n) { browser.select(opened[n]) }
         case "newTab":
             browser.newTab(url: (j["url"] as? String).flatMap(URL.init(string:)))
         case "selectSpace":
