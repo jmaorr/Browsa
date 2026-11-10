@@ -10,12 +10,20 @@ import BrowserEngine
 /// everywhere, and the whole page works from the keyboard, like Raycast's Store.
 enum LibraryPage {
     static let url = URL(string: "browsa://library")!
-    static func isLibrary(_ url: URL?) -> Bool { url == LibraryPage.url }
+    /// browsa://library, or a page in it: browsa://library/agent-pack, browsa://library/notes, or an
+    /// added extension by its Chrome Web Store id.
+    static func isLibrary(_ url: URL?) -> Bool { url?.scheme == "browsa" && url?.host() == "library" }
+    static func target(_ url: URL) -> String? {
+        let path = url.path(percentEncoded: false).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return path.isEmpty ? nil : path
+    }
 }
 
 extension Browser {
-    /// Opens the Library tab, or goes to the one already open.
-    func openLibrary() {
+    /// Opens the Library tab, or goes to the one already open, at a page in it if given.
+    func openLibrary(_ target: String? = nil) {
+        libraryTarget = target
+        libraryRequest += 1
         let space = currentSpace.isPrivate ? regularSpaces[0] : currentSpace
         if let existing = space.allTabs.first(where: { LibraryPage.isLibrary($0.url) }) {
             select(existing)
@@ -236,7 +244,9 @@ struct LibraryView: View {
 
     var body: some View {
         Group {
-            if let detail, let pack = LibraryCatalog.pack(detail) {
+            if let detail, let item = extensionItem(detail) {
+                ExtensionDetail(item: item) { close() }
+            } else if let detail, let pack = LibraryCatalog.pack(detail) {
                 PackDetail(pack: pack) { id in parentPack = pack.id; self.detail = id } back: { close() }
             } else if let detail, let plugin = LibraryCatalog.plugin(detail) {
                 PluginDetail(plugin: plugin, backTitle: parentPack.flatMap { LibraryCatalog.pack($0)?.title } ?? "Library") {
@@ -248,6 +258,11 @@ struct LibraryView: View {
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
+        .onChange(of: browser.libraryRequest, initial: true) {
+            detail = browser.libraryTarget
+            parentPack = nil
+            browser.libraryTarget = nil
+        }
         .sheet(isPresented: $addingChrome) {
             AddChromeExtensionSheet(problem: problem) { link in fetch(link) } openStore: {
                 addingChrome = false
@@ -257,6 +272,11 @@ struct LibraryView: View {
         .sheet(item: $preview) { p in
             AddExtensionSheet(preview: p) { library.install(p); preview = nil } cancel: { preview = nil }
         }
+    }
+
+    /// An extension's page: "ext:<catalog id>" from the list, or a bare Chrome Web Store id from a link.
+    private func extensionItem(_ target: String) -> InstalledExtension? {
+        target.hasPrefix("ext:") ? library.extensionCatalog[String(target.dropFirst(4))] : library.extensionCatalog["chrome:" + target]
     }
 
     private func close() {
@@ -274,7 +294,8 @@ struct LibraryView: View {
                     }
                     pluginGrid(title: "Browsa Plugins", detail: "Made for Browsa.", plugins: tools)
                     pluginGrid(title: "Privacy", detail: "Built in, and on from the start.", plugins: privacy)
-                    extensionsSection
+                    if !isSearching || !(verified.isEmpty && installed.isEmpty && safari.isEmpty) { extensionsSection }
+                    if isSearching { storeSearch }
                 }
                 .frame(maxWidth: 860, alignment: .leading)
                 .padding(.horizontal, 40)
@@ -363,6 +384,9 @@ struct LibraryView: View {
         case .plugin(let id), .pack(let id):
             detail = id
             return .handled
+        case .installed(let id):
+            detail = "ext:" + id
+            return .handled
         default: break
         }
         return toggleFocused()
@@ -440,7 +464,8 @@ struct LibraryView: View {
                     }
                     ForEach(Array(installed.enumerated()), id: \.element.id) { i, item in
                         if i > 0 { Divider().padding(.leading, 58) }
-                        ExtensionRow(item: item, isFocused: focused == .installed(item.id)).id(LibraryItem.installed(item.id))
+                        ExtensionRow(item: item, isFocused: focused == .installed(item.id)) { detail = "ext:" + item.id }
+                            .id(LibraryItem.installed(item.id))
                     }
                     ForEach(Array(safari.enumerated()), id: \.element.id) { i, ext in
                         if i > 0 || !installed.isEmpty { Divider().padding(.leading, 58) }
@@ -455,6 +480,25 @@ struct LibraryView: View {
                 Button("Add Unpacked Folder…", action: pickFolder)
             }
             .buttonStyle(.link).font(.caption)
+        }
+    }
+
+    private var isSearching: Bool { !search.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    /// When searching: the same words in the Chrome Web Store.
+    private var storeSearch: some View {
+        let q = search.trimmingCharacters(in: .whitespaces)
+        let nothing = packs.isEmpty && tools.isEmpty && privacy.isEmpty && verified.isEmpty && installed.isEmpty && safari.isEmpty
+        return VStack(alignment: .leading, spacing: 10) {
+            if nothing {
+                Text("Nothing in the Library matches “\(q)”.").font(.system(size: 14)).foregroundStyle(.secondary)
+            }
+            Button {
+                var c = URLComponents(string: "https://chromewebstore.google.com/search/")!
+                c.path += q
+                browser.newTab(url: c.url)
+            } label: { Label("Search the Chrome Web Store for “\(q)”", systemImage: "magnifyingglass") }
+                .buttonStyle(.glass).controlSize(.large).buttonBorderShape(.capsule)
         }
     }
 
@@ -759,6 +803,8 @@ private struct ExtensionRow: View {
     @Environment(Browser.self) private var browser
     let item: InstalledExtension
     let isFocused: Bool
+    let open: () -> Void
+    @State private var hovering = false
     private var library: Library { browser.library }
     private var isVerified: Bool { LibraryCatalog.verified.contains { item.source.key.lowercased().contains($0.id) } }
 
@@ -781,15 +827,16 @@ private struct ExtensionRow: View {
                 }
             }
             Spacer()
-            Menu {
-                Button("Remove \(item.name)", role: .destructive) { withAnimation(Motion.snappy) { library.removeExtension(id: item.id) } }
-            } label: { Image(systemName: "ellipsis").frame(width: 22, height: 22).contentShape(.rect) }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).foregroundStyle(.secondary).fixedSize()
+            Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
+                .opacity(hovering ? 1 : 0)
             Toggle("", isOn: Binding(get: { item.isEnabled }, set: { library.setExtension(item.id, enabled: $0) }))
                 .toggleStyle(.switch).labelsHidden().controlSize(.small)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .background(isFocused ? Color.accentColor.opacity(0.12) : .clear)
+        .contentShape(.rect)
+        .onTapGesture(perform: open)
+        .onHover { hovering = $0 }
     }
 }
 
@@ -1044,5 +1091,118 @@ private struct PackRow: View {
         .contentShape(.rect)
         .onTapGesture(perform: open)
         .onHover { hovering = $0 }
+    }
+}
+
+// MARK: - An extension's page
+
+/// One added extension: on or off, in the address bar or not, its own settings, what it can do,
+/// and Remove.
+private struct ExtensionDetail: View {
+    @Environment(Browser.self) private var browser
+    let item: InstalledExtension
+    let back: () -> Void
+    @State private var confirmingRemove = false
+
+    private var library: Library { browser.library }
+    private var running: EngineExtension? { library.extensions.first { $0.id == item.id } }
+    private var manifest: ExtensionManifest? {
+        guard let folder = item.folderPath else { return nil }
+        return (try? Data(contentsOf: URL(filePath: folder).appending(path: "manifest.json"))).flatMap { try? ExtensionManifest(data: $0) }
+    }
+    private var storeURL: URL? {
+        if case .chromeWebStore(let id) = item.source { return URL(string: "https://chromewebstore.google.com/detail/\(id)") }
+        return nil
+    }
+    private var isVerified: Bool { LibraryCatalog.verified.contains { item.source.key.lowercased().contains($0.id) } }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                BackButton(title: "Library", action: back)
+                HStack(alignment: .center, spacing: 18) {
+                    ExtensionIcon(image: running?.icon.map { NSImage(cgImage: $0, size: .zero) }, size: 64)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.name).font(.system(size: 26, weight: .bold))
+                        Text(isVerified ? "\(item.source.label) · \(item.version) · Verified to work in Browsa" : "\(item.source.label) · \(item.version)")
+                            .font(.system(size: 14)).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: Binding(get: { item.isEnabled }, set: { library.setExtension(item.id, enabled: $0) }))
+                        .toggleStyle(.switch).labelsHidden()
+                }
+                if let pending = item.pendingUpdate {
+                    HStack {
+                        Text("Version \(pending.version) asks for more access.").font(.system(size: 13))
+                        Spacer()
+                        Button("Review and Update") { library.approveUpdate(id: item.id) }
+                            .buttonStyle(.glassProminent).controlSize(.large).buttonBorderShape(.capsule)
+                    }
+                    .padding(12)
+                    .background(.primary.opacity(0.04), in: .rect(cornerRadius: 12, style: .continuous))
+                }
+                HStack(spacing: 10) {
+                    if let options = running?.optionsURL {
+                        Button { browser.newTab(url: options) } label: { Label("Settings", systemImage: "gearshape") }
+                            .buttonStyle(.glass).controlSize(.large).buttonBorderShape(.capsule)
+                    }
+                    if let storeURL {
+                        Button { browser.newTab(url: storeURL) } label: { Label("Chrome Web Store", systemImage: "arrow.up.forward.app") }
+                            .buttonStyle(.glass).controlSize(.large).buttonBorderShape(.capsule)
+                    }
+                    Spacer()
+                    Button("Remove…", role: .destructive) { confirmingRemove = true }
+                        .buttonStyle(.glass).controlSize(.large).buttonBorderShape(.capsule).tint(.red)
+                }
+                if let running, running.hasAction {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "pin").font(.system(size: 14)).foregroundStyle(.secondary).frame(width: 20)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Show in the address bar").font(.system(size: 13, weight: .medium))
+                                Text("Otherwise it's in the extensions menu.").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Toggle("", isOn: Binding(get: { library.isPinned(running) }, set: { library.setPinned(running, $0) }))
+                                .toggleStyle(.switch).labelsHidden().controlSize(.small)
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                    }
+                    .background(.primary.opacity(0.035), in: .rect(cornerRadius: 12, style: .continuous))
+                }
+                if let lines = manifest?.permissionSummary, !lines.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("What it can do").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                        VStack(spacing: 0) {
+                            ForEach(Array(lines.enumerated()), id: \.offset) { i, line in
+                                if i > 0 { Divider().padding(.leading, 44) }
+                                HStack(alignment: .top, spacing: 12) {
+                                    Image(systemName: line.symbol).font(.system(size: 14)).foregroundStyle(.secondary).frame(width: 20)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(line.text).font(.system(size: 13))
+                                        if !line.sites.isEmpty {
+                                            Text(line.sites.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 12).padding(.vertical, 10)
+                            }
+                        }
+                        .background(.primary.opacity(0.035), in: .rect(cornerRadius: 12, style: .continuous))
+                    }
+                }
+            }
+            .frame(maxWidth: 720, alignment: .leading)
+            .padding(.horizontal, 40)
+            .padding(.vertical, 32)
+            .frame(maxWidth: .infinity)
+        }
+        .confirmationDialog("Remove \(item.name)?", isPresented: $confirmingRemove) {
+            Button("Remove", role: .destructive) {
+                library.removeExtension(id: item.id)
+                back()
+            }
+        } message: { Text("Browsa deletes its copy. You can add it again from the Library.") }
     }
 }

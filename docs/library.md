@@ -7,6 +7,10 @@
 3. **Privacy**: the ad and tracker blocker, cookie banner decliner and link cleaning. On by default. They're settings under the hood (`BrowserSettings.blockContent`, `declineCookieBanners`, `cleanLinks`); the Library shows them as plugins so their value is visible.
 4. **Extensions**: verified extensions to add in one click, then everything you've added.
 
+Every plugin, pack and added extension has its own page. Links open them directly: `browsa://library`, `browsa://library/agent-pack`, `browsa://library/notes`, or `browsa://library/<Chrome Web Store id>` for an added extension. In code, `browser.openLibrary("agent-pack")`. A search with no matches offers the same words in the Chrome Web Store.
+
+The Library is the only place to manage extensions: Settings has no Extensions tab, and Manage Extensions in the address bar, the sidebar's config menu and ⌘K all open it.
+
 Code: `Mac/Sources/Library/LibraryPage.swift`. On/off goes through `LibraryActions.set(_:on:in:)`; onboarding should call `LibraryActions.setAgentPack(true, in:)`.
 
 ## Verified extensions

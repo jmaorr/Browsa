@@ -29,6 +29,7 @@ extension Browser {
     }
 
     func navigate(to url: URL, replacing: Bool, source: Frecency.VisitSource) {
+        if LibraryPage.isLibrary(url) { openLibrary(LibraryPage.target(url)); return }
         if replacing, let tab = currentTab {
             if isReaderShowing { closeReader() }
             controller(for: tab).load(url, source: source)
