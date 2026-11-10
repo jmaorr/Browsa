@@ -365,7 +365,7 @@ private struct ToolStrip: View {
                 }
                 Button {
                     done()
-                    browser.showToast("Preview: the Library opens here")
+                    browser.openLibrary()
                 } label: {
                     VStack(spacing: 6) {
                         Image(systemName: "plus")

@@ -14,7 +14,6 @@ struct SettingsView: View {
             GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }.tag("general")
             SpacesSettings().tabItem { Label("Spaces", systemImage: "square.stack") }.tag("spaces")
             PrivacySettings().tabItem { Label("Privacy", systemImage: "hand.raised") }.tag("privacy")
-            ExtensionSettings().tabItem { Label("Extensions", systemImage: "puzzlepiece.extension") }.tag("extensions")
             AgentSettings().tabItem { Label("Agents", systemImage: AgentIdentity.symbol) }.tag("agents")
             EngineSettings().tabItem { Label("Engine", systemImage: "cpu") }.tag("engine")
         }
@@ -292,12 +291,9 @@ private struct EngineSettings: View {
             }
             if info.capabilities.contains(.webExtensions) {
                 Section {
-                    Toggle("Use installed Safari extensions", isOn: Bindable(browser).useSafariExtensions)
-                    ForEach(browser.extensions) { ext in
-                        LabeledContent(ext.name, value: ext.version)
-                    }
+                    Toggle("Safari extensions from apps (experimental)", isOn: Bindable(browser).useSafariExtensions)
                 } footer: {
-                    Text("Runs the Safari web extensions that apps on this Mac include, such as 1Password for Safari.")
+                    Text("Runs the Safari extensions that apps on this Mac include. Most need to talk to their app, which doesn't work in Browsa, so add the Chrome Web Store version from the Library instead. If both are added, Browsa uses the Chrome one.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -319,91 +315,6 @@ private struct EngineSettings: View {
 }
 
 // MARK: - Extensions
-
-/// Safari extensions from apps, plus ones added from the Chrome Web Store, Firefox Add-ons or a folder.
-private struct ExtensionSettings: View {
-    @Environment(Library.self) private var library
-    @State private var link = ""
-    @State private var preview: Library.ExtensionPreview?
-    @State private var problem: String?
-    @State private var working = false
-
-    var body: some View {
-        Form {
-            Section {
-                Toggle("Use Safari extensions from apps on this Mac", isOn: Bindable(library).useSafariExtensions)
-            } footer: {
-                Text("Password managers like 1Password, Bitwarden and Proton Pass ship a Safari extension inside their app. In Browsa these can't reach their desktop app, so sign-in may not work: add the Chrome Web Store version instead. When both are added, Browsa uses the store one.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Add from a store") {
-                HStack {
-                    // In a grouped form an HStack'd TextField puts its title in the label column and can
-                    // shrink the field itself to nothing, so the title goes in the prompt.
-                    TextField("Link", text: $link, prompt: Text("Chrome Web Store or Firefox Add-ons link"))
-                        .labelsHidden()
-                        .textFieldStyle(.roundedBorder)
-                        .frame(minWidth: 260, maxWidth: .infinity)
-                        .onSubmit(fetch)
-                    Button(working ? "Getting…" : "Add…", action: fetch)
-                        .disabled(link.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || working)
-                }
-                Button("Add Unpacked Folder…", action: pickFolder)
-                if let problem { Text(problem).font(.caption).foregroundStyle(.red) }
-            }
-            Section("Added") {
-                if library.extensionCatalog.items.isEmpty {
-                    Text("Nothing added yet.").foregroundStyle(.secondary)
-                }
-                ForEach(library.extensionCatalog.items) { item in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(item.name)
-                            Text("\(item.source.label) · \(item.version)").font(.caption).foregroundStyle(.secondary)
-                            if let pending = item.pendingUpdate {
-                                Button("Update to \(pending.version) (asks for more)") { library.approveUpdate(id: item.id) }
-                                    .controlSize(.small)
-                            }
-                        }
-                        Spacer()
-                        Toggle("", isOn: Binding(get: { item.isEnabled }, set: { library.setExtension(item.id, enabled: $0) }))
-                            .labelsHidden()
-                        Button(role: .destructive) { library.removeExtension(id: item.id) } label: { Image(systemName: "trash") }
-                            .buttonStyle(.borderless)
-                    }
-                }
-                Button("Check for Updates") { Task { await library.updateExtensions(force: true) } }
-            }
-            Section("Running now") {
-                ForEach(library.extensions) { ext in LabeledContent(ext.name, value: ext.version) }
-            }
-        }
-        .formStyle(.grouped)
-        .sheet(item: $preview) { p in
-            AddExtensionSheet(preview: p) { library.install(p); preview = nil; link = "" } cancel: { preview = nil }
-        }
-    }
-
-    private func fetch() {
-        working = true
-        problem = nil
-        Task {
-            defer { working = false }
-            do { preview = try await library.previewExtension(link: link.trimmingCharacters(in: .whitespacesAndNewlines)) }
-            catch { problem = error.localizedDescription }
-        }
-    }
-
-    private func pickFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.message = "Choose a folder with a manifest.json"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { preview = try library.previewExtension(folder: url) }
-        catch { problem = "That folder has no extension manifest." }
-    }
-}
 
 /// What an extension will be able to do, in plain words, before it runs. Laid out like a macOS
 /// alert: icon and question centred, the details in a card that scrolls when they run long, and two

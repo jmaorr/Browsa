@@ -203,7 +203,12 @@ struct TabIcon: View {
     var size: CGFloat = 16
 
     var body: some View {
-        if Welcome.isWelcome(tab.url) {
+        if LibraryPage.isLibrary(tab.url) {
+            Image(systemName: "square.grid.2x2.fill")
+                .font(.system(size: size * 0.75))
+                .foregroundStyle(.secondary)
+                .frame(width: size, height: size)
+        } else if Welcome.isWelcome(tab.url) {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .interpolation(.high)

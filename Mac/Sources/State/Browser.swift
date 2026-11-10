@@ -38,6 +38,10 @@ final class Browser {
     /// Reader, when it's showing over the current tab.
     var reader: ReaderSession?
     var isArchivePresented = false
+    /// A page to show in the Library (a plugin, pack or extension id), from a browsa://library/… link.
+    var libraryTarget: String?
+    /// Bumped with each request, so asking for the same page twice still opens it.
+    var libraryRequest = 0
     /// When and which way the space last changed, so tab lists cascade in from that side.
     private(set) var lastSpaceSwitch: SpaceSwitch?
     /// The right-hand panel each space last showed. It pushes the page over, never covers it.
@@ -467,13 +471,16 @@ enum Preferences {
     }
 
     /// Safari web extensions installed on this Mac (1Password for Safari and the like). On in Debug builds.
+    /// Experimental and off: most Safari extensions are companions to a Mac app, and that link
+    /// doesn't work in Browsa. Settings › Engine has the switch.
     static var useSafariExtensions: Bool {
         get {
-            #if DEBUG
-            d.object(forKey: "useSafariExtensions") as? Bool ?? true
-            #else
-            d.bool(forKey: "useSafariExtensions")
-            #endif
+            // Everyone starts again with it off, once, including people who had it on.
+            if !d.bool(forKey: "safariExtensionsReset1") {
+                d.set(true, forKey: "safariExtensionsReset1")
+                d.set(false, forKey: "useSafariExtensions")
+            }
+            return d.bool(forKey: "useSafariExtensions")
         }
         set { d.set(newValue, forKey: "useSafariExtensions") }
     }
