@@ -107,9 +107,11 @@ struct FaviconView: View {
     }
 
     var body: some View {
-        AsyncImage(url: iconURL) { phase in
-            if let image = phase.image {
-                image.resizable().interpolation(.high).scaledToFit()
+        // Cached in memory, so a row that's rebuilt (dragged to another section, a space switch)
+        // shows its icon straight away instead of flashing its letter while it loads again.
+        FaviconImage(url: iconURL) { image in
+            if let image {
+                Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
                     .padding(chip ? size * 0.12 : 0)
                     .background(chip ? AnyShapeStyle(Color.white.opacity(0.92)) : AnyShapeStyle(.clear),
                                 in: .rect(cornerRadius: size * 0.28, style: .continuous))
@@ -127,6 +129,38 @@ struct FaviconView: View {
 
 /// The raised look of the selected tab or favourite: a light pill in light mode, a lifted
 /// translucent one in dark mode, never darker than the sidebar.
+/// A slot routed into the sidebar, where something dragged will land. Lit from above: a chamfered
+/// rim that's dark along the top edge and catches the light along the bottom, a soft shadow cast
+/// down inside from the top lip, and a floor a shade darker at the top than the bottom. Deeper
+/// while it's the target.
+struct SunkenSlot: View {
+    var cornerRadius: CGFloat = 9
+    var active = false
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let dark = scheme == .dark
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        let depth = active ? 1.0 : 0.8
+        shape
+            .fill(LinearGradient(colors: dark
+                                    ? [.black.opacity(0.34 * depth), .black.opacity(0.2 * depth)]
+                                    : [.black.opacity(0.085 * depth), .black.opacity(0.03 * depth)],
+                                 startPoint: .top, endPoint: .bottom)
+                .shadow(.inner(color: .black.opacity((dark ? 0.6 : 0.22) * depth), radius: 3, y: 2.5)))
+            .overlay {
+                // The chamfer: shadowed where it faces down, lit where it faces up.
+                shape.strokeBorder(LinearGradient(stops: dark
+                    ? [.init(color: .black.opacity(0.7 * depth), location: 0), .init(color: .black.opacity(0.3 * depth), location: 0.45),
+                       .init(color: .white.opacity(0.14), location: 1)]
+                    : [.init(color: .black.opacity(0.2 * depth), location: 0), .init(color: .black.opacity(0.06 * depth), location: 0.45),
+                       .init(color: .white.opacity(0.95), location: 1)],
+                    startPoint: .top, endPoint: .bottom), lineWidth: 1.5)
+            }
+            .animation(Motion.snappy, value: active)
+    }
+}
+
 struct SelectedFill: ShapeStyle {
     func resolve(in environment: EnvironmentValues) -> Color {
         environment.colorScheme == .dark ? Color.white.opacity(0.14) : Color.white.opacity(0.88)
@@ -141,6 +175,29 @@ struct PanelFill: ShapeStyle {
 }
 
 /// A tab's icon: its favicon, or a globe before it has a page.
+@MainActor private enum FaviconCache { static var images: [URL: NSImage] = [:] }
+
+/// Loads a site icon once per launch and keeps it in memory.
+private struct FaviconImage<Content: View>: View {
+    let url: URL?
+    @ViewBuilder let content: (NSImage?) -> Content
+    @State private var image: NSImage?
+
+    var body: some View {
+        content(image ?? url.flatMap { FaviconCache.images[$0] })
+            .task(id: url) {
+                guard let url else { image = nil; return }
+                if let hit = FaviconCache.images[url] { image = hit; return }
+                image = nil
+                guard let (data, response) = try? await URLSession.shared.data(from: url),
+                      (response as? HTTPURLResponse)?.statusCode ?? 200 < 400,
+                      let loaded = NSImage(data: data) else { return }
+                FaviconCache.images[url] = loaded
+                image = loaded
+            }
+    }
+}
+
 struct TabIcon: View {
     let tab: BrowserTab
     var size: CGFloat = 16
