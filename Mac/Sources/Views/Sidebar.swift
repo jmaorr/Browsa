@@ -71,6 +71,7 @@ struct Sidebar: View {
                 Button("New Private Tab", systemImage: "eye.slash") { browser.run(command: "private") }
                 Divider()
                 Button("Archived Tabs…", systemImage: "archivebox") { browser.isArchivePresented = true }
+                Button("Library", systemImage: "square.grid.2x2") { browser.openLibrary() }
                 SettingsLink { Label("Settings…", systemImage: "gearshape") }
             } label: {
                 Image(systemName: "slider.horizontal.3")
@@ -324,7 +325,6 @@ private struct ExtensionIconImage: View {
 /// pill, or when the extension has something for this page (shown with a dot).
 private struct PinnedExtensionIcon: View {
     @Environment(Browser.self) private var browser
-    @Environment(\.openSettings) private var openSettings
     let ext: EngineExtension
     let pillHovered: Bool
     @State private var anchor = PopupAnchor()
@@ -347,10 +347,7 @@ private struct PinnedExtensionIcon: View {
             .onTapGesture { browser.runExtension(ext, anchor: anchor.view) }
             .contextMenu {
                 Button("Unpin") { browser.library.setPinned(ext, false) }
-                Button("Manage Extensions…") {
-                    Preferences.settingsTab = "extensions"
-                    openSettings()
-                }
+                Button("Manage Extensions…") { browser.openLibrary() }
             }
             .help(state?.badgeText.isEmpty == false ? "\(ext.name): \(state!.badgeText)" : ext.name)
             .animation(Motion.snappy, value: pillHovered)
@@ -384,7 +381,6 @@ private struct ExtensionsMenu: View {
 
 private struct ExtensionsList: View {
     @Environment(Browser.self) private var browser
-    @Environment(\.openSettings) private var openSettings
     let anchor: PopupAnchor
     let dismiss: () -> Void
 
@@ -407,10 +403,9 @@ private struct ExtensionsList: View {
                 }
             }
             Divider().padding(.vertical, 4)
-            ExtensionFooterButton(title: "Manage Extensions…", symbol: "gearshape") {
+            ExtensionFooterButton(title: "Manage Extensions…", symbol: "square.grid.2x2") {
                 dismiss()
-                Preferences.settingsTab = "extensions"
-                openSettings()
+                browser.openLibrary()
             }
         }
         .padding(6)
