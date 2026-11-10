@@ -111,10 +111,10 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         switch self {
         case .spaces: "Spaces"
         case .newTab: "⌘T opens anything"
-        case .commands: "⌘K for everything"
+        case .commands: "⌘K launches plugins"
         case .importing: "Bring your stuff"
         case .tour: "See it in action"
-        case .library: "Built for the hustle"
+        case .library: "Unlock more with Library"
         case .agents: "Let your agents in"
         case .makeDefault: "Make it yours"
         }
@@ -124,10 +124,10 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         switch self {
         case .spaces: "A place to keep your tabs organised for Work, Personal, and anything else."
         case .newTab: "Search, type an address, or jump to a tab you already have open."
-        case .commands: "Split the view, pin a tab, ask an agent. Everything is a few letters away."
+        case .commands: "Launch powerful plugins like Radar, Comments and more, without leaving the keyboard."
         case .importing: "Bring over your bookmarks and history, and from Arc, your spaces and tabs. Your old browser stays as it is."
-        case .tour: "A quick look at split view, notes on any page, Radar and agents at work."
-        case .library: "Verified extensions, bundled into kits, so you're set up for coding or agents in one click."
+        case .tour: "A quick look at Reader, notes on any page, Radar and agents at work."
+        case .library: "Powerful plugins, extensions and MCPs built for the hustle."
         case .agents: "Browsa runs an MCP server on your Mac, so your agents can open tabs, read pages and leave notes."
         case .makeDefault: "Links from Mail, Slack and everywhere else will open here."
         }
@@ -141,7 +141,7 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         case .commands: "Every tool, one shortcut"
         case .importing: "Everything comes with you"
         case .tour: "A quick look at the rest"
-        case .library: "Built for the hustle"
+        case .library: "Unlock more with Library"
         case .agents: "Your agents can browse too"
         case .makeDefault: "Make Browsa your browser"
         }
@@ -154,7 +154,7 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         case .commands: "Press ⌘K"
         case .importing: "Import from another browser"
         case .tour: "Watch the tour"
-        case .library: "Add a kit from the Library"
+        case .library: "Turn on the Agent Pack"
         case .agents: "Connect an agent"
         case .makeDefault: "Set Browsa as your default browser"
         }
@@ -296,15 +296,22 @@ struct WelcomePage: View {
                 VStack(spacing: 30) {
                     // The title sits a little above the middle of the first screen; the stops
                     // start just below the fold, with the bar and the first card peeking up.
-                    VStack(spacing: 6) {
+                    VStack(spacing: 10) {
+                        Image(nsImage: NSApp.applicationIconImage)
+                            .resizable()
+                            .interpolation(.high)
+                            .frame(width: 96, height: 96)
+                            .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
+                            .padding(.bottom, 6)
                         Text("Make Browsa yours")
-                            .font(.system(size: 34, weight: .semibold))
-                            .tracking(-0.8)
+                            .font(.system(size: 46, weight: .bold))
+                            .tracking(-1.4)
                         Text("Eight short stops, about four minutes. Skip any of them.")
-                            .font(.system(size: 13.5))
+                            .font(.system(size: 17))
                             .foregroundStyle(.secondary)
                     }
-                    .frame(height: max(220, viewport.size.height * 0.56), alignment: .bottom)
+                    // A little above the middle of the first screen, so the bar and the first card show below.
+                    .frame(height: max(300, viewport.size.height * 0.44), alignment: .bottom)
                     .welcomeArrival(0, shown: shown)
                     LevelBar(done: progress.done.count)
                         .frame(maxWidth: 620)
@@ -661,7 +668,7 @@ private struct GalleryCard: View {
             if let name = choice, let s = importer.sources.first(where: { $0.name == name }) { importer.pick(s) }
             Task { await importer.run(into: browser.library) }
         case .tour: playing ? stopPlaying() : play(completeAt: 0.98)
-        case .library: play(completeAt: 0.6)
+        case .library: break
         case .agents: break
         case .makeDefault: play(completeAt: 0.5)
         case .newTab, .commands: pressPlay()
@@ -677,6 +684,9 @@ private struct GalleryCard: View {
                 if stop == .importing {
                     // The importer itself sits in the card's right side.
                     ImportPanel().environment(\.colorScheme, scheme)
+                } else if stop == .library {
+                    // The Agent Pack, for real: one switch turns on Radar, Notes and Agents.
+                    AgentPackPanel(done: done, complete: complete).environment(\.colorScheme, scheme)
                 } else if stop == .agents {
                     // So does the real agent connector, on the card's dark surface.
                     AgentConnectPanel(done: done, complete: complete).environment(\.colorScheme, .dark)
@@ -688,7 +698,7 @@ private struct GalleryCard: View {
                 }
             }
             .clipped()
-            .allowsHitTesting(stop == .importing || stop == .agents)
+            .allowsHitTesting(stop == .importing || stop == .agents || stop == .library)
     }
 
     // MARK: Text column
@@ -739,13 +749,13 @@ private struct GalleryCard: View {
             } trailing: { Trackpad() } below: { EmptyView() }
         case .newTab, .commands:
             let t = stop == .newTab
-            Instruction(kind: .tryIt, done: done, title: t ? "Press ⌘T to open anything" : "Press ⌘K for every command") {
-                Text(t ? "Type a site, a search, or a tab's name" : "Split view, pin a tab, ask an agent").foregroundStyle(.secondary)
+            Instruction(kind: .tryIt, done: done, title: t ? "Press ⌘T to open anything" : "Press ⌘K to launch a plugin") {
+                Text(t ? "Type a site, a search, or a tab's name" : "Radar, Comments and every plugin").foregroundStyle(.secondary)
             } trailing: {
                 HStack(spacing: 4) { BigKey(text: "⌘"); BigKey(text: t ? "T" : "K") }
             } below: { EmptyView() }
         case .importing:
-            ImportLead(done: done)
+            ImportLead(done: done, skip: complete)
         case .tour:
             Instruction(kind: .watch, done: done, title: "Watch the tour") {
                 Text("Ten seconds. No clicking needed.").foregroundStyle(.secondary)
@@ -763,19 +773,7 @@ private struct GalleryCard: View {
                 .accessibilityLabel(playing ? "Pause the tour" : "Play the tour")
             } below: { EmptyView() }
         case .library:
-            Instruction(kind: .choose, done: done, title: "Pick a kit to start with") {
-                Text("Browse the whole Library any time").foregroundStyle(.secondary)
-            } trailing: {
-                ActionButton(title: "Add Kit", tint: tint, enabled: choice != nil && !playing, action: act)
-            } below: {
-                HStack(spacing: 6) {
-                    ForEach(WelcomeKits.all, id: \.name) { k in
-                        ChoiceChip(title: k.name, selected: choice == k.name) {
-                            Image(systemName: k.items[0].1).font(.system(size: 10, weight: .semibold)).foregroundStyle(k.items[0].2)
-                        } action: { choice = k.name }
-                    }
-                }
-            }
+            LibraryLead(done: done)
         case .agents:
             AgentsLead(done: done)
         case .makeDefault:

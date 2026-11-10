@@ -478,9 +478,9 @@ struct MiniCommandBar: View {
     private var rows: [(icon: AnyView, title: String, sub: String?, hint: String?)] {
         if mode == .commands {
             return [
-                (AnyView(Image(systemName: "rectangle.split.2x1").foregroundStyle(.secondary)), "Split View", nil, "⌃⌘S"),
-                (AnyView(Image(systemName: "pin").foregroundStyle(.secondary)), "Pin Tab", nil, "⌘D"),
-                (AnyView(Image(systemName: "pointer.arrow.ipad.rays").foregroundStyle(.secondary)), "Ask an Agent", nil, nil),
+                (AnyView(Image(systemName: "dot.radiowaves.left.and.right").foregroundStyle(.green)), "Radar", "Your local dev servers", nil),
+                (AnyView(Image(systemName: "text.bubble.fill").foregroundStyle(.yellow)), "Comment on Page", "Notes", nil),
+                (AnyView(Image(systemName: "pointer.arrow.ipad.rays").foregroundStyle(.orange)), "Agents", nil, nil),
             ]
         }
         return [
@@ -544,7 +544,7 @@ private struct ShortcutHero: View {
         let period = 4.2, f = t.truncatingRemainder(dividingBy: period) / period
         let cmd = f > 0.14 && f < 0.42, key = f > 0.2 && f < 0.36
         let barIn = welcomeEase((f - 0.26) / 0.06) * (1 - welcomeEase((f - 0.9) / 0.08))
-        let text = mode == .commands ? "split" : "github"
+        let text = mode == .commands ? "radar" : "github"
         let n = Int(Double(text.count) * welcomeEase((f - 0.4) / 0.22))
         ZStack {
             KeyboardSlice(letter: letter, commandDown: cmd, letterDown: key)
@@ -701,7 +701,7 @@ private struct ImportHero: View {
     }
 }
 
-/// A short reel of real features in a Browsa window: split view, a note, Radar, an agent.
+/// A short reel of real features in a Browsa window: Reader, a note, Radar, an agent.
 private struct TourHero: View {
     let t: Double
     var playing = false
@@ -709,7 +709,7 @@ private struct TourHero: View {
     var body: some View {
         let period = 10.0, local = t.truncatingRemainder(dividingBy: period)
         let scene = Int(local / 2.5), f = (local - Double(scene) * 2.5) / 2.5
-        let titles = ["Split view", "Notes on any page", "Radar", "Agents"]
+        let titles = ["Reader", "Notes on any page", "Radar", "Agents"]
         VStack(spacing: 8) {
             MiniWindow(tint: .pink, sidebarWidth: 92) {
                 ForEach(0..<4, id: \.self) { i in
@@ -720,13 +720,17 @@ private struct TourHero: View {
                 Group {
                     switch scene {
                     case 0:
-                        HStack(spacing: 4) {
-                            PageLines().background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 4))
-                            PageLines(widths: [0.6, 0.8, 0.5])
-                                .background(Color.blue.opacity(0.05), in: .rect(cornerRadius: 4))
-                                .frame(maxWidth: 40 + 60 * welcomeEase(f / 0.4))
+                        // Reader: the page's clutter falls away, leaving the article.
+                        VStack(alignment: .leading, spacing: 5) {
+                            RoundedRectangle(cornerRadius: 2).fill(.primary.opacity(0.3)).frame(width: 110, height: 7)
+                            ForEach([0.95, 0.9, 0.97, 0.85, 0.92, 0.6], id: \.self) { w in
+                                GeometryReader { g in RoundedRectangle(cornerRadius: 2).fill(.primary.opacity(0.12)).frame(width: g.size.width * w, height: 4) }
+                                    .frame(height: 4)
+                            }
                         }
-                        .padding(3)
+                        .padding(.horizontal, 26).padding(.vertical, 12)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .background(Color(red: 0.98, green: 0.96, blue: 0.91).opacity(welcomeEase(f / 0.4)))
                     case 1:
                         PageLines().overlay(alignment: .topTrailing) {
                             Text("Swap this for\nthe new pricing")
