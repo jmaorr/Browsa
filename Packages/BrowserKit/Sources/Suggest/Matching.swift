@@ -23,7 +23,7 @@ public enum URLNormalizer {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !text.contains(" ") else { return nil }
         if let url = URL(string: text), let scheme = url.scheme?.lowercased(),
-           ["http", "https", "about", "file"].contains(scheme) {
+           ["http", "https", "about", "file", "browsa"].contains(scheme) {
             return url
         }
         // "localhost:3000", "github.com", "192.168.1.1/admin"

@@ -93,8 +93,12 @@ public struct EngineExtension: Identifiable {
     public let hasAction: Bool
     /// A page for Browsa's right panel (Chrome's side panel, Firefox's sidebar), if it has one.
     public let panelURL: URL?
+    /// Its settings page (`options_ui` or `options_page`), if it has one.
+    public let optionsURL: URL?
 
-    public init(id: String, name: String, version: String, icon: CGImage?, hasAction: Bool, panelURL: URL? = nil) {
+    public init(id: String, name: String, version: String, icon: CGImage?, hasAction: Bool, panelURL: URL? = nil,
+                optionsURL: URL? = nil) {
+        self.optionsURL = optionsURL
         self.id = id
         self.name = name
         self.version = version

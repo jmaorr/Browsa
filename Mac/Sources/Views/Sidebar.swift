@@ -79,6 +79,7 @@ struct Sidebar: View {
                 Button("New Private Tab", systemImage: "eye.slash") { browser.run(command: "private") }
                 Divider()
                 Button("Archived Tabs…", systemImage: "archivebox") { browser.isArchivePresented = true }
+                Button("Library", systemImage: "square.grid.2x2") { browser.openLibrary() }
                 SettingsLink { Label("Settings…", systemImage: "gearshape") }
             } label: {
                 Image(systemName: "slider.horizontal.3")
@@ -135,7 +136,7 @@ struct AddressPill: View {
     var body: some View {
         let tab = browser.currentTab
         let zoom = browser.currentZoom
-        let isWelcome = Welcome.isWelcome(tab?.url)
+        let isWelcome = Welcome.isWelcome(tab?.url) || LibraryPage.isLibrary(tab?.url)
         HStack(spacing: 8) {
             SiteMenu()
             let devServer = RadarStore.shared.server(for: tab?.url)
@@ -143,7 +144,7 @@ struct AddressPill: View {
                 Image(systemName: "arrow.triangle.branch").font(.system(size: 10)).foregroundStyle(.secondary)
                     .help(Text(verbatim: "Worktree of \(devServer.project), on localhost:\(devServer.port)"))
             }
-            Text(isWelcome ? "Welcome to Browsa" : devServer?.shortName ?? tab?.url.map(URLNormalizer.displayHost) ?? "Search or enter address")
+            Text(LibraryPage.isLibrary(tab?.url) ? "Library" : isWelcome ? "Welcome to Browsa" : devServer?.shortName ?? tab?.url.map(URLNormalizer.displayHost) ?? "Search or enter address")
                 .lineLimit(1)
                 .help(devServer.map { Text(verbatim: "\($0.details) · localhost:\($0.port)") } ?? Text(verbatim: ""))
                 .foregroundStyle(tab?.url == nil ? .secondary : .primary)
@@ -332,7 +333,6 @@ private struct ExtensionIconImage: View {
 /// pill, or when the extension has something for this page (shown with a dot).
 private struct PinnedExtensionIcon: View {
     @Environment(Browser.self) private var browser
-    @Environment(\.openSettings) private var openSettings
     let ext: EngineExtension
     let pillHovered: Bool
     @State private var anchor = PopupAnchor()
@@ -355,10 +355,7 @@ private struct PinnedExtensionIcon: View {
             .onTapGesture { browser.runExtension(ext, anchor: anchor.view) }
             .contextMenu {
                 Button("Unpin") { browser.library.setPinned(ext, false) }
-                Button("Manage Extensions…") {
-                    Preferences.settingsTab = "extensions"
-                    openSettings()
-                }
+                Button("Manage Extensions…") { browser.openLibrary() }
             }
             .help(state?.badgeText.isEmpty == false ? "\(ext.name): \(state!.badgeText)" : ext.name)
             .animation(Motion.snappy, value: pillHovered)
@@ -392,7 +389,6 @@ private struct ExtensionsMenu: View {
 
 private struct ExtensionsList: View {
     @Environment(Browser.self) private var browser
-    @Environment(\.openSettings) private var openSettings
     let anchor: PopupAnchor
     let dismiss: () -> Void
 
@@ -415,10 +411,9 @@ private struct ExtensionsList: View {
                 }
             }
             Divider().padding(.vertical, 4)
-            ExtensionFooterButton(title: "Manage Extensions…", symbol: "gearshape") {
+            ExtensionFooterButton(title: "Manage Extensions…", symbol: "square.grid.2x2") {
                 dismiss()
-                Preferences.settingsTab = "extensions"
-                openSettings()
+                browser.openLibrary()
             }
         }
         .padding(6)
