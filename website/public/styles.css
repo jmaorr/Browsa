@@ -232,6 +232,7 @@ kbd { font: inherit; font-variant-numeric: tabular-nums; color: var(--ink); whit
 .lead { margin-top: 28px; font-size: 1.3125rem; line-height: 1.36; letter-spacing: -.016em; }
 .policy .lead + p { margin-top: 18px; }
 .policy h2 { font-size: 1.375rem; letter-spacing: -.02em; margin-top: 48px; margin-bottom: 10px; }
+.policy h3 { font-size: 1.0625rem; letter-spacing: -.01em; margin-top: 28px; margin-bottom: 6px; }
 .policy p + p, .policy ul + p, .policy .table + p { margin-top: 12px; }
 .policy ul { margin: 12px 0 0; padding-left: 1.2em; }
 .policy li + li { margin-top: 6px; }
