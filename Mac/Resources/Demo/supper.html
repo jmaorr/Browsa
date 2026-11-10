@@ -42,7 +42,9 @@ header p { margin: 0; color: var(--muted); }
 .recipe:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(0,0,0,.08); }
 .recipe.hidden { display: none; }
 .recipe.chosen { outline: 2px solid var(--green); }
-.plate { height: 150px; position: relative; display: grid; place-items: center; }
+.plate { height: 150px; position: relative; display: grid; place-items: center; overflow: hidden; }
+.plate img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .6s ease; }
+.recipe:hover .plate img { transform: scale(1.04); }
 .plate .dish { width: 116px; height: 116px; border-radius: 50%; background: radial-gradient(circle, #fff 55%, #ece9df 56%, #fff 70%, #e5e1d4 71%);
   box-shadow: 0 8px 18px rgba(0,0,0,.12); position: relative; }
 .plate .food { position: absolute; inset: 24px; border-radius: 50%; }
@@ -160,7 +162,8 @@ const money = (n) => '$' + n.toFixed(2);
 function renderRecipes() {
   $('#recipes').innerHTML = recipes.map(r => `
     <article class="recipe${state.vegOnly && !r.veg ? ' hidden' : ''}${state.chosen.includes(r.id) ? ' chosen' : ''}" id="recipe-${r.id}">
-      <div class="plate" style="background:${r.veg ? '#e9efe2' : '#f1e8dc'}"><div class="dish"><div class="food" style="background:${r.food}"></div></div></div>
+      <div class="plate" style="background:${r.veg ? '#e9efe2' : '#f1e8dc'}"><div class="dish"><div class="food" style="background:${r.food}"></div></div>
+        <img src="/demo/img/supper-${r.id}.jpg" alt="${r.name}" loading="lazy" onerror="this.remove()"></div>
       <div class="body">
         <div class="tags">${r.veg ? '<span class="tag">Vegetarian</span>' : ''}<span class="tag time">${r.mins >= 60 ? Math.round(r.mins / 60 * 10) / 10 + ' hr' : r.mins + ' min'}</span></div>
         <h3>${r.name}</h3>

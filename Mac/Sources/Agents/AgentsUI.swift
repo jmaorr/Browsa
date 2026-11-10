@@ -93,7 +93,7 @@ enum AgentCursor {
 
     /// `pointer.arrow.ipad`, drawn once as a PNG for the page.
     @MainActor static let pointerImage: String = {
-        let config = NSImage.SymbolConfiguration(pointSize: 26, weight: .regular)
+        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
             .applying(.init(paletteColors: [NSColor(AgentLive.color)]))
         guard let symbol = NSImage(systemSymbolName: "pointer.arrow.ipad", accessibilityDescription: nil)?.withSymbolConfiguration(config)
         else { return "" }
@@ -121,7 +121,7 @@ enum AgentCursor {
       let c = document.getElementById('__browsa-agent-cursor');
       if (!c) {
         c = document.createElement('div'); c.id = '__browsa-agent-cursor';
-        c.innerHTML = '<img src="__POINTER__" width="26" alt="">';
+        c.innerHTML = '<img src="__POINTER__" width="14" alt="">';
         Object.assign(c.style, { position: 'fixed', zIndex: 2147483647, pointerEvents: 'none', left: (innerWidth - 40) + 'px', top: '40px',
           transition: 'left .32s cubic-bezier(.3,.7,.2,1), top .32s cubic-bezier(.3,.7,.2,1), opacity .3s', filter: 'drop-shadow(0 1px 1.5px rgba(0,0,0,.35)) drop-shadow(0 0 1px white)' });
         root.appendChild(c);

@@ -84,6 +84,14 @@ final class AgentServer {
         if let origin = request.headers["origin"], !origin.hasPrefix("http://127.0.0.1"), !origin.hasPrefix("http://localhost") {
             return send(.init(status: 403, body: "Forbidden"), on: connection)
         }
+        // Supper's photos, from the app bundle.
+        if request.method == "GET", request.path.hasPrefix("/demo/img/") {
+            let name = (request.path as NSString).lastPathComponent
+            guard name.hasPrefix("supper-"), name.hasSuffix(".jpg"),
+                  let url = Bundle.main.url(forResource: (name as NSString).deletingPathExtension, withExtension: "jpg"),
+                  let data = try? Data(contentsOf: url) else { return send(.init(status: 404, body: "Not found"), on: connection) }
+            return send(.init(status: 200, contentType: "image/jpeg", data: data), on: connection)
+        }
         // Supper, the demo site agents can practise on. Public, read-only, and only on this Mac.
         if request.method == "GET", request.path == "/demo" || request.path == "/demo/",
            let url = Bundle.main.url(forResource: "supper", withExtension: "html"), let page = try? Data(contentsOf: url) {
