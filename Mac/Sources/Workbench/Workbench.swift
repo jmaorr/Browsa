@@ -100,7 +100,11 @@ final class Workbench {
 
     func setEnabled(_ id: String, _ on: Bool) {
         if on { disabledIDs.remove(id) } else { disabledIDs.insert(id) }
+        onEnabledChange?(id, on)
     }
+
+    /// Told when a tool is switched on or off, for tools that run in the background (Radar's scan).
+    @ObservationIgnored var onEnabledChange: (@MainActor (String, Bool) -> Void)?
 
     /// Registered and turned on.
     var activeTools: [Tool] { tools.filter { isEnabled($0.id) } }

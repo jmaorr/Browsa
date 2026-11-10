@@ -226,7 +226,7 @@ enum WelcomeLevel: Int, CaseIterable {
     @discardableResult func complete(_ stop: WelcomeStop) -> WelcomeLevel? {
         guard !done.contains(stop) else { return nil }
         let before = level
-        withAnimation(.smooth(duration: 0.8)) { done.insert(stop) }
+        _ = withAnimation(.smooth(duration: 0.8)) { done.insert(stop) }
         UserDefaults.standard.set(done.map(\.rawValue), forKey: Self.key)
         return level != before ? level : nil
     }
@@ -471,8 +471,9 @@ private struct LevelBar: View {
         }
 
         private var label: some View {
-            (current ? Text("Level \(level.rawValue + 1) · ").foregroundStyle(.secondary).fontWeight(.regular) : Text(""))
-                + Text(level.name).foregroundStyle(reached ? .primary : .secondary)
+            let prefix = current ? Text("Level \(level.rawValue + 1) · ").foregroundStyle(.secondary).fontWeight(.regular) : Text("")
+            let name = Text(level.name).foregroundStyle(reached ? .primary : .secondary)
+            return Text("\(prefix)\(name)")
         }
     }
 }

@@ -28,6 +28,7 @@ let package = Package(
             resources: [
                 .copy("Resources/blocklist.json"),
                 .copy("Resources/autoconsent.js"),
+                .copy("Resources/autoconsent-frames.js"),
                 .copy("Resources/autoconsent-LICENSE.txt"),
                 .copy("Resources/Readability.js"),
                 .copy("Resources/Readability-LICENSE.txt"),
