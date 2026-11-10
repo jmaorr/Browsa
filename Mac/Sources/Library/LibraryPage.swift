@@ -2,17 +2,12 @@ import SwiftUI
 import AppKit
 import BrowserCore
 import Extensibility
+import BrowserEngine
 
 /// The Library: everything you can add to Browsa, in one native page in a tab. Browsa's own
 /// plugins (Notes, Agents, Radar, and the privacy features), the extensions you've added, verified
 /// extensions to add in one click, and packs that switch on a set at once. Search first, toggles
 /// everywhere, and the whole page works from the keyboard, like Raycast's Store.
-/// A quiet cross-fade between the list and a plugin's page.
-@MainActor
-enum LibraryMotion {
-    static var page: Animation { Motion.reduced ? .linear(duration: 0.01) : .easeInOut(duration: 0.2) }
-}
-
 enum LibraryPage {
     static let url = URL(string: "browsa://library")!
     static func isLibrary(_ url: URL?) -> Bool { url == LibraryPage.url }
@@ -64,6 +59,8 @@ struct PluginPack: Identifiable {
     let title: String
     let blurb: String
     let plugins: [String]
+    /// For the pack's page.
+    var about = ""
 }
 
 /// An extension we've tested, from `verified-extensions.json`.
@@ -89,27 +86,27 @@ struct VerifiedExtension: Identifiable, Decodable, Hashable {
 enum LibraryCatalog {
     static let plugins: [PluginInfo] = [
         .init(id: "notes", title: "Notes", symbol: "text.bubble.fill", tint: Color(red: 0.96, green: 0.71, blue: 0.04),
-              blurb: "Leave notes on any page, pinned to what they're about. Your agents read them and reply.",
+              blurb: "Notes on any page, for you and your agents.",
               surfaces: ["Panel", "⌘K", "Agent tools"],
               about: "Highlight text or pick anything on a page to leave a note. Notes stay with the page, show as pins while the panel is open, and connected agents can read, reply to and resolve them."),
         .init(id: "agents", title: "Agents", symbol: AgentIdentity.symbol, tint: .orange,
-              blurb: "Let Claude Code, Codex or Cursor use Browsa, in an Agent space you can watch.",
+              blurb: "Let Claude Code, Codex or Cursor use Browsa.",
               surfaces: ["Panel", "⌘K", "MCP"],
               about: "Turns on Browsa's MCP server on this Mac. Agents open pages in their own Agent space, ask before touching your tabs, and stop when you press Stop."),
         .init(id: "radar", title: "Radar", symbol: "dot.radiowaves.left.and.right", tint: .green,
-              blurb: "Your dev servers, one click away, and a page that waits when one stops.",
+              blurb: "Your local dev servers, one click away.",
               surfaces: ["Sidebar", "Panel", "⌘K"],
               about: "Finds the dev servers running on this Mac, names them by project and branch, and reloads a tab by itself when its server comes back."),
         .init(id: "privacy-blocking", title: "Ad & Tracker Blocker", symbol: "hand.raised.fill", tint: .blue,
-              blurb: "Blocks ads and trackers on every site, with your own exceptions.",
+              blurb: "Blocks ads and trackers on every site.",
               surfaces: ["Every page"], kind: .privacy,
               about: "Uses well-known filter lists, updated in the background. Turn it off for a single site from the site menu in the address bar."),
         .init(id: "privacy-cookies", title: "Cookie Banner Decliner", symbol: "checkmark.shield.fill", tint: .indigo,
-              blurb: "Says no to cookie banners for you, so they close themselves.",
+              blurb: "Says no to cookie banners for you.",
               surfaces: ["Every page"], kind: .privacy,
               about: "Uses DuckDuckGo's open-source Autoconsent to pick the most private choice on cookie banners and dismiss them."),
         .init(id: "privacy-links", title: "Clean Links", symbol: "link", tint: .teal,
-              blurb: "Strips tracking bits (utm_, fbclid and friends) from links you open.",
+              blurb: "Removes tracking from links you open.",
               surfaces: ["Every link"], kind: .privacy,
               about: "Removes known tracking parameters before a page loads, so sites can't follow you from link to link."),
     ]
@@ -117,16 +114,19 @@ enum LibraryCatalog {
     static var toolPlugins: [PluginInfo] { plugins.filter { $0.kind == .tool } }
     static var privacyPlugins: [PluginInfo] { plugins.filter { $0.kind == .privacy } }
     static func plugin(_ id: String) -> PluginInfo? { plugins.first { $0.id == id } }
+    static func pack(_ id: String) -> PluginPack? { packs.first { $0.id == id } }
 
     static let agentPack = PluginPack(
-        id: "agent-pack", title: "Browsa Agent Pack",
-        blurb: "Everything for building with an AI agent beside you: Radar finds your dev servers, Notes holds your feedback, and Agents lets Claude Code work through it while you watch.",
-        plugins: ["radar", "notes", "agents"])
+        id: "agent-pack", title: "Agent Pack",
+        blurb: "Build with an AI agent beside you.",
+        plugins: ["radar", "notes", "agents"],
+        about: "Radar finds your dev servers, Notes holds your feedback on pages, and Agents lets Claude Code, Codex or Cursor work through Browsa while you watch.")
 
     static let privacyPack = PluginPack(
-        id: "privacy-pack", title: "Browsa Privacy Pack",
-        blurb: "On from the start: ads and trackers blocked, cookie banners declined for you, and tracking stripped from links.",
-        plugins: ["privacy-blocking", "privacy-cookies", "privacy-links"])
+        id: "privacy-pack", title: "Privacy Pack",
+        blurb: "Fewer ads, trackers and cookie banners.",
+        plugins: ["privacy-blocking", "privacy-cookies", "privacy-links"],
+        about: "On from the start. Ads and trackers are blocked, cookie banners are declined for you, and tracking is stripped from links before pages load.")
 
     static let packs = [agentPack, privacyPack]
 
@@ -176,6 +176,11 @@ enum LibraryActions {
         for id in pack.plugins { set(id, on: on, in: browser, announce: false) }
     }
 
+    static func togglePack(_ pack: PluginPack, on: Bool, in browser: Browser) {
+        setPack(pack, on: on, in: browser)
+        browser.showToast(on ? "Turned on the \(pack.title)" : "Turned off the \(pack.title)")
+    }
+
     static func isPackOn(_ pack: PluginPack, in browser: Browser) -> Bool {
         pack.plugins.allSatisfy { isOn($0, in: browser) }
     }
@@ -194,7 +199,10 @@ enum LibraryItem: Hashable {
 struct LibraryView: View {
     @Environment(Browser.self) private var browser
     @State private var search = ""
+    /// The page open over the list: a plugin's or a pack's id.
     @State private var detail: String?
+    /// The pack a plugin's page was opened from, so Back returns there.
+    @State private var parentPack: String?
     @State private var focused: LibraryItem?
     @State private var addingChrome = false
     @State private var preview: Library.ExtensionPreview?
@@ -213,9 +221,11 @@ struct LibraryView: View {
     private var tools: [PluginInfo] { LibraryCatalog.toolPlugins.filter { matches($0.title, $0.blurb) } }
     private var privacy: [PluginInfo] { LibraryCatalog.privacyPlugins.filter { matches($0.title, $0.blurb, "privacy") } }
     private var installed: [InstalledExtension] { library.extensionCatalog.items.filter { matches($0.name, $0.source.label) } }
-    private var verified: [VerifiedExtension] {
-        let have = library.extensionCatalog.items.map { $0.source.key.lowercased() }
-        return LibraryCatalog.verified.filter { v in !have.contains { $0.contains(v.id) } && matches(v.name, v.blurb, v.category) }
+    private var verified: [VerifiedExtension] { LibraryCatalog.verified.filter { matches($0.name, $0.blurb, $0.category) } }
+    /// Safari extensions running from apps on this Mac; they aren't in the catalog.
+    private var safari: [EngineExtension] {
+        let catalogued = Set(library.extensionCatalog.items.map(\.id))
+        return library.useSafariExtensions ? library.extensions.filter { !catalogued.contains($0.id) && matches($0.name) } : []
     }
 
     /// Everything the arrow keys move through, in reading order.
@@ -225,12 +235,16 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        ZStack {
-            if let detail, let plugin = LibraryCatalog.plugin(detail) {
-                PluginDetail(plugin: plugin) { close() }
-                    .transition(.opacity)
+        Group {
+            if let detail, let pack = LibraryCatalog.pack(detail) {
+                PackDetail(pack: pack) { id in parentPack = pack.id; self.detail = id } back: { close() }
+            } else if let detail, let plugin = LibraryCatalog.plugin(detail) {
+                PluginDetail(plugin: plugin, backTitle: parentPack.flatMap { LibraryCatalog.pack($0)?.title } ?? "Library") {
+                    self.detail = parentPack
+                    parentPack = nil
+                }
             } else {
-                list.transition(.opacity)
+                list
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
@@ -246,7 +260,8 @@ struct LibraryView: View {
     }
 
     private func close() {
-        withAnimation(LibraryMotion.page) { detail = nil }
+        detail = nil
+        parentPack = nil
     }
 
     private var list: some View {
@@ -255,10 +270,10 @@ struct LibraryView: View {
                 VStack(alignment: .leading, spacing: 28) {
                     header
                     ForEach(packs) { pack in
-                        PackCard(pack: pack, isFocused: focused == .pack(pack.id)).id(LibraryItem.pack(pack.id))
+                        PackCard(pack: pack, isFocused: focused == .pack(pack.id)) { detail = pack.id }.id(LibraryItem.pack(pack.id))
                     }
-                    pluginGrid(title: "Browsa Plugins", detail: "Made for Browsa. Turn off what you don't use.", plugins: tools)
-                    pluginGrid(title: "Privacy", detail: "Built in and on from the start. Here's what each one does for you.", plugins: privacy)
+                    pluginGrid(title: "Browsa Plugins", detail: "Made for Browsa.", plugins: tools)
+                    pluginGrid(title: "Privacy", detail: "Built in, and on from the start.", plugins: privacy)
                     extensionsSection
                 }
                 .frame(maxWidth: 860, alignment: .leading)
@@ -331,8 +346,7 @@ struct LibraryView: View {
         case .pack(let id):
             guard let pack = LibraryCatalog.packs.first(where: { $0.id == id }) else { return .ignored }
             let on = LibraryActions.isPackOn(pack, in: browser)
-            withAnimation(Motion.snappy) { LibraryActions.setPack(pack, on: !on, in: browser) }
-            browser.showToast(on ? "Turned off the \(pack.title)" : "Turned on the \(pack.title)")
+            LibraryActions.togglePack(pack, on: !on, in: browser)
         case .plugin(let id):
             withAnimation(Motion.snappy) { LibraryActions.set(id, on: !LibraryActions.isOn(id, in: browser), in: browser) }
         case .installed(let id):
@@ -345,9 +359,11 @@ struct LibraryView: View {
     }
 
     private func openFocused() -> KeyPress.Result {
-        if case .plugin(let id) = focused {
-            withAnimation(LibraryMotion.page) { detail = id }
+        switch focused {
+        case .plugin(let id), .pack(let id):
+            detail = id
             return .handled
+        default: break
         }
         return toggleFocused()
     }
@@ -356,7 +372,7 @@ struct LibraryView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text("Library").font(.system(size: 30, weight: .bold))
                 Text("Add to Browsa: our own plugins, and extensions from the Chrome Web Store.")
                     .font(.system(size: 14)).foregroundStyle(.secondary)
@@ -384,7 +400,7 @@ struct LibraryView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 14)], spacing: 14) {
                     ForEach(plugins) { p in
                         PluginCard(plugin: p, isFocused: focused == .plugin(p.id)) {
-                            withAnimation(LibraryMotion.page) { self.detail = p.id }
+                            self.detail = p.id
                         }
                         .id(LibraryItem.plugin(p.id))
                     }
@@ -396,7 +412,7 @@ struct LibraryView: View {
     private var extensionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .bottom) {
-                SectionTitle(title: "Extensions", detail: "Chrome extensions, running on Browsa's WebKit engine.")
+                SectionTitle(title: "Extensions", detail: "From the Chrome Web Store.")
                 Spacer()
                 Button { problem = nil; addingChrome = true } label: { Label("Add Chrome Extension", systemImage: "plus") }
                     .buttonStyle(.glass).controlSize(.large).buttonBorderShape(.capsule)
@@ -404,8 +420,7 @@ struct LibraryView: View {
             if let problem, !addingChrome { Text(problem).font(.caption).foregroundStyle(.red) }
             if !verified.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("Verified to work in Browsa", systemImage: "checkmark.seal.fill")
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(.green)
+                    Text("Verified to work in Browsa").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14)], spacing: 14) {
                         ForEach(verified) { v in
                             VerifiedCard(ext: v, isFocused: focused == .verified(v.id)) { fetch(v.storeURL.absoluteString) }
@@ -417,7 +432,7 @@ struct LibraryView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Added").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                 VStack(spacing: 0) {
-                    if installed.isEmpty {
+                    if installed.isEmpty && safari.isEmpty {
                         Text(search.isEmpty ? "Nothing added yet." : "No added extensions match.")
                             .font(.callout).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -426,6 +441,10 @@ struct LibraryView: View {
                     ForEach(Array(installed.enumerated()), id: \.element.id) { i, item in
                         if i > 0 { Divider().padding(.leading, 58) }
                         ExtensionRow(item: item, isFocused: focused == .installed(item.id)).id(LibraryItem.installed(item.id))
+                    }
+                    ForEach(Array(safari.enumerated()), id: \.element.id) { i, ext in
+                        if i > 0 || !installed.isEmpty { Divider().padding(.leading, 58) }
+                        SafariExtensionRow(ext: ext)
                     }
                 }
                 .background(.primary.opacity(0.035), in: .rect(cornerRadius: 14, style: .continuous))
@@ -494,9 +513,9 @@ private struct SectionTitle: View {
     let detail: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 1) {
             Text(title).font(.system(size: 17, weight: .semibold))
-            Text(detail).font(.system(size: 12)).foregroundStyle(.secondary)
+            Text(detail).font(.system(size: 13)).foregroundStyle(.secondary)
         }
     }
 }
@@ -538,12 +557,12 @@ struct PluginIcon: View {
             ZStack {
                 ForEach(Array(blobs.enumerated()), id: \.offset) { i, blob in
                     Circle().fill(blob.0)
-                        .frame(width: size * (i == 0 ? 0.75 : 0.55), height: size * (i == 0 ? 0.75 : 0.55))
-                        .offset(x: blob.1.x * size, y: blob.1.y * size)
+                        .frame(width: size * (i == 0 ? 1.1 : 0.85), height: size * (i == 0 ? 1.1 : 0.85))
+                        .offset(x: blob.1.x * size * 0.8, y: blob.1.y * size * 0.8)
                 }
             }
-            .blur(radius: size * 0.2)
-            .opacity(scheme == .dark ? 0.55 : 0.45)
+            .blur(radius: size * 0.3)
+            .opacity(scheme == .dark ? 0.32 : 0.24)
             Image(systemName: symbol)
                 .font(.system(size: size * 0.42, weight: .medium))
                 .foregroundStyle(.primary.opacity(0.85))
@@ -579,46 +598,52 @@ private struct PackCard: View {
     @Environment(Browser.self) private var browser
     let pack: PluginPack
     let isFocused: Bool
+    let open: () -> Void
+    @State private var hovering = false
     private var on: Bool { LibraryActions.isPackOn(pack, in: browser) }
 
     var body: some View {
         HStack(alignment: .center, spacing: 22) {
-            // The pack's plugins, fanned like a hand of cards.
-            ZStack {
-                ForEach(Array(pack.plugins.compactMap { LibraryCatalog.plugin($0) }.enumerated()), id: \.element.id) { i, p in
-                    PluginIcon(plugin: p, size: 54)
-                        .rotationEffect(.degrees(Double(i - 1) * 9))
-                        .offset(x: CGFloat(i - 1) * 30, y: i == 1 ? -4 : 2)
-                        .zIndex(i == 1 ? 1 : 0)
-                }
-            }
-            .frame(width: 130, height: 84)
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Text(pack.title).font(.system(size: 19, weight: .semibold))
-                    Text("Pack").font(.system(size: 10, weight: .semibold)).padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(.primary.opacity(0.08), in: .capsule)
-                }
-                Text(pack.blurb).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            PackFan(pack: pack, size: 50)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(pack.title).font(.system(size: 18, weight: .semibold))
+                Text(pack.blurb).font(.system(size: 13)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            Toggle("", isOn: Binding(get: { on }, set: { set($0) }))
+            Toggle("", isOn: Binding(get: { on }, set: { LibraryActions.togglePack(pack, on: $0, in: browser) }))
                 .toggleStyle(.switch).labelsHidden()
         }
-        .padding(22)
+        .padding(20)
         .background { ZStack { Color(nsColor: .textBackgroundColor); PackGlow(pack: pack) } }
         .clipShape(.rect(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.primary.opacity(0.08)))
+        .shadow(color: .black.opacity(hovering ? 0.08 : 0.03), radius: hovering ? 8 : 3, y: 1)
+        .contentShape(.rect)
+        .onTapGesture(perform: open)
+        .onHover { hovering = $0 }
         .modifier(FocusRing(on: isFocused, radius: 20))
-    }
-
-    private func set(_ on: Bool) {
-        withAnimation(Motion.snappy) { LibraryActions.setPack(pack, on: on, in: browser) }
-        browser.showToast(on ? "Turned on the \(pack.title)" : "Turned off the \(pack.title)")
     }
 }
 
-/// The pack card's base: the same soft colour at the edges as its plugins' icons, a little larger.
+/// A pack's plugins, fanned like a hand of cards.
+private struct PackFan: View {
+    let pack: PluginPack
+    var size: CGFloat = 50
+
+    var body: some View {
+        ZStack {
+            ForEach(Array(pack.plugins.compactMap { LibraryCatalog.plugin($0) }.enumerated()), id: \.element.id) { i, p in
+                PluginIcon(plugin: p, size: size)
+                    .rotationEffect(.degrees(Double(i - 1) * 9))
+                    .offset(x: CGFloat(i - 1) * size * 0.55, y: i == 1 ? -size * 0.07 : size * 0.04)
+                    .zIndex(i == 1 ? 1 : 0)
+            }
+        }
+        .frame(width: size * 2.4, height: size * 1.5)
+    }
+}
+
+/// The pack card's base: its plugins' colours, spread softly across the whole card.
 private struct PackGlow: View {
     let pack: PluginPack
     var body: some View {
@@ -626,12 +651,13 @@ private struct PackGlow: View {
             let tints = pack.plugins.compactMap { LibraryCatalog.plugin($0)?.tint }
             ZStack {
                 ForEach(Array(tints.enumerated()), id: \.offset) { i, t in
-                    Circle().fill(t).frame(width: 160, height: 160)
-                        .position(x: CGFloat(i) * 70 + 20, y: i.isMultiple(of: 2) ? 0 : g.size.height)
+                    Ellipse().fill(t)
+                        .frame(width: g.size.width * 0.55, height: g.size.height * 1.4)
+                        .position(x: g.size.width * (0.1 + CGFloat(i) * 0.4), y: g.size.height * (i.isMultiple(of: 2) ? 0.2 : 0.8))
                 }
             }
-            .blur(radius: 50)
-            .opacity(0.22)
+            .blur(radius: 60)
+            .opacity(0.13)
         }
     }
 }
@@ -645,49 +671,48 @@ private struct PluginCard: View {
     private var on: Bool { LibraryActions.isOn(plugin.id, in: browser) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 PluginIcon(plugin: plugin)
                 Spacer()
-                Toggle("", isOn: Binding(get: { on }, set: { v in withAnimation(Motion.snappy) { LibraryActions.set(plugin.id, on: v, in: browser) } }))
+                Toggle("", isOn: Binding(get: { on }, set: { LibraryActions.set(plugin.id, on: $0, in: browser) }))
                     .toggleStyle(.switch).labelsHidden().controlSize(.small)
             }
-            Text(plugin.title).font(.system(size: 15, weight: .semibold))
-            Text(plugin.blurb).font(.system(size: 12)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            HStack(spacing: 5) {
-                ForEach(plugin.surfaces, id: \.self) { s in
-                    Text(s).font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(.primary.opacity(0.06), in: .capsule)
-                }
-                Spacer()
-                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
-                    .opacity(hovering || isFocused ? 1 : 0)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(plugin.title).font(.system(size: 15, weight: .semibold))
+                Text(plugin.blurb).font(.system(size: 13)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.top, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(16)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.primary.opacity(0.08)))
         .shadow(color: .black.opacity(hovering ? 0.08 : 0.04), radius: hovering ? 8 : 3, y: 1)
-        .opacity(on ? 1 : 0.72)
         .contentShape(.rect)
         .onTapGesture(perform: open)
-        .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
+        .onHover { hovering = $0 }
         .modifier(FocusRing(on: isFocused, radius: 16))
     }
 }
 
 private struct VerifiedCard: View {
+    @Environment(Browser.self) private var browser
     let ext: VerifiedExtension
     let isFocused: Bool
     let add: () -> Void
 
+    private var library: Library { browser.library }
+    /// Added from the Chrome Web Store: the version we tested.
+    private var added: Bool { library.extensionCatalog.items.contains { $0.source.key.lowercased().contains(ext.id) } }
+    /// Running only as the Safari extension from its app, which can't reach the app from Browsa.
+    private var safariOnly: Bool {
+        !added && library.useSafariExtensions && library.extensions.contains { $0.name.localizedCaseInsensitiveContains(ext.name) }
+    }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             if let icon = ext.icon {
                 Image(nsImage: icon).resizable().interpolation(.high).frame(width: 40, height: 40)
             } else {
@@ -696,22 +721,41 @@ private struct VerifiedCard: View {
                     .frame(width: 40, height: 40)
                     .background(ext.color.gradient, in: .rect(cornerRadius: 10, style: .continuous))
             }
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(ext.name).font(.system(size: 14, weight: .semibold))
-                    Text(ext.category).font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
-                        .padding(.horizontal, 6).padding(.vertical, 1).background(.primary.opacity(0.06), in: .capsule)
-                }
-                Text(ext.blurb).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(ext.name).font(.system(size: 15, weight: .semibold))
+                Text(safariOnly ? "Using the Safari version, which can't unlock with the app." : ext.blurb)
+                    .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 4)
-            Button("Add", action: add)
-                .buttonStyle(.glassProminent).controlSize(.large).buttonBorderShape(.capsule)
+            if added {
+                Label("Added", systemImage: "checkmark").font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
+            } else {
+                Button(safariOnly ? "Use Chrome Version" : "Add", action: add)
+                    .buttonStyle(.glassProminent).controlSize(.large).buttonBorderShape(.capsule)
+            }
         }
         .padding(14)
         .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.primary.opacity(0.08)))
         .modifier(FocusRing(on: isFocused, radius: 14))
+    }
+}
+
+/// A Safari extension from an app on this Mac. It comes and goes with the app and the
+/// Safari setting, so there's nothing to turn off here.
+private struct SafariExtensionRow: View {
+    let ext: EngineExtension
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ExtensionIcon(image: ext.icon.map { NSImage(cgImage: $0, size: .zero) }, size: 32)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(ext.name).font(.system(size: 13, weight: .medium))
+                Text("Safari extension from its app · \(ext.version)").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
     }
 }
 
@@ -726,11 +770,11 @@ private struct ExtensionRow: View {
         HStack(spacing: 12) {
             let icon = library.extensions.first { $0.id == item.id }?.icon
             ExtensionIcon(image: icon.map { NSImage(cgImage: $0, size: .zero) }, size: 32)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
                     Text(item.name).font(.system(size: 13, weight: .medium))
                     if isVerified {
-                        Image(systemName: "checkmark.seal.fill").font(.system(size: 11)).foregroundStyle(.green)
+                        Image(systemName: "checkmark.seal.fill").font(.system(size: 11)).foregroundStyle(.secondary)
                             .help("Verified to work in Browsa")
                     }
                 }
@@ -836,6 +880,7 @@ private struct AddChromeExtensionSheet: View {
 private struct PluginDetail: View {
     @Environment(Browser.self) private var browser
     let plugin: PluginInfo
+    var backTitle = "Library"
     let back: () -> Void
     private var workbench: Workbench { browser.library.workbench }
     private var on: Bool { LibraryActions.isOn(plugin.id, in: browser) }
@@ -843,17 +888,15 @@ private struct PluginDetail: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Button(action: back) { Label("Library", systemImage: "chevron.left") }
-                    .buttonStyle(.plain).foregroundStyle(.secondary)
-                    .keyboardShortcut(.escape, modifiers: [])
+                BackButton(title: backTitle, action: back)
                 HStack(alignment: .center, spacing: 18) {
                     PluginIcon(plugin: plugin, size: 72)
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(plugin.title).font(.system(size: 26, weight: .bold))
                         Text(plugin.blurb).font(.system(size: 14)).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Toggle("", isOn: Binding(get: { on }, set: { v in withAnimation(Motion.snappy) { LibraryActions.set(plugin.id, on: v, in: browser) } }))
+                    Toggle("", isOn: Binding(get: { on }, set: { LibraryActions.set(plugin.id, on: $0, in: browser) }))
                         .toggleStyle(.switch).labelsHidden()
                 }
                 Text(plugin.about).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
@@ -923,5 +966,87 @@ private struct PluginDetail: View {
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 10))
+    }
+}
+
+private struct BackButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) { Label(title, systemImage: "chevron.left") }
+            .buttonStyle(.plain).foregroundStyle(.secondary)
+            .keyboardShortcut(.escape, modifiers: [])
+    }
+}
+
+// MARK: - A pack's page
+
+/// A pack: what's in it, with a switch for the whole pack and one for each plugin.
+private struct PackDetail: View {
+    @Environment(Browser.self) private var browser
+    let pack: PluginPack
+    let open: (String) -> Void
+    let back: () -> Void
+    private var on: Bool { LibraryActions.isPackOn(pack, in: browser) }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                BackButton(title: "Library", action: back)
+                HStack(alignment: .center, spacing: 18) {
+                    PackFan(pack: pack, size: 62)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(pack.title).font(.system(size: 26, weight: .bold))
+                        Text(pack.blurb).font(.system(size: 14)).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: Binding(get: { on }, set: { LibraryActions.togglePack(pack, on: $0, in: browser) }))
+                        .toggleStyle(.switch).labelsHidden()
+                }
+                Text(pack.about).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("In this pack").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                    VStack(spacing: 0) {
+                        ForEach(Array(pack.plugins.compactMap { LibraryCatalog.plugin($0) }.enumerated()), id: \.element.id) { i, p in
+                            if i > 0 { Divider().padding(.leading, 62) }
+                            PackRow(plugin: p) { open(p.id) }
+                        }
+                    }
+                    .background(.primary.opacity(0.035), in: .rect(cornerRadius: 12, style: .continuous))
+                }
+            }
+            .frame(maxWidth: 720, alignment: .leading)
+            .padding(.horizontal, 40)
+            .padding(.vertical, 32)
+            .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+private struct PackRow: View {
+    @Environment(Browser.self) private var browser
+    let plugin: PluginInfo
+    let open: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            PluginIcon(plugin: plugin, size: 36)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(plugin.title).font(.system(size: 13, weight: .medium))
+                Text(plugin.blurb).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
+                .opacity(hovering ? 1 : 0)
+            Toggle("", isOn: Binding(get: { LibraryActions.isOn(plugin.id, in: browser) },
+                                     set: { LibraryActions.set(plugin.id, on: $0, in: browser) }))
+                .toggleStyle(.switch).labelsHidden().controlSize(.small)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .contentShape(.rect)
+        .onTapGesture(perform: open)
+        .onHover { hovering = $0 }
     }
 }
