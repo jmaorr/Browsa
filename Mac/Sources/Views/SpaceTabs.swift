@@ -1,68 +1,198 @@
 import SwiftUI
 import BrowserCore
 import BrowserEngine
-import UniformTypeIdentifiers
 
 /// The part of the sidebar that belongs to the current space. It slides out and the new space's
 /// tabs cascade in when the space changes, and all of it stays clipped inside the sidebar.
 struct SpaceTabs: View {
     @Environment(Browser.self) private var browser
+    @Environment(SidebarDragging.self) private var dragging
+    @State private var scroll = ScrollPosition()
+    @State private var listFrame: CGRect = .zero
+    @State private var offset: CGFloat = 0
+    @State private var maxOffset: CGFloat = 0
+
+    /// A row in a section: a tab, or the gap a dragged tab would land in.
+    private struct Slot: Identifiable {
+        let id: String
+        /// Nil for the gap.
+        let tab: BrowserTab?
+        /// The tab being dragged, folded to nothing where it was. Its row has to stay in the view
+        /// tree, or SwiftUI drops the drag gesture that's carrying it.
+        var collapsed = false
+        static let gap = Slot(id: "gap", tab: nil)
+        @MainActor static func tab(_ tab: BrowserTab, collapsed: Bool = false) -> Slot {
+            Slot(id: tab.id.uuidString, tab: tab, collapsed: collapsed)
+        }
+    }
+
+    /// The section's tabs with a gap where the dragged one would land, and the dragged one folded
+    /// away at its old place.
+    private func slots(_ tabs: [BrowserTab], pinned: Bool, gapAllowed: Bool = true) -> [Slot] {
+        var slots = tabs.filter { !dragging.isLifted($0.id) }.map { Slot.tab($0) }
+        if gapAllowed, let target = dragging.target, pinned ? target.isPinned : target.isToday {
+            slots.insert(.gap, at: min(target.index, slots.count))
+        }
+        if let i = tabs.firstIndex(where: { dragging.isLifted($0.id) }) {
+            slots.insert(.tab(tabs[i], collapsed: true), at: min(i, slots.count))
+        }
+        return slots
+    }
 
     var body: some View {
         let space = browser.currentSpace
         let forward = browser.lastSpaceSwitch?.forward ?? true
+        // Dragging with nothing else pinned: a zone to drop on stands in for the Pinned section.
+        let pinZone = dragging.lift != nil && !space.isPrivate && !space.pinned.contains { !dragging.isLifted($0.id) }
+        let pinned = slots(space.pinned, pinned: true, gapAllowed: !pinZone)
+        let today = slots(space.listedToday, pinned: false)
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 2) {
-                // Spaces are named by their icon in the switcher below, so only a private space gets a
-                // header, for its Close All. Otherwise a slim strip at the top takes drops to pin.
+                // Spaces are named by their icon in the switcher below, so only a private space gets a header.
                 if space.isPrivate {
                     SpaceHeader(space: space)
                         .padding(.bottom, 4)
-                        .dropDestination(for: String.self) { items, _ in return drop(items, before: nil, pinned: true) }
                 } else {
                     Color.clear.frame(height: 6)
-                        .contentShape(.rect)
-                        .dropDestination(for: String.self) { items, _ in return drop(items, before: nil, pinned: true) }
                 }
 
-                ForEach(Array(space.pinned.enumerated()), id: \.element.id) { i, tab in
-                    TabRow(tab: tab, selected: tab.id == browser.selectedTabID(in: space))
+                // Dragging with nothing pinned yet: somewhere to pin, and what pinning means.
+                if pinZone {
+                    PinDropZone(targeted: dragging.target?.isPinned == true,
+                                landing: dragging.settling && dragging.target?.isPinned == true)
+                        // As tall as a pinned row and the air under it, so nothing jumps when it lands.
+                        .frame(height: 44)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
+                            dragging.pinZoneFrame = $0
+                        }
+                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+                }
+
+                ForEach(Array(pinned.enumerated()), id: \.element.id) { i, slot in
+                    row(slot, in: space)
                         .spaceCascade(index: i, spaceSwitch: browser.lastSpaceSwitch)
                 }
 
                 // A little air between pinned and Today, rather than a rule.
-                if !space.pinned.isEmpty {
+                if pinned.contains(where: { !$0.collapsed }) {
                     Color.clear.frame(height: 8)
                 }
 
                 NewTabRow(space: space)
-                    .dropDestination(for: String.self) { items, _ in return drop(items, before: space.listedToday.first, pinned: false) }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
+                        dragging.newTabFrame = $0
+                    }
 
-                ForEach(Array(space.listedToday.enumerated()), id: \.element.id) { i, tab in
-                    TabRow(tab: tab, selected: tab.id == browser.selectedTabID(in: space))
-                        .spaceCascade(index: i + space.pinned.count + 1, spaceSwitch: browser.lastSpaceSwitch)
+                ForEach(Array(today.enumerated()), id: \.element.id) { i, slot in
+                    row(slot, in: space)
+                        .spaceCascade(index: i + pinned.count + 1, spaceSwitch: browser.lastSpaceSwitch)
                 }
 
-                // Room to drop below the last tab.
                 Color.clear.frame(height: 40)
-                    .contentShape(.rect)
-                    .dropDestination(for: String.self) { items, _ in return drop(items, before: nil, pinned: false) }
             }
             .padding(.horizontal, 10)
             .id(space.id)
             .transition(.spaceListChange(forward: forward))
         }
         .scrollIndicators(.never)
+        .scrollPosition($scroll)
+        .onScrollGeometryChange(for: [CGFloat].self) { g in
+            [g.contentOffset.y, max(0, g.contentSize.height - g.containerSize.height)]
+        } action: { _, v in offset = v[0]; maxOffset = v[1] }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: { listFrame = $0 }
+        // Dragging near the top or bottom edge scrolls the list, so any slot can be reached.
+        .task(id: dragging.lift != nil) {
+            guard dragging.lift != nil else { return }
+            while !Task.isCancelled {
+                let speed = dragging.autoscrollSpeed(in: listFrame)
+                if speed != 0, maxOffset > 0 {
+                    let next = min(max(offset + speed, 0), maxOffset)
+                    if next != offset {
+                        scroll.scrollTo(y: next)
+                        dragging.retarget?()
+                    }
+                }
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+        }
         .frame(maxHeight: .infinity)
         // Tabs sliding between spaces never spill out of the sidebar.
         .clipped()
     }
 
-    private func drop(_ items: [String], before target: BrowserTab?, pinned: Bool) -> Bool {
-        guard let item = items.first, case .tab(let id)? = SidebarDrag(item),
-              let tab = browser.spaces.flatMap(\.allTabs).first(where: { $0.id == id }) else { return false }
-        withAnimation(Motion.snappy) { browser.move(tab, before: target, pinned: pinned) }
-        return true
+    @ViewBuilder private func row(_ slot: Slot, in space: Space) -> some View {
+        if let tab = slot.tab {
+            DraggableTabRow(tab: tab, space: space, collapsed: slot.collapsed)
+        } else {
+            SunkenSlot(cornerRadius: 9, active: true)
+                .frame(height: 34)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
+                    dragging.gapFrame = $0
+                }
+                .transition(.opacity)
+        }
+    }
+}
+
+/// A tab row that can be picked up and dragged around the sidebar.
+private struct DraggableTabRow: View {
+    @Environment(Browser.self) private var browser
+    @Environment(SidebarDragging.self) private var dragging
+    let tab: BrowserTab
+    let space: Space
+    /// Being dragged: folded to nothing, but kept so its gesture lives on.
+    let collapsed: Bool
+    @GestureState private var held = false
+
+    var body: some View {
+        TabRow(tab: tab, selected: tab.id == browser.selectedTabID(in: space))
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
+                if !collapsed { dragging.rowFrames[tab.id] = $0 }
+            }
+            .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .named(SidebarDragging.coordinateSpace))
+                .updating($held) { _, held, _ in held = true }
+                .onChanged { dragging.changed(tab, $0, in: space, browser: browser) }
+                .onEnded { _ in dragging.ended(tab, in: space, browser: browser) })
+            // A drag the system cancels (no onEnded) still puts the tab down.
+            .onChange(of: held) { _, now in
+                if !now, dragging.isLifted(tab.id) { dragging.ended(tab, in: space, browser: browser) }
+            }
+            .frame(height: collapsed ? 0 : nil, alignment: .top)
+            .opacity(collapsed ? 0 : 1)
+            .clipped()
+            // Cancels the stack's spacing, so the folded row takes no room at all.
+            .padding(.bottom, collapsed ? -2 : 0)
+    }
+}
+
+/// Shown while a tab is dragged and nothing is pinned yet: drop above New Tab to pin.
+private struct PinDropZone: View {
+    var targeted: Bool
+    /// The tab is settling into the zone: the words step aside for it.
+    var landing = false
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "pin.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(targeted ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+                .frame(width: 24, height: 24)
+                .background(targeted ? AnyShapeStyle(Color.accentColor.opacity(0.14)) : AnyShapeStyle(.primary.opacity(0.06)), in: .circle)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Drop here to pin")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Pinned tabs are never cleared.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .opacity(landing ? 0 : 1)
+        .padding(.horizontal, 8)
+        .frame(maxHeight: .infinity)
+        .background { SunkenSlot(cornerRadius: 10, active: targeted) }
+        .animation(Motion.snappy, value: targeted)
     }
 }
 
@@ -140,6 +270,8 @@ struct TabRow: View {
     @Environment(Browser.self) private var browser
     let tab: BrowserTab
     let selected: Bool
+    /// Drawn under the pointer while dragged.
+    var isLifted = false
     @State private var hovering = false
 
     var body: some View {
@@ -175,7 +307,7 @@ struct TabRow: View {
                 .help(notes == 1 ? "1 open note. Click to show it." : "\(notes) open notes. Click to show them.")
                 .transition(.scale.combined(with: .opacity))
             }
-            if hovering {
+            if hovering, !isLifted {
                 Button { withAnimation(Motion.snappy) { browser.close(tab) } } label: {
                     Image(systemName: tab.isPinned ? "minus" : "xmark")
                         .font(.system(size: 10, weight: .bold))
@@ -199,21 +331,6 @@ struct TabRow: View {
         .contentShape(.rect)
         .onTapGesture { browser.select(tab) }
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
-        .draggable(SidebarDrag.tab(tab.id).payload) {
-            HStack(spacing: 8) {
-                TabIcon(tab: tab, size: 16)
-                Text(tab.displayTitle).lineLimit(1)
-            }
-            .padding(8)
-            .frame(width: 220, alignment: .leading)
-            .background(.regularMaterial, in: .rect(cornerRadius: 9))
-        }
-        .dropDestination(for: String.self) { items, _ in
-            guard let item = items.first, case .tab(let id)? = SidebarDrag(item), id != tab.id,
-                  let moving = browser.spaces.flatMap(\.allTabs).first(where: { $0.id == id }) else { return false }
-            withAnimation(Motion.snappy) { browser.move(moving, before: tab, pinned: tab.isPinned) }
-            return true
-        }
         .contextMenu { TabMenu(tab: tab) }
         .help(tab.url?.absoluteString ?? tab.displayTitle)
     }
