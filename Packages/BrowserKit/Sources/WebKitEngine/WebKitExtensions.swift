@@ -141,7 +141,8 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             ?? ((manifest["sidebar_action"] as? [String: Any])?["default_panel"] as? String)
         let panelURL = panelPath.map { context.baseURL.appending(path: $0.hasPrefix("/") ? String($0.dropFirst()) : $0) }
         return EngineExtension(id: id, name: ext.displayName ?? id, version: ext.version ?? "",
-                               icon: icon, hasAction: context.action(for: nil) != nil, panelURL: panelURL)
+                               icon: icon, hasAction: context.action(for: nil) != nil, panelURL: panelURL,
+                               optionsURL: context.optionsPageURL)
     }
 
     #if DEBUG

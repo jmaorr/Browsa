@@ -38,6 +38,10 @@ final class Browser {
     /// Reader, when it's showing over the current tab.
     var reader: ReaderSession?
     var isArchivePresented = false
+    /// A page to show in the Library (a plugin, pack or extension id), from a browsa://library/… link.
+    var libraryTarget: String?
+    /// Bumped with each request, so asking for the same page twice still opens it.
+    var libraryRequest = 0
     /// When and which way the space last changed, so tab lists cascade in from that side.
     private(set) var lastSpaceSwitch: SpaceSwitch?
     /// The right-hand panel each space last showed. It pushes the page over, never covers it.
