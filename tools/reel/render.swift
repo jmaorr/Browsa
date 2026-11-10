@@ -254,6 +254,8 @@ let carve: SCNNode = {
 // A dark stage (REEL_STAGE=light for the old one): deep graphite with a soft lift in the middle,
 // so the window sits in a pool of light, and it meets the dark liquid metal reveal.
 scene.background.contents = {
+    // REEL_CLEAR=1: no stage at all, for laying the window over another layer (the icon intro).
+    if ProcessInfo.processInfo.environment["REEL_CLEAR"] == "1" { return NSColor.clear as Any }
     if ProcessInfo.processInfo.environment["REEL_STAGE"] == "light" {
         return NSColor(calibratedRed: 0.93, green: 0.92, blue: 0.94, alpha: 1) as Any
     }
@@ -335,7 +337,7 @@ func act1(_ t: Double) {
 
     drop(window, at: 0.0, length: 2.4, height: 220)
     frameGlow.position.z = window.position.z - 3
-    frameGlow.opacity = window.opacity * (0.12 + 0.3 * (1 - smooth(phase(t, 1.0, 3.5))))
+    frameGlow.opacity = window.opacity * (0.04 + 0.1 * (1 - smooth(phase(t, 1.0, 3.5))))
     drop(card, at: 0.5, length: 2.4, height: 90)
     drop(bottom, at: 1.0)
 

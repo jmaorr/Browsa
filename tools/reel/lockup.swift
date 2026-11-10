@@ -97,11 +97,16 @@ struct Card: View {
 struct Intro: View {
     let t: Double, seconds: Double, library: ShaderLibrary, icon: NSImage, size: CGSize
     var body: some View {
+        // REEL_INTRO_OUT: when the icon gives way (the window lands over it); the glow then sinks
+        // into the stage, which carries on under the window.
+        let outAt = Double(ProcessInfo.processInfo.environment["REEL_INTRO_OUT"] ?? "") ?? seconds - 0.9
         let inP = phase(t, 0.15, 1.1)
-        let outP = phase(t, seconds - 0.9, 0.9)
-        let glow = easeOut(phase(t, 0.0, 1.6)) * (1 - easeInOut(outP))
+        let outP = phase(t, outAt, 1.1)
+        let glow = easeOut(phase(t, 0.0, 1.6)) * (1 - 0.85 * easeInOut(phase(t, outAt + 0.3, 2.2)))
         ZStack {
-            Color(red: 0.03, green: 0.03, blue: 0.035)
+            RadialGradient(colors: [Color(red: 0.105, green: 0.108, blue: 0.125), Color(red: 0.045, green: 0.045, blue: 0.055),
+                                    Color(red: 0.02, green: 0.02, blue: 0.025)],
+                           center: .init(x: 0.5, y: 0.45), startRadius: 0, endRadius: size.width * 0.62)
             Rectangle()
                 .colorEffect(library.twinMetal(.float2(size), .float(2.4 + t * 0.5), .float3(0.06, 0.06, 0.07), .float(0.22)))
                 .mask(RadialGradient(colors: [.white, .white.opacity(0.35), .clear], center: .center,
