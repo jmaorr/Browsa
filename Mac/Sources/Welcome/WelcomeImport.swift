@@ -381,7 +381,6 @@ struct ImportSheet: View {
                                         .font(.system(size: 12.5))
                                     }
                                     .toggleStyle(.checkbox)
-                                    .padding(.leading, 26)
                                 }
                             }
                         } footer: {
