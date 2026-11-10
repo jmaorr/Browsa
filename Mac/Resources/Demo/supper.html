@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supper · Plan a dinner</title>
+<link rel="stylesheet" href="/demo/supper.css">
+</head>
+<body>
+<header>
+  <div class="logo">Supper<span>.</span></div>
+  <p>Plan a dinner. We'll bring the groceries.</p>
+</header>
+
+<div class="wrap">
+  <main>
+    <div class="planner" role="group" aria-label="Your dinner">
+      <label for="guests">Guests</label>
+      <input id="guests" type="number" min="1" max="20" value="2" aria-label="Number of guests">
+      <button id="diet-veg" class="chip" aria-pressed="false">Vegetarian only</button>
+      <div class="budget">Budget <b id="budget">$80</b></div>
+    </div>
+    <div class="grid" id="recipes"></div>
+  </main>
+
+  <aside id="menu" aria-label="Your menu">
+    <h2>Your menu</h2>
+    <div id="lines"><p class="empty">Add a few dishes to start your menu.</p></div>
+    <div id="ingredients-wrap" hidden>
+      <div class="section-title">Shopping list</div>
+      <div class="ingredients" id="ingredients"></div>
+    </div>
+    <div>
+      <div class="section-title">Delivery</div>
+      <div class="slots" id="slots"></div>
+    </div>
+    <div class="totals">
+      <div><span>Groceries</span><span id="subtotal">$0.00</span></div>
+      <div><span>Delivery</span><span id="delivery">$0.00</span></div>
+      <div class="grand"><span>Total</span><span id="total">$0.00</span></div>
+      <div id="budget-note"></div>
+    </div>
+    <button id="place-order" disabled>Place order</button>
+    <div id="order-note"></div>
+  </aside>
+</div>
+<footer>Supper is Browsa's demo site. Nothing here is ever ordered or charged.</footer>
+
+<script src="/demo/supper.js"></script>
+</body>
+</html>

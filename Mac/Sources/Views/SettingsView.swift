@@ -25,6 +25,7 @@ struct SettingsView: View {
 
 private struct GeneralSettings: View {
     @Environment(Library.self) private var browser
+    @Environment(Updates.self) private var updates
     @State private var isDefault = false
 
     var body: some View {
@@ -61,6 +62,14 @@ private struct GeneralSettings: View {
                 Picker("Open links from other apps in", selection: $browser.settings.externalLinksSpaceID) {
                     Text("Current space").tag(UUID?.none)
                     ForEach(browser.regularSpaces) { s in Text(s.name).tag(UUID?.some(s.id)) }
+                }
+            }
+            if Updates.isEnabled {
+                @Bindable var updates = updates
+                Section {
+                    Toggle("Check for updates automatically", isOn: $updates.checksAutomatically)
+                    Toggle("Download and install updates automatically", isOn: $updates.installsAutomatically)
+                        .disabled(!updates.checksAutomatically)
                 }
             }
         }

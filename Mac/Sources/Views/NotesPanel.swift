@@ -5,7 +5,7 @@ import BrowserEngine
 import Extensibility
 import WebKitEngine
 
-/// Yellow, like a sticky note: it reads as "a note" on any site and stays clear of agents' purple.
+/// Yellow, like a sticky note: it reads as "a note" on any site. Agents acting live share it.
 enum NoteColor {
     static let pin = Color(red: 0.96, green: 0.71, blue: 0.04)
     static let ink = Color(red: 0.11, green: 0.09, blue: 0)
@@ -99,6 +99,13 @@ struct MarginPanel: View {
     @State private var scope = Scope.page
     @State private var showResolved = false
     @State private var selected: UUID?
+    /// The last pick came from a pin on the page: its reply opens without taking the keyboard,
+    /// so you can keep clicking around the page.
+    @State private var pickedFromPage = false
+    /// A note picked on another page, to scroll to once that page has loaded.
+    @State private var revealAfterLoad: UUID?
+    /// The page the marks were last drawn on.
+    @State private var markedPage: (any EnginePage)?
 
     private var ui: NotesUI { .shared }
     private var url: URL? { browser.currentTab?.url }
@@ -114,8 +121,11 @@ struct MarginPanel: View {
     /// Open notes on this page, in order: pin 1, 2, 3.
     private var pinned: [MarginNote] { url.map { margin.notes(on: $0).filter { $0.status == .open } } ?? [] }
 
+    /// The panel stays alive while closed (it slides away), so marks follow whether Notes is showing.
+    private var isShowing: Bool { browser.panel == "notes" }
+
     private var markKey: String {
-        "\(url?.absoluteString ?? "")|\(browser.currentTab?.isLoading == true)|\(pinned.map(\.id.uuidString).joined())|\(selected?.uuidString ?? "")|\(ui.drafts[browser.id]?.selector ?? "")"
+        "\(isShowing)|\(url?.absoluteString ?? "")|\(browser.currentTab?.isLoading == true)|\(pinned.map(\.id.uuidString).joined())|\(selected?.uuidString ?? "")|\(ui.drafts[browser.id]?.selector ?? "")"
     }
 
     var body: some View {
@@ -137,6 +147,10 @@ struct MarginPanel: View {
             for id in new.ids.subtracting(old.ids) { ui.justResolved[id] = Date() }
         }
         .task(id: ui.picking.contains(browser.id)) { await pickLoop() }
+        .task(id: "\(isShowing)|\(url?.absoluteString ?? "")") { await pinClickLoop() }
+        .onChange(of: isShowing) { _, showing in
+            if !showing { ui.picking.remove(browser.id) }
+        }
         .onDisappear {
             ui.picking.remove(browser.id)
             Task { await clearPage() }
@@ -176,6 +190,7 @@ struct MarginPanel: View {
             PanelEmptyState(title: scope == .page ? "No Notes Here" : "No Notes on This Site", symbol: "text.bubble",
                             message: "Highlight text or pick something on the page with the comment tool, or right-click it and choose Add Note. Connected agents see your notes and reply here.")
         } else {
+            ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
                     if scope == .page {
@@ -198,17 +213,35 @@ struct MarginPanel: View {
                 Color.clear.contentShape(.rect)
                     .onTapGesture { withAnimation(Motion.snappy) { selected = nil } }
             }
+            // A note picked from its pin on the page scrolls into view here.
+            .onChange(of: selected) { _, id in
+                guard let id else { return }
+                withAnimation(Motion.snappy) { proxy.scrollTo(id, anchor: .center) }
+            }
+            }
         }
     }
 
     private func card(_ note: MarginNote) -> some View {
         let number = pinned.firstIndex { $0.id == note.id }.map { $0 + 1 }
         return NoteCard(note: note, number: scope == .page || note.page == url.map(MarginStore.pageKey) ? number : nil,
-                        isSelected: selected == note.id) {
-            withAnimation(Motion.snappy) { selected = selected == note.id ? nil : note.id }
-            if selected == note.id, let number { reveal(number) }
+                        isSelected: selected == note.id, focusesReply: !pickedFromPage, deselect: {
+            if selected == note.id { withAnimation(Motion.snappy) { selected = nil } }
+        }) {
+            pickedFromPage = false
+            // A note on another page of the site takes you there, then picks it once the page is up.
+            if note.page != url.map(MarginStore.pageKey), let target = URL(string: note.url) {
+                withAnimation(Motion.snappy) { selected = note.id }
+                revealAfterLoad = note.id
+                go(to: target, in: browser)
+                return
+            }
+            // Always picks, never toggles off: clicking empty panel space puts it down.
+            withAnimation(Motion.snappy) { selected = note.id }
+            if let number { reveal(number) }
         }
         .transition(.opacity.combined(with: .move(edge: .top)))
+        .id(note.id)
     }
 
     private struct Group { let page: String; let title: String; let url: URL?; let notes: [MarginNote] }
@@ -238,6 +271,16 @@ struct MarginPanel: View {
 
     private func drawMarks() async {
         guard let page = browser.currentController?.page, browser.currentTab?.isLoading != true else { return }
+        // Switching tabs leaves the old page's marks behind otherwise.
+        if let old = markedPage, old !== page {
+            _ = try? await old.evaluate(MarginMarks.script + "\nreturn window.__browsaMarks([]);", inWorld: "browsa.margin")
+        }
+        markedPage = page
+        guard isShowing else {
+            _ = try? await page.evaluate(MarginMarks.script + NotePicker.script + "\nwindow.__browsaPickOff(); return window.__browsaMarks([]);",
+                                         inWorld: "browsa.margin")
+            return
+        }
         var marks: [[String: Any]] = pinned.enumerated().map { i, n in
             var m: [String: Any] = ["n": i + 1, "selected": n.id == selected]
             if let q = n.anchor.quote { m["quote"] = q }
@@ -253,12 +296,31 @@ struct MarginPanel: View {
         }
         guard let data = try? JSONSerialization.data(withJSONObject: marks), let json = String(data: data, encoding: .utf8) else { return }
         _ = try? await page.evaluate(MarginMarks.script + "\nreturn window.__browsaMarks(\(json));", inWorld: "browsa.margin")
+        if let id = revealAfterLoad, let i = pinned.firstIndex(where: { $0.id == id }) {
+            revealAfterLoad = nil
+            reveal(i + 1)
+        }
     }
 
     private func clearPage() async {
         guard let page = browser.currentController?.page else { return }
         _ = try? await page.evaluate(MarginMarks.script + NotePicker.script + "\nwindow.__browsaPickOff(); return window.__browsaMarks([]);",
                                      inWorld: "browsa.margin")
+    }
+
+    /// Clicking a pin on the page picks its note here, which opens its reply.
+    private func pinClickLoop() async {
+        guard isShowing, let page = browser.currentController?.page else { return }
+        while !Task.isCancelled, isShowing {
+            try? await Task.sleep(for: .milliseconds(200))
+            let raw = try? await page.evaluate(
+                "const r = document.documentElement; const n = r.dataset.browsaPinClicked; delete r.dataset.browsaPinClicked; return n || null;",
+                inWorld: "browsa.margin")
+            guard let n = (raw as? String).flatMap(Int.init), pinned.indices.contains(n - 1) else { continue }
+            let id = pinned[n - 1].id
+            pickedFromPage = true
+            withAnimation(Motion.snappy) { selected = id }
+        }
     }
 
     private func reveal(_ n: Int) {
@@ -354,12 +416,14 @@ private struct AgentWorkingLine: View {
         TimelineView(.periodic(from: .now, by: 2)) { _ in
             if let agent = browser.library.agents.working(on: browser.currentTab?.url) {
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.mini)
-                    Text("\(agent) is working on this page").font(.caption).foregroundStyle(.purple)
+                    Circle().fill(AgentLive.color).frame(width: 7, height: 7).symbolEffect(.pulse)
+                    Text("\(AgentIdentity.displayName(agent)) is working on this page").font(.caption.weight(.medium))
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(.purple.opacity(0.08))
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                // Inset like the cards below it, not edge to edge.
+                .background(AgentLive.color.opacity(0.08), in: .rect(cornerRadius: 9, style: .continuous))
+                .padding(.horizontal, 10).padding(.bottom, 6)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
@@ -377,11 +441,7 @@ private struct PageGroupHeader: View {
     var body: some View {
         Button {
             guard let url, !isCurrent else { return }
-            if let tab = browser.library.allTabs.first(where: { $0.url.map(MarginStore.pageKey) == MarginStore.pageKey(url) }) {
-                browser.select(tab)
-            } else {
-                browser.newTab(url: url)
-            }
+            go(to: url, in: browser)
         } label: {
             HStack(spacing: 6) {
                 Text(title).font(.system(size: 11, weight: .semibold)).lineLimit(1)
@@ -421,6 +481,7 @@ private struct NoteComposer: View {
                     .lineLimit(1...6)
                     .focused($focused)
                     .onSubmit(add)
+                    .onKeyPress(.return, phases: .down) { press in newLine(press) }
                     .onKeyPress(.escape) {
                         guard draft != nil || !text.isEmpty else { return .ignored }
                         withAnimation(Motion.snappy) { text = ""; ui.drafts.removeValue(forKey: browser.id) }
@@ -429,7 +490,8 @@ private struct NoteComposer: View {
                     .padding(.vertical, 2)
                 if canAdd {
                     Button("Add", action: add)
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.glassProminent)
+                        .buttonBorderShape(.capsule)
                         .controlSize(.small)
                         .keyboardShortcut(.return, modifiers: .command)
                         .transition(.scale(scale: 0.8).combined(with: .opacity))
@@ -492,17 +554,32 @@ private struct NoteCard: View {
     let note: MarginNote
     let number: Int?
     let isSelected: Bool
+    /// Whether opening the reply puts the cursor in it (not when picked from a pin on the page).
+    let focusesReply: Bool
+    /// Puts the card down: one state for "active", ring and reply together.
+    let deselect: () -> Void
     let select: () -> Void
     @State private var hovering = false
     @State private var replying = false
+    @State private var focusRequest = 0
 
     private var margin: MarginStore { browser.library.margin }
     private var ui: NotesUI { .shared }
     private var showsActions: Bool { hovering || isSelected || replying }
 
+    /// The one thing a click anywhere on the card does: pick it, with its reply open.
+    private func pick() {
+        select()
+        guard note.status == .open else { return }
+        withAnimation(Motion.snappy) { replying = true }
+        // A click on the card always puts the cursor in the reply, whether the field is new or was
+        // already open (say, from a pin). Asked for once the field exists.
+        DispatchQueue.main.async { focusRequest += 1 }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Button(action: select) {
+            Button(action: pick) {
                 VStack(alignment: .leading, spacing: 7) {
                     header(author: note.author, date: note.createdAt, number: number)
                     if let q = note.anchor.quote {
@@ -513,19 +590,19 @@ private struct NoteCard: View {
                         Label(s, systemImage: "scope").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Text(note.body).font(.system(size: 13)).lineSpacing(1.5)
+                    ForEach(note.replies) { r in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Divider().opacity(0.6)
+                            header(author: r.author, date: r.createdAt, number: nil)
+                            Text(r.body).font(.system(size: 13)).lineSpacing(1.5)
+                        }
+                        .padding(.top, 3)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-
-            ForEach(note.replies) { r in
-                VStack(alignment: .leading, spacing: 4) {
-                    Divider().opacity(0.6)
-                    header(author: r.author, date: r.createdAt, number: nil)
-                    Text(r.body).font(.system(size: 13)).lineSpacing(1.5).textSelection(.enabled)
-                }
-            }
 
             if let at = ui.justResolved[note.id], note.status == .resolved {
                 ResolvedLine(by: note.resolvedBy ?? .you, at: at) {
@@ -533,13 +610,13 @@ private struct NoteCard: View {
                 }
                 .transition(.opacity)
             } else if replying {
-                ReplyBar(isOpen: $replying) { text in
+                ReplyBar(isOpen: $replying, autofocus: focusesReply, focusRequest: focusRequest) { text in
                     withAnimation(Motion.snappy) { margin.reply(to: note.id, author: .you, body: text) }
                 }
                 .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)), removal: .opacity))
             } else if showsActions {
                 HStack(spacing: 14) {
-                    Button { withAnimation(Motion.snappy) { replying = true } } label: {
+                    Button(action: pick) {
                         Label("Reply", systemImage: "arrowshape.turn.up.left").font(.caption.weight(.medium))
                     }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
@@ -561,6 +638,10 @@ private struct NoteCard: View {
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 12)
+        // The card's padding and gaps pick it too, so there's no dead area.
+        .background {
+            Button(action: pick) { Color.clear.contentShape(.rect) }.buttonStyle(.plain)
+        }
         // White in light, black in dark, lifted off the panel by a hairline and a soft shadow.
         .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 12, style: .continuous))
         .overlay {
@@ -575,6 +656,10 @@ private struct NoteCard: View {
             withAnimation(Motion.snappy) { replying = selected && note.status == .open }
         }
         .onAppear { if isSelected, note.status == .open { replying = true } }
+        // Closing the reply (Esc, the close button, sending, or clicking away) puts the card down too.
+        .onChange(of: replying) { _, open in
+            if !open, isSelected { deselect() }
+        }
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
         .contextMenu {
             Button("Delete Note", role: .destructive) { margin.delete(note.id) }
@@ -610,6 +695,9 @@ private struct NoteCard: View {
 /// Return sends, Escape closes.
 private struct ReplyBar: View {
     @Binding var isOpen: Bool
+    var autofocus = true
+    /// Bumped by a click on the card: focus the field.
+    var focusRequest = 0
     let send: (String) -> Void
     @State private var text = ""
     @FocusState private var focused: Bool
@@ -623,12 +711,14 @@ private struct ReplyBar: View {
                 .lineLimit(1...5)
                 .focused($focused)
                 .onSubmit(submit)
+                .onKeyPress(.return, phases: .down) { press in newLine(press) }
                 .onKeyPress(.escape) { withAnimation(Motion.snappy) { isOpen = false }; return .handled }
                 .padding(.vertical, 2)
             // Nothing typed yet: a quiet close. Once there's text: Add.
             if canSend {
                 Button("Add", action: submit)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
                     .controlSize(.small)
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
             } else {
@@ -653,7 +743,8 @@ private struct ReplyBar: View {
                 .strokeBorder(Color.accentColor.opacity(focused ? 0.7 : 0.3), lineWidth: focused ? 1.5 : 1)
         }
         .animation(Motion.snappy, value: focused)
-        .onAppear { focused = true }
+        .onAppear { if autofocus { focused = true } }
+        .onChange(of: focusRequest) { focused = true }
         .onChange(of: focused) { _, f in
             // Clicking away from an empty reply closes it.
             if !f, text.isEmpty { withAnimation(Motion.snappy) { isOpen = false } }
@@ -710,10 +801,24 @@ private struct AuthorBadge: View {
         switch author {
         case .you: Text("You").font(.caption.weight(.semibold))
         case .agent(let name):
-            Label { Text(name) } icon: { AgentIcon(caller: name, size: 12) }
-                .font(.caption.weight(.semibold)).foregroundStyle(.purple)
+            Label { Text(AgentIdentity.displayName(name)) } icon: { AgentIcon(caller: name, size: 12) }
+                .font(.caption.weight(.semibold))
         }
     }
+}
+
+/// Goes to a page: its open tab if there is one, in any space, else a new tab. Notes stays open.
+@MainActor
+func go(to url: URL, in browser: Browser) {
+    let key = MarginStore.pageKey(url)
+    withAnimation(Motion.snappy) {
+        if let tab = browser.library.allTabs.first(where: { $0.url.map(MarginStore.pageKey) == key }) {
+            browser.select(tab)
+        } else {
+            browser.newTab(url: url)
+        }
+    }
+    if browser.panel != "notes" { browser.showPanel("notes") }
 }
 
 /// Open notes on a tab's page, for the yellow count on its row.
@@ -816,7 +921,7 @@ enum MarginMarks {
           st.textContent = `
             ::highlight(browsa-note) { background-color: rgba(250, 204, 21, .32); }
             ::highlight(browsa-note-selected) { background-color: rgba(250, 204, 21, .62); }
-            .__browsa-pin { position: absolute; z-index: 2147483646; pointer-events: none; width: 20px; height: 20px;
+            .__browsa-pin { position: absolute; z-index: 2147483646; pointer-events: auto; cursor: pointer; width: 20px; height: 20px;
               border-radius: 10px 10px 10px 2px; background: #f5b60b; color: #1d1600; font: 600 11px/20px -apple-system, system-ui;
               text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.25); transform: translate(-4px, -22px); transition: transform .15s; }
             .__browsa-pin.sel { transform: translate(-4px, -22px) scale(1.18); box-shadow: 0 0 0 3px rgba(245,182,11,.35), 0 1px 3px rgba(0,0,0,.25); }
@@ -857,6 +962,16 @@ enum MarginMarks {
           const p = document.createElement('div');
           p.className = '__browsa-pin' + (m.selected ? ' sel' : '');
           p.dataset.n = m.n; p.textContent = m.n;
+          if (typeof m.n === 'number') {
+            p.title = 'Show note ' + m.n;
+            // On mousedown, not click: picking a note redraws the pins, and a click on a pin
+            // that has been replaced in between would never arrive.
+            p.addEventListener('mousedown', (e) => {
+              e.preventDefault(); e.stopPropagation();
+              document.documentElement.dataset.browsaPinClicked = String(m.n);
+            }, true);
+            p.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+          }
           Object.assign(p.style, { left: (rect.left + scrollX) + 'px', top: (rect.top + scrollY) + 'px' });
           document.body.appendChild(p);
         }
@@ -875,4 +990,13 @@ enum MarginMarks {
       };
     }
     """#
+}
+
+/// Return sends. Shift-Return (what most apps and the web use) and Option-Return (the AppKit
+/// convention) both start a new line, at the cursor.
+@MainActor
+private func newLine(_ press: KeyPress) -> KeyPress.Result {
+    guard press.modifiers.contains(.shift) || press.modifiers.contains(.option) else { return .ignored }
+    NSApp.sendAction(#selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)), to: nil, from: nil)
+    return .handled
 }

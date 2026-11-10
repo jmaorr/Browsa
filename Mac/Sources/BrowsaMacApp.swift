@@ -22,11 +22,12 @@ struct BrowsaMacApp: App {
         // Left to itself, SwiftUI answers a link from another app by opening a new window. Claim no
         // external events here, so links reach the app delegate and open as tabs instead.
         .handlesExternalEvents(matching: [])
-        .commands { BrowserCommands(library: appDelegate.library) }
+        .commands { BrowserCommands(library: appDelegate.library, updates: appDelegate.updates) }
 
         Settings {
             SettingsView()
                 .environment(appDelegate.library)
+                .environment(appDelegate.updates)
         }
     }
 }
@@ -67,6 +68,8 @@ extension FocusedValues {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// WebKit is the only engine for now. Another one plugs in here (see docs/engines.md).
     lazy var library = AppDelegate.makeLibrary()
+    /// Sparkle, in release builds only. Made with the delegate so it starts as the app launches.
+    let updates = Updates()
     /// The window in use, for the debug tour.
     var browser: Browser? { library.activeWindow }
     private var isClearingForQuit = false

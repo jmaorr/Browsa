@@ -157,10 +157,9 @@ enum SpikeMocks {
         switch name {
         // A short history, so the Agents panel isn't empty on launch.
         case "history":
+            // Reads notes only: no tabs opened on every launch, and never asks.
             return ("Claude Code", [
-                .init(tool: "tabs_list", args: [:]),
                 .init(tool: "notes_list", args: [:]),
-                .init(tool: "page_read", args: [:]),
             ])
         // Works through the checkout notes: open, read, click, type, reply.
         case "fix-notes":
@@ -173,10 +172,10 @@ enum SpikeMocks {
                 .init(tool: "page_screenshot", args: [:]),
                 .init(tool: "notes_add", args: ["url": checkout, "body": "Checked the pay button at 600px wide: it wraps under Save for later."]),
             ])
-        // Gets refused: shows denied rows in the panel.
-        case "blocked":
+        // Reaches for your tabs: asks for the list, then for one of them.
+        case "your-tabs":
             return ("Codex", [
-                .init(tool: "tab_open", args: ["url": "https://example.com/admin"]),
+                .init(tool: "tabs_list", args: [:]),
             ])
         default:
             return nil

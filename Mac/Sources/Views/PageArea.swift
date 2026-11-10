@@ -40,6 +40,7 @@ struct PageArea: View {
         .overlay(alignment: .top) {
             if let tab = browser.currentTab { ProgressLine(tab: tab) }
         }
+        .overlay(alignment: .top) { AgentPageOverlay() }
         .overlay(alignment: .top) {
             if let url = browser.currentTab?.url, !browser.isReaderShowing { StoreInstallBanner(pageURL: url, pageTitle: browser.currentTab?.title ?? "").padding(.top, 10) }
         }

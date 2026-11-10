@@ -376,6 +376,19 @@ enum SpikeHarness {
             } catch {
                 return .error("\(error)")
             }
+        case "demo":
+            library.agents.demo.start(bridge: library.agents, in: browser)
+        case "resetToken":
+            await library.agents.resetToken()
+            return .json(["ok": true, "tokenPrefix": String(library.agents.token.prefix(12))])
+        case "claudeAdd":
+            // The same code path as the Add to Claude Code button.
+            let a = library.agents!
+            await a.claudeCodeSetup.add(name: AgentBridge.mcpName, url: a.endpoint, token: a.token)
+            return .json(["ok": true, "state": "\(a.claudeCodeSetup.state)", "name": AgentBridge.mcpName])
+        case "settingsTab":
+            // Which Settings pane shows (general, spaces, privacy, extensions, agents, engine).
+            defaults.set(j["tab"] as? String ?? "general", forKey: "settingsTab")
         case "closeMenus":
             SpikeInput.closeMenus()
         case "pauseAgents":
@@ -404,7 +417,7 @@ enum SpikeHarness {
         let spaces = library.spaces.map { s -> [String: Any] in
             ["name": s.name, "selected": s.id == b?.selectedSpaceID,
              "tabs": (s.pinned + s.today).map { t in
-                 ["title": t.title, "url": t.url?.absoluteString ?? "", "pinned": s.pinned.contains { $0.id == t.id },
+                 ["id": t.id.uuidString, "title": t.title, "url": t.url?.absoluteString ?? "", "pinned": s.pinned.contains { $0.id == t.id },
                   "current": t.id == b?.currentTab?.id] as [String: Any]
              }]
         }

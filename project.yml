@@ -16,6 +16,10 @@ settings:
 packages:
   BrowserKit:
     path: Packages/BrowserKit
+  # In-app updates for the Developer ID build (Mac only). See docs/mac-releases.md.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.10.0"
 targets:
   Browsa:
     type: application
@@ -91,6 +95,7 @@ targets:
         product: WebKitEngine
       - package: BrowserKit
         product: Extensibility
+      - package: Sparkle
     entitlements:
       path: Mac/Browsa.entitlements
       properties:
@@ -110,6 +115,12 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.productivity
         ITSAppUsesNonExemptEncryption: false
+        # Sparkle. Only builds from tools/release-mac.sh switch updates on (BROWSA_UPDATES=YES), so
+        # Xcode and install-mac.sh builds never replace themselves with a release.
+        BrowsaUpdates: $(BROWSA_UPDATES)
+        SUFeedURL: $(BROWSA_FEED_URL)
+        SUPublicEDKey: AQ8Dht5/SdUhVZjYlAXjwRATTUdxol54BqhcjmyM2WM=
+        SUEnableAutomaticChecks: true
         NSCameraUsageDescription: Websites you allow can use the camera, for example for video calls.
         NSMicrophoneUsageDescription: Websites you allow can use the microphone, for example for video calls.
         NSLocationUsageDescription: Websites you allow can see your location, for example to show nearby places.
@@ -129,6 +140,9 @@ targets:
         # ~/Library/HTTPStorages under the same ID) holds Josh's sign-ins, tabs and extensions.
         PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa
         BROWSA_APP_NAME: Browsa
+        BROWSA_UPDATES: "NO"
+        # Overridden only by the update test (docs/mac-releases.md), which serves its own feed.
+        BROWSA_FEED_URL: https://browsa.app/mac/appcast.xml
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: Browsa
@@ -173,17 +187,14 @@ targets:
         product: WebKitEngine
       - package: BrowserKit
         product: Extensibility
+      - package: Sparkle
     entitlements:
       path: Spike/SpikeBrowsa.entitlements
       properties:
-        # Not sandboxed, like Browsa itself, so the importer can read other browsers' files.
-        # Its data stays apart from Browsa's anyway: unsandboxed, AppFolders keys it by bundle ID.
-        com.apple.security.network.client: true
-        # The agent endpoint, the control channel and the mock dev servers, all on 127.0.0.1.
-        com.apple.security.network.server: true
-        com.apple.security.files.bookmarks.app-scope: true
-        com.apple.security.files.downloads.read-write: true
-        com.apple.security.files.user-selected.read-write: true
+        # Like Browsa itself: not sandboxed (one-click Add to Claude Code runs the claude command).
+        # Its files still live apart, under its own bundle ID.
+        com.apple.security.device.camera: true
+        com.apple.security.device.audio-input: true
     info:
       path: Spike/Info.plist
       properties:
@@ -195,6 +206,10 @@ targets:
         # Not the daily driver's 47913, so both can run at once.
         BrowsaAgentPort: 47915
         SpikeControlPort: 47950
+        # Adds itself to Claude Code under its own name, never replacing Browsa's.
+        BrowsaMCPName: browsa-spikewelcome
+        # Never updates itself.
+        BrowsaUpdates: "NO"
     settings:
       base:
         PRODUCT_NAME: SpikeBrowsa

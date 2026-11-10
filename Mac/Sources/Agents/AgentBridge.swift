@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Observation
 import BrowserCore
 import BrowserEngine
@@ -53,7 +54,7 @@ final class AgentBridge {
     var isRunning: Bool { server?.isRunning ?? false }
     var problem: String? { server?.problem }
 
-    let token: String
+    private(set) var token: String
     @ObservationIgnored let toolbox: AgentToolbox
     @ObservationIgnored private var server: AgentServer?
     @ObservationIgnored private unowned let library: Library
@@ -63,8 +64,17 @@ final class AgentBridge {
     @ObservationIgnored private var idleTimer: Timer?
 
     /// For Settings: paste into a terminal once.
+    /// The name agents know Browsa by. SpikeBrowsa uses its own, so it never replaces Browsa's.
+    static let mcpName = Bundle.main.object(forInfoDictionaryKey: "BrowsaMCPName") as? String ?? "browsa"
+    var endpoint: String { "http://127.0.0.1:\(Self.port)/mcp" }
+    /// Watch a Demo, in the Agents panel.
+    @ObservationIgnored let demo = AgentDemo()
+    /// "Add to Claude Code" in the Agents panel.
+    @ObservationIgnored let claudeCodeSetup = ClaudeCodeSetup()
+
     var claudeCodeCommand: String {
-        "claude mcp add --transport http browsa http://127.0.0.1:\(Self.port)/mcp --header \"Authorization: Bearer \(token)\""
+        // User scope: Browsa is there in every project, not just the folder it was added from.
+        "claude mcp add --scope user --transport http \(Self.mcpName) \(endpoint) --header \"Authorization: Bearer \(token)\""
     }
 
     init(library: Library) {
@@ -92,6 +102,26 @@ final class AgentBridge {
         }
         server.start()
         self.server = server
+    }
+
+    /// A new token: the old one stops working at once. If Claude Code has Browsa, it's updated too.
+    func resetToken() async {
+        UserDefaults.standard.removeObject(forKey: "agentToken")
+        token = Preferences.agentToken
+        // The listener keeps running; only the token it checks changes.
+        server?.token = token
+        if await ClaudeCodeSetup.isAdded(Self.mcpName) {
+            await claudeCodeSetup.add(name: Self.mcpName, url: endpoint, token: token)
+        }
+    }
+
+    /// Why the endpoint isn't up, in words a person can act on.
+    var problemDescription: String? {
+        guard let problem else { return nil }
+        if problem.localizedCaseInsensitiveContains("address already in use") || problem.contains("48") {
+            return "Another app is using port \(Self.port), so agents can't reach Browsa. Quit that app, then turn agents off and on again."
+        }
+        return problem
     }
 
     func stop() {
@@ -173,13 +203,29 @@ final class AgentBridge {
     var allTabs: [BrowserTab] { library.allTabs.filter { !$0.isPrivate } }
     func space(of tab: BrowserTab) -> Space? { library.space(containing: tab) }
 
+    /// Opens a page in the Agent space. It never switches your window there: the driving pill in
+    /// the sidebar offers Watch instead. (`show` is kept for the tool's schema.)
     func openTab(_ url: URL, show: Bool) -> BrowserTab {
         let tab = library.insertTab(url: url, in: agentSpace, source: .link)
-        if show, let window = library.activeWindow {
-            window.selectSpace(agentSpace)
-            window.select(tab)
-        }
+        follow(tab)
         return tab
+    }
+
+    /// A window that pressed Watch, while it's still looking at the Agent space: it follows the
+    /// agent from tab to tab.
+    @ObservationIgnored private weak var watcher: Browser?
+
+    private func follow(_ tab: BrowserTab) {
+        guard let w = watcher, w.selectedSpaceID == agentSpace.id, w.currentTab?.id != tab.id else { return }
+        withAnimation(Motion.snappy) { w.select(tab) }
+    }
+
+    /// Watch: shows the agent's current tab (or the Agent space) in the window you're using.
+    func watch(in window: Browser) {
+        let tab = currentStep?.tabID.flatMap { library.tab(id: $0) } ?? agentSpace.today.first
+        window.selectSpace(agentSpace)
+        if let tab { window.select(tab) }
+        watcher = window
     }
 
     // MARK: Asking
@@ -196,7 +242,70 @@ final class AgentBridge {
             if !allowed { return .deny("The user declined this in Browsa.") }
         }
         noteWork(tool, args: args, caller: caller.name)
+        await step(tool, args: args, caller: caller.name)
         return .allow
+    }
+
+    @ObservationIgnored private let stage = AgentStage()
+
+    // MARK: Watching it act
+
+    /// What an agent is doing right now, for the caption on the page and the driving pill.
+    struct Step: Equatable {
+        let caller: String
+        let tabID: UUID?
+        let text: String
+        let at: Date
+    }
+
+    /// The last thing an agent did, while it's fresh.
+    private(set) var currentStep: Step?
+    /// An agent made a call in the last `actingFor` seconds: what "Driving" means.
+    private(set) var isActing = false
+    static let actingFor: TimeInterval = 15
+    /// When each agent last called, to grey out ones that have gone quiet.
+    private(set) var lastSeen: [String: Date] = [:]
+    @ObservationIgnored private var actingTask: Task<Void, Never>?
+
+    func isIdle(_ agent: String) -> Bool {
+        lastSeen[agent].map { Date().timeIntervalSince($0) > Self.idleAfter } ?? true
+    }
+
+    /// Records the step, and for a click or typing in a tab you can see, shows the agent's cursor
+    /// arriving there first, so you can follow it.
+    private func step(_ tool: AgentTool, args: JSONValue, caller: String) async {
+        lastSeen[caller] = Date()
+        let tab = tool.name.hasPrefix("page_") ? self.tab(args["tab"]?.string) : nil
+        // A tab nobody is looking at still gets a window, a hidden one, so it lays out, paints and
+        // can be screenshotted like a tab on screen.
+        if let tab, library.window(showing: tab) == nil {
+            stage.host(library.controller(for: tab).page.view)
+        }
+        if let tab, isInAgentSpace(tab) { follow(tab) }
+        var fields = AgentWords.fields(args)
+        // Name what it's about to click or type into, as the page does ("Add to menu"), not "item 5".
+        if let tab, tool.name == "page_click" || tool.name == "page_type", args["ref"] != nil || args["selector"] != nil {
+            let js = "const el = \(AgentCursor.target(args)); \(BrowserAgentTools.labelJS) return el ? browsaLabel(el) : null;"
+            if let label = try? await library.controller(for: tab).page.evaluate(js, inWorld: "browsa.agent") as? String, !label.isEmpty {
+                fields["label"] = label
+            }
+        }
+        let text = AgentWords.sentence(tool: tool.name, fields: fields, tabTitle: tab?.displayTitle)
+        withAnimation(Motion.snappy) {
+            currentStep = Step(caller: caller, tabID: tab?.id, text: text, at: Date())
+            isActing = true
+        }
+        actingTask?.cancel()
+        actingTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.actingFor))
+            guard !Task.isCancelled, let self else { return }
+            withAnimation(Motion.snappy) { self.isActing = false }
+        }
+        guard let tab, tool.name == "page_click" || tool.name == "page_type",
+              library.window(showing: tab) != nil, let page = library.existingController(for: tab)?.page else { return }
+        let target = AgentCursor.target(args)
+        _ = try? await page.evaluate(AgentCursor.script + "\nreturn await window.__browsaAgentCursor(\(target), \(tool.name == "page_click"));",
+                                     inWorld: "browsa.agent")
     }
 
     /// Pages an agent is working on right now, by `MarginStore.pageKey`, for the Notes panel's
@@ -242,7 +351,7 @@ final class AgentBridge {
             request = AgentRequest(caller: caller, action: action, grant: grant, tabTitle: title(of: grant))
             requests.append(request)
             updateDriving()
-            library.activeWindow?.showAgentsPanel()
+            // No panel switching: the ask shows as a bar on the tab you're on, and in the Agents panel.
         }
         return await withCheckedContinuation { cont in waiting[request.id, default: []].append(cont) }
     }
@@ -267,7 +376,14 @@ final class AgentBridge {
         if now != isDriving { isDriving = now }
     }
 
+    /// The plain sentence for each activity row, written when the call started (with names the
+    /// page had then).
+    private(set) var activityText: [UUID: String] = [:]
+
     private func record(_ entry: AgentActivity) {
+        if activityText[entry.id] == nil, let step = currentStep, step.caller == entry.caller, Date().timeIntervalSince(step.at) < 3 {
+            activityText[entry.id] = step.text
+        }
         var entry = entry
         // "tab: 600B939B-…" says nothing to you; the tab's title does.
         if let range = entry.summary.range(of: #"tab: [0-9A-F-]{36}"#, options: .regularExpression),
@@ -304,5 +420,34 @@ extension Preferences {
     static var agentSpaceID: UUID? {
         get { UserDefaults.standard.string(forKey: "agentSpaceID").flatMap(UUID.init(uuidString:)) }
         set { UserDefaults.standard.set(newValue?.uuidString, forKey: "agentSpaceID") }
+    }
+}
+
+
+/// A window off every screen where agent tabs nobody is watching are drawn. WebKit only lays out,
+/// paints and screenshots a page that's in a window; this one is never seen, never takes clicks or
+/// focus, and isn't in the Window menu or Mission Control. A tab moves out of it the moment you
+/// look at it (PageHost adopts its view).
+@MainActor
+final class AgentStage {
+    private lazy var window: NSWindow = {
+        let w = NSWindow(contentRect: NSRect(x: -40_000, y: -40_000, width: 1200, height: 820),
+                         styleMask: [.borderless], backing: .buffered, defer: false)
+        w.isReleasedWhenClosed = false
+        w.ignoresMouseEvents = true
+        w.hasShadow = false
+        w.isExcludedFromWindowsMenu = true
+        w.collectionBehavior = [.transient, .ignoresCycle, .stationary, .fullScreenNone]
+        w.title = "Agent Stage"
+        return w
+    }()
+
+    func host(_ view: NSView) {
+        guard view.window == nil, let content = window.contentView else { return }
+        content.subviews.forEach { $0.removeFromSuperview() }
+        view.frame = content.bounds
+        view.autoresizingMask = [.width, .height]
+        content.addSubview(view)
+        if !window.isVisible { window.orderFrontRegardless() }
     }
 }

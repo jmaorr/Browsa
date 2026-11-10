@@ -15,6 +15,8 @@ struct Sidebar: View {
         VStack(spacing: 10) {
             topRow
                 .introArrival(0)
+            AgentDrivingPill()
+                .padding(.horizontal, 10)
             AddressPill()
                 .padding(.horizontal, 10)
                 .introArrival(1)
