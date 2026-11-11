@@ -74,7 +74,9 @@ final class PluginHost {
             guard let tab = window?.currentTab, !tab.isPrivate else { return .value(NSNull()) }
             return .value(["url": tab.url?.absoluteString ?? "", "title": tab.displayTitle, "space": window?.currentSpace.name ?? ""] as [String: Any])
         case .listNotes:
-            let url = p["url"]?.string.flatMap(URL.init(string:)) ?? window?.currentTab?.url
+            // With no url, the page in front: never a private one.
+            let current = window?.currentTab.flatMap { $0.isPrivate ? nil : $0.url }
+            let url = p["url"]?.string.flatMap(URL.init(string:)) ?? current
             guard let url else { return .value([Any]()) }
             let notes = library.margin.notes(on: url)
             let data = (try? JSONEncoder().encode(notes)) ?? Data("[]".utf8)
