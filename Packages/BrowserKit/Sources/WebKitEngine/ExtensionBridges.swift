@@ -99,8 +99,10 @@ enum ExtensionBridges {
             return
         }
         // WebKit downloads it like a link (cookies, progress, the Downloads list), from the tab in front.
-        guard let page = host?.extensionWindows.first?.activePage as? WebKitPage, let engine = page.engine else {
-            reply(nil, error("Open a tab first: Browsa downloads through the tab in front"))
+        // Never through a private window: that would use its cookies on the extension's behalf.
+        let window = host?.extensionWindows.first { !$0.isPrivate }
+        guard let page = window?.activePage as? WebKitPage, let engine = page.engine else {
+            reply(nil, error("Open a regular (not private) tab first: Browsa downloads through the tab in front"))
             return
         }
         nextDownloadID += 1
