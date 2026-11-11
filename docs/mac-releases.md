@@ -77,7 +77,7 @@ downloaded it on Install Update, and relaunched as 0.0.2 with its signature inta
 
 ## The signing key
 
-Sparkle's EdDSA private key lives in the login keychain on Josh's Mac (service
+Sparkle's EdDSA private key lives in the login keychain of the Mac that makes releases (service
 `https://sparkle-project.org`, account `ed25519`). Its public half is `SUPublicEDKey` in `project.yml`.
 Without the private key, no installed copy will accept another update, so keep a backup:
 

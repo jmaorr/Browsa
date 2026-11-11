@@ -58,6 +58,21 @@ is, or fork it as a starting point for your own browser. See it at [browsa.app](
   </tr>
 </table>
 
+## What's in this repo
+
+The two apps are the product. Everything else supports them and is public so the whole project can be
+read, built and forked.
+
+| Folder | What it is |
+| --- | --- |
+| `App/` | Browsa for iPhone Duo, iPhone and iPad |
+| `Mac/` | Browsa for Mac |
+| `Packages/BrowserKit/` | Code both apps share: tabs and spaces, suggestions, content blocking, the engine API |
+| `Spike/` | SpikeBrowsa, a development harness: the Mac UI over mock data with a local control channel, for design passes and testing agents. It isn't shipped (see [Spike/README.md](Spike/README.md)) |
+| `website/` | The [browsa.app](https://browsa.app) site and the Cloudflare Worker that serves Mac updates (see [website/README.md](website/README.md)) |
+| `tools/` | Build and release scripts, the suggestion seed list builder and the filter-rule publisher |
+| `docs/` | Design notes and how Mac releases are made |
+
 ## Build
 
 ```sh

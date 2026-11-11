@@ -2,7 +2,7 @@ import AppKit
 
 /// Synthetic input for the control channel. Events are posted into the app's own event queue, so
 /// they need no Accessibility or Input Monitoring permission, never move the real pointer, and
-/// work while the window is in the background (Josh can keep using his Mac).
+/// work while the window is in the background (you can keep using your Mac).
 ///
 /// Coordinates are window points from the top-left of the window frame, the same frame
 /// `screencapture -l` shoots (a screenshot is 2× these on Retina).

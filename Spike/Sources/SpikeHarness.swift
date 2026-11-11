@@ -38,7 +38,7 @@ enum SpikeHarness {
         for s in SpikeMocks.servers where s.isUp { startMock(s.port) }
         SpikeInput.watchMenus()
         let control = SpikeHTTPServer(port: controlPort) { request in
-            // Driving the app must never take the screen from whatever Josh is using. If a click or
+            // Driving the app must never take the screen from whatever you are using. If a click or
             // a focused field makes SpikeBrowsa active, hand activation straight back.
             let before = NSWorkspace.shared.frontmostApplication
             let wasActive = NSApp.isActive
