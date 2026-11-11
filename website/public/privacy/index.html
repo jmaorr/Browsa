@@ -24,15 +24,15 @@
 
 <main class="policy">
   <h1>Privacy Policy</h1>
-  <p class="updated">Last updated 3 November 2026</p>
+  <p class="updated">Last updated 10 November 2026</p>
 
   <p class="lead">Browsa doesn't collect your personal data. It has no accounts, no analytics and no advertising, and we can't see what you browse. Your browsing data stays on your device.</p>
 
-  <p>Browsa is a web browser for iPhone and iPad, made by Joshua Orr. Like any browser, it has to contact other services to work. This policy describes what stays on your device, what leaves it, and how to control that. Browsa is <a href="https://github.com/jmaorr/Browsa">open source</a>, so you can check all of this in the code.</p>
+  <p>Browsa is a web browser for iPhone, iPad and Mac, made by Joshua Orr. Like any browser, it has to contact other services to work. This policy describes what stays on your device, what leaves it, and how to control that. Most of it applies to both apps, and the extra things the Mac app does are in <a href="#mac">Browsa for Mac</a>. Browsa is <a href="https://github.com/jmaorr/Browsa">open source</a>, so you can check all of this in the code.</p>
 
   <h2>What we collect</h2>
   <p>Nothing that identifies you. We don't run servers that receive your browsing, your searches or anything you type. The app contains no analytics, advertising or crash-reporting code from us or anyone else.</p>
-  <p>If you choose to share diagnostics with app developers in your device's settings, Apple may give us anonymous crash reports and usage statistics. Apple handles this under <a href="https://www.apple.com/legal/privacy/">its own privacy policy</a>, and you can turn it off in Settings &gt; Privacy &amp; Security &gt; Analytics &amp; Improvements.</p>
+  <p>On iPhone and iPad, if you choose to share diagnostics with app developers in your device's settings, Apple may give us anonymous crash reports and usage statistics. Apple handles this under <a href="https://www.apple.com/legal/privacy/">its own privacy policy</a>, and you can turn it off in Settings &gt; Privacy &amp; Security &gt; Analytics &amp; Improvements.</p>
 
   <h2>What stays on your device</h2>
   <ul>
@@ -85,7 +85,7 @@
   </div>
   <p>Each of these services handles what it receives under its own privacy policy, linked above. We don't receive it, and we don't have an arrangement with any of them to share it. We don't sell data, and we don't track you across other companies' apps and websites.</p>
 
-  <h2>Blocking and link cleaning</h2>
+  <h2 id="blocking">Blocking and link cleaning</h2>
   <p>Ad and tracker blocking, declining cookie banners and removing tracking parameters from links all happen on your device. The blocking rules are downloaded, but what they match against is never sent anywhere. You can turn each feature off in Settings, and turn blockers off for a single site.</p>
   <p>Declining a cookie banner tells that website you reject its optional cookies, using the site's own banner.</p>
 
@@ -102,8 +102,68 @@
   <h2>Children</h2>
   <p>Browsa isn't directed at children, and we don't knowingly collect anything from anyone, of any age. It gives access to the open web, and it has no parental controls of its own.</p>
 
+  <h2 id="mac">Browsa for Mac</h2>
+  <p>The Mac app is the same browser underneath. Everything above about blocking, link cleaning, search suggestions, private tabs and site permissions applies to it too, and it talks to the same services in the table. These are the differences, and the things only the Mac app does.</p>
+
+  <h3>More services the Mac app contacts</h3>
+  <div class="table">
+    <table>
+      <thead><tr><th scope="col">Goes to</th><th scope="col">What they receive</th><th scope="col">When</th><th scope="col">Your control</th></tr></thead>
+      <tbody>
+        <tr>
+          <th scope="row"><a href="https://policies.google.com/privacy">Google</a>'s icon service (t1.gstatic.com)</th>
+          <td>For Google's own sites only, the site's name and the first part of its path, such as docs.google.com/spreadsheets, so Docs, Sheets and Gmail each get the right icon. Plus your IP address. Every other site's icon comes from DuckDuckGo, as above.</td>
+          <td>When a Google page shows its icon, in private tabs too</td>
+          <td>Always on</td>
+        </tr>
+        <tr>
+          <th scope="row">browsa.app, hosted by <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare</a>, for updates</th>
+          <td>A request for the list of new versions, with your IP address and a user agent naming Browsa's version. No system profile, account or device identifier. If there's an update, its file comes from the same place.</td>
+          <td>About once a day, or when you choose Check for Updates</td>
+          <td>Turn off automatic checks in Settings &gt; General</td>
+        </tr>
+        <tr>
+          <th scope="row"><a href="https://policies.google.com/privacy">Chrome Web Store</a> or <a href="https://www.mozilla.org/privacy/websites/">Firefox Add-ons</a></th>
+          <td>The ID of an extension you've added, to download it and check for a newer version, with your IP address. Nothing about the pages you visit.</td>
+          <td>When you add an extension, then at most once a day</td>
+          <td>Remove the extension</td>
+        </tr>
+        <tr>
+          <th scope="row">browsa.app/demo, hosted by <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare</a></th>
+          <td>A check that the demo page is up, with your IP address</td>
+          <td>When you open the Agents panel or watch the agent demo</td>
+          <td>Only with Agents turned on</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>The Privacy Pack</h3>
+  <p>The ad and tracker blocker, the cookie banner decliner and Clean Links make up the Privacy Pack in the Library. It's on from the start, works on your Mac as described in <a href="#blocking">Blocking and link cleaning</a>, and each part can be turned off in the Library or in Settings. The Mac app also sends <a href="https://globalprivacycontrol.org">Global Privacy Control</a> to every site, asking it not to sell or share your data. That's on by default too, and you can turn it off in Settings &gt; Privacy.</p>
+
+  <h3>Extensions</h3>
+  <p>You can add Chrome extensions, and Firefox ones where they work, from the Library. Before one is added, Browsa shows you what it will be able to do, and an update that asks for more waits for your yes. An extension is someone else's software: it can see and change the pages it's allowed to, and it may send what it sees to its developer, under that developer's privacy policy. The extensions marked as tested in the Library have been tried in Browsa by us. That's a check that they work, not a review of their privacy. Running Safari extensions from other apps is an experimental setting, off by default.</p>
+
+  <h3>Importing from another browser</h3>
+  <p>When you ask it to, Browsa reads bookmarks and history from Chrome, Arc, Edge, Brave, Vivaldi or Safari on your Mac, and from Arc its spaces and tabs. It reads their files directly, only reads them, and keeps what it brings over on your Mac. It never reads passwords or cookies. Safari keeps its files behind macOS's Full Disk Access, so importing from Safari asks you to grant that first, and you can take it away again in System Settings.</p>
+
+  <h3>The Agent Pack: Agents, Notes and Radar</h3>
+  <p>The Agent Pack is off until you turn it on, during setup or in the Library.</p>
+  <ul>
+    <li><strong>Agents</strong> lets coding agents such as Claude Code, Codex and Cursor use Browsa. It runs a small server that only answers programs on your Mac (127.0.0.1) holding a private key that Browsa makes. Agents work in their own Agent space, where they can open, read, click through and take screenshots of pages, and they have to ask in the Agents panel before touching one of your own tabs. Browsa doesn't send anything to an AI service itself, but what an agent reads through Browsa goes wherever that agent sends it, under that agent's own terms. Add to Claude Code runs Claude Code's own setup command, which saves Browsa's address and key in Claude Code's settings on your Mac.</li>
+    <li><strong>Notes</strong> are notes you leave on pages. They're kept on your Mac, and connected agents can read, reply to and resolve them.</li>
+    <li><strong>Radar</strong> finds the development servers running on your Mac. While it's on, Browsa looks every few seconds at which programs on your Mac are listening for connections, which folder they run in and their git branch. It stops looking when you turn Radar off, and none of it leaves your Mac.</li>
+  </ul>
+
+  <h3>Where your data is kept</h3>
+  <p>The Mac app keeps your spaces, tabs, history, notes, extensions and settings in your user Library, in folders named com.orriginal.browsa under Application Support, WebKit and HTTPStorages. Files you download go to your Downloads folder. Nothing is synced between your devices, and Browsa doesn't use iCloud. Time Machine and other backups include these folders, under the terms you set up.</p>
+  <p>You can clear your history, cookies and site data in Settings &gt; Privacy, or have Browsa clear them each time it quits. On a Mac, moving the app to the Bin doesn't delete what it stored. To remove everything, quit Browsa and delete those folders too.</p>
+
+  <h3>Crash reports, camera and microphone</h3>
+  <p>Browsa for Mac is downloaded from browsa.app rather than the App Store, so Apple doesn't share crash reports or usage statistics from it with us, and we don't collect them. Websites can only use your camera, microphone or location after you allow them, and macOS asks first as well. You can change that in System Settings &gt; Privacy &amp; Security.</p>
+
   <h2>This website</h2>
-  <p>browsa.app is a static site hosted by Cloudflare. It sets no cookies and has no analytics. Cloudflare processes your IP address to deliver the pages and protect the site from abuse.</p>
+  <p>browsa.app is a static site hosted by Cloudflare, which also serves the Mac app's downloads. It sets no cookies and has no analytics. Cloudflare processes your IP address to deliver the pages and protect the site from abuse.</p>
 
   <h2>Changes to this policy</h2>
   <p>If the app's behaviour changes, this page changes with it, and the date at the top is updated. The full history is on <a href="https://github.com/jmaorr/Browsa/commits/main/website/public/privacy/index.html">GitHub</a>.</p>
