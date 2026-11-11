@@ -343,6 +343,9 @@ final class Browser {
 
     // MARK: Sidebar
 
+    /// Call it without `withAnimation`: the split view animates the column itself, and the window's
+    /// `.animation(value:)` covers the rest. `withAnimation` first flushes any pending SwiftUI update,
+    /// and a change made during that flush was sometimes dropped, so ⌘S (or the button) did nothing.
     func toggleSidebar() {
         // The page holds its width while the sidebar moves, then resizes once (see PageHost).
         sidebarMoveTask?.cancel()

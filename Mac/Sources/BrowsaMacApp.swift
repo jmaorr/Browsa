@@ -158,7 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Pages that take ⌘S for themselves (Save in Docs, Notion, Figma…) would otherwise swallow
         // it before the menu sees it, so the sidebar and panel shortcuts are caught here first.
         if shortcuts.matches(.sidebar, event), browser.commandBar == nil {
-            withAnimation(Motion.dock) { browser.toggleSidebar() }
+            browser.toggleSidebar()   // no withAnimation: see toggleSidebar
             return true
         }
         if shortcuts.matches(.panel, event) {

@@ -165,7 +165,7 @@ extension Browser {
         case "share": shareCurrentPage()
         case "close-others": if let t = currentTab { closeOtherTabs(than: t) }
         case "reopen": reopenClosedTab()
-        case "sidebar": withAnimation(Motion.dock) { toggleSidebar() }
+        case "sidebar": toggleSidebar()
         case "private": newTab(url: nil, isPrivate: true); showCommandBar(.editCurrent)
         case "close-private": closePrivateSpace()
         case "new-space": addSpace()
@@ -267,7 +267,7 @@ extension Browser {
         case .archive: isArchivePresented = true
         case .nextSpace: selectAdjacentSpace(1)
         case .previousSpace: selectAdjacentSpace(-1)
-        case .sidebar: withAnimation(Motion.dock) { toggleSidebar() }
+        case .sidebar: toggleSidebar()
         case .panel: togglePanel()
         case .notes: showPanel("notes", toggles: true)
         case .downloads: showPanel("downloads", toggles: true)

@@ -107,7 +107,7 @@ struct SnapshotTour {
         NSApp.appearance = nil
         await pause(1)
 
-        withAnimation(Motion.dock) { browser.toggleSidebar() }
+        browser.toggleSidebar()
         await pause(1)
         save("7-sidebar-hidden")
         await savePage(browser, "7-page-content")
@@ -115,7 +115,7 @@ struct SnapshotTour {
         await pause(1)
         save("8-sidebar-peeking")
         browser.isSidebarPeeking = false
-        withAnimation(Motion.dock) { browser.toggleSidebar() }
+        browser.toggleSidebar()
         await pause(1)
 
         browser.saveNow()

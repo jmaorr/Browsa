@@ -44,14 +44,16 @@ struct Sidebar: View {
         #endif
     }
 
-    /// Room for the traffic lights, then back, forward and reload, like Arc.
+    /// Room for the traffic lights and the sidebar button on the left; back, forward and reload at
+    /// the right edge, like Arc.
     private var topRow: some View {
         HStack(spacing: 2) {
             // The traffic lights sit here when docked. Floating, they're hidden.
-            Spacer(minLength: isFloating ? 0 : 76)
+            Spacer().frame(width: isFloating ? 0 : 76)
             SidebarIconButton(symbol: "sidebar.left", help: Shortcuts.shared.help(browser.isSidebarDocked ? "Hide Sidebar" : "Keep Sidebar Open", .sidebar)) {
-                withAnimation(Motion.dock) { browser.toggleSidebar() }
+                browser.toggleSidebar()
             }
+            Spacer(minLength: 0)
             SidebarIconButton(symbol: "chevron.left", help: Shortcuts.shared.help("Back", .back), enabled: browser.currentTab?.canGoBack == true) { browser.goBack() }
             SidebarIconButton(symbol: "chevron.right", help: Shortcuts.shared.help("Forward", .forward), enabled: browser.currentTab?.canGoForward == true) { browser.goForward() }
             if browser.currentTab?.isLoading == true {
@@ -59,7 +61,6 @@ struct Sidebar: View {
             } else {
                 SidebarIconButton(symbol: "arrow.clockwise", help: Shortcuts.shared.help("Reload", .reload), enabled: browser.currentTab?.url != nil) { browser.reload() }
             }
-            Spacer(minLength: 0)
         }
         .padding(.horizontal, 8)
         .frame(height: isFloating ? 36 : 28)
