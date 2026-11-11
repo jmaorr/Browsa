@@ -72,7 +72,7 @@ struct BrowserCommands: Commands {
         CommandGroup(replacing: .sidebar) {
             Button(browser?.isSidebarDocked == false ? "Show Sidebar" : "Hide Sidebar") {
                 guard let browser else { return }
-                withAnimation(Motion.dock) { browser.toggleSidebar() }
+                browser.toggleSidebar()
             }
             .keyboardShortcut(keys.shortcut(.sidebar))
             .disabled(browser == nil)
