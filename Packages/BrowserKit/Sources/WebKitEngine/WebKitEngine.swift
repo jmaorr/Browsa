@@ -36,6 +36,7 @@ public final class WebKitEngine: BrowserEngine {
     private let staticConfiguration: WKWebViewConfiguration
     private var ruleLists: [WKContentRuleList] = []
     private var blocking = BlockingConfiguration(isEnabled: false, ruleGroups: [], allowlist: [], declineCookieBanners: false)
+    private var boosts: [PageBoost] = []
     /// Pages that are alive, to reach their content controllers and map script messages back.
     private var livePages: [ObjectIdentifier: WeakPage] = [:]
     private var rulesReady = false
@@ -244,6 +245,40 @@ public final class WebKitEngine: BrowserEngine {
             controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,
                                                   forMainFrameOnly: false, in: .page))
         }
+        for boost in boosts { Self.boostScripts(boost).forEach(controller.addUserScript) }
+    }
+
+    // MARK: Boosts
+
+    public func applyBoosts(_ boosts: [PageBoost]) {
+        guard boosts != self.boosts else { return }
+        self.boosts = boosts
+        for controller in allContentControllers { install(on: controller) }
+    }
+
+    /// Two scripts per Boost, both checking the host first: the style goes in as early as the page
+    /// has an element to hold it, the script once the document has loaded.
+    static func boostScripts(_ boost: PageBoost) -> [WKUserScript] {
+        let world = WKContentWorld.world(name: PageBoost.world)
+        let host = jsString(boost.host.lowercased())
+        let guardHost = "const h = location.hostname.toLowerCase(), H = \(host); if (!(h === H || h.endsWith('.' + H))) return;"
+        var scripts: [WKUserScript] = []
+        if !boost.css.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let source = "(() => { \(guardHost)\n\(PageBoost.applyCSSFunction)\n__browsaBoostCSS(\(jsString(boost.css))); })();"
+            scripts.append(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: world))
+        }
+        if !boost.script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let source = "(() => { \(guardHost)\n try {\n\(boost.script)\n} catch (e) { console.error('Browsa Boost:', e); } })();"
+            scripts.append(WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: world))
+        }
+        return scripts
+    }
+
+    /// A Swift string as a JavaScript string literal.
+    static func jsString(_ s: String) -> String {
+        let data = (try? JSONSerialization.data(withJSONObject: [s])) ?? Data("[\"\"]".utf8)
+        let array = String(decoding: data, as: UTF8.self)
+        return String(array.dropFirst().dropLast())
     }
 
     /// Global Privacy Control: sites that honour it treat the visitor as opted out of the sale or

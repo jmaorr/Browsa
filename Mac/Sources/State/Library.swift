@@ -110,6 +110,7 @@ final class Library {
         suggest = makeSuggestEngine()
         engine.developerToolsEnabled = developerTools
         applyBlocking()
+        BoostStore.shared.attach(engine: engine)
         archiveStaleTabs()
         engine.extensionHost = self
         reloadExtensions()
