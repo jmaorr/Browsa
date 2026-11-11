@@ -19,6 +19,7 @@ struct BrowsaMacApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
         // A new window fills the screen's free space (inside the menu bar and Dock), not a small box.
+        // Restored windows get the same treatment in WindowSizing until the person sizes one.
         .defaultWindowPlacement { _, context in
             WindowPlacement(context.defaultDisplay.visibleRect.origin, size: context.defaultDisplay.visibleRect.size)
         }
