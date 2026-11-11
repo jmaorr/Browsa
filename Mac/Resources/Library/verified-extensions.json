@@ -40,6 +40,22 @@
       "category": "Developers",
       "tint": "#6b5bd2",
       "tested": "2026-11-11"
+    },
+    {
+      "id": "lidfahaahiogmnlccifabccgplofocck",
+      "name": "Paper Snapshot",
+      "blurb": "Copy any part of a site into Paper as editable layers.",
+      "category": "Design",
+      "tint": "#1f6feb",
+      "tested": "2026-11-11"
+    },
+    {
+      "id": "aapbdbdomjkkjkaonfhkkikfgjllcleb",
+      "name": "Google Translate",
+      "blurb": "Select text on any page to translate it.",
+      "category": "Language",
+      "tint": "#4285f4",
+      "tested": "2026-11-11"
     }
   ]
 }

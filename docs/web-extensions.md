@@ -94,8 +94,20 @@ extensions that ignore scripted ones (`isTrusted`).
 | Dark Reader | 4.9.135 | Popup works; example.com goes dark | ✅ Verified |
 | JSON Formatter | 0.10.2 | api.github.com shows formatted JSON with its Raw/Parsed toggle | ✅ Verified |
 | Vimium | 2.4.2 | A real `f` key shows link hints; its popup works. A scripted key does nothing, as in Chrome. WebKit logs "content_scripts entry has no specified matches" for its second entry (`file:///` CSS only), which doesn't matter | ✅ Verified |
-| Paper Snapshot | 0.4.13 | The button starts the element picker | ✅ Picker works; pasting into Paper still to try |
-| Google Translate | 2.0.18 | A real double-click selects a word, but the translate icon never appears. Right-click "Translate" not tried | ⚠️ Partial |
+| Paper Snapshot | 0.4.13 | Snapshot and paste into Paper work (tested by hand), after adding offscreen documents and the clipboard fallback below | ✅ Verified |
+| Google Translate | 2.0.18 | Highlight and translate works by hand (the harness's synthetic double-click doesn't show the icon). Its bubble is a little hard to scroll; that's Google's own UI | ✅ Verified |
+
+New in this pass:
+
+- **Offscreen documents** (`ExtensionOffscreen.swift`). `chrome.offscreen.createDocument` makes a hidden
+  extension page, one per extension, and answers once it has loaded; `hasDocument` and
+  `runtime.getContexts` report it. Paper Snapshot and Google Translate use one.
+- **Copying without a click.** WebKit refuses `document.execCommand('copy')` in an extension page that
+  wasn't clicked. When it does, the compat script runs the page's own `copy` handler on a stand-in
+  `DataTransfer` and Browsa writes the result to the pasteboard (`browsa.clipboard`), only for
+  extensions with the `clipboardWrite` permission.
+- **`storage.managed`** stand-in also answers Chrome's callback form. Grammarly's "Manage storage
+  timeout" log lines still appear: its 3 s timer logs even when the answer came first.
 
 Open leads for the two that don't work yet:
 

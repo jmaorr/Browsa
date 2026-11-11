@@ -33,6 +33,12 @@ struct ExtensionCompatCheck {
         library.reloadExtensions()
         await pause(20)
         note("running: \(library.extensions.map(\.name))")
+        // Hands-on mode: install, open a page, and leave Browsa Dev open for a person to try things.
+        if ProcessInfo.processInfo.environment["BROWSA_EXT_COMPAT_HANDS_ON"] != nil {
+            _ = library.openExtensionTab(url: URL(string: "https://en.wikipedia.org/wiki/Web_browser"), windowID: nil, active: true)
+            note("hands-on: left open")
+            return
+        }
 
         guard let engine = library.engine as? WebKitEngine else { note("not the WebKit engine"); exit(1) }
         for ext in engine.debugExtensionPopups().sorted(by: { $0.name < $1.name }) {
@@ -52,7 +58,7 @@ struct ExtensionCompatCheck {
             note("[\(ext.name)] popup \(popup.lastPathComponent): \(summary)")
             note("[\(ext.name)] missing here: \(await evaluate(page, """
             (() => { if (!globalThis.chrome) return 'no chrome global';
-              return JSON.stringify(["alarms.clear", "alarms.clearAll", "alarms.create", "alarms.get", "alarms.onAlarm", "commands.getAll", "contextMenus.create", "contextMenus.remove", "contextMenus.removeAll", "extension.getBackgroundPage", "extension.getViews", "i18n.getMessage", "i18n.getUILanguage", "management.getSelf", "notifications.clear", "notifications.create", "notifications.onButtonClicked", "notifications.onClicked", "offscreen.Reason.CLIPBOARD", "offscreen.Reason.LOCAL", "offscreen.closeDocument", "offscreen.createDocument", "offscreen.hasDocument", "permissions.contains", "permissions.request", "privacy.services.autofillAddressEnabled", "privacy.services.autofillCreditCardEnabled", "privacy.services.passwordSavingEnabled", "runtime.MessageSender", "runtime.connect", "runtime.connectNative", "runtime.getContexts", "runtime.getManifest", "runtime.getPlatformInfo", "runtime.getURL", "runtime.id", "runtime.lastError", "runtime.onConnect", "runtime.onMessage", "runtime.reload", "runtime.sendMessage", "runtime.sendNativeMessage", "scripting.ExecutionWorld.ISOLATED", "scripting.ExecutionWorld.MAIN", "scripting.executeScript", "scripting.insertCSS", "scripting.registerContentScripts", "scripting.unregisterContentScripts", "sidePanel.open", "sidePanel.setOptions", "storage.local", "storage.local.get", "storage.managed", "storage.managed.get", "storage.onChanged", "storage.session", "storage.sync", "tabs.TAB", "tabs.Tab", "tabs.captureVisibleTab", "tabs.create", "tabs.executeScript", "tabs.get", "tabs.getCurrent", "tabs.onActivated", "tabs.onCreated", "tabs.onRemoved", "tabs.onUpdated", "tabs.query", "tabs.remove", "tabs.sendMessage", "tabs.update", "webNavigation.getAllFrames", "webNavigation.getFrame", "webNavigation.onCommitted", "webNavigation.onErrorOccurred", "webRequest.onAuthRequired", "windows.WINDOW", "windows.create", "windows.get", "windows.getAll", "windows.getCurrent", "windows.onRemoved", "windows.remove", "windows.update"].filter(p => p.split('.').reduce((o, k) => o == null ? undefined : o[k], chrome) === undefined)); })()
+              return JSON.stringify(["alarms.clear", "alarms.clearAll", "alarms.create", "alarms.get", "alarms.onAlarm", "commands.getAll", "contextMenus.create", "cookies.get", "cookies.getAll", "cookies.onChanged", "contextMenus.remove", "contextMenus.removeAll", "extension.getBackgroundPage", "extension.getViews", "i18n.getMessage", "i18n.getUILanguage", "management.getSelf", "notifications.clear", "notifications.create", "notifications.onButtonClicked", "notifications.onClicked", "offscreen.Reason.CLIPBOARD", "offscreen.Reason.LOCAL", "offscreen.closeDocument", "offscreen.createDocument", "offscreen.hasDocument", "permissions.contains", "permissions.request", "privacy.services.autofillAddressEnabled", "privacy.services.autofillCreditCardEnabled", "privacy.services.passwordSavingEnabled", "runtime.MessageSender", "runtime.connect", "runtime.connectNative", "runtime.getContexts", "runtime.getManifest", "runtime.getPlatformInfo", "runtime.getURL", "runtime.id", "runtime.lastError", "runtime.onConnect", "runtime.onMessage", "runtime.reload", "runtime.sendMessage", "runtime.sendNativeMessage", "scripting.ExecutionWorld.ISOLATED", "scripting.ExecutionWorld.MAIN", "scripting.executeScript", "scripting.insertCSS", "scripting.registerContentScripts", "scripting.unregisterContentScripts", "sidePanel.open", "sidePanel.setOptions", "storage.local", "storage.local.get", "storage.managed", "storage.managed.get", "storage.onChanged", "storage.session", "storage.sync", "tabs.TAB", "tabs.Tab", "tabs.captureVisibleTab", "tabs.create", "tabs.executeScript", "tabs.get", "tabs.getCurrent", "tabs.onActivated", "tabs.onCreated", "tabs.onRemoved", "tabs.onUpdated", "tabs.query", "tabs.remove", "tabs.sendMessage", "tabs.update", "webNavigation.getAllFrames", "webNavigation.getFrame", "webNavigation.onCommitted", "webNavigation.onErrorOccurred", "webRequest.onAuthRequired", "windows.WINDOW", "windows.create", "windows.get", "windows.getAll", "windows.getCurrent", "windows.onRemoved", "windows.remove", "windows.update"].filter(p => p.split('.').reduce((o, k) => o == null ? undefined : o[k], chrome) === undefined)); })()
             """))")
             note("[\(ext.name)] popup messaging: \(await evaluate(page, """
             Promise.race([
@@ -151,8 +157,38 @@ struct ExtensionCompatCheck {
                 await saveImage(await page.snapshot(), "real-selection")
             } else { note("[real selection] couldn't place the mouse: \(spot)") }
         }
+        // Paper Snapshot: start its picker, click the heading, and see whether HTML reached the clipboard.
+        if let paper = engine.debugExtensionPopups().first(where: { $0.name == "Paper Snapshot" }),
+           let target = URL(string: "https://example.com"), let page = library.openExtensionTab(url: target, windowID: nil, active: true) {
+            await pause(6)
+            NSPasteboard.general.clearContents()
+            engine.performAction(extensionID: paper.id, for: page, anchor: nil)
+            await pause(3)
+            let spot = await evaluate(page, "(() => { const b = document.querySelector('h1, p').getBoundingClientRect(); return JSON.stringify([b.left + b.width / 2, b.top + b.height / 2]); })()")
+            if let data = spot.data(using: .utf8), let xy = try? JSONSerialization.jsonObject(with: data) as? [Double], xy.count == 2 {
+                // The first click starts the picker ("Click the page to start"); the second takes the snapshot.
+                await click(page.view, at: NSPoint(x: xy[0], y: xy[1]))
+                await pause(2)
+                await click(page.view, at: NSPoint(x: xy[0], y: xy[1]))
+                await pause(5)
+                let html = NSPasteboard.general.string(forType: .html)
+                note("[Paper Snapshot] copy: clipboard html \(html.map { "\($0.count) chars, \($0.contains("x-paper") ? "Paper's" : "other")" } ?? "none"), page says: \(await evaluate(page, "(document.querySelector('#x-paper-toast') || {}).innerText || ''"))")
+                await saveImage(await page.snapshot(), "paper-copy")
+            } else { note("[Paper Snapshot] couldn't find the heading: \(spot)") }
+        } else { note("[Paper Snapshot] copy test skipped") }
         note("done")
         exit(0)
+    }
+
+    private func click(_ view: NSView, at p: NSPoint) async {
+        guard let window = view.window else { return }
+        window.makeKeyAndOrderFront(nil)
+        let point = view.convert(view.isFlipped ? p : NSPoint(x: p.x, y: view.bounds.height - p.y), to: nil)
+        for type in [NSEvent.EventType.mouseMoved, .leftMouseDown, .leftMouseUp] {
+            if let e = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0) { window.sendEvent(e) }
+            await pause(0.3)
+        }
     }
 
     private func press(_ view: NSView, _ chars: String, keyCode: UInt16) {
