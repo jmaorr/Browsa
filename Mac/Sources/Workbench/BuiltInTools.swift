@@ -92,10 +92,12 @@ enum BuiltInTools {
 
     /// An extension with a side panel becomes a panel tool, owned by that extension.
     static func sync(extensions: [EngineExtension], in workbench: Workbench) {
+        defer { PluginHost.shared.sync(extensions: extensions, in: workbench) }
         for t in workbench.tools {
             if case .plugin(let id) = t.owner, !extensions.contains(where: { $0.id == id }) { workbench.unregister(owner: t.owner) }
         }
-        for ext in extensions where ext.panelURL != nil {
+        // Browsa plugins get their own tool from PluginHost, which already shows their panel.
+        for ext in extensions where ext.panelURL != nil && !PluginHost.isPlugin(ext) {
             workbench.register(Tool(
                 id: "ext:" + ext.id, title: ext.name, symbol: "puzzlepiece.extension",
                 summary: "\(ext.name)'s side panel", owner: .plugin(ext.id),

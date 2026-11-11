@@ -192,3 +192,23 @@ import Testing
         for h in ["router.local", "localhost.evil.com", "127.0.0.1.evil.com", "10.0.0.1", "", "1270.0.0.1"] { #expect(!AgentAccess.isLoopback(h), "\(h)") }
     }
 }
+
+@Suite struct PluginAPITests {
+    @Test func newMethodsParse() {
+        #expect(PluginRequest(message: ["method": "page.current"])?.method == .currentPage)
+        #expect(PluginRequest(message: ["method": "browsa.info"])?.method == .info)
+        #expect(PluginRequest(message: ["method": "panel.show", "params": ["id": "notes"]])?.params["id"]?.string == "notes")
+    }
+
+    @Test func sampleManifestHasABrowsaBlock() throws {
+        let json: JSONValue = [
+            "manifest_version": 3, "name": "Hello", "version": "1",
+            "permissions": ["nativeMessaging"],
+            "browsa": ["panel": ["page": "panel.html", "title": "Hello", "icon": "hand.wave"],
+                       "commands": [["id": "a", "title": "A"]]],
+        ]
+        let m = try ExtensionManifest(json: json)
+        #expect(m.browsa?.panel?.icon == "hand.wave")
+        #expect(m.browsa?.commands == [BrowsaBlock.Command(id: "a", title: "A")])
+    }
+}

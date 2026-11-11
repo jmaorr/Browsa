@@ -117,6 +117,8 @@ final class Library {
         agents = AgentBridge(library: self)
         BuiltInTools.register(in: workbench)
         SpaceRouter.register(in: workbench, library: self)
+        PluginHost.shared.library = self
+        if developerTools { PluginHost.registerConsole(in: workbench) }
         NotesUI.installPageMenu(library: self)
         #if !SPIKE
         // SpikeBrowsa sets mock servers instead. Radar only looks at this Mac's ports while it's on
