@@ -22,7 +22,9 @@ extension Browser {
         case .open(let url):
             navigate(to: url, replacing: mode == .editCurrent, source: source)
         case .search(let q):
-            navigate(to: settings.searchEngine.searchURL(for: q), replacing: mode == .editCurrent, source: source)
+            // "!yt cats" goes straight to YouTube, even when it arrives as a plain search.
+            let url = Bangs.resolve(q)?.url ?? settings.searchEngine.searchURL(for: q)
+            navigate(to: url, replacing: mode == .editCurrent, source: source)
         case .command(let id):
             run(command: id)
         }
@@ -140,6 +142,12 @@ extension Browser {
     func run(command id: String) {
         commandBar = nil
         if library.workbench.run(commandID: id, in: self) { return }
+        if id.hasPrefix("copy-text:") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(String(id.dropFirst("copy-text:".count)), forType: .string)
+            showToast("Copied \(id.dropFirst("copy-text:".count))")
+            return
+        }
         if id.hasPrefix("ext:"), let ext = library.actionExtensions.first(where: { $0.id == String(id.dropFirst(4)) }) {
             runExtension(ext, anchor: nil)
             return

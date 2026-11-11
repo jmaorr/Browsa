@@ -151,7 +151,31 @@ public final class SuggestEngine: Sendable {
             isComplete: !includeRemote || remote == nil || trimmed.isEmpty
         )
         if let alias, ranked.first?.dedupeKey == alias.dedupeKey { results.defaultAction = alias.action }
+        // A !bang or a sum leads, and Return does it.
+        if let special = Self.specialRow(for: trimmed) {
+            results.local.insert(special, at: 0)
+            results.local = Array(results.local.prefix(config.localLimit))
+            results.defaultAction = special.action
+            results.inline = nil
+            // A bang already says where the query goes; don't send it to the default engine too.
+            if special.dedupeKey.hasPrefix("bang:") { results.isComplete = true }
+        }
         return results
+    }
+
+    /// "!yt cats" → YouTube's results; "12*7" → 84 (Return copies, through the app's
+    /// "copy-text:" command).
+    static func specialRow(for trimmed: String) -> Suggestion? {
+        if let hit = Bangs.resolve(trimmed) {
+            return Suggestion(kind: .searchQuery, title: hit.query.isEmpty ? hit.bang.name : hit.query,
+                              subtitle: hit.query.isEmpty ? "Open \(hit.bang.name) · !\(hit.bang.trigger)" : "Search \(hit.bang.name) · !\(hit.bang.trigger)",
+                              action: .open(hit.url), score: 1_000, dedupeKey: "bang:" + hit.url.absoluteString)
+        }
+        if let answer = Calculator.answer(for: trimmed) {
+            return Suggestion(kind: .command, title: "= " + answer.text, subtitle: answer.expression + " · Return copies",
+                              action: .command(id: "copy-text:" + answer.text), score: 1_000, dedupeKey: "calc:" + answer.text)
+        }
+        return nil
     }
 
     /// Streams local results immediately, then the same list with remote rows appended.
