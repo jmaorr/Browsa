@@ -17,12 +17,14 @@ enum CardSurface {
     case grain(Color, Color)
     /// Brushed aluminium, like the keyboard deck.
     case aluminium
+    /// Browsa's own look: the icon's lilac-blue and ember, softly meshed.
+    case browsa
 
     /// Text on this surface: dark surfaces always take white.
     func isDark(_ scheme: ColorScheme) -> Bool {
         switch self {
         case .paper, .aluminium: scheme == .dark
-        case .meshLight: scheme == .dark
+        case .meshLight, .browsa: scheme == .dark
         case .mesh, .grain: true
         }
     }
@@ -48,6 +50,14 @@ struct SurfaceBackground: View {
         case .grain(let a, let b):
             LinearGradient(colors: [a, b], startPoint: .topLeading, endPoint: .bottomTrailing)
                 .overlay(Grain(opacity: 0.09))
+        case .browsa:
+            let dark = scheme == .dark
+            // The icon: lilac and periwinkle from the tile, ember and gold from the swirl.
+            mesh(dark ? [Color(red: 0.2, green: 0.17, blue: 0.4), Color(red: 0.36, green: 0.14, blue: 0.3),
+                         Color(red: 0.14, green: 0.2, blue: 0.42), Color(red: 0.48, green: 0.18, blue: 0.1)]
+                      : [Color(red: 0.84, green: 0.8, blue: 1.0), Color(red: 0.98, green: 0.82, blue: 0.9),
+                         Color(red: 0.76, green: 0.84, blue: 1.0), Color(red: 1.0, green: 0.8, blue: 0.62)])
+                .overlay(Grain(opacity: dark ? 0.06 : 0.04))
         case .aluminium:
             // Softly brushed: a gentle sheen and faint grain, not hard stripes.
             LinearGradient(colors: scheme == .dark ? [Color(white: 0.24), Color(white: 0.19)] : [Color(white: 0.965), Color(white: 0.9)],
@@ -138,8 +148,7 @@ struct SeededRandom {
 extension WelcomeStop {
     var surface: CardSurface {
         switch self {
-        case .spaces: .meshLight([Color(red: 0.99, green: 0.66, blue: 0.3), Color(red: 1.0, green: 0.86, blue: 0.42),
-                                  Color(red: 0.62, green: 0.86, blue: 0.5), Color(red: 0.98, green: 0.76, blue: 0.36)])
+        case .spaces: .browsa
         case .newTab, .commands: .aluminium
         case .importing: .meshLight([Color(red: 0.74, green: 0.84, blue: 1.0), Color(red: 0.86, green: 0.82, blue: 1.0),
                                      Color(red: 0.7, green: 0.9, blue: 0.96), Color(red: 0.93, green: 0.9, blue: 1.0)])
