@@ -39,6 +39,9 @@ enum BuiltInTools {
             panel: { AnyView(BoostPanel()) },
             commands: [
                 ToolCommand(id: "zap", title: "Zap an Element on This Page", symbol: "scope", keywords: ["boost", "hide", "remove", "distraction"]) { browser in
+                    guard browser.currentTab?.isPrivate != true else {
+                        browser.showToast("Boosts aren't saved from private tabs"); return
+                    }
                     browser.showPanel("boosts")
                     guard let url = browser.currentTab?.url, let page = browser.currentController?.page,
                           let start = BoostStore.shared.boostOrNew(for: url) else { return }
@@ -51,6 +54,9 @@ enum BuiltInTools {
                     }
                 },
                 ToolCommand(id: "toggle", title: "Turn Boost On or Off for This Site", symbol: "paintbrush.pointed", keywords: ["boost", "style"]) { browser in
+                    guard browser.currentTab?.isPrivate != true else {
+                        browser.showToast("Boosts aren't changed from private tabs"); return
+                    }
                     guard var boost = BoostStore.shared.boost(for: browser.currentTab?.url) else {
                         browser.showToast("This site has no Boost yet")
                         return

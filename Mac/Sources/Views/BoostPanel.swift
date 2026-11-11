@@ -11,10 +11,17 @@ struct BoostPanel: View {
 
     private var store: BoostStore { .shared }
     private var url: URL? { browser.currentTab?.url }
+    /// Saving a Boost writes the site to disk, so private tabs can't make or change one.
+    private var isPrivate: Bool { browser.currentTab?.isPrivate == true }
 
     var body: some View {
         VStack(spacing: 0) {
-            if let draft = Binding($draft) {
+            if isPrivate {
+                PanelEmptyState(title: "Private Window", symbol: "eye.slash",
+                                message: "Boosts you already made still apply here, but Browsa doesn't save new ones from private tabs.") {
+                    EmptyView()
+                }
+            } else if let draft = Binding($draft) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         header(draft)
@@ -38,7 +45,7 @@ struct BoostPanel: View {
         }
         .task(id: url) { load() }
         .onChange(of: draft) { _, new in
-            guard let new else { return }
+            guard let new, !isPrivate else { return }
             store.save(new)
             preview(new)
         }
@@ -46,7 +53,7 @@ struct BoostPanel: View {
 
     private func load() {
         zapping = false
-        draft = store.boostOrNew(for: url)
+        draft = isPrivate ? nil : store.boostOrNew(for: url)
     }
 
     private func preview(_ boost: SiteBoost) {
