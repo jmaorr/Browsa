@@ -629,8 +629,9 @@ extension Library: EngineExtensionHost {
 
     /// chrome.sidePanel.open, or a toolbar click on an extension that asked for its panel instead.
     func showExtensionPanel(extensionID: String) -> Bool {
-        let id = "ext:" + extensionID
-        guard workbench.tool(id) != nil, let window = activeWindow else { return false }
+        // A Browsa plugin's panel is its plugin tool; any other extension's side panel is "ext:".
+        guard let id = ["ext:" + extensionID, "plugin:" + extensionID].first(where: { workbench.tool($0)?.panel != nil }),
+              let window = activeWindow else { return false }
         window.showPanel(id)
         return true
     }
