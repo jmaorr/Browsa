@@ -39,66 +39,76 @@ struct SpaceTabs: View {
         return slots
     }
 
+    /// New rows come in from a full sidebar's width away, as the old list leaves by the same amount,
+    /// so a space switch reads as one sideways slide.
+    private var slideDistance: CGFloat { listFrame.width > 0 ? listFrame.width : 240 }
+
     var body: some View {
         let space = browser.currentSpace
-        let forward = browser.lastSpaceSwitch?.forward ?? true
         // Dragging with nothing else pinned: a zone to drop on stands in for the Pinned section.
         let pinZone = dragging.lift != nil && !space.isPrivate && !space.pinned.contains { !dragging.isLifted($0.id) }
         let pinned = slots(space.pinned, pinned: true, gapAllowed: !pinZone)
         let today = slots(space.listedToday, pinned: false)
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 2) {
-                // Spaces are named by their icon in the switcher below, so only a private space gets a header.
-                if space.isPrivate {
-                    SpaceHeader(space: space)
-                        .padding(.bottom, 4)
-                } else {
-                    Color.clear.frame(height: 6)
-                }
-
-                // Dragging with nothing pinned yet: somewhere to pin, and what pinning means.
-                if pinZone {
-                    PinDropZone(targeted: dragging.target?.isPinned == true,
-                                landing: dragging.settling && dragging.target?.isPinned == true)
-                        // As tall as a pinned row and the air under it, so nothing jumps when it lands.
-                        .frame(height: 44)
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
-                            dragging.pinZoneFrame = $0
-                        }
-                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
-                }
-
-                ForEach(Array(pinned.enumerated()), id: \.element.id) { i, slot in
-                    row(slot, in: space)
-                        .spaceCascade(index: i, spaceSwitch: browser.lastSpaceSwitch)
-                }
-
-                // A little air between pinned and Today, rather than a rule.
-                if pinned.contains(where: { !$0.collapsed }) {
-                    Color.clear.frame(height: 8)
-                }
-
-                NewTabRow(space: space)
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
-                        dragging.newTabFrame = $0
+        // The whole list is the unit that slides: its id is the space, and a transition on the list
+        // inside a ScrollView is ignored (it only cross-faded).
+        ZStack {
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 2) {
+                    // Spaces are named by their icon in the switcher below, so only a private space gets a header.
+                    if space.isPrivate {
+                        SpaceHeader(space: space)
+                            .padding(.bottom, 4)
+                    } else {
+                        Color.clear.frame(height: 6)
                     }
 
-                ForEach(Array(today.enumerated()), id: \.element.id) { i, slot in
-                    row(slot, in: space)
-                        .spaceCascade(index: i + pinned.count + 1, spaceSwitch: browser.lastSpaceSwitch)
-                }
+                    // Dragging with nothing pinned yet: somewhere to pin, and what pinning means.
+                    if pinZone {
+                        PinDropZone(targeted: dragging.target?.isPinned == true,
+                                    landing: dragging.settling && dragging.target?.isPinned == true)
+                            // As tall as a pinned row and the air under it, so nothing jumps when it lands.
+                            .frame(height: 44)
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
+                                dragging.pinZoneFrame = $0
+                            }
+                            .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+                    }
 
-                Color.clear.frame(height: 40)
+                    ForEach(Array(pinned.enumerated()), id: \.element.id) { i, slot in
+                        row(slot, in: space)
+                            .spaceCascade(index: i, distance: slideDistance, spaceSwitch: browser.lastSpaceSwitch)
+                    }
+
+                    // A little air between pinned and Today, rather than a rule.
+                    if pinned.contains(where: { !$0.collapsed }) {
+                        Color.clear.frame(height: 8)
+                    }
+
+                    NewTabRow(space: space)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
+                            dragging.newTabFrame = $0
+                        }
+
+                    ForEach(Array(today.enumerated()), id: \.element.id) { i, slot in
+                        row(slot, in: space)
+                            .spaceCascade(index: i + pinned.count + 1, distance: slideDistance, spaceSwitch: browser.lastSpaceSwitch)
+                    }
+
+                    Color.clear.frame(height: 40)
+                }
+                .padding(.horizontal, 10)
             }
-            .padding(.horizontal, 10)
+            .scrollIndicators(.never)
+            .scrollPosition($scroll)
+            .onScrollGeometryChange(for: [CGFloat].self) { g in
+                [g.contentOffset.y, max(0, g.contentSize.height - g.containerSize.height)]
+            } action: { _, v in offset = v[0]; maxOffset = v[1] }
             .id(space.id)
-            .transition(.spaceListChange(forward: forward))
+            .transition(.spaceListChange)
         }
-        .scrollIndicators(.never)
-        .scrollPosition($scroll)
-        .onScrollGeometryChange(for: [CGFloat].self) { g in
-            [g.contentOffset.y, max(0, g.contentSize.height - g.containerSize.height)]
-        } action: { _, v in offset = v[0]; maxOffset = v[1] }
+        // However the space changes (a swipe, a key, a click), the old list slides out as the new one
+        // slides in. Swipes and keys change it outside any animation, so the old list used to vanish.
+        .animation(Motion.spring, value: space.id)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: { listFrame = $0 }
         // Dragging near the top or bottom edge scrolls the list, so any slot can be reached.
         .task(id: dragging.lift != nil) {

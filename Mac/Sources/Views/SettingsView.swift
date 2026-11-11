@@ -121,17 +121,11 @@ private struct SpaceEditor: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Menu {
-                ForEach(SpacePalette.symbols, id: \.self) { symbol in
-                    Button { space.symbol = symbol; browser.scheduleSave() } label: { Image(systemName: symbol) }
-                }
-            } label: {
-                Image(systemName: space.symbol)
-            }
-            .menuIndicator(.hidden)
-            .fixedSize()
-            TextField("Name", text: $space.name)
+            SpaceIconPicker(symbol: $space.symbol) { browser.scheduleSave() }
+            TextField("Name", text: $space.name, prompt: Text("Name"))
                 .textFieldStyle(.roundedBorder)
+                // The grouped form would otherwise add a "Name" label and push the field right.
+                .labelsHidden()
                 .onSubmit { browser.scheduleSave() }
             HStack(spacing: 4) {
                 ForEach(SpacePalette.colors.indices, id: \.self) { i in
@@ -149,6 +143,47 @@ private struct SpaceEditor: View {
                 .help("Delete space and its tabs")
         }
         .onChange(of: space.name) { browser.scheduleSave() }
+    }
+}
+
+/// The space's icon as a small square well; clicking it opens a grid of icons to pick from.
+private struct SpaceIconPicker: View {
+    @Binding var symbol: String
+    let onPick: () -> Void
+    @State private var open = false
+    @State private var hovering = false
+
+    var body: some View {
+        Button { open.toggle() } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 13))
+                .frame(width: 26, height: 26)
+                .background(.quaternary.opacity(hovering || open ? 1 : 0.6), in: .rect(cornerRadius: 6, style: .continuous))
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("Change icon")
+        .popover(isPresented: $open, arrowEdge: .bottom) {
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(28), spacing: 4), count: 6), spacing: 4) {
+                ForEach(SpacePalette.symbols, id: \.self) { s in
+                    Button {
+                        symbol = s
+                        onPick()
+                        open = false
+                    } label: {
+                        Image(systemName: s)
+                            .font(.system(size: 13))
+                            .frame(width: 28, height: 28)
+                            .background(s == symbol ? AnyShapeStyle(Color.accentColor.opacity(0.2)) : AnyShapeStyle(.clear),
+                                        in: .rect(cornerRadius: 6, style: .continuous))
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(10)
+        }
     }
 }
 
