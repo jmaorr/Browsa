@@ -100,6 +100,7 @@ struct BrowserWindow: View {
             browser.nsWindow = window
             // Each window keeps its own place; SwiftUI restores the frames.
             window.tabbingMode = .disallowed
+            WindowSizing.attach(window)
         }
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
@@ -108,6 +109,30 @@ struct BrowserWindow: View {
         let showLights = browser.isSidebarDocked
         for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
             window.standardWindowButton(kind)?.isHidden = !showLights
+        }
+    }
+}
+
+/// Browser windows open filling the screen's free space. SwiftUI restores the last frame, which on
+/// first runs is its small default, so until the person sizes a window themselves, each new window
+/// is set to the screen's visible area. After they resize one, their size is left alone.
+@MainActor
+enum WindowSizing {
+    private static let key = "windowSizedByPerson"
+    private static var observing = false
+
+    static func attach(_ window: NSWindow) {
+        if !observing {
+            observing = true
+            NotificationCenter.default.addObserver(forName: NSWindow.didEndLiveResizeNotification, object: nil, queue: .main) { _ in
+                UserDefaults.standard.set(true, forKey: key)
+            }
+        }
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        // After SwiftUI has put back the saved frame.
+        Task { @MainActor in
+            guard let screen = window.screen ?? NSScreen.main, !window.styleMask.contains(.fullScreen) else { return }
+            window.setFrame(screen.visibleFrame, display: true, animate: false)
         }
     }
 }

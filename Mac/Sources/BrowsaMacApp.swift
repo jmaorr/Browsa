@@ -18,7 +18,11 @@ struct BrowsaMacApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
-        .defaultSize(width: 1280, height: 820)
+        // A new window fills the screen's free space (inside the menu bar and Dock), not a small box.
+        // Restored windows get the same treatment in WindowSizing until the person sizes one.
+        .defaultWindowPlacement { _, context in
+            WindowPlacement(context.defaultDisplay.visibleRect.origin, size: context.defaultDisplay.visibleRect.size)
+        }
         // Left to itself, SwiftUI answers a link from another app by opening a new window. Claim no
         // external events here, so links reach the app delegate and open as tabs instead.
         .handlesExternalEvents(matching: [])
