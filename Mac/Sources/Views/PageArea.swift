@@ -15,7 +15,7 @@ struct PageArea: View {
             } else if browser.currentTab.map({ LibraryPage.isLibrary($0.url) }) == true {
                 LibraryView()
             } else if let tab = browser.currentTab {
-                let focuses = browser.commandBar == nil && browser.find == nil
+                let focuses = browser.commandBar == nil && browser.find == nil && browser.glance == nil
                 if browser.isReaderShowing, let reader = browser.reader {
                     PageHost(view: reader.page.view, focusesPage: focuses, holdsWidth: browser.isSidebarMoving)
                 } else {
@@ -70,6 +70,13 @@ struct PageArea: View {
                     .id(toast)
             }
         }
+        .overlay {
+            if let glance = browser.glance {
+                GlanceOverlay(glance: glance)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
+        }
+        .animation(Motion.snappy, value: browser.glance?.id)
         .animation(Motion.snappy, value: browser.toast)
         .animation(Motion.snappy, value: browser.find != nil)
         .animation(Motion.snappy, value: browser.isReaderShowing)
