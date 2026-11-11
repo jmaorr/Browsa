@@ -443,20 +443,11 @@ struct WelcomePage: View {
         if let level = progress.complete(stop) { browser.showToast("New level · \(level.name)") }
     }
 
-    /// Asks macOS to make Browsa the default browser. macOS confirms with the person first, and
-    /// its completion handlers don't reliably say whether they agreed, so this watches for the
-    /// change itself and runs `done` on the main actor once Browsa really is the default.
-    static func makeDefaultBrowser(done: @escaping @MainActor () -> Void = {}) {
+    /// Asks macOS to make Browsa the default browser. macOS confirms with the person first.
+    static func makeDefaultBrowser() {
         let app = Bundle.main.bundleURL
         NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "http") { _ in }
         NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "https") { _ in }
-        Task { @MainActor in
-            // Up to two minutes for the person to answer the prompt.
-            for _ in 0..<240 {
-                if isDefaultBrowser { done(); return }
-                try? await Task.sleep(for: .milliseconds(500))
-            }
-        }
     }
 
     /// Whether this Browsa already opens web links.
@@ -893,7 +884,9 @@ private struct DefaultCard: View {
             if !done {
                 Button {
                     asking = true
-                    WelcomePage.makeDefaultBrowser { complete() }
+                    // Clicking is enough to tick it, whatever the person answers macOS.
+                    WelcomePage.makeDefaultBrowser()
+                    complete()
                     Task { @MainActor in
                         try? await Task.sleep(for: .seconds(2))
                         asking = false
