@@ -164,7 +164,7 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         switch self {
         case .newTab, .commands, .makeDefault: "10 sec"
         case .spaces: "30 sec"
-        case .tour: "30 sec"
+        case .tour: "40 sec"
         case .importing, .library, .agents: "1 min"
         }
     }
@@ -822,7 +822,7 @@ private struct GalleryCard: View {
         case .tour:
             let filmPlaying = WelcomeFilm.shared.isPlaying
             Instruction(kind: .watch, done: done, title: "Watch the film") {
-                Text("Thirty seconds, with sound.").foregroundStyle(.secondary)
+                Text("Under forty seconds, with sound.").foregroundStyle(.secondary)
             } trailing: {
                 Button(action: act) {
                     Image(systemName: filmPlaying ? "pause.fill" : "play.fill")

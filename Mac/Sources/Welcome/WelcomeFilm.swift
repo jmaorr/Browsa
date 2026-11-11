@@ -1,7 +1,7 @@
 import SwiftUI
 import AVKit
 
-// The "See it in action" card plays Browsa's own film: about 28 seconds, with voice and music,
+// The "See it in action" card plays Browsa's own film: about 36 seconds, with voice and music,
 // shown in the card's right side. Play and pause from the card's button or by clicking the film;
 // it ticks the stop once it has played through.
 
