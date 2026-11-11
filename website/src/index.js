@@ -91,7 +91,9 @@ async function serveRelease(request, env, key) {
   }
   // A failed If-None-Match / If-Modified-Since leaves the body off.
   if (!("body" in object)) return new Response(null, { status: 304, headers });
-  if (object.range) {
+  // R2 fills in object.range even when the request had no Range header (it's the whole file then),
+  // so only answer 206 to a request that asked for a range. A plain GET gets a plain 200.
+  if (object.range && request.headers.has("Range")) {
     const { offset = 0, length = object.size - offset } = object.range;
     headers.set("Content-Range", `bytes ${offset}-${offset + length - 1}/${object.size}`);
     headers.set("Content-Length", length);
