@@ -56,6 +56,8 @@ final class Library {
     /// Coding agents over MCP. Made after everything else, since it reaches back into the library.
     @ObservationIgnored private(set) var agents: AgentBridge!
     var downloads: [EngineDownload] = []
+    /// Permission answers given in private tabs, by host. Kept in memory and dropped with the private space.
+    @ObservationIgnored var privatePermissions: [String: [String: Bool]] = [:]
     var filterStatus = FilterStatus()
     /// Tabs closed this session, newest last, for Shift-Cmd-T. Never private tabs.
     private(set) var recentlyClosed: [BrowserTab] = []
@@ -461,6 +463,7 @@ final class Library {
         }
         for w in windows where w.selectedSpaceID == space.id { w.leaveSpace() }
         spaces.removeAll { $0.id == space.id }
+        privatePermissions = [:]
         engine.resetEphemeralProfile()
         scheduleSave()
     }
