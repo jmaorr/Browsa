@@ -21,7 +21,8 @@ public enum Calculator {
                 || ["sqrt", "sin", "cos", "tan", "log", "ln", "pi"].contains(where: body.contains) else { return nil }
         // Something like "2024-11-11" or "1-800-flowers" isn't a sum.
         if body.range(of: #"^\d{4}-\d{1,2}-\d{1,2}$"#, options: .regularExpression) != nil { return nil }
-        guard let value = Parser(body).parse(), value.isFinite else { return nil }
+        var parser = Parser(body)
+        guard let value = parser.parse(), value.isFinite else { return nil }
         let pretty = body.replacingOccurrences(of: "*", with: " × ").replacingOccurrences(of: "/", with: " ÷ ")
             .replacingOccurrences(of: "+", with: " + ").replacingOccurrences(of: "  ", with: " ")
         return Answer(text: format(value), expression: pretty.trimmingCharacters(in: .whitespaces))
@@ -50,14 +51,14 @@ public enum Calculator {
 
     // MARK: Units
 
-    private struct Unit {
+    private struct Unit: Sendable {
         let names: [String]
         let symbol: String
         let kind: String
         /// Multiplier to the kind's base unit (temperatures use `toBase`/`fromBase`).
         let factor: Double
-        var toBase: ((Double) -> Double)? = nil
-        var fromBase: ((Double) -> Double)? = nil
+        var toBase: (@Sendable (Double) -> Double)? = nil
+        var fromBase: (@Sendable (Double) -> Double)? = nil
     }
 
     private static let units: [Unit] = [
