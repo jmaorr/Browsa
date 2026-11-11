@@ -149,7 +149,7 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
 
     var challenge: String {
         switch self {
-        case .spaces: "Swipe to another space and back"
+        case .spaces: "Swipe to another space"
         case .newTab: "Press ⌘T"
         case .commands: "Press ⌘K"
         case .importing: "Import from another browser"
@@ -676,7 +676,7 @@ private struct GalleryCard: View {
 
     private func arrived() {
         visited.insert(currentSpace)
-        if visited.count == 3, !done {
+        if visited.count >= 2, !done {
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(500))
                 complete()
