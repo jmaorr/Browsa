@@ -17,7 +17,7 @@ enum CardSurface {
     case grain(Color, Color)
     /// Brushed aluminium, like the keyboard deck.
     case aluminium
-    /// Browsa's own look: the icon's lilac-blue and ember, softly meshed.
+    /// Browsa's own look, from the official icon: warm paper tile and the molten orb's glow.
     case browsa
 
     /// Text on this surface: dark surfaces always take white.
@@ -51,13 +51,33 @@ struct SurfaceBackground: View {
             LinearGradient(colors: [a, b], startPoint: .topLeading, endPoint: .bottomTrailing)
                 .overlay(Grain(opacity: 0.09))
         case .browsa:
+            // The official icon: its warm paper tile (near-black in dark), with the molten orb's
+            // glow, gold at the core through orange to red, rising from the lower right.
             let dark = scheme == .dark
-            // The icon: lilac and periwinkle from the tile, ember and gold from the swirl.
-            mesh(dark ? [Color(red: 0.2, green: 0.17, blue: 0.4), Color(red: 0.36, green: 0.14, blue: 0.3),
-                         Color(red: 0.14, green: 0.2, blue: 0.42), Color(red: 0.48, green: 0.18, blue: 0.1)]
-                      : [Color(red: 0.84, green: 0.8, blue: 1.0), Color(red: 0.98, green: 0.82, blue: 0.9),
-                         Color(red: 0.76, green: 0.84, blue: 1.0), Color(red: 1.0, green: 0.8, blue: 0.62)])
-                .overlay(Grain(opacity: dark ? 0.06 : 0.04))
+            LinearGradient(colors: dark ? [Color(red: 0.11, green: 0.08, blue: 0.04), Color(red: 0.06, green: 0.06, blue: 0.06)]
+                                        : [Color(red: 0.94, green: 0.94, blue: 0.9), Color(red: 0.89, green: 0.86, blue: 0.82)],
+                           startPoint: .top, endPoint: .bottom)
+                .overlay {
+                    GeometryReader { g in
+                        let r = max(g.size.width, g.size.height)
+                        ZStack {
+                            Circle()
+                                .fill(RadialGradient(colors: [Color(red: 0.98, green: 0.82, blue: 0.1), Color(red: 0.97, green: 0.5, blue: 0.04),
+                                                              Color(red: 0.86, green: 0.2, blue: 0.04), Color(red: 0.86, green: 0.2, blue: 0.04).opacity(0)],
+                                                     center: .center, startRadius: 0, endRadius: r * 0.42))
+                                .frame(width: r * 0.84, height: r * 0.84)
+                                .position(x: g.size.width * 0.5, y: g.size.height * 1.12)
+                            // The small green splash from the icon's swirl.
+                            Circle()
+                                .fill(Color(red: 0.45, green: 0.85, blue: 0.2).opacity(0.5))
+                                .frame(width: r * 0.08, height: r * 0.08)
+                                .position(x: g.size.width * 0.36, y: g.size.height * 0.9)
+                        }
+                        .blur(radius: 36)
+                        .opacity(dark ? 0.75 : 0.8)
+                    }
+                }
+                .overlay(Grain(opacity: dark ? 0.06 : 0.035))
         case .aluminium:
             // Softly brushed: a gentle sheen and faint grain, not hard stripes.
             LinearGradient(colors: scheme == .dark ? [Color(white: 0.24), Color(white: 0.19)] : [Color(white: 0.965), Color(white: 0.9)],
