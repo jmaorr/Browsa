@@ -235,6 +235,8 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
 
     func performAction(extensionID: String, for page: WebKitPage?, anchor: NSView?) {
         guard let context = contexts[extensionID] else { return }
+        // chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }): the button opens the panel.
+        if ExtensionBridges.opensPanelOnAction(extensionID), host?.showExtensionPanel(extensionID: extensionID) == true { return }
         popupAnchor = anchor
         context.performAction(for: page)
     }
@@ -347,6 +349,12 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         }
         if applicationIdentifier == ExtensionOffscreen.clipboardIdentifier {
             ExtensionOffscreen.writeClipboard(message, for: extensionContext, reply: replyHandler)
+            return
+        }
+        if let name = applicationIdentifier, ExtensionBridges.names.contains(name) {
+            ExtensionBridges.handle(name, message: message, extensionID: extensionContext.uniqueIdentifier,
+                                    displayName: extensionContext.webExtension.displayName ?? "An extension",
+                                    host: host, reply: replyHandler)
             return
         }
         replyHandler(nil, Self.noNativeMessaging(applicationIdentifier))
