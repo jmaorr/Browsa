@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="style.css">
+<body class="sidebar">
+  <div id="clock" class="big">--:--</div>
+  <div class="muted">A plugin's sidebar card. Anything HTML can go here.</div>
+  <script>
+    const tick = () => document.getElementById('clock').textContent =
+      new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    tick(); setInterval(tick, 10000);
+  </script>
+</body>

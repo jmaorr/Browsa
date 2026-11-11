@@ -1,0 +1,10 @@
+:root { color-scheme: light dark; font: 13px -apple-system, sans-serif; }
+body { margin: 0; background: transparent; }
+main { padding: 14px; }
+h1 { font-size: 17px; margin: 0 0 4px; }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: GrayText; margin: 16px 0 6px; }
+.muted { color: GrayText; }
+.card { white-space: pre-wrap; padding: 10px; border-radius: 8px; background: color-mix(in srgb, CanvasText 6%, transparent); margin: 0; }
+button { margin-top: 16px; font: inherit; padding: 6px 12px; border-radius: 7px; border: 1px solid color-mix(in srgb, CanvasText 15%, transparent); background: Canvas; }
+.sidebar { padding: 10px 12px; }
+.big { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
