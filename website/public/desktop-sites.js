@@ -1,6 +1,6 @@
-// Made-up websites for the drawn Mac window, so the demos show real-looking pages instead of
-// grey boxes. None of these brands exist. Northwind is the same shop SpikeBrowsa serves on
-// localhost, so the drawings and any film recorded from SpikeBrowsa show the same thing.
+// Pages for the drawn Mac window. Wander & Salt and Tern are made up (neither brand exists), so
+// the demos show real-looking pages instead of grey boxes. Supper is the real demo site the app's
+// agent demo drives (website/public/demo), shown as captures. The Library is Browsa's own page.
 
 // SF Symbol look-alikes, drawn on a 24-unit grid with round strokes.
 const path = (d, extra = "") => `<svg viewBox="0 0 24 24" aria-hidden="true"${extra}>${d}</svg>`;
@@ -29,6 +29,19 @@ export const ICON = {
   chevronDown: path('<path d="m7 10 5 5 5-5"/>'),
   check: path('<circle class="fill" cx="12" cy="12" r="9"/><path class="knock" d="m8 12.2 2.7 2.7L16 9.5"/>'),
   stop: path('<rect class="fill" x="7" y="7" width="10" height="10" rx="2"/>'),
+  rays: path('<path class="fill" d="M10.2 8.6c-.6-.3-1.2.3-.9.9l4.6 10.1c.3.6 1.1.5 1.3-.1l1.1-3.6c.1-.3.3-.5.6-.6l3.6-1.1c.6-.2.7-1-.1-1.3z"/><path d="M6.6 6.6 4.8 4.8M6 10H3.5M10 6V3.5"/>'),
+  pointer: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.6 3.9c-.8-.4-1.6.4-1.2 1.2l6.3 13.8c.4.8 1.5.7 1.8-.1l1.5-4.9c.1-.4.4-.7.8-.8l4.9-1.5c.8-.3.9-1.4.1-1.8z"/></svg>',
+  ellipsis: path('<circle class="fill" cx="6" cy="12" r="1.6"/><circle class="fill" cx="12" cy="12" r="1.6"/><circle class="fill" cx="18" cy="12" r="1.6"/>'),
+  plusBubble: path('<path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v6a2.5 2.5 0 0 1-2.5 2.5H11l-4 3.5V15h0a2.5 2.5 0 0 1-2-2.5z"/><path d="M12 7v5.5M9.25 9.75h5.5"/>'),
+  scope: path('<circle cx="12" cy="12" r="7"/><circle class="fill" cx="12" cy="12" r="2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/>'),
+  books: path('<rect x="4" y="4.5" width="4" height="15" rx="1"/><rect x="9.5" y="4.5" width="4" height="15" rx="1"/><path d="m15.4 5.6 3.6-1 3 14.3-3.6.9z"/>'),
+  tick: path('<path d="m6 12.5 4 4 8-9"/>'),
+  importIn: path('<path d="M8 9.5H6.5a1.5 1.5 0 0 0-1.5 1.5v7.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V11a1.5 1.5 0 0 0-1.5-1.5H16M12 3.5v10M8.8 10.5l3.2 3.2 3.2-3.2"/>'),
+  seal: path('<path class="fill" d="m12 2.8 2.2 1.6 2.7-.1.8 2.6 2.2 1.6-.9 2.5.9 2.5-2.2 1.6-.8 2.6-2.7-.1L12 19.2l-2.2-1.6-2.7.1-.8-2.6L4.1 13.5l.9-2.5-.9-2.5 2.2-1.6.8-2.6 2.7.1z"/><path class="knock" d="m8.8 11.2 2.2 2.2 4.2-4.4"/>'),
+  hand: path('<path class="fill" d="M8 11V6.2a1.3 1.3 0 0 1 2.6 0V10V4.8a1.3 1.3 0 0 1 2.6 0V10V5.8a1.3 1.3 0 0 1 2.6 0V11V8.3a1.3 1.3 0 0 1 2.6 0v6.2a6.5 6.5 0 0 1-6.5 6.5h-.3a6 6 0 0 1-4.6-2.2L4.5 15.5a1.3 1.3 0 0 1 2-1.7L8 15.5z"/>'),
+  shieldTick: path('<path class="fill" d="M12 3.5 19 6v5.5c0 4.3-3 7.6-7 9-4-1.4-7-4.7-7-9V6z"/><path class="knock" d="m9 12 2.2 2.2L15.2 10"/>'),
+  link: path('<path d="M10.5 13.5a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1 1"/><path d="M13.5 10.5a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1-1"/>'),
+  noteFill: path('<path class="fill" d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v6a2.5 2.5 0 0 1-2.5 2.5H11l-4 3.5V15h0a2.5 2.5 0 0 1-2-2.5z"/>'),
   cursor: path('<path class="fill" d="M6 3.5 18 13l-5.2.7 3 6-2.4 1.2-3-6L6 18.5z"/>'),
 };
 
@@ -42,6 +55,8 @@ export const FAV = {
   pine: '<i class="fav f-pine"></i>',
   forge: '<i class="fav f-forge"></i>',
   post: '<i class="fav f-post"></i>',
+  supper: '<i class="fav f-supper">S</i>',
+  books: '<i class="fav f-books"></i>',
 };
 
 // Wander & Salt, a travel journal. The hero is a drawn fjord rather than a photo, so it stays
@@ -101,24 +116,53 @@ export const devDocs = `
   </div>
 </div>`;
 
-// Northwind, the shop SpikeBrowsa serves on localhost. Its fields can fill in: the agent and
-// password manager scenes reveal the .fill text.
-export const shop = `
-<div class="site s-nw">
-  <header class="nw-top"><b>Northwind</b><nav><span>Shop</span><span>Cart</span><span class="on">Checkout</span></nav></header>
-  <div class="nw-body">
-    <form class="nw-form" aria-hidden="true">
-      <h1>Checkout</h1>
-      <label>Email</label><span class="nw-field"><span class="fill f1">ada@northwind.dev</span><i class="nw-key">${ICON.key}</i></span>
-      <label>Password</label><span class="nw-field"><span class="fill f2">••••••••••••</span></span>
-      <label>Name on card</label><span class="nw-field"><span class="fill f3">Ada Lovelace</span></span>
-      <span class="nw-pay">Pay $329</span>
-    </form>
-    <aside class="nw-summary">
-      <p>Order summary</p>
-      <div class="nw-item"><i class="sw1"></i><span>Linen Shirt<em>Sand · M</em></span><b>$89</b></div>
-      <div class="nw-item"><i class="sw2"></i><span>Field Jacket<em>Olive · M</em></span><b>$240</b></div>
-      <div class="nw-total"><span>Total</span><b>$329</b></div>
-    </aside>
+// Supper, the agent demo's dinner planner, as captured from website/public/demo at the page's
+// size with the panel open (682 × 788pt). supper-0 is how it opens; 1 to 4 are the agent's steps.
+export const supper = `
+<div class="site s-sup">
+  ${[0, 1, 2, 3, 4].map((n) => `<img class="shot s${n}" src="/media/hero/supper-${n}.webp" alt="" width="682" height="788" decoding="async">`).join("")}
+  <i class="n-hl"></i>
+  <i class="n-box b2"></i><i class="n-box b3"></i>
+  <i class="n-pin p1">1</i><i class="n-pin p2">2</i><i class="n-pin p3">3</i>
+  <i class="a-ring"></i><i class="a-ripple"></i>
+  <span class="a-cap"><i class="a-dot"></i>${ICON.rays}<span>
+    <b data-s="0">Reading ‘Supper’</b><b data-s="1">Typing ‘6’ into guests</b><b data-s="2">Clicking ‘Add to menu’</b>
+    <b data-s="3">Clicking ‘Swap’</b><b data-s="4">Clicking ‘Saturday 5–7 pm’</b><b data-s="5">Leaving a note: “Dinner for 6…”</b>
+  </span></span>
+  <i class="a-cursor">${ICON.pointer}</i>
+</div>`;
+
+// The Library (browsa://library): the packs, then extensions from the Chrome Web Store that we've
+// tested. Sizes follow Mac/Sources/Library/LibraryPage.swift.
+const VERIFIED = [
+  ["1password", "1Password", "Passwords, passkeys and cards, filled for you."],
+  ["ublock", "uBlock Origin Lite", "Blocks ads and trackers, with no setup."],
+  ["dark-reader", "Dark Reader", "Dark mode for every website."],
+  ["vimium", "Vimium", "Browse with the keyboard: press f to click any link."],
+  ["json-formatter", "JSON Formatter", "Readable, collapsible JSON in the browser."],
+  ["paper", "Paper Snapshot", "Copy any part of a site into Paper as editable layers."],
+];
+const plug = (cls, icon) => `<i class="lb-pi ${cls}">${icon}</i>`;
+export const library = `
+<div class="site s-lib">
+  <div class="lb-head">
+    <div><h1>Library</h1><p>Add to Browsa: our own plugins, and extensions from the Chrome Web Store.</p></div>
+    <span class="lb-glass">${ICON.importIn}Import from Another Browser…</span>
+  </div>
+  <div class="lb-search">${ICON.search}<span>Search plugins and extensions</span></div>
+  <div class="lb-pack pk-a">
+    <span class="lb-fan">${plug("t-radar", ICON.radar)}${plug("t-notes", ICON.noteFill)}${plug("t-agents", ICON.rays)}</span>
+    <span class="lb-pt"><b>Agent Pack</b><em>Build with an AI agent beside you.</em></span><i class="lb-sw on"></i>
+  </div>
+  <div class="lb-pack pk-p">
+    <span class="lb-fan">${plug("t-block", ICON.hand)}${plug("t-cookie", ICON.shieldTick)}${plug("t-links", ICON.link)}</span>
+    <span class="lb-pt"><b>Privacy Pack</b><em>Fewer ads, trackers and cookie banners.</em></span><i class="lb-sw on"></i>
+  </div>
+  <div class="lb-sect"><span><b>Extensions</b><em>From the Chrome Web Store.</em></span><span class="lb-glass big">${ICON.plus}Add Chrome Extension</span></div>
+  <p class="lb-cap">Verified to work in Browsa</p>
+  <div class="lb-grid">
+    ${VERIFIED.map(([id, name, blurb]) => `<div class="lb-ext x-${id}"><img src="/media/ext/${id}.png" alt="" width="40" height="40"><span><b>${name}</b><em>${blurb}</em></span>${
+      id === "dark-reader" ? `<u class="added">${ICON.tick}Added</u>` : `<u class="add">Add</u>${id === "1password" ? `<u class="added">${ICON.tick}Added</u><i class="lb-cursor">${ICON.cursor}</i>` : ""}`
+    }</div>`).join("")}
   </div>
 </div>`;
