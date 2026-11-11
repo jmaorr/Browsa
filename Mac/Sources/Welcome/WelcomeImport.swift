@@ -16,6 +16,8 @@ import Suggest
     var options = ImportOptions()
     private(set) var phase: Phase = .idle
     var showingSheet = false
+    /// Skipped from the welcome card.
+    var skipped = false
     /// What the options would bring over, read ahead for the sheet's summary.
     private(set) var preview: ImportedData?
     private(set) var safariReadable = BrowserImport.canReadSafari
@@ -94,6 +96,7 @@ import Suggest
         // Testing: lets Reset Progress import the same spaces again.
         UserDefaults.standard.removeObject(forKey: "importedSpaces")
         phase = .idle
+        skipped = false
         choice = nil
         preview = nil
     }
@@ -121,6 +124,8 @@ extension ImportSource {
 /// in the importer on the right.
 struct ImportLead: View {
     let done: Bool
+    /// Skipping counts as done: importing is always there later, in Settings and the Library.
+    let skip: () -> Void
     @State private var model = WelcomeImport.shared
 
     var body: some View {
@@ -130,6 +135,22 @@ struct ImportLead: View {
             Text(line)
                 .font(.system(size: 13, weight: .medium))
                 .fixedSize(horizontal: false, vertical: true)
+            if !done, model.phase != .importing {
+                HStack(spacing: 10) {
+                    Button("Skip for Now") {
+                        model.skipped = true
+                        skip()
+                    }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.large)
+                    Text("You can import any time from Settings or the Library.")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 4)
+            }
         }
     }
 
@@ -137,7 +158,8 @@ struct ImportLead: View {
         switch model.phase {
         case .done: "All in. Your \(model.choice?.name ?? "other browser") stays just as it was."
         case .importing: "Bringing everything over…"
-        default: "Pick the browser you're coming from, then Import."
+        default: model.skipped && done ? "Skipped. Import any time from Settings or the Library."
+                                       : "Pick the browser you're coming from, then Import."
         }
     }
 }
@@ -168,7 +190,7 @@ struct ImportPanel: View {
         .onAppear { if model.sources.isEmpty { model.scan() } }
         .onChange(of: model.options.profile) { model.refreshPreview() }
         .onChange(of: model.options.historyRange) { model.refreshPreview() }
-        .sheet(isPresented: $model.showingSheet) { ImportSheet().environment(browser) }
+        .sheet(isPresented: $model.showingSheet) { ImportSheet().environment(browser.library) }
     }
 
     private var sourcePicker: some View {
@@ -315,7 +337,7 @@ private struct CountRow: View {
 /// switch to bring it or not, and its finer choice underneath when it's on. Safari first walks
 /// through granting Full Disk Access.
 struct ImportSheet: View {
-    @Environment(Browser.self) private var browser
+    @Environment(Library.self) private var library
     @Environment(\.dismiss) private var dismiss
     @State private var model = WelcomeImport.shared
     @State private var accessTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -396,6 +418,11 @@ struct ImportSheet: View {
             footer
         }
         .frame(width: 540, height: 600)
+        .onAppear {
+            // Opened from Settings or the Library, it starts here.
+            if model.sources.isEmpty { model.scan() }
+            if model.choice == nil, let first = model.sources.first { model.pick(first) }
+        }
         .onReceive(accessTimer) { _ in if model.needsAccess { model.recheckAccess() } }
         .onChange(of: model.options.profile) { model.refreshPreview() }
         .onChange(of: model.options.historyRange) { model.refreshPreview() }
@@ -478,7 +505,7 @@ struct ImportSheet: View {
             Spacer()
             Button(model.phase == .importing ? "Importing…" : "Import") {
                 Task {
-                    await model.run(into: browser.library)
+                    await model.run(into: library)
                     if model.result != nil { dismiss() }
                 }
             }

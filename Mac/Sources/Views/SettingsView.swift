@@ -27,6 +27,7 @@ private struct GeneralSettings: View {
     @Environment(Library.self) private var browser
     @Environment(Updates.self) private var updates
     @State private var isDefault = false
+    @State private var importing = false
 
     var body: some View {
         @Bindable var browser = browser
@@ -39,6 +40,10 @@ private struct GeneralSettings: View {
                     } else {
                         Button("Make Default") { makeDefault() }
                     }
+                }
+                LabeledContent("Import") {
+                    Button("Import from Another Browser…") { importing = true }
+                        .sheet(isPresented: $importing) { ImportSheet().environment(browser) }
                 }
             }
             Section {
