@@ -101,7 +101,7 @@ struct GlanceOverlay: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            if let url = glance.url { FaviconView(url: url, size: 14) }
+            if let url = glance.url { FaviconView(url: url, size: 14, isPrivate: glance.isPrivate) }
             VStack(alignment: .leading, spacing: 0) {
                 Text(glance.page.state.title.isEmpty ? "Loading…" : glance.page.state.title)
                     .font(.callout.weight(.medium)).lineLimit(1)
