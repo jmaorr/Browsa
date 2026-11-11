@@ -228,7 +228,7 @@ enum ZapPicker {
     });
     """
 
-    static func pick(on page: any EnginePage) async -> SiteBoost.Zap? {
+    @MainActor static func pick(on page: any EnginePage) async -> SiteBoost.Zap? {
         guard let raw = try? await page.evaluate(script, inWorld: PageBoost.world) as? [String: Any],
               let selector = raw["selector"] as? String, !selector.isEmpty else { return nil }
         return SiteBoost.Zap(selector: selector, label: raw["label"] as? String ?? selector)
