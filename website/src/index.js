@@ -13,16 +13,32 @@ const DOWNLOADS = {
 // checked for updates (by app version) and how many downloads started (by file). Each one is a
 // row in Workers Analytics Engine with no IP address, no user agent, no location and no ID, so
 // rows can't be joined up into a person. Sparkle checks about once a day, so update checks per
-// day are a rough count of Macs running Browsa. scripts/usage.sh reads them back.
+// day are a rough count of Macs running Browsa. scripts/usage.sh reads them back, and the same
+// counts go to the Browsa dashboard in PostHog.
 const BOTS = /bot|crawl|spider|slurp|preview|monitor|curl|wget|python|headless/i;
-function count(env, request, kind, version) {
-  if (!env.USAGE || request.method !== "GET") return;
+function count(env, ctx, request, kind, version) {
+  if (request.method !== "GET") return;
   const agent = request.headers.get("User-Agent") ?? "";
   if (BOTS.test(agent)) return;
   // A download resumed or fetched in pieces sends Range; only its first piece counts.
   const range = request.headers.get("Range");
   if (range && !/^bytes=0-/.test(range)) return;
-  env.USAGE.writeDataPoint({ indexes: [kind], blobs: [kind, version] });
+  env.USAGE?.writeDataPoint({ indexes: [kind], blobs: [kind, version] });
+  // The same count goes to PostHog for the dashboard, once the POSTHOG_TOKEN secret is set. The
+  // Worker sends it, not the visitor, so PostHog sees Cloudflare's address, never theirs. Every
+  // event has the same distinct_id and no person profile: they are totals, not people.
+  if (env.POSTHOG_TOKEN) {
+    ctx.waitUntil(fetch(`${env.POSTHOG_HOST ?? "https://us.i.posthog.com"}/i/v0/e/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: env.POSTHOG_TOKEN,
+        event: kind,
+        distinct_id: "browsa.app",
+        properties: { version, $process_person_profile: false, $geoip_disable: true, $ip: null },
+      }),
+    }).catch(() => {}));
+  }
 }
 // Sparkle's user agent is "Browsa/<version> Sparkle/<version>"; anything else counts as unknown.
 function appVersion(request) {
@@ -95,7 +111,7 @@ const NOT_YET = { mac: "/mac/#get", ios: "/" };
 const REDIRECTS = { "/desktop": "/mac/", "/desktop/": "/mac/", "/downloads": "/download/", "/downloads/": "/download/" };
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.hostname === "www.browsa.app") {
       url.hostname = "browsa.app";
@@ -104,7 +120,7 @@ export default {
     if (REDIRECTS[url.pathname]) return Response.redirect(new URL(REDIRECTS[url.pathname], url).toString(), 302);
 
     if (url.pathname === "/mac/appcast.xml") {
-      count(env, request, "update-check", appVersion(request));
+      count(env, ctx, request, "update-check", appVersion(request));
       return serveRelease(request, env, "mac/appcast.xml");
     }
     if (url.pathname.startsWith("/mac/releases/")) {
@@ -112,7 +128,7 @@ export default {
       // The DMG is a first download; zips and deltas are updates being installed.
       const kind = key.endsWith(".dmg") ? "download" : key.endsWith(".zip") || key.endsWith(".delta") ? "update" : null;
       const response = await serveRelease(request, env, key);
-      if (kind && response.status < 300) count(env, request, kind, fileVersion(key));
+      if (kind && response.status < 300) count(env, ctx, request, kind, fileVersion(key));
       return response;
     }
 

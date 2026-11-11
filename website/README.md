@@ -41,6 +41,12 @@ day, so update checks per day are a rough count of Macs running Browsa. Read the
 `scripts/usage.sh [days]` (needs `CLOUDFLARE_ACCOUNT_ID` and an API token with Account Analytics
 Read). The dataset is created on the first write after deploy; it keeps three months.
 
+The same counts go to PostHog (project "Browsa", US cloud) as `update-check`, `download` and
+`update` events with a `version` property, for the Browsa Usage dashboard there. The Worker sends
+them, so PostHog never sees a visitor's IP, and every event has the same `distinct_id` and no
+person profile. Turn it on with `npx wrangler secret put POSTHOG_TOKEN` (the project token from
+PostHog's project settings); without it nothing is sent.
+
 `scripts/build-clips.sh` rebuilds the clips and stills in `public/media` from raw simulator captures.
 
 When the app's network behaviour changes, update `public/privacy/index.html` and its date.
