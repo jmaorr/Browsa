@@ -152,11 +152,11 @@
   <ul>
     <li><strong>Agents</strong> lets coding agents such as Claude Code, Codex and Cursor use Browsa. It runs a small server that only answers programs on your Mac (127.0.0.1) holding a private key that Browsa makes. Agents work in their own Agent space, where they can open, read, click through and take screenshots of pages, and they have to ask in the Agents panel before touching one of your own tabs. Browsa doesn't send anything to an AI service itself, but what an agent reads through Browsa goes wherever that agent sends it, under that agent's own terms. Add to Claude Code runs Claude Code's own setup command, which saves Browsa's address and key in Claude Code's settings on your Mac.</li>
     <li><strong>Notes</strong> are notes you leave on pages. They're kept on your Mac, and connected agents can read, reply to and resolve them.</li>
-    <li><strong>Radar</strong> finds the development servers running on your Mac. To do that, Browsa looks at which programs on your Mac are listening for connections, which folder they run in and their git branch. None of it leaves your Mac.</li>
+    <li><strong>Radar</strong> finds the development servers running on your Mac. While it's on, Browsa looks every few seconds at which programs on your Mac are listening for connections, which folder they run in and their git branch. It stops looking when you turn Radar off, and none of it leaves your Mac.</li>
   </ul>
 
   <h3>Where your data is kept</h3>
-  <p>The Mac app keeps your spaces, tabs, history, notes, extensions and settings in your user Library, in folders named com.orriginal.browsa under Application Support, WebKit and HTTPStorages. Nothing is synced between your devices, and Browsa doesn't use iCloud. Time Machine and other backups include these folders, under the terms you set up.</p>
+  <p>The Mac app keeps your spaces, tabs, history, notes, extensions and settings in your user Library, in folders named com.orriginal.browsa under Application Support, WebKit and HTTPStorages. Files you download go to your Downloads folder. Nothing is synced between your devices, and Browsa doesn't use iCloud. Time Machine and other backups include these folders, under the terms you set up.</p>
   <p>You can clear your history, cookies and site data in Settings &gt; Privacy, or have Browsa clear them each time it quits. On a Mac, moving the app to the Bin doesn't delete what it stored. To remove everything, quit Browsa and delete those folders too.</p>
 
   <h3>Crash reports, camera and microphone</h3>
