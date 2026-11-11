@@ -443,23 +443,27 @@ struct WelcomePage: View {
         if let level = progress.complete(stop) { browser.showToast("New level · \(level.name)") }
     }
 
-    /// Asks macOS to make Browsa the default browser. macOS confirms with the person first;
-    /// `done` runs on the main actor only if they said yes.
+    /// Asks macOS to make Browsa the default browser. macOS confirms with the person first, and
+    /// its completion handlers don't reliably say whether they agreed, so this watches for the
+    /// change itself and runs `done` on the main actor once Browsa really is the default.
     static func makeDefaultBrowser(done: @escaping @MainActor () -> Void = {}) {
         let app = Bundle.main.bundleURL
-        NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "http") { error in
-            guard error == nil else { return }
-            NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "https") { _ in
-                Task { @MainActor in done() }
+        NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "http") { _ in }
+        NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "https") { _ in }
+        Task { @MainActor in
+            // Up to two minutes for the person to answer the prompt.
+            for _ in 0..<240 {
+                if isDefaultBrowser { done(); return }
+                try? await Task.sleep(for: .milliseconds(500))
             }
         }
     }
 
-    /// Whether Browsa already opens web links.
+    /// Whether this Browsa already opens web links.
     static var isDefaultBrowser: Bool {
         guard let url = URL(string: "https://browsa.app"),
               let app = NSWorkspace.shared.urlForApplication(toOpen: url) else { return false }
-        return app.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL
+        return Bundle(url: app)?.bundleIdentifier == Bundle.main.bundleIdentifier
     }
 }
 
@@ -920,6 +924,10 @@ private struct DefaultCard: View {
         .shadow(color: .black.opacity(0.06), radius: 6, y: 3)
         .animation(.smooth(duration: 0.4), value: done)
         .onAppear { if !done, WelcomePage.isDefaultBrowser { complete() } }
+        // Made default some other way (System Settings) while away: tick it on return.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if !done, WelcomePage.isDefaultBrowser { complete() }
+        }
         .onChange(of: WelcomeDebug.shared.act?.id) {
             guard let a = WelcomeDebug.shared.act, a.stop == .makeDefault else { return }
             complete()
