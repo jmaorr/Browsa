@@ -42,6 +42,10 @@ export const ICON = {
   shieldTick: path('<path class="fill" d="M12 3.5 19 6v5.5c0 4.3-3 7.6-7 9-4-1.4-7-4.7-7-9V6z"/><path class="knock" d="m9 12 2.2 2.2L15.2 10"/>'),
   link: path('<path d="M10.5 13.5a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1 1"/><path d="M13.5 10.5a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1-1"/>'),
   noteFill: path('<path class="fill" d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v6a2.5 2.5 0 0 1-2.5 2.5H11l-4 3.5V15h0a2.5 2.5 0 0 1-2-2.5z"/>'),
+  command: path('<path d="M9 9V6.5A2.5 2.5 0 1 0 6.5 9H9zm0 0h6m-6 0v6m6-6V6.5A2.5 2.5 0 1 1 17.5 9H15zm0 0v6m0 0h2.5a2.5 2.5 0 1 1-2.5 2.5V15zm0 0H9m0 0v2.5A2.5 2.5 0 1 1 6.5 15H9z"/>'),
+  stackPlus: path('<rect x="3.5" y="8" width="13" height="11" rx="2.5"/><path d="M7.5 5h10a3 3 0 0 1 3 3v8M10 13.5h0M10 11v5M7.5 13.5h5"/>'),
+  undo: path('<path d="M9 7 5 11l4 4"/><path d="M5 11h9a5 5 0 0 1 0 10h-2"/>'),
+  gear: path('<circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M6 18l1.6-1.6M16.4 7.6 18 6"/>'),
   cursor: path('<path class="fill" d="M6 3.5 18 13l-5.2.7 3 6-2.4 1.2-3-6L6 18.5z"/>'),
 };
 
