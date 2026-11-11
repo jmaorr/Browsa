@@ -69,12 +69,30 @@ extension View {
 }
 
 extension AnyTransition {
-    /// The outgoing list slides all the way out toward the side away from the new space, fully
-    /// opaque so the movement reads (the sidebar clips it), while the new rows cascade in.
-    @MainActor static func spaceListChange(forward: Bool) -> AnyTransition {
+    /// The outgoing list slides all the way out the way the fingers went (toward the side away from
+    /// the new space), fully opaque so the movement reads (the sidebar clips it), while the new rows
+    /// cascade in from the other side.
+    ///
+    /// The direction is read when the list leaves, not when it was shown: a removal transition is
+    /// the one the view carried from its last render, so a direction baked in then was the previous
+    /// switch's, and switching back the other way slid the old tabs out the wrong side.
+    @MainActor static var spaceListChange: AnyTransition {
         guard !Motion.reduced else { return .opacity }
         return .asymmetric(insertion: .identity,
-                           removal: .move(edge: forward ? .leading : .trailing))
+                           removal: .modifier(active: SpaceListLeaving(active: true), identity: SpaceListLeaving(active: false)))
+    }
+}
+
+private struct SpaceListLeaving: ViewModifier {
+    let active: Bool
+    @Environment(Browser.self) private var browser
+
+    func body(content: Content) -> some View {
+        let forward = browser.lastSpaceSwitch?.forward ?? true
+        let active = active
+        content.visualEffect { effect, proxy in
+            effect.offset(x: active ? (forward ? -proxy.size.width : proxy.size.width) : 0)
+        }
     }
 }
 

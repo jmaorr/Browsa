@@ -45,7 +45,6 @@ struct SpaceTabs: View {
 
     var body: some View {
         let space = browser.currentSpace
-        let forward = browser.lastSpaceSwitch?.forward ?? true
         // Dragging with nothing else pinned: a zone to drop on stands in for the Pinned section.
         let pinZone = dragging.lift != nil && !space.isPrivate && !space.pinned.contains { !dragging.isLifted($0.id) }
         let pinned = slots(space.pinned, pinned: true, gapAllowed: !pinZone)
@@ -105,7 +104,7 @@ struct SpaceTabs: View {
                 [g.contentOffset.y, max(0, g.contentSize.height - g.containerSize.height)]
             } action: { _, v in offset = v[0]; maxOffset = v[1] }
             .id(space.id)
-            .transition(.spaceListChange(forward: forward))
+            .transition(.spaceListChange)
         }
         // However the space changes (a swipe, a key, a click), the old list slides out as the new one
         // slides in. Swipes and keys change it outside any animation, so the old list used to vanish.
