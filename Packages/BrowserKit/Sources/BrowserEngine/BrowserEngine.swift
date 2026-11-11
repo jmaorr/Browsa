@@ -462,14 +462,18 @@ public struct NavigationRequest: Sendable {
     public let wantsNewTab: Bool
     /// Shift was held too, so the new tab should come to the front.
     public let wantsForeground: Bool
+    /// Option-click on a link: the user wants a quick look (Glance) without leaving the page.
+    public let wantsGlance: Bool
 
-    public init(url: URL, kind: Kind, isMainFrame: Bool, method: String, wantsNewTab: Bool = false, wantsForeground: Bool = false) {
+    public init(url: URL, kind: Kind, isMainFrame: Bool, method: String, wantsNewTab: Bool = false, wantsForeground: Bool = false,
+                wantsGlance: Bool = false) {
         self.url = url
         self.kind = kind
         self.isMainFrame = isMainFrame
         self.method = method
         self.wantsNewTab = wantsNewTab
         self.wantsForeground = wantsForeground
+        self.wantsGlance = wantsGlance
     }
 }
 

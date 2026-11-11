@@ -34,6 +34,8 @@ final class Browser {
     /// Bumped to put the cursor in the find field.
     var findFocusRequest: UUID?
     var toast: String?
+    /// A link opened for a quick look over the page (Option-click), not yet a tab.
+    var glance: GlanceSession?
     var activePrompt: Prompt?
     /// Reader, when it's showing over the current tab.
     var reader: ReaderSession?
