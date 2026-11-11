@@ -316,7 +316,14 @@ final class Browser {
     @discardableResult
     func newTab(url: URL?, in space: Space? = nil, isPrivate: Bool = false,
                 source: Frecency.VisitSource = .typed, select shouldSelect: Bool = true) -> BrowserTab {
-        let tab = library.insertTab(url: url, in: space ?? currentSpace, isPrivate: isPrivate, source: source, for: self)
+        // Space Routing: a site with a rule opens in its Space, unless a Space was asked for or the tab is private.
+        var target = space ?? currentSpace
+        if space == nil, !isPrivate, !currentSpace.isPrivate, let routed = SpaceRouter.shared.space(for: url, in: library),
+           routed.id != currentSpace.id {
+            target = routed
+            if !shouldSelect { showToast("Opened in \(routed.name)") }
+        }
+        let tab = library.insertTab(url: url, in: target, isPrivate: isPrivate, source: source, for: self)
         if shouldSelect { select(tab) }
         return tab
     }
@@ -324,7 +331,8 @@ final class Browser {
     /// A link from another app (when Browsa is the default browser).
     func openExternal(_ url: URL) {
         commandBar = nil
-        let target = regularSpaces.first { $0.id == settings.externalLinksSpaceID }
+        let target = SpaceRouter.shared.space(for: url, in: library)
+            ?? regularSpaces.first { $0.id == settings.externalLinksSpaceID }
             ?? (currentSpace.isPrivate ? regularSpaces[0] : currentSpace)
         newTab(url: url, in: target, source: .link)
     }
