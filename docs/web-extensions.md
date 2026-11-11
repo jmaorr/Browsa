@@ -96,6 +96,8 @@ extensions that ignore scripted ones (`isTrusted`).
 | Vimium | 2.4.2 | A real `f` key shows link hints; its popup works. A scripted key does nothing, as in Chrome. WebKit logs "content_scripts entry has no specified matches" for its second entry (`file:///` CSS only), which doesn't matter | ✅ Verified |
 | Paper Snapshot | 0.4.13 | Snapshot and paste into Paper work (tested by hand), after adding offscreen documents and the clipboard fallback below | ✅ Verified |
 | Grammarly | 14.1346.0 | Its sign-in server rejects the extension's `webkit-extension://` origin ("TOKEN_REFRESH_FAILED Invalid origin"), and the popup stays on "Grammarly is starting" (init times out). Needs Grammarly to accept Browsa; we don't fake Chrome's extension origin | ❌ Not supported |
+| Bitwarden | 2026.10.2 | The popup now loads its welcome screen (Create account, Log in) instead of spinning. Its desktop-app connection fails every 10 s, as expected. Sign-in and fill not tried yet (needs an account) | ✅ Ready for sign-in |
+| Proton Pass | 1.43.0 | Still "having difficulties activating". Its background logs "started" and then nothing, not even the 10 s heartbeat, so its worker seems stuck from the start; it restarts when the popup opens. Needs Web Inspector on the background | ❌ Not yet |
 | Google Translate | 2.0.18 | Highlight and translate works by hand (the harness's synthetic double-click doesn't show the icon). Its bubble is a little hard to scroll; that's Google's own UI | ✅ Verified |
 
 New in this pass:
