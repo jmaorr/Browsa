@@ -93,6 +93,11 @@ final class TabController: EnginePageDelegate {
 
     func page(_ page: any EnginePage, decide request: NavigationRequest) async -> NavigationDecision {
         guard let library else { return .allow }
+        if request.wantsGlance {
+            guard let window = library.window(showing: tab) ?? library.activeWindow else { return .allow }
+            window.openGlance(request.url, isPrivate: tab.isPrivate)
+            return .cancel
+        }
         if request.wantsNewTab {
             library.openInNewTab(request.url, from: tab, foreground: request.wantsForeground)
             return .cancel

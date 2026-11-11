@@ -167,6 +167,13 @@ public final class WebKitPage: NSObject, EnginePage {
 extension WebKitPage: WKNavigationDelegate {
     public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                         preferences: WKWebpagePreferences) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
+        // Option-click on a web link: offered as a Glance first (before Safari's option-click download).
+        if navigationAction.navigationType == .linkActivated, navigationAction.modifierFlags.contains(.option),
+           !navigationAction.modifierFlags.contains(.command), let url = navigationAction.request.url,
+           url.scheme == "http" || url.scheme == "https", let delegate {
+            let glance = NavigationRequest(url: url, kind: .link, isMainFrame: true, method: "GET", wantsGlance: true)
+            if await delegate.page(self, decide: glance) == .cancel { return (.cancel, preferences) }
+        }
         if navigationAction.shouldPerformDownload { return (.download, preferences) }
         guard let url = navigationAction.request.url else { return (.allow, preferences) }
         let kind: NavigationRequest.Kind = switch navigationAction.navigationType {
