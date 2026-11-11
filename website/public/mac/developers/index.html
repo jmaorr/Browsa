@@ -48,7 +48,7 @@
       </a>
       <a class="way" href="#plugins">
         <span class="way-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="M9 5v14M15 5v14"/></svg></span>
-        <h3>Browsa plugins <span class="badge spec">Spec</span></h3>
+        <h3>Browsa plugins <span class="badge spec">Start building</span></h3>
         <p>A web extension with a <code>browsa</code> block that adds a sidebar section, a panel, commands, badges and agent tools.</p>
         <span class="go">The manifest →</span>
       </a>
@@ -63,11 +63,24 @@
 
   <section class="section" id="plugins" aria-labelledby="plugins-title">
     <h2 id="plugins-title">A plugin is an extension, plus a little more.</h2>
-    <p class="sub">Add a <code>browsa</code> block to a normal Manifest V3 extension. Other browsers ignore it, so the same plugin still works anywhere else. Point at a key to see where it lands.</p>
+    <p class="sub">Add a <code>browsa</code> block to a normal Manifest V3 extension. Other browsers ignore it, so the same plugin still works anywhere else. Pick a part to see where it lands.</p>
 
     <div class="anatomy">
-      <div data-mw data-anatomy data-sect role="img" aria-label="Browsa's window with the place each plugin part appears outlined in turn: a section in the sidebar, the side panel, rows in the command bar, and a badge on a tab."></div>
-      <div>
+      <div class="anatomy-stage">
+        <div data-mw data-anatomy data-sect role="img" aria-label="Browsa's window with the place each plugin part appears outlined in turn: a section in the sidebar, the side panel, rows in the command bar, agent tools, and a badge on a tab."></div>
+      </div>
+      <div class="scene-controls">
+        <div class="t-tabs" role="group" aria-label="Plugin parts">
+          <span class="t-tabs-pill" aria-hidden="true"></span>
+          <button type="button" class="t-tab" data-points="sidebar" aria-pressed="true" data-caption="A section in the sidebar, under your tabs, from your own page.">Sidebar</button>
+          <button type="button" class="t-tab" data-points="panel" aria-pressed="false" data-caption="A panel beside the page, with its own icon in the panel's rail.">Panel</button>
+          <button type="button" class="t-tab" data-points="commands" aria-pressed="false" data-caption="Rows in ⌘K, next to Browsa's own commands.">⌘K</button>
+          <button type="button" class="t-tab" data-points="agentTools" aria-pressed="false" data-caption="Tools that connected agents can call over MCP, listed beside Browsa's own.">Agent tools</button>
+          <button type="button" class="t-tab" data-points="badges" aria-pressed="false" data-caption="A count or a dot on a tab, set from your background script.">Badges</button>
+        </div>
+        <p class="anatomy-caption" aria-live="polite"></p>
+      </div>
+      <div class="anatomy-code">
 <pre class="code" aria-label="An example plugin manifest"><span class="k">{</span>
   <span class="n">"manifest_version"</span>: 3,
   <span class="n">"name"</span>: <span class="s">"Deploy Watch"</span>,
@@ -80,14 +93,7 @@
     <span data-points="badges" tabindex="0"><span class="n">"badges"</span>: true</span>
   }
 <span class="k">}</span></pre>
-        <div class="legend" role="group" aria-label="Plugin parts">
-          <button type="button" data-points="sidebar">Sidebar section</button>
-          <button type="button" data-points="panel">Panel</button>
-          <button type="button" data-points="commands">⌘K commands</button>
-          <button type="button" data-points="agentTools">Agent tools</button>
-          <button type="button" data-points="badges">Tab badges</button>
-        </div>
-        <p class="spec-note"><span class="badge spec">Spec</span><span>Browsa reads the <code>browsa</code> block today, and its own plugins (Notes, Agents, Radar, Downloads) already plug into the window this way. The runtime that lets your plugin do the same is still being built, so details may change. When it opens up, plugins will be listed in the Library next to ours, and they'll be free.</span></p>
+        <p class="spec-note"><span class="badge spec">Start building</span><span>Browsa reads the <code>browsa</code> block today, and its own plugins (Notes, Agents, Radar, Downloads) already plug into the window this way. The runtime that lets your plugin do the same is still being built, so details may change. When it opens up, plugins will be listed in the Library next to ours, and they'll be free.</span></p>
       </div>
     </div>
   </section>

@@ -366,10 +366,14 @@ if (bento) {
   window._syncBento = sync;
 }
 
-// The developer page: pointing at a manifest key, or its legend entry, outlines where it lands.
+// The developer page: a picker under the window, like the Mac page's hero. Each part outlines
+// where it lands, and lights its key in the manifest; pointing at a key picks it too.
 const anatomy = document.querySelector("[data-anatomy]");
 if (anatomy) {
-  const keys = [...document.querySelectorAll("[data-points]")];
+  const tabs = [...document.querySelectorAll(".t-tab[data-points]")];
+  const keys = [...document.querySelectorAll(".code [data-points]")];
+  const pill = document.querySelector(".anatomy .t-tabs-pill");
+  const caption = document.querySelector(".anatomy-caption");
   const hl = anatomy.querySelector(".mw-hl");
   const SCENES = { sidebar: "work", badges: "work", panel: "notes", commands: "command", agentTools: "agent" };
   const TARGET = { sidebar: ".mw-sect", badges: ".sp-w .mw-badge", panel: ".mw-panel", commands: ".mw-cmd-rows", agentTools: ".mw-pane.agents" };
@@ -381,33 +385,51 @@ if (anatomy) {
     const r = el.getBoundingClientRect();
     Object.assign(hl.style, { left: `${r.left - a.left}px`, top: `${r.top - a.top}px`, width: `${r.width}px`, height: `${r.height}px` });
   };
-  const light = (part) => {
+  const movePill = (animate) => {
+    const t = tabs.find((t) => t.dataset.points === lit);
+    if (!t) return;
+    if (!animate) pill.style.transition = "none";
+    pill.style.transform = `translateX(${t.offsetLeft}px)`;
+    pill.style.width = `${t.offsetWidth}px`;
+    if (!animate) {
+      void pill.offsetWidth;
+      pill.style.transition = "";
+    }
+  };
+  const light = (part, animate = true) => {
     if (lit === part) return;
     lit = part;
     anatomy.dataset.lit = part;
     hl.classList.remove("on");
     show(anatomy, SCENES[part]);
     keys.forEach((k) => k.classList.toggle("is-lit", k.dataset.points === part));
+    const t = tabs.find((t) => t.dataset.points === part);
+    tabs.forEach((x) => x.setAttribute("aria-pressed", String(x === t)));
+    movePill(animate);
+    caption.classList.add("is-out");
+    setTimeout(() => {
+      caption.textContent = t.dataset.caption;
+      caption.classList.remove("is-out");
+    }, animate ? 150 : 0);
     setTimeout(() => {
       outline();
       hl.classList.add("on");
     }, reduced ? 0 : 520);
   };
-  for (const k of keys) {
-    k.addEventListener("mouseenter", () => light(k.dataset.points));
-    k.addEventListener("focus", () => light(k.dataset.points));
-    k.addEventListener("click", () => light(k.dataset.points));
-  }
-  addEventListener("resize", outline);
-  // Until someone points, walk through them.
+  // Until someone picks, walk through them.
   let touched = false;
-  keys.forEach((k) => k.addEventListener("pointerenter", () => (touched = true)));
-  const parts = [...new Set(keys.map((k) => k.dataset.points))];
+  for (const el of [...tabs, ...keys]) {
+    el.addEventListener("click", () => ((touched = true), light(el.dataset.points)));
+    el.addEventListener("focus", () => light(el.dataset.points));
+  }
+  for (const k of keys) k.addEventListener("mouseenter", () => ((touched = true), light(k.dataset.points)));
+  addEventListener("resize", () => (outline(), movePill(false)));
+  const parts = tabs.map((t) => t.dataset.points);
   let i = 0;
-  light(parts[0]);
+  light(parts[0], false);
   setInterval(() => {
     if (touched || paused) return;
     i = (i + 1) % parts.length;
     light(parts[i]);
-  }, 2800);
+  }, 3200);
 }
