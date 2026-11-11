@@ -124,6 +124,21 @@ Open leads for the two that don't work yet:
 The first launch after installing can be slow (Dashlane's and Dark Reader's popups were still loading
 after 8 s on the first run, fine on the next).
 
+### Bridges (overnight spike, 2026-11-11)
+
+Three stand-ins now do the real thing, through native messages answered in-process
+(`Packages/BrowserKit/Sources/WebKitEngine/ExtensionBridges.swift`):
+
+- **`chrome.notifications.create/clear`** post macOS notifications (Browsa asks for permission once).
+  `onClicked`/`onClosed` don't fire yet; clicking brings Browsa forward.
+- **`chrome.sidePanel.open()`** shows the extension's page in the right panel, and
+  **`setPanelBehavior({ openPanelOnActionClick: true })`** makes its toolbar button open the panel instead
+  of firing `action.onClicked`, as in Chrome (remembered per extension). Many AI-sidebar and notes
+  extensions rely on this.
+- **`chrome.downloads.download({ url, filename })`** downloads through the tab in front with WebKit's own
+  download machinery (cookies, progress, the Downloads panel). `blob:` URLs are read by the compat script
+  and sent as `data:` (up to 50 MB). `filename` isn't honoured yet; the server's name is used.
+
 ## Not supported
 
 - **Desktop-app connections** (1Password's or Bitwarden's app unlock, native messaging in general).

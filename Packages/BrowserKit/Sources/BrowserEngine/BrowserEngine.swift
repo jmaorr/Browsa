@@ -206,6 +206,9 @@ public protocol EngineExtensionHost: AnyObject {
     func closeExtensionTab(_ page: any EnginePage)
     /// An extension changed its toolbar action (badge, icon, label) for some page.
     func extensionActionsDidChange()
+    /// `chrome.sidePanel.open`, or a toolbar click with `openPanelOnActionClick`: show the extension's
+    /// side panel page. False if it has none.
+    func showExtensionPanel(extensionID: String) -> Bool
 
     // Browsa plugins: an extension talking to Browsa itself over native messaging, host "app.browsa".
 
@@ -218,6 +221,7 @@ public protocol EngineExtensionHost: AnyObject {
 
 public extension EngineExtensionHost {
     func extensionActionsDidChange() {}
+    func showExtensionPanel(extensionID: String) -> Bool { false }
     func pluginMessage(_ message: Any, from extensionID: String) async -> PluginReply { .unhandled }
     func pluginPortOpened(extensionID: String, send: @escaping @MainActor (Any) -> Void) {}
     func pluginPortClosed(extensionID: String) {}
