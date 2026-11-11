@@ -285,6 +285,8 @@ struct WelcomePage: View {
     @Environment(Browser.self) private var browser
     @State private var progress = WelcomeProgress.shared
     @State private var keyMonitor: Any?
+    /// The pinned header's height, so the cards can fade out where they pass under it.
+    @State private var headerHeight: CGFloat = 200
 
     /// Until every stop is done, the page keeps the shortcuts it teaches to itself.
     private var onboarding: Bool { progress.done.count < WelcomeStop.allCases.count }
@@ -292,44 +294,40 @@ struct WelcomePage: View {
 
     var body: some View {
         GeometryReader { viewport in
+            // The icon sits a little above the middle of the first screen and scrolls away; the
+            // title and the level bar pin to the top, with the cards fading out under them.
+            let heroHeight = max(300, viewport.size.height * 0.44)
             ScrollView {
-                VStack(spacing: 30) {
-                    // The title sits a little above the middle of the first screen; the stops
-                    // start just below the fold, with the bar and the first card peeking up.
-                    VStack(spacing: 10) {
-                        Image(nsImage: NSApp.applicationIconImage)
-                            .resizable()
-                            .interpolation(.high)
-                            .frame(width: 96, height: 96)
-                            .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
-                            .padding(.bottom, 6)
-                        Text("Make Browsa yours")
-                            .font(.system(size: 46, weight: .bold))
-                            .tracking(-1.4)
-                        Text("Eight short stops, about four minutes. Skip any of them.")
-                            .font(.system(size: 17))
-                            .foregroundStyle(.secondary)
+                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 96, height: 96)
+                        .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
+                        .padding(.bottom, 4)
+                        .frame(height: heroHeight - 90, alignment: .bottom)
+                        .welcomeArrival(0, shown: shown)
+                    Section {
+                        VStack(spacing: 20) {
+                            gallery
+                                .id(progress.generation)
+                            Button("Reset Progress", systemImage: "arrow.counterclockwise") {
+                                progress.reset()
+                            }
+                            .buttonStyle(.glass)
+                            .controlSize(.small)
+                            .padding(.top, 20)
+                        }
+                        .frame(maxWidth: 780)
+                        .padding(.horizontal, 40)
+                        .padding(.top, 28)
+                        .padding(.bottom, 64)
+                        .frame(maxWidth: .infinity)
+                        .mask { fadeUnderHeader }
+                    } header: {
+                        header
                     }
-                    // A little above the middle of the first screen, so the bar and the first card show below.
-                    .frame(height: max(300, viewport.size.height * 0.44), alignment: .bottom)
-                    .welcomeArrival(0, shown: shown)
-                    LevelBar(done: progress.done.count)
-                        .frame(maxWidth: 620)
-                        .padding(.bottom, 24)
-                        .welcomeArrival(1, shown: shown)
-                    gallery
-                        .id(progress.generation)
-                    Button("Reset Progress", systemImage: "arrow.counterclockwise") {
-                        progress.reset()
-                    }
-                    .buttonStyle(.glass)
-                    .controlSize(.small)
-                    .padding(.top, 20)
                 }
-                .frame(maxWidth: 780)
-                .padding(.horizontal, 40)
-                .padding(.bottom, 64)
-                .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.automatic)
             .backgroundPreferenceValue(WelcomeTileAnchors.self) { anchors in
@@ -377,6 +375,47 @@ struct WelcomePage: View {
     }
 
     static let space = "welcomePage"
+
+    /// Hides the cards behind the pinned header, with a soft 56pt fade where they meet it.
+    private var fadeUnderHeader: some View {
+        GeometryReader { g in
+            let cutoff = headerHeight - g.frame(in: .scrollView).minY
+            VStack(spacing: 0) {
+                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: 56)
+                Color.black.frame(height: g.size.height + 56)
+            }
+            .offset(y: cutoff)
+            .frame(width: g.size.width, height: g.size.height, alignment: .top)
+            .clipped()
+        }
+    }
+
+    /// The title, its line and the level bar. Pinned, it floats over the page's own shader while the
+    /// cards dissolve as they pass under it (see `fadeUnderHeader`).
+    private var header: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 10) {
+                Text("Make Browsa yours")
+                    .font(.system(size: 46, weight: .bold))
+                    .tracking(-1.4)
+                Text("Get the most out of Browsa in a few minutes")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 18)
+            .welcomeArrival(0, shown: shown)
+            LevelBar(done: progress.done.count)
+                .frame(maxWidth: 620)
+                .padding(.top, 30)
+                .welcomeArrival(1, shown: shown)
+        }
+        .padding(.bottom, 16)
+        .frame(maxWidth: 780)
+        .padding(.horizontal, 40)
+        .frame(maxWidth: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
+        .zIndex(1)
+    }
 
     private var gallery: some View {
         VStack(spacing: 20) {
@@ -701,7 +740,15 @@ private struct GalleryCard: View {
                 }
             }
             .clipped()
-            .allowsHitTesting(stop == .importing || stop == .agents || stop == .library || stop == .tour)
+            .contentShape(.rect)
+            // Make default: the settings menu in the hero is the control itself.
+            .gesture(TapGesture().onEnded {
+                guard !playing else { return }
+                WelcomePage.makeDefaultBrowser()
+                act()
+            }, isEnabled: stop == .makeDefault && !done)
+            .pointerStyle(stop == .makeDefault && !done ? .link : nil)
+            .allowsHitTesting(stop == .importing || stop == .agents || stop == .library || stop == .tour || stop == .makeDefault)
     }
 
     // MARK: Text column
@@ -781,14 +828,9 @@ private struct GalleryCard: View {
         case .agents:
             AgentsLead(done: done)
         case .makeDefault:
-            Instruction(kind: .tryIt, done: done, title: "Make Browsa your default") {
-                Text("macOS will ask you to confirm").foregroundStyle(.secondary)
-            } trailing: {
-                ActionButton(title: "Make Default", tint: tint, enabled: !playing) {
-                    WelcomePage.makeDefaultBrowser()
-                    act()
-                }
-            } below: { EmptyView() }
+            Instruction(kind: .tryIt, done: done, title: done ? "Browsa is your default" : "Make Browsa your default") {
+                Text(done ? "Links from everywhere open here." : "Click the menu on the right. macOS will ask you to confirm.").foregroundStyle(.secondary)
+            } trailing: { EmptyView() } below: { EmptyView() }
         }
     }
 }

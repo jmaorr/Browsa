@@ -13,6 +13,9 @@ final class WelcomeFilm {
     let player: AVPlayer?
     private(set) var isPlaying = false
     private(set) var progress: Double = 0
+    var isMuted = false {
+        didSet { player?.isMuted = isMuted }
+    }
     @ObservationIgnored private var onFinish: (() -> Void)?
     @ObservationIgnored private var timeObserver: Any?
 
@@ -69,7 +72,7 @@ struct FilmPanel: View {
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
             if !film.isPlaying {
-                Image(systemName: film.progress > 0 && film.progress < 0.99 ? "play.fill" : "play.fill")
+                Image(systemName: "play.fill")
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 58, height: 58)
@@ -77,6 +80,20 @@ struct FilmPanel: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
+            Button {
+                film.isMuted.toggle()
+            } label: {
+                Image(systemName: film.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 30, height: 30)
+                    .contentTransition(.symbolEffect(.replace))
+                    .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(film.isMuted ? "Unmute the film" : "Mute the film")
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .padding(10)
             GeometryReader { geo in
                 Capsule().fill(.white.opacity(0.85))
                     .frame(width: max(0, geo.size.width * film.progress), height: 2)

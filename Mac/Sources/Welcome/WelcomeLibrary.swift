@@ -1,8 +1,8 @@
 import SwiftUI
 
-// The "Unlock more with Library" card: sells the Agent Pack with one real switch (Radar, Notes and
-// Agents, through LibraryActions, the same as the Library's own pack card), and opens the Library.
-// The card ticks when the pack is on or the Library has been opened from it.
+// The "Unlock more with Library" card: sells the Agent Pack with real switches, one for the whole pack
+// and one per plugin (through LibraryActions, the same as the Library's own cards), and opens the Library.
+// The card ticks when anything in the pack is turned on or the Library has been opened from it.
 
 /// The left of the Library card: the Try it badge and a line.
 struct LibraryLead: View {
@@ -12,7 +12,7 @@ struct LibraryLead: View {
             TryBadge(kind: .tryIt, done: done)
                 .environment(\.colorScheme, .light)
             Text(done ? "You're set up. There's more in the Library whenever you want it."
-                      : "Switch on the Agent Pack, or open the Library to see everything.")
+                      : "Switch on the whole Agent Pack, or just the plugins you want.")
                 .font(.system(size: 13, weight: .medium))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -57,9 +57,15 @@ struct AgentPackPanel: View {
                                 Text(p.blurb).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                             }
                             Spacer(minLength: 0)
-                            Image(systemName: LibraryActions.isOn(id, in: browser) ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(LibraryActions.isOn(id, in: browser) ? Color.green : Color.secondary.opacity(0.4))
-                                .contentTransition(.symbolEffect(.replace))
+                            Toggle(p.title, isOn: Binding(
+                                get: { LibraryActions.isOn(id, in: browser) },
+                                set: { newValue in
+                                    withAnimation(.smooth(duration: 0.3)) { LibraryActions.set(id, on: newValue, in: browser) }
+                                    if newValue { complete() }
+                                }))
+                                .toggleStyle(.switch)
+                                .controlSize(.small)
+                                .labelsHidden()
                         }
                         .padding(.vertical, 6)
                     }
