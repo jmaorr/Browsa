@@ -49,15 +49,15 @@ struct Sidebar: View {
         HStack(spacing: 2) {
             // The traffic lights sit here when docked. Floating, they're hidden.
             Spacer(minLength: isFloating ? 0 : 76)
-            SidebarIconButton(symbol: "sidebar.left", help: browser.isSidebarDocked ? "Hide Sidebar (⌘S)" : "Keep Sidebar Open (⌘S)") {
+            SidebarIconButton(symbol: "sidebar.left", help: Shortcuts.shared.help(browser.isSidebarDocked ? "Hide Sidebar" : "Keep Sidebar Open", .sidebar)) {
                 withAnimation(Motion.dock) { browser.toggleSidebar() }
             }
-            SidebarIconButton(symbol: "chevron.left", help: "Back (⌘[)", enabled: browser.currentTab?.canGoBack == true) { browser.goBack() }
-            SidebarIconButton(symbol: "chevron.right", help: "Forward (⌘])", enabled: browser.currentTab?.canGoForward == true) { browser.goForward() }
+            SidebarIconButton(symbol: "chevron.left", help: Shortcuts.shared.help("Back", .back), enabled: browser.currentTab?.canGoBack == true) { browser.goBack() }
+            SidebarIconButton(symbol: "chevron.right", help: Shortcuts.shared.help("Forward", .forward), enabled: browser.currentTab?.canGoForward == true) { browser.goForward() }
             if browser.currentTab?.isLoading == true {
-                SidebarIconButton(symbol: "xmark", help: "Stop (⌘.)") { browser.stopLoading() }
+                SidebarIconButton(symbol: "xmark", help: Shortcuts.shared.help("Stop", .stop)) { browser.stopLoading() }
             } else {
-                SidebarIconButton(symbol: "arrow.clockwise", help: "Reload (⌘R)", enabled: browser.currentTab?.url != nil) { browser.reload() }
+                SidebarIconButton(symbol: "arrow.clockwise", help: Shortcuts.shared.help("Reload", .reload), enabled: browser.currentTab?.url != nil) { browser.reload() }
             }
             Spacer(minLength: 0)
         }
@@ -153,7 +153,7 @@ struct AddressPill: View {
                 Button { browser.copyCurrentLink() } label: { Image(systemName: "link") }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .help("Copy Link (⇧⌘C)")
+                    .help(Shortcuts.shared.help("Copy Link", .copyLink))
                     .transition(.opacity)
             }
             if abs(zoom - 1) > 0.01 {
@@ -175,7 +175,7 @@ struct AddressPill: View {
         .contentShape(.rect)
         .onTapGesture { browser.showCommandBar(.editCurrent) }
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
-        .help("Search or enter address (⌘L)")
+        .help(Shortcuts.shared.help("Search or enter address", .openLocation))
     }
 }
 

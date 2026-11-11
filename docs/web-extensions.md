@@ -75,13 +75,42 @@ Installed from the Chrome Web Store through Browsa's own add flow and checked wi
 | 1Password | 8.12.44.33 | ✅ | ✅ | Sign-in, sync, fill, passkeys (tested signed in) | ✅ Works |
 | LastPass | 4.157.0 | ✅ | ✅ log-in screen | Its field icons appear on login pages | ✅ Ready for sign-in |
 | Dashlane | 6.2645.0 | ✅ | ✅ log-in screen | Marks login forms (`data-dashlane-rid`) | ✅ Ready for sign-in |
-| Grammarly | 14.1345.0 | ✅ | ✅ sign-up screen | Attaches to text areas (`grammarly-extension`) | ✅ Ready for sign-in |
+| Grammarly | 14.1345.0 | ✅ | ✅ sign-up screen | Attaches to text areas (`grammarly-extension`) | ❌ Not supported (see 2026-11-11) |
 | uBlock Origin Lite | 2026.1103 | ✅ | ✅ | Blocks ad and tracker scripts (googlesyndication, google-analytics) | ✅ Works |
 | Dark Reader | 4.9.135 | ✅ | ✅ | Pages go dark | ✅ Works |
 | Paper Snapshot | 0.4.13 | ✅ | button, no popup | The button starts its element picker ("click to start") | ✅ Works; pasting into Paper not tried |
-| Google Translate | 2.0.18 | ✅ | ✅ | Says page translation is "built into Chrome". The selected-text bubble didn't appear for a scripted selection (it may need a real mouse) | ⚠️ Partial, needs a hands-on try |
+| Google Translate | 2.0.18 | ✅ | ✅ | Says page translation is "built into Chrome". The selected-text bubble didn't appear for a scripted selection (it may need a real mouse) | ⚠️ Partial (see 2026-11-11 below) |
 | Bitwarden | 2026.10.2 | ✅ after the user-agent fix | ❌ stays on a spinner, no errors logged | Its in-page autofill script connects on every page | ❌ Popup doesn't finish loading |
 | Proton Pass | 1.43.0 | ✅ | ❌ "having difficulties activating" | Not reached | ❌ Popup can't reach its background |
+
+### Second pass (2026-11-11)
+
+Browsa Dev from main (ad4002e), same harness, now with real AppKit key and mouse events for
+extensions that ignore scripted ones (`isTrusted`).
+
+| Extension | Version | Result | Status |
+|---|---|---|---|
+| uBlock Origin Lite | 2026.1103.1743 | Popup works; googlesyndication and google-analytics blocked | ✅ Verified |
+| Dark Reader | 4.9.135 | Popup works; example.com goes dark | ✅ Verified |
+| JSON Formatter | 0.10.2 | api.github.com shows formatted JSON with its Raw/Parsed toggle | ✅ Verified |
+| Vimium | 2.4.2 | A real `f` key shows link hints; its popup works. A scripted key does nothing, as in Chrome. WebKit logs "content_scripts entry has no specified matches" for its second entry (`file:///` CSS only), which doesn't matter | ✅ Verified |
+| Paper Snapshot | 0.4.13 | Snapshot and paste into Paper work (tested by hand), after adding offscreen documents and the clipboard fallback below | ✅ Verified |
+| Grammarly | 14.1346.0 | Its sign-in server rejects the extension's `webkit-extension://` origin ("TOKEN_REFRESH_FAILED Invalid origin"), and the popup stays on "Grammarly is starting" (init times out). Needs Grammarly to accept Browsa; we don't fake Chrome's extension origin | ❌ Not supported |
+| Bitwarden | 2026.10.2 | The popup now loads its welcome screen (Create account, Log in) instead of spinning. Its desktop-app connection fails every 10 s, as expected. Sign-in and fill not tried yet (needs an account) | ✅ Ready for sign-in |
+| Proton Pass | 1.43.0 | Still "having difficulties activating". Its background logs "started" and then nothing, not even the 10 s heartbeat, so its worker seems stuck from the start; it restarts when the popup opens. Needs Web Inspector on the background | ❌ Not yet |
+| Google Translate | 2.0.18 | Highlight and translate works by hand (the harness's synthetic double-click doesn't show the icon). Its bubble is a little hard to scroll; that's Google's own UI | ✅ Verified |
+
+New in this pass:
+
+- **Offscreen documents** (`ExtensionOffscreen.swift`). `chrome.offscreen.createDocument` makes a hidden
+  extension page, one per extension, and answers once it has loaded; `hasDocument` and
+  `runtime.getContexts` report it. Paper Snapshot and Google Translate use one.
+- **Copying without a click.** WebKit refuses `document.execCommand('copy')` in an extension page that
+  wasn't clicked. When it does, the compat script runs the page's own `copy` handler on a stand-in
+  `DataTransfer` and Browsa writes the result to the pasteboard (`browsa.clipboard`), only for
+  extensions with the `clipboardWrite` permission.
+- **`storage.managed`** stand-in also answers Chrome's callback form. Grammarly's "Manage storage
+  timeout" log lines still appear: its 3 s timer logs even when the answer came first.
 
 Open leads for the two that don't work yet:
 

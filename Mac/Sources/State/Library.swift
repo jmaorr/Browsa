@@ -117,10 +117,21 @@ final class Library {
         BuiltInTools.register(in: workbench)
         NotesUI.installPageMenu(library: self)
         #if !SPIKE
-        // SpikeBrowsa sets mock servers instead.
-        RadarStore.shared.startLive(library: self, ownPorts: [Int(AgentBridge.port)])
+        // SpikeBrowsa sets mock servers instead. Radar only looks at this Mac's ports while it's on
+        // (it's in the Agent Pack, off for new installs).
+        if workbench.isEnabled("radar") { startRadar() }
+        workbench.onEnabledChange = { [weak self] id, on in
+            guard id == "radar" else { return }
+            if on { self?.startRadar() } else { RadarStore.shared.stopLive() }
+        }
         #endif
     }
+
+    #if !SPIKE
+    private func startRadar() {
+        RadarStore.shared.startLive(library: self, ownPorts: [Int(AgentBridge.port)])
+    }
+    #endif
 
     func reloadExtensions() {
         engine.unloadExtensions()

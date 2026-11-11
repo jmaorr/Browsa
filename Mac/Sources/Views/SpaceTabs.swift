@@ -261,7 +261,7 @@ private struct NewTabRow: View {
         .contentShape(.rect)
         .onTapGesture { browser.showCommandBar(.newTab) }
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
-        .help("New Tab (⌘T)")
+        .help(Shortcuts.shared.help("New Tab", .newTab))
     }
 }
 
@@ -316,7 +316,7 @@ struct TabRow: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help(tab.isPinned ? "Unload Tab (⌘W)" : "Close Tab (⌘W)")
+                .help(Shortcuts.shared.help(tab.isPinned ? "Unload Tab" : "Close Tab", .close))
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
@@ -408,7 +408,7 @@ struct DownloadsButton: View {
         .foregroundStyle(showing ? .primary : .secondary)
         .opacity(browser.downloads.isEmpty && !showing ? 0.5 : 1)
         .onHover { hovering = $0 }
-        .help(showing ? "Hide Downloads (⌥⌘J)" : "Downloads (⌥⌘J)")
+        .help(Shortcuts.shared.help(showing ? "Hide Downloads" : "Downloads", .downloads))
     }
 }
 

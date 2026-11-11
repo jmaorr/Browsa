@@ -98,8 +98,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let library = self?.library else { return }
             for tab in library.allTabs { library.existingController(for: tab)?.page.reload() }
         }
-        // Keys menus can't take: Cmd-= zooms (the menu shows Cmd-+), and Cmd-W closes the tab
-        // rather than the window while a tab is open.
+        // Keys menus can't take: Cmd-= zooms (the menu shows Cmd-+), Close Tab's key closes the tab
+        // rather than the window while a tab is open, and actions' second keys.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             MainActor.assumeIsolated { self?.handle(event) ?? false } ? nil : event
         }
@@ -150,17 +150,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let window = event.window, window.attachedSheet == nil,
               let browser = library.window(for: window) else { return false }
         if flags == .command, key == "=" { browser.zoom(1); return true }
+        let shortcuts = Shortcuts.shared
         // Pages that take ⌘S for themselves (Save in Docs, Notion, Figma…) would otherwise swallow
         // it before the menu sees it, so the sidebar and panel shortcuts are caught here first.
-        if flags == .command, key == "s", browser.commandBar == nil {
+        if shortcuts.matches(.sidebar, event), browser.commandBar == nil {
             withAnimation(Motion.dock) { browser.toggleSidebar() }
             return true
         }
-        if flags == [.command, .option], key == "s" || event.keyCode == 1 {
+        if shortcuts.matches(.panel, event) {
             browser.togglePanel()
             return true
         }
-        if flags == .command, key == "w" {
+        // A menu item shows one key; an action's other keys (⇧⌘] beside ⌥⌘↓) are handled here.
+        if let action = shortcuts.isAlternate(event), action != .close {
+            browser.perform(action)
+            return true
+        }
+        if shortcuts.matches(.close, event) {
             if browser.commandBar != nil { browser.commandBar = nil; return true }
             if let tab = browser.currentTab {
                 withAnimation(Motion.snappy) { browser.close(tab) }

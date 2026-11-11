@@ -231,8 +231,9 @@ public final class WebKitEngine: BrowserEngine {
         ruleLists.forEach(controller.add)
         controller.removeAllUserScripts()
         controller.removeScriptMessageHandler(forName: CookieBannerHandler.messageName, contentWorld: CookieBannerHandler.world)
-        if blocking.declineCookieBanners, let script = CookieBannerHandler.script(skipping: blocking.allowlist) {
-            controller.addUserScript(script)
+        let cookieScripts = blocking.declineCookieBanners ? CookieBannerHandler.scripts(skipping: blocking.allowlist) : []
+        if !cookieScripts.isEmpty {
+            cookieScripts.forEach(controller.addUserScript)
             let handler = CookieBannerHandler { [weak self] webView in
                 guard let page = self?.page(for: webView) else { return }
                 page.delegate?.pageDidDeclineCookieBanner(page)

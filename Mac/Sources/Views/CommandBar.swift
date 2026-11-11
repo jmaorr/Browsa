@@ -225,7 +225,7 @@ struct CommandBar: View {
                         }
                         ForEach(Array(model.rows.enumerated()), id: \.element.id) { i, row in
                             SuggestionRow(suggestion: row, highlighted: target == i,
-                                          inSearch: model.isTyping, symbol: commandSymbol(row))
+                                          inSearch: model.isTyping, symbol: commandSymbol(row), hint: commandHint(row))
                                 .onTapGesture { perform(row.action) }
                                 .onHover { if $0 { model.highlight(i) } }
                         }
@@ -248,6 +248,13 @@ struct CommandBar: View {
     private func commandSymbol(_ row: Suggestion) -> String? {
         if case .command(let id) = row.action { return browser.symbol(forCommand: id) }
         return nil
+    }
+
+    /// The command's keys, so ⌘K teaches them.
+    private func commandHint(_ row: Suggestion) -> String? {
+        guard case .command(let id) = row.action else { return nil }
+        if let action = ShortcutAction(rawValue: id) { return Shortcuts.shared.display(action) }
+        return ["zoom-in": "⌘+", "zoom-out": "⌘−", "zoom-reset": "⌘0", "settings": "⌘,"][id]
     }
 
     private func sectionLabel(_ text: String) -> some View {
@@ -283,6 +290,7 @@ private struct SuggestionRow: View {
     let highlighted: Bool
     let inSearch: Bool
     var symbol: String?
+    var hint: String?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -300,6 +308,9 @@ private struct SuggestionRow: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(.primary.opacity(0.06), in: .capsule)
+            }
+            if let hint {
+                Text(hint).font(.system(size: 12)).foregroundStyle(.secondary)
             }
             if highlighted {
                 Image(systemName: "return").font(.caption).foregroundStyle(.secondary)

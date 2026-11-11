@@ -478,8 +478,8 @@ struct MiniCommandBar: View {
     private var rows: [(icon: AnyView, title: String, sub: String?, hint: String?)] {
         if mode == .commands {
             return [
-                (AnyView(Image(systemName: "rectangle.split.2x1").foregroundStyle(.secondary)), "Split View", nil, "⌃⌘S"),
-                (AnyView(Image(systemName: "pin").foregroundStyle(.secondary)), "Pin Tab", nil, "⌘D"),
+                (AnyView(Image(systemName: "pin").foregroundStyle(.secondary)), "Pin Tab", nil, Shortcuts.shared.display(.pin)),
+                (AnyView(Image(systemName: "note.text").foregroundStyle(.secondary)), "Notes", nil, Shortcuts.shared.display(.notes)),
                 (AnyView(Image(systemName: "pointer.arrow.ipad.rays").foregroundStyle(.secondary)), "Ask an Agent", nil, nil),
             ]
         }
@@ -544,7 +544,7 @@ private struct ShortcutHero: View {
         let period = 4.2, f = t.truncatingRemainder(dividingBy: period) / period
         let cmd = f > 0.14 && f < 0.42, key = f > 0.2 && f < 0.36
         let barIn = welcomeEase((f - 0.26) / 0.06) * (1 - welcomeEase((f - 0.9) / 0.08))
-        let text = mode == .commands ? "split" : "github"
+        let text = mode == .commands ? "pin" : "github"
         let n = Int(Double(text.count) * welcomeEase((f - 0.4) / 0.22))
         ZStack {
             KeyboardSlice(letter: letter, commandDown: cmd, letterDown: key)
@@ -701,7 +701,7 @@ private struct ImportHero: View {
     }
 }
 
-/// A short reel of real features in a Browsa window: split view, a note, Radar, an agent.
+/// A short reel of real features in a Browsa window: a tool beside the page, a note, Radar, an agent.
 private struct TourHero: View {
     let t: Double
     var playing = false
@@ -709,7 +709,7 @@ private struct TourHero: View {
     var body: some View {
         let period = 10.0, local = t.truncatingRemainder(dividingBy: period)
         let scene = Int(local / 2.5), f = (local - Double(scene) * 2.5) / 2.5
-        let titles = ["Split view", "Notes on any page", "Radar", "Agents"]
+        let titles = ["Tools beside the page", "Notes on any page", "Radar", "Agents"]
         VStack(spacing: 8) {
             MiniWindow(tint: .pink, sidebarWidth: 92) {
                 ForEach(0..<4, id: \.self) { i in
