@@ -22,7 +22,7 @@ enum CardSurface {
     func isDark(_ scheme: ColorScheme) -> Bool {
         switch self {
         case .paper, .aluminium: scheme == .dark
-        case .meshLight: false
+        case .meshLight: scheme == .dark
         case .mesh, .grain: true
         }
     }
@@ -36,12 +36,15 @@ struct SurfaceBackground: View {
         switch surface {
         case .paper:
             scheme == .dark ? Color(white: 0.135) : Color.white
+        case .meshLight(let c) where scheme == .dark:
+            // The same hues, dimmed for dark mode: deep enough for white text, still clearly coloured.
+            mesh(c.map { Self.dim($0) })
+                .overlay(Grain(opacity: 0.06))
+        case .mesh(let c) where scheme == .dark:
+            // The deep meshes only step down a little in dark mode.
+            mesh(c.map { Self.dim($0, by: 0.72, saturate: 1.05) })
         case .mesh(let c), .meshLight(let c):
-            MeshGradient(width: 3, height: 3, points: [
-                [0, 0], [0.55, 0], [1, 0],
-                [0, 0.5], [0.42, 0.58], [1, 0.42],
-                [0, 1], [0.6, 1], [1, 1],
-            ], colors: (0..<9).map { c[$0 % c.count] })
+            mesh(c)
         case .grain(let a, let b):
             LinearGradient(colors: [a, b], startPoint: .topLeading, endPoint: .bottomTrailing)
                 .overlay(Grain(opacity: 0.09))
@@ -53,6 +56,22 @@ struct SurfaceBackground: View {
                                         startPoint: .topLeading, endPoint: .bottomTrailing))
                 .overlay(Brushed(dark: scheme == .dark).opacity(0.35))
         }
+    }
+
+    private func mesh(_ c: [Color]) -> some View {
+        MeshGradient(width: 3, height: 3, points: [
+            [0, 0], [0.55, 0], [1, 0],
+            [0, 0.5], [0.42, 0.58], [1, 0.42],
+            [0, 1], [0.6, 1], [1, 1],
+        ], colors: (0..<9).map { c[$0 % c.count] })
+    }
+
+    /// A light mesh colour for dark mode: same hue, a little more saturated, much lower brightness.
+    static func dim(_ color: Color, by brightness: CGFloat = 0.42, saturate: CGFloat = 1.5) -> Color {
+        let ns = NSColor(color).usingColorSpace(.deviceRGB) ?? .gray
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        ns.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        return Color(hue: h, saturation: min(1, s * saturate + (saturate > 1.2 ? 0.15 : 0)), brightness: b * brightness)
     }
 }
 
