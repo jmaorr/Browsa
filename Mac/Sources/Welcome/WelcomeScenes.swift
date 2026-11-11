@@ -61,20 +61,25 @@ struct SurfaceBackground: View {
                     GeometryReader { g in
                         let r = max(g.size.width, g.size.height)
                         ZStack {
+                            // Muted towards the tile, with a long, even fade: many stops, eased opacity.
                             Circle()
-                                .fill(RadialGradient(colors: [Color(red: 0.98, green: 0.82, blue: 0.1), Color(red: 0.97, green: 0.5, blue: 0.04),
-                                                              Color(red: 0.86, green: 0.2, blue: 0.04), Color(red: 0.86, green: 0.2, blue: 0.04).opacity(0)],
-                                                     center: .center, startRadius: 0, endRadius: r * 0.42))
-                                .frame(width: r * 0.84, height: r * 0.84)
-                                .position(x: g.size.width * 0.78, y: g.size.height * 0.8)
+                                .fill(RadialGradient(stops: [
+                                    .init(color: Color(red: 0.96, green: 0.78, blue: 0.4).opacity(0.75), location: 0),
+                                    .init(color: Color(red: 0.94, green: 0.6, blue: 0.34).opacity(0.55), location: 0.25),
+                                    .init(color: Color(red: 0.88, green: 0.45, blue: 0.3).opacity(0.3), location: 0.5),
+                                    .init(color: Color(red: 0.86, green: 0.42, blue: 0.3).opacity(0.12), location: 0.75),
+                                    .init(color: Color(red: 0.86, green: 0.42, blue: 0.3).opacity(0), location: 1),
+                                ], center: .center, startRadius: 0, endRadius: r * 0.6))
+                                .frame(width: r * 1.2, height: r * 1.2)
+                                .position(x: g.size.width * 0.8, y: g.size.height * 0.75)
                             // The small green splash from the icon's swirl.
                             Circle()
-                                .fill(Color(red: 0.45, green: 0.85, blue: 0.2).opacity(0.5))
+                                .fill(Color(red: 0.55, green: 0.8, blue: 0.4).opacity(0.25))
                                 .frame(width: r * 0.08, height: r * 0.08)
                                 .position(x: g.size.width * 0.6, y: g.size.height * 0.92)
                         }
-                        .blur(radius: 36)
-                        .opacity(dark ? 0.75 : 0.8)
+                        .blur(radius: 50)
+                        .opacity(dark ? 0.85 : 1)
                     }
                 }
                 .overlay(Grain(opacity: dark ? 0.06 : 0.035))
