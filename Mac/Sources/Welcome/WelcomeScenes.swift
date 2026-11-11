@@ -122,9 +122,11 @@ extension WelcomeStop {
         case .spaces: .meshLight([Color(red: 0.99, green: 0.66, blue: 0.3), Color(red: 1.0, green: 0.86, blue: 0.42),
                                   Color(red: 0.62, green: 0.86, blue: 0.5), Color(red: 0.98, green: 0.76, blue: 0.36)])
         case .newTab, .commands: .aluminium
-        case .importing: .paper
+        case .importing: .meshLight([Color(red: 0.74, green: 0.84, blue: 1.0), Color(red: 0.86, green: 0.82, blue: 1.0),
+                                     Color(red: 0.7, green: 0.9, blue: 0.96), Color(red: 0.93, green: 0.9, blue: 1.0)])
         case .tour: .grain(Color(red: 0.36, green: 0.06, blue: 0.16), Color(red: 0.12, green: 0.04, blue: 0.1))
-        case .library: .paper
+        case .library: .meshLight([Color(red: 0.7, green: 0.93, blue: 0.82), Color(red: 0.86, green: 0.97, blue: 0.78),
+                                   Color(red: 0.62, green: 0.88, blue: 0.86), Color(red: 0.9, green: 0.98, blue: 0.88)])
         case .agents: .grain(Color(red: 0.08, green: 0.1, blue: 0.13), Color(red: 0.03, green: 0.04, blue: 0.06))
         case .makeDefault: .mesh([Color(red: 0.98, green: 0.62, blue: 0.2), Color(red: 0.86, green: 0.25, blue: 0.08),
                                   Color(red: 0.99, green: 0.83, blue: 0.45), Color(red: 0.62, green: 0.12, blue: 0.05)])

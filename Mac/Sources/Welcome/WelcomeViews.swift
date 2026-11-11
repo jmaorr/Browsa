@@ -428,7 +428,8 @@ struct WelcomePage: View {
             card(.tour, 5)
             card(.library, 6)
             card(.agents, 7)
-            card(.makeDefault, 8)
+            DefaultCard(done: progress.done.contains(.makeDefault)) { complete(.makeDefault) }
+                .welcomeArrival(8, shown: shown, distance: 22)
         }
     }
 
@@ -441,11 +442,23 @@ struct WelcomePage: View {
         if let level = progress.complete(stop) { browser.showToast("New level · \(level.name)") }
     }
 
-    /// Asks macOS to make Browsa the default browser. macOS confirms with the person first.
-    static func makeDefaultBrowser() {
+    /// Asks macOS to make Browsa the default browser. macOS confirms with the person first;
+    /// `done` runs on the main actor only if they said yes.
+    static func makeDefaultBrowser(done: @escaping @MainActor () -> Void = {}) {
         let app = Bundle.main.bundleURL
-        NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "http") { _ in }
-        NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "https") { _ in }
+        NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "http") { error in
+            guard error == nil else { return }
+            NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "https") { _ in
+                Task { @MainActor in done() }
+            }
+        }
+    }
+
+    /// Whether Browsa already opens web links.
+    static var isDefaultBrowser: Bool {
+        guard let url = URL(string: "https://browsa.app"),
+              let app = NSWorkspace.shared.urlForApplication(toOpen: url) else { return false }
+        return app.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL
     }
 }
 
@@ -831,6 +844,83 @@ private struct GalleryCard: View {
             Instruction(kind: .tryIt, done: done, title: done ? "Browsa is your default" : "Make Browsa your default") {
                 Text(done ? "Links from everywhere open here." : "Click the menu on the right. macOS will ask you to confirm.").foregroundStyle(.secondary)
             } trailing: { EmptyView() } below: { EmptyView() }
+        }
+    }
+}
+
+/// The last stop breaks the gallery's layout: one clean card, everything centred, one button.
+private struct DefaultCard: View {
+    let done: Bool
+    let complete: () -> Void
+    @State private var asking = false
+
+    var body: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable().interpolation(.high)
+                    .frame(width: 72, height: 72)
+                    .shadow(color: .black.opacity(0.25), radius: 10, y: 6)
+                    .overlay(alignment: .bottomTrailing) {
+                        if done {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 24, weight: .semibold))
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, Color(red: 0.16, green: 0.7, blue: 0.33))
+                                .offset(x: 6, y: 6)
+                                .transition(.scale(scale: 0.4).combined(with: .opacity))
+                        }
+                    }
+            }
+            .anchorPreference(key: WelcomeTileAnchors.self, value: .center) { [.makeDefault: $0] }
+            VStack(spacing: 6) {
+                Text(done ? "Browsa is your default" : "Set Browsa as your default")
+                    .font(.system(size: 26, weight: .bold))
+                    .tracking(-0.6)
+                Text(done ? "Links from Mail, Slack and everywhere else now open here."
+                          : "Links from Mail, Slack and everywhere else will open here.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white.opacity(0.82))
+            }
+            .multilineTextAlignment(.center)
+            .contentTransition(.opacity)
+            if !done {
+                Button {
+                    asking = true
+                    WelcomePage.makeDefaultBrowser { complete() }
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(2))
+                        asking = false
+                    }
+                } label: {
+                    Text("Make Default")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.62, green: 0.2, blue: 0.04))
+                        .padding(.horizontal, 26).padding(.vertical, 11)
+                        .background(.white, in: .capsule)
+                        .shadow(color: .black.opacity(0.18), radius: 8, y: 4)
+                }
+                .buttonStyle(.plain)
+                .disabled(asking)
+                .padding(.top, 6)
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                Text("macOS will ask you to confirm.")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+        .background { SurfaceBackground(surface: WelcomeStop.makeDefault.surface) }
+        .clipShape(.rect(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.12)))
+        .shadow(color: .black.opacity(0.06), radius: 6, y: 3)
+        .animation(.smooth(duration: 0.4), value: done)
+        .onAppear { if !done, WelcomePage.isDefaultBrowser { complete() } }
+        .onChange(of: WelcomeDebug.shared.act?.id) {
+            guard let a = WelcomeDebug.shared.act, a.stop == .makeDefault else { return }
+            complete()
         }
     }
 }
