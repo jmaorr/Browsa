@@ -118,13 +118,18 @@ const WINDOW = `
   </div>
 </div>
 <div class="mw-cmd">
-  <div class="mw-cmd-in">${ICON.searchPlus}<span class="mw-typed">lofo</span><span class="mw-inline">ten in winter</span></div>
+  <div class="mw-cmd-in">${ICON.command}<span class="mw-ph">Open a tool or run a command</span></div>
+  <div class="mw-strip">
+    <span><i>${ICON.bubble}</i>Notes</span><span><i>${ICON.rays}</i>Agents</span><span><i>${ICON.download}</i>Downloads</span><span><i>${ICON.radar}</i>Radar</span><span class="get-more"><i>${ICON.plus}</i>Get More</span>
+  </div>
   <div class="mw-cmd-rows">
-    <div class="mw-row on">${FAV.ws}<span><b>Chasing light in Lofoten</b><em>wanderandsalt.com</em></span><u>Switch to Tab</u>${ICON.ret}</div>
-    <div class="mw-row">${ICON.search}<span><b>lofoten northern lights forecast</b></span></div>
-    <div class="mw-row">${ICON.search}<span><b>lofoten winter ferry bodø</b></span></div>
-    <div class="mw-row">${ICON.book}<span><b>Lofoten</b><em>Wikipedia</em></span></div>
-    <div class="mw-row">${ICON.bubble}<span><b>Notes</b><em>Notes on any page, for you and your agents</em></span><u>Tool</u></div>
+    <p class="mw-cmd-sect">Commands</p>
+    <div class="mw-row">${ICON.sidebarRight}<span><b>Show Panel</b></span><kbd>⌥⌘S</kbd></div>
+    <div class="mw-row">${ICON.rays}<span><b>Go to Agent Space</b></span></div>
+    <div class="mw-row">${ICON.undo}<span><b>Reopen Closed Tab</b><em>Slow-roast tomatoes</em></span><kbd>⇧⌘T</kbd></div>
+    <div class="mw-row">${ICON.stackPlus}<span><b>New Space</b></span></div>
+    <div class="mw-row">${ICON.sidebarLeft}<span><b>Hide Sidebar</b></span><kbd>⌘S</kbd></div>
+    <div class="mw-row">${ICON.gear}<span><b>Settings</b></span><kbd>⌘,</kbd></div>
   </div>
 </div>
 <div class="mw-hl"></div>`;

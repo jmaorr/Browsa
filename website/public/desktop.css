@@ -275,7 +275,8 @@
   filter: drop-shadow(0 calc(1 * var(--u)) calc(1.5 * var(--u)) rgb(0 0 0 / .35)) drop-shadow(0 0 calc(.6 * var(--u)) #fff);
   transition: left .32s cubic-bezier(.3, .7, .2, 1), top .32s cubic-bezier(.3, .7, .2, 1), opacity .3s; }
 .a-cursor svg path { fill: var(--live); stroke: #fff; stroke-width: 1.2; }
-.mw[data-scene="agent"] .s-sup > :is(.a-cursor, .a-cap) { display: block; }
+.mw[data-scene="agent"] .s-sup > .a-cursor { display: block; }
+.mw[data-scene="agent"] .s-sup > .a-cap { display: flex; }
 .mw[data-scene="agent"]:not([data-step=""]):not([data-step="done"]) .a-cursor { opacity: 1; }
 .mw[data-step="1"] .a-cursor { left: calc(136 * var(--u)); top: calc(111 * var(--u)); }
 .mw[data-step="2"] .a-cursor { left: calc(273 * var(--u)); top: calc(471 * var(--u)); }
@@ -370,35 +371,47 @@
 @keyframes showAfter { to { width: auto; } }
 @keyframes flash { 30% { box-shadow: 0 0 0 calc(2 * var(--u)) #0a84ff, 0 0 0 calc(7 * var(--u)) rgb(10 132 255 / .16); } }
 
-/* Command bar: up to 640pt, 96pt from the top, 16pt corners. */
+/* ⌘K: up to 640pt, 96pt from the top, 16pt corners (Views/CommandBar.swift). The field, the
+   tools strip, then the featured commands with their keys. */
 .mw-cmd {
-  position: absolute; z-index: 4; top: calc(96 * var(--u)); left: calc(calc(266 * var(--u)) + (calc(1014 * var(--u)) - calc(560 * var(--u))) / 2); width: calc(560 * var(--u));
-  border-radius: calc(16 * var(--u)); background: var(--panel); box-shadow: 0 0 0 calc(.5 * var(--u)) var(--edge), 0 calc(10 * var(--u)) calc(24 * var(--u)) rgb(0 0 0 / .18), 0 calc(30 * var(--u)) calc(60 * var(--u)) calc(-20 * var(--u)) rgb(0 0 0 / .25);
+  position: absolute; z-index: 4; top: calc(96 * var(--u)); left: calc(266 * var(--u) + (1008 * var(--u) - 600 * var(--u)) / 2); width: calc(600 * var(--u));
+  border-radius: calc(16 * var(--u)); background: var(--panel); box-shadow: 0 0 0 calc(.5 * var(--u)) var(--edge), 0 calc(10 * var(--u)) calc(24 * var(--u)) rgb(0 0 0 / .18);
   opacity: 0; transform: scale(.97); transition: opacity .18s, transform .26s cubic-bezier(.2, .9, .3, 1);
 }
 .mw[data-scene="command"] .mw-cmd { opacity: 1; transform: none; }
-.mw-cmd-in { display: flex; align-items: center; gap: calc(10 * var(--u)); padding: calc(14 * var(--u)) calc(16 * var(--u)); font-size: calc(17 * var(--u)); border-bottom: calc(.5 * var(--u)) solid var(--edge); }
+.mw[data-scene="command"] .mw-page::after { background: rgb(0 0 0 / .18); }
+.mw-cmd-in { display: flex; align-items: center; gap: calc(10 * var(--u)); padding: calc(14 * var(--u)) calc(16 * var(--u)); font-size: calc(17 * var(--u)); line-height: calc(24 * var(--u)); border-bottom: calc(.5 * var(--u)) solid var(--edge); }
 .mw-cmd-in svg { width: calc(18 * var(--u)); height: calc(18 * var(--u)); color: var(--ink-2); flex: none; }
-.mw-typed { clip-path: inset(0 100% 0 0); white-space: pre; }
-.mw-inline { color: transparent; background: color-mix(in srgb, #0a84ff 25%, transparent); border-radius: calc(2 * var(--u)); margin-left: calc(-1 * var(--u)); white-space: pre; opacity: 0; }
-.mw[data-scene="command"] .mw-typed { animation: type .5s steps(4, end) .35s forwards; }
-.mw[data-scene="command"] .mw-inline { animation: inline .01s .9s forwards; }
-@keyframes type { to { clip-path: inset(0 0 0 0); } }
-@keyframes inline { to { opacity: 1; color: var(--ink); } }
+.mw-ph { color: var(--ink-3); position: relative; }
+.mw-ph::before { content: ""; position: absolute; left: calc(-2 * var(--u)); top: calc(2 * var(--u)); bottom: calc(2 * var(--u)); width: calc(1.5 * var(--u)); background: #0a84ff; animation: caret 1s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+.mw-strip { display: flex; gap: calc(8 * var(--u)); padding: calc(10 * var(--u)); border-bottom: calc(.5 * var(--u)) solid var(--edge); }
+.mw-strip > span { display: flex; flex-direction: column; align-items: center; gap: calc(6 * var(--u)); width: calc(72 * var(--u)); font-size: calc(11 * var(--u)); opacity: 0; }
+.mw-strip i { display: grid; place-items: center; width: calc(40 * var(--u)); height: calc(40 * var(--u)); border-radius: calc(10 * var(--u)); background: var(--fill); }
+.mw-strip i svg { width: calc(18 * var(--u)); height: calc(18 * var(--u)); }
+.mw-strip .get-more { color: var(--ink-2); }
+.mw-strip .get-more i { background: none; box-shadow: inset 0 0 0 calc(1 * var(--u)) var(--fill-2); outline: calc(1 * var(--u)) dashed var(--ink-3); outline-offset: calc(-1 * var(--u)); }
 .mw-cmd-rows { display: flex; flex-direction: column; gap: calc(2 * var(--u)); padding: calc(6 * var(--u)); }
+.mw-cmd-sect { padding: calc(4 * var(--u)) calc(10 * var(--u)) calc(2 * var(--u)); color: var(--ink-2); font-size: calc(11 * var(--u)); font-weight: 600; }
 .mw-row { display: flex; align-items: center; gap: calc(12 * var(--u)); height: calc(34 * var(--u)); padding: 0 calc(10 * var(--u)); border-radius: calc(9 * var(--u)); opacity: 0; }
 .mw-row:has(em) { height: calc(42 * var(--u)); }
-.mw-row > svg:first-child, .mw-row > .fav { width: calc(18 * var(--u)); height: calc(18 * var(--u)); color: var(--ink-2); flex: none; }
+.mw-row > svg:first-child { width: calc(18 * var(--u)); height: calc(18 * var(--u)); color: var(--ink-2); flex: none; }
 .mw-row > span { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: calc(1 * var(--u)); white-space: nowrap; }
 .mw-row b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
 .mw-row em { color: var(--ink-2); font-size: calc(11 * var(--u)); overflow: hidden; text-overflow: ellipsis; }
-.mw-row u { padding: calc(2 * var(--u)) calc(6 * var(--u)); border-radius: calc(99 * var(--u)); background: var(--fill); color: var(--ink-2); font-size: calc(11 * var(--u)); }
-.mw-row > svg:last-child:not(:first-child) { width: calc(13 * var(--u)); height: calc(13 * var(--u)); color: var(--ink-2); flex: none; }
-.mw-row.on { background: var(--fill-2); }
-.mw[data-scene="command"] .mw-row { animation: fadeRow .22s ease both .95s; }
-.mw-cmd-rows > :nth-child(2) { animation-delay: 1s !important; } .mw-cmd-rows > :nth-child(3) { animation-delay: 1.05s !important; }
-.mw-cmd-rows > :nth-child(4) { animation-delay: 1.1s !important; } .mw-cmd-rows > :nth-child(5) { animation-delay: 1.15s !important; }
+.mw-row kbd { font: inherit; font-size: calc(12 * var(--u)); color: var(--ink-2); }
+.mw[data-scene="command"] :is(.mw-row, .mw-strip > span) { animation: fadeRow .22s ease both .2s; }
+.mw[data-scene="command"] .mw-strip > :nth-child(n+2) { animation-delay: .24s; }
+.mw[data-scene="command"] .mw-strip > :nth-child(n+4) { animation-delay: .28s; }
+.mw[data-scene="command"] .mw-cmd-rows > :nth-child(n+3) { animation-delay: .3s; }
+.mw[data-scene="command"] .mw-cmd-rows > :nth-child(n+5) { animation-delay: .36s; }
+/* The pointer drifts down the list, as a hand on the trackpad would. */
+.mw[data-scene="command"] .mw-cmd-rows > :nth-child(2) { animation: fadeRow .22s ease both .2s, hoverOn 1.2s linear 1.2s; }
+.mw[data-scene="command"] .mw-cmd-rows > :nth-child(3) { animation: fadeRow .22s ease both .3s, hoverOn 1.2s linear 2.4s; }
+.mw[data-scene="command"] .mw-cmd-rows > :nth-child(4) { animation: fadeRow .22s ease both .3s, hoverOn 1.2s linear 3.6s; }
+@keyframes hoverOn { 0%, 99% { background: var(--fill-2); } 100% { background: none; } }
 @keyframes fadeRow { from { opacity: 0; } to { opacity: 1; } }
+@keyframes type { to { clip-path: inset(0 0 0 0); } }
 
 /* Developer anatomy outline, placed by desktop.js. */
 .mw-hl { position: absolute; z-index: 5; border-radius: calc(10 * var(--u)); box-shadow: 0 0 0 calc(2.5 * var(--u)) #0a84ff, 0 0 0 calc(9 * var(--u)) color-mix(in srgb, #0a84ff 18%, transparent); opacity: 0; transition: opacity .25s; pointer-events: none; }
