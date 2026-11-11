@@ -92,7 +92,7 @@ final class SpaceRouter {
             summary: "Sites that always open in a given Space",
             panel: { AnyView(RoutingPanel()) },
             liveCommands: { [weak library] in
-                guard let library, let browser = library.activeWindow, let url = browser.currentTab?.url,
+                guard let library, let browser = library.activeWindow, let tab = browser.currentTab, !tab.isPrivate, let url = tab.url,
                       let host = RouteRule.pattern(for: url, depth: 0) else { return [] }
                 var out: [ToolCommand] = []
                 if let rule = shared.rule(for: url) {
@@ -165,7 +165,7 @@ struct RoutingPanel: View {
         }
         .onAppear {
             router.prune(keeping: browser.regularSpaces)
-            if newPattern.isEmpty, let url = browser.currentTab?.url { newPattern = RouteRule.pattern(for: url, depth: 0) ?? "" }
+            if newPattern.isEmpty, let tab = browser.currentTab, !tab.isPrivate, let url = tab.url { newPattern = RouteRule.pattern(for: url, depth: 0) ?? "" }
             newSpaceID = newSpaceID ?? browser.currentSpace.id
         }
     }
