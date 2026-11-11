@@ -52,7 +52,7 @@ struct SurfaceBackground: View {
                 .overlay(Grain(opacity: 0.09))
         case .browsa:
             // The official icon: its warm paper tile (near-black in dark), with the molten orb's
-            // glow, gold at the core through orange to red, rising from the lower right.
+            // glow, gold at the core through orange to red, behind the hero on the right.
             let dark = scheme == .dark
             LinearGradient(colors: dark ? [Color(red: 0.11, green: 0.08, blue: 0.04), Color(red: 0.06, green: 0.06, blue: 0.06)]
                                         : [Color(red: 0.94, green: 0.94, blue: 0.9), Color(red: 0.89, green: 0.86, blue: 0.82)],
@@ -66,12 +66,12 @@ struct SurfaceBackground: View {
                                                               Color(red: 0.86, green: 0.2, blue: 0.04), Color(red: 0.86, green: 0.2, blue: 0.04).opacity(0)],
                                                      center: .center, startRadius: 0, endRadius: r * 0.42))
                                 .frame(width: r * 0.84, height: r * 0.84)
-                                .position(x: g.size.width * 0.5, y: g.size.height * 1.12)
+                                .position(x: g.size.width * 0.78, y: g.size.height * 0.8)
                             // The small green splash from the icon's swirl.
                             Circle()
                                 .fill(Color(red: 0.45, green: 0.85, blue: 0.2).opacity(0.5))
                                 .frame(width: r * 0.08, height: r * 0.08)
-                                .position(x: g.size.width * 0.36, y: g.size.height * 0.9)
+                                .position(x: g.size.width * 0.6, y: g.size.height * 0.92)
                         }
                         .blur(radius: 36)
                         .opacity(dark ? 0.75 : 0.8)
