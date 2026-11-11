@@ -259,17 +259,19 @@ syncMotion();
 // The little things: the bento's loops start once it's in view, and the shortcut keys take turns.
 const bento = document.querySelector("[data-bento]");
 if (bento) {
-  // Each one is in Commands.swift. Modifiers in the Mac's order: ⌃ ⌥ ⇧ ⌘.
+  // Browsa's own preset, from Mac/Sources/State/Shortcuts.swift. Modifiers in the Mac's order: ⌃ ⌥ ⇧ ⌘.
   const KEYS = [
     ["⌘K", "Commands and tools"],
     ["⌘T", "New tab"],
     ["⌘S", "Hide the sidebar"],
-    ["⌘D", "Add to Favourites"],
-    ["⇧⌘D", "Pin tab"],
+    ["⌘D", "Pin tab"],
+    ["⇧⌘D", "Add to Favourites"],
     ["⌃1", "First space"],
     ["⇧⌘R", "Reader"],
-    ["⌥⌘J", "Downloads"],
+    ["⇧⌘J", "Downloads"],
     ["⇧⌘T", "Reopen closed tab"],
+    ["⌥⌘↓", "Next tab"],
+    ["⇧⌘K", "Clear Today"],
     ["⌘Y", "Archived tabs"],
     ["⇧⌘N", "Private tab"],
     ["⇧⌘M", "Notes"],
