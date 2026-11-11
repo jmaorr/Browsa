@@ -213,6 +213,7 @@ struct LibraryView: View {
     @State private var parentPack: String?
     @State private var focused: LibraryItem?
     @State private var addingChrome = false
+    @State private var importing = false
     @State private var preview: Library.ExtensionPreview?
     @State private var problem: String?
     @FocusState private var searchFocused: Bool
@@ -396,10 +397,18 @@ struct LibraryView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Library").font(.system(size: 30, weight: .bold))
-                Text("Add to Browsa: our own plugins, and extensions from the Chrome Web Store.")
-                    .font(.system(size: 14)).foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Library").font(.system(size: 30, weight: .bold))
+                    Text("Add to Browsa: our own plugins, and extensions from the Chrome Web Store.")
+                        .font(.system(size: 14)).foregroundStyle(.secondary)
+                }
+                Spacer()
+                // Bringing things over from another browser lives here too, as well as in Settings.
+                Button("Import from Another Browser…", systemImage: "square.and.arrow.down") { importing = true }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+                    .sheet(isPresented: $importing) { ImportSheet().environment(browser.library) }
             }
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)

@@ -17,12 +17,14 @@ enum CardSurface {
     case grain(Color, Color)
     /// Brushed aluminium, like the keyboard deck.
     case aluminium
+    /// Browsa's own look, from the official icon: warm paper tile and the molten orb's glow.
+    case browsa
 
     /// Text on this surface: dark surfaces always take white.
     func isDark(_ scheme: ColorScheme) -> Bool {
         switch self {
         case .paper, .aluminium: scheme == .dark
-        case .meshLight: false
+        case .meshLight, .browsa: scheme == .dark
         case .mesh, .grain: true
         }
     }
@@ -36,15 +38,51 @@ struct SurfaceBackground: View {
         switch surface {
         case .paper:
             scheme == .dark ? Color(white: 0.135) : Color.white
+        case .meshLight(let c) where scheme == .dark:
+            // The same hues, dimmed for dark mode: deep enough for white text, still clearly coloured.
+            mesh(c.map { Self.dim($0) })
+                .overlay(Grain(opacity: 0.06))
+        case .mesh(let c) where scheme == .dark:
+            // The deep meshes only step down a little in dark mode.
+            mesh(c.map { Self.dim($0, by: 0.72, saturate: 1.05) })
         case .mesh(let c), .meshLight(let c):
-            MeshGradient(width: 3, height: 3, points: [
-                [0, 0], [0.55, 0], [1, 0],
-                [0, 0.5], [0.42, 0.58], [1, 0.42],
-                [0, 1], [0.6, 1], [1, 1],
-            ], colors: (0..<9).map { c[$0 % c.count] })
+            mesh(c)
         case .grain(let a, let b):
             LinearGradient(colors: [a, b], startPoint: .topLeading, endPoint: .bottomTrailing)
                 .overlay(Grain(opacity: 0.09))
+        case .browsa:
+            // The official icon: its warm paper tile (near-black in dark), with the molten orb's
+            // glow, gold at the core through orange to red, behind the hero on the right.
+            let dark = scheme == .dark
+            LinearGradient(colors: dark ? [Color(red: 0.11, green: 0.08, blue: 0.04), Color(red: 0.06, green: 0.06, blue: 0.06)]
+                                        : [Color(red: 0.94, green: 0.94, blue: 0.9), Color(red: 0.89, green: 0.86, blue: 0.82)],
+                           startPoint: .top, endPoint: .bottom)
+                .overlay {
+                    GeometryReader { g in
+                        let r = max(g.size.width, g.size.height)
+                        ZStack {
+                            // Muted towards the tile, with a long, even fade: many stops, eased opacity.
+                            Circle()
+                                .fill(RadialGradient(stops: [
+                                    .init(color: Color(red: 0.96, green: 0.78, blue: 0.4).opacity(0.75), location: 0),
+                                    .init(color: Color(red: 0.94, green: 0.6, blue: 0.34).opacity(0.55), location: 0.25),
+                                    .init(color: Color(red: 0.88, green: 0.45, blue: 0.3).opacity(0.3), location: 0.5),
+                                    .init(color: Color(red: 0.86, green: 0.42, blue: 0.3).opacity(0.12), location: 0.75),
+                                    .init(color: Color(red: 0.86, green: 0.42, blue: 0.3).opacity(0), location: 1),
+                                ], center: .center, startRadius: 0, endRadius: r * 0.6))
+                                .frame(width: r * 1.2, height: r * 1.2)
+                                .position(x: g.size.width * 0.8, y: g.size.height * 0.75)
+                            // The small green splash from the icon's swirl.
+                            Circle()
+                                .fill(Color(red: 0.55, green: 0.8, blue: 0.4).opacity(0.25))
+                                .frame(width: r * 0.08, height: r * 0.08)
+                                .position(x: g.size.width * 0.6, y: g.size.height * 0.92)
+                        }
+                        .blur(radius: 50)
+                        .opacity(dark ? 0.85 : 1)
+                    }
+                }
+                .overlay(Grain(opacity: dark ? 0.06 : 0.035))
         case .aluminium:
             // Softly brushed: a gentle sheen and faint grain, not hard stripes.
             LinearGradient(colors: scheme == .dark ? [Color(white: 0.24), Color(white: 0.19)] : [Color(white: 0.965), Color(white: 0.9)],
@@ -53,6 +91,22 @@ struct SurfaceBackground: View {
                                         startPoint: .topLeading, endPoint: .bottomTrailing))
                 .overlay(Brushed(dark: scheme == .dark).opacity(0.35))
         }
+    }
+
+    private func mesh(_ c: [Color]) -> some View {
+        MeshGradient(width: 3, height: 3, points: [
+            [0, 0], [0.55, 0], [1, 0],
+            [0, 0.5], [0.42, 0.58], [1, 0.42],
+            [0, 1], [0.6, 1], [1, 1],
+        ], colors: (0..<9).map { c[$0 % c.count] })
+    }
+
+    /// A light mesh colour for dark mode: same hue, a little more saturated, much lower brightness.
+    static func dim(_ color: Color, by brightness: CGFloat = 0.42, saturate: CGFloat = 1.5) -> Color {
+        let ns = NSColor(color).usingColorSpace(.deviceRGB) ?? .gray
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        ns.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        return Color(hue: h, saturation: min(1, s * saturate + (saturate > 1.2 ? 0.15 : 0)), brightness: b * brightness)
     }
 }
 
@@ -119,12 +173,13 @@ struct SeededRandom {
 extension WelcomeStop {
     var surface: CardSurface {
         switch self {
-        case .spaces: .meshLight([Color(red: 0.99, green: 0.66, blue: 0.3), Color(red: 1.0, green: 0.86, blue: 0.42),
-                                  Color(red: 0.62, green: 0.86, blue: 0.5), Color(red: 0.98, green: 0.76, blue: 0.36)])
+        case .spaces: .browsa
         case .newTab, .commands: .aluminium
-        case .importing: .paper
+        case .importing: .meshLight([Color(red: 0.74, green: 0.84, blue: 1.0), Color(red: 0.86, green: 0.82, blue: 1.0),
+                                     Color(red: 0.7, green: 0.9, blue: 0.96), Color(red: 0.93, green: 0.9, blue: 1.0)])
         case .tour: .grain(Color(red: 0.36, green: 0.06, blue: 0.16), Color(red: 0.12, green: 0.04, blue: 0.1))
-        case .library: .paper
+        case .library: .meshLight([Color(red: 0.7, green: 0.93, blue: 0.82), Color(red: 0.86, green: 0.97, blue: 0.78),
+                                   Color(red: 0.62, green: 0.88, blue: 0.86), Color(red: 0.9, green: 0.98, blue: 0.88)])
         case .agents: .grain(Color(red: 0.08, green: 0.1, blue: 0.13), Color(red: 0.03, green: 0.04, blue: 0.06))
         case .makeDefault: .mesh([Color(red: 0.98, green: 0.62, blue: 0.2), Color(red: 0.86, green: 0.25, blue: 0.08),
                                   Color(red: 0.99, green: 0.83, blue: 0.45), Color(red: 0.62, green: 0.12, blue: 0.05)])
@@ -478,9 +533,9 @@ struct MiniCommandBar: View {
     private var rows: [(icon: AnyView, title: String, sub: String?, hint: String?)] {
         if mode == .commands {
             return [
-                (AnyView(Image(systemName: "rectangle.split.2x1").foregroundStyle(.secondary)), "Split View", nil, "⌃⌘S"),
-                (AnyView(Image(systemName: "pin").foregroundStyle(.secondary)), "Pin Tab", nil, "⌘D"),
-                (AnyView(Image(systemName: "pointer.arrow.ipad.rays").foregroundStyle(.secondary)), "Ask an Agent", nil, nil),
+                (AnyView(Image(systemName: "dot.radiowaves.left.and.right").foregroundStyle(.green)), "Radar", "Your local dev servers", nil),
+                (AnyView(Image(systemName: "text.bubble.fill").foregroundStyle(.yellow)), "Comment on Page", "Notes", nil),
+                (AnyView(Image(systemName: "pointer.arrow.ipad.rays").foregroundStyle(.orange)), "Agents", nil, nil),
             ]
         }
         return [
@@ -544,7 +599,7 @@ private struct ShortcutHero: View {
         let period = 4.2, f = t.truncatingRemainder(dividingBy: period) / period
         let cmd = f > 0.14 && f < 0.42, key = f > 0.2 && f < 0.36
         let barIn = welcomeEase((f - 0.26) / 0.06) * (1 - welcomeEase((f - 0.9) / 0.08))
-        let text = mode == .commands ? "split" : "github"
+        let text = mode == .commands ? "radar" : "github"
         let n = Int(Double(text.count) * welcomeEase((f - 0.4) / 0.22))
         ZStack {
             KeyboardSlice(letter: letter, commandDown: cmd, letterDown: key)
@@ -701,7 +756,7 @@ private struct ImportHero: View {
     }
 }
 
-/// A short reel of real features in a Browsa window: split view, a note, Radar, an agent.
+/// A short reel of real features in a Browsa window: Reader, a note, Radar, an agent.
 private struct TourHero: View {
     let t: Double
     var playing = false
@@ -709,7 +764,7 @@ private struct TourHero: View {
     var body: some View {
         let period = 10.0, local = t.truncatingRemainder(dividingBy: period)
         let scene = Int(local / 2.5), f = (local - Double(scene) * 2.5) / 2.5
-        let titles = ["Split view", "Notes on any page", "Radar", "Agents"]
+        let titles = ["Reader", "Notes on any page", "Radar", "Agents"]
         VStack(spacing: 8) {
             MiniWindow(tint: .pink, sidebarWidth: 92) {
                 ForEach(0..<4, id: \.self) { i in
@@ -720,13 +775,17 @@ private struct TourHero: View {
                 Group {
                     switch scene {
                     case 0:
-                        HStack(spacing: 4) {
-                            PageLines().background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 4))
-                            PageLines(widths: [0.6, 0.8, 0.5])
-                                .background(Color.blue.opacity(0.05), in: .rect(cornerRadius: 4))
-                                .frame(maxWidth: 40 + 60 * welcomeEase(f / 0.4))
+                        // Reader: the page's clutter falls away, leaving the article.
+                        VStack(alignment: .leading, spacing: 5) {
+                            RoundedRectangle(cornerRadius: 2).fill(.primary.opacity(0.3)).frame(width: 110, height: 7)
+                            ForEach([0.95, 0.9, 0.97, 0.85, 0.92, 0.6], id: \.self) { w in
+                                GeometryReader { g in RoundedRectangle(cornerRadius: 2).fill(.primary.opacity(0.12)).frame(width: g.size.width * w, height: 4) }
+                                    .frame(height: 4)
+                            }
                         }
-                        .padding(3)
+                        .padding(.horizontal, 26).padding(.vertical, 12)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .background(Color(red: 0.98, green: 0.96, blue: 0.91).opacity(welcomeEase(f / 0.4)))
                     case 1:
                         PageLines().overlay(alignment: .topTrailing) {
                             Text("Swap this for\nthe new pricing")

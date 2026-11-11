@@ -111,10 +111,10 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         switch self {
         case .spaces: "Spaces"
         case .newTab: "⌘T opens anything"
-        case .commands: "⌘K for everything"
+        case .commands: "⌘K launches plugins"
         case .importing: "Bring your stuff"
         case .tour: "See it in action"
-        case .library: "Built for the hustle"
+        case .library: "Unlock more with Library"
         case .agents: "Let your agents in"
         case .makeDefault: "Make it yours"
         }
@@ -124,10 +124,10 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         switch self {
         case .spaces: "A place to keep your tabs organised for Work, Personal, and anything else."
         case .newTab: "Search, type an address, or jump to a tab you already have open."
-        case .commands: "Split the view, pin a tab, ask an agent. Everything is a few letters away."
+        case .commands: "Launch powerful plugins like Radar, Comments and more, without leaving the keyboard."
         case .importing: "Bring over your bookmarks and history, and from Arc, your spaces and tabs. Your old browser stays as it is."
-        case .tour: "A quick look at split view, notes on any page, Radar and agents at work."
-        case .library: "Verified extensions, bundled into kits, so you're set up for coding or agents in one click."
+        case .tour: "Browsa's film: Spaces, notes on any page, and your agents at work. Sound on."
+        case .library: "Powerful plugins, extensions and MCPs built for the hustle."
         case .agents: "Browsa runs an MCP server on your Mac, so your agents can open tabs, read pages and leave notes."
         case .makeDefault: "Links from Mail, Slack and everywhere else will open here."
         }
@@ -141,7 +141,7 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         case .commands: "Every tool, one shortcut"
         case .importing: "Everything comes with you"
         case .tour: "A quick look at the rest"
-        case .library: "Built for the hustle"
+        case .library: "Unlock more with Library"
         case .agents: "Your agents can browse too"
         case .makeDefault: "Make Browsa your browser"
         }
@@ -149,12 +149,12 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
 
     var challenge: String {
         switch self {
-        case .spaces: "Swipe to another space and back"
+        case .spaces: "Swipe to another space"
         case .newTab: "Press ⌘T"
         case .commands: "Press ⌘K"
         case .importing: "Import from another browser"
-        case .tour: "Watch the tour"
-        case .library: "Add a kit from the Library"
+        case .tour: "Watch the film"
+        case .library: "Turn on the Agent Pack"
         case .agents: "Connect an agent"
         case .makeDefault: "Set Browsa as your default browser"
         }
@@ -164,7 +164,7 @@ enum WelcomeStop: String, CaseIterable, Identifiable {
         switch self {
         case .newTab, .commands, .makeDefault: "10 sec"
         case .spaces: "30 sec"
-        case .tour: "10 sec"
+        case .tour: "40 sec"
         case .importing, .library, .agents: "1 min"
         }
     }
@@ -226,7 +226,7 @@ enum WelcomeLevel: Int, CaseIterable {
     @discardableResult func complete(_ stop: WelcomeStop) -> WelcomeLevel? {
         guard !done.contains(stop) else { return nil }
         let before = level
-        withAnimation(.smooth(duration: 0.8)) { done.insert(stop) }
+        _ = withAnimation(.smooth(duration: 0.8)) { done.insert(stop) }
         UserDefaults.standard.set(done.map(\.rawValue), forKey: Self.key)
         return level != before ? level : nil
     }
@@ -285,6 +285,8 @@ struct WelcomePage: View {
     @Environment(Browser.self) private var browser
     @State private var progress = WelcomeProgress.shared
     @State private var keyMonitor: Any?
+    /// The pinned header's height, so the cards can fade out where they pass under it.
+    @State private var headerHeight: CGFloat = 200
 
     /// Until every stop is done, the page keeps the shortcuts it teaches to itself.
     private var onboarding: Bool { progress.done.count < WelcomeStop.allCases.count }
@@ -292,37 +294,40 @@ struct WelcomePage: View {
 
     var body: some View {
         GeometryReader { viewport in
+            // The icon sits a little above the middle of the first screen and scrolls away; the
+            // title and the level bar pin to the top, with the cards fading out under them.
+            let heroHeight = max(300, viewport.size.height * 0.44)
             ScrollView {
-                VStack(spacing: 30) {
-                    // The title sits a little above the middle of the first screen; the stops
-                    // start just below the fold, with the bar and the first card peeking up.
-                    VStack(spacing: 6) {
-                        Text("Make Browsa yours")
-                            .font(.system(size: 34, weight: .semibold))
-                            .tracking(-0.8)
-                        Text("Eight short stops, about four minutes. Skip any of them.")
-                            .font(.system(size: 13.5))
-                            .foregroundStyle(.secondary)
+                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 96, height: 96)
+                        .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
+                        .padding(.bottom, 4)
+                        .frame(height: heroHeight - 90, alignment: .bottom)
+                        .welcomeArrival(0, shown: shown)
+                    Section {
+                        VStack(spacing: 20) {
+                            gallery
+                                .id(progress.generation)
+                            Button("Reset Progress", systemImage: "arrow.counterclockwise") {
+                                progress.reset()
+                            }
+                            .buttonStyle(.glass)
+                            .controlSize(.small)
+                            .padding(.top, 20)
+                        }
+                        .frame(maxWidth: 780)
+                        .padding(.horizontal, 40)
+                        .padding(.top, 28)
+                        .padding(.bottom, 64)
+                        .frame(maxWidth: .infinity)
+                        .mask { fadeUnderHeader }
+                    } header: {
+                        header
                     }
-                    .frame(height: max(220, viewport.size.height * 0.56), alignment: .bottom)
-                    .welcomeArrival(0, shown: shown)
-                    LevelBar(done: progress.done.count)
-                        .frame(maxWidth: 620)
-                        .padding(.bottom, 24)
-                        .welcomeArrival(1, shown: shown)
-                    gallery
-                        .id(progress.generation)
-                    Button("Reset Progress", systemImage: "arrow.counterclockwise") {
-                        progress.reset()
-                    }
-                    .buttonStyle(.glass)
-                    .controlSize(.small)
-                    .padding(.top, 20)
                 }
-                .frame(maxWidth: 780)
-                .padding(.horizontal, 40)
-                .padding(.bottom, 64)
-                .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.automatic)
             .backgroundPreferenceValue(WelcomeTileAnchors.self) { anchors in
@@ -342,7 +347,7 @@ struct WelcomePage: View {
         }
     }
 
-    /// While onboarding, ⌃1–9, ⌥⌘← →, ⌘T and ⌘K play on the cards instead of leaving the page,
+    /// While onboarding, ⌃1–9, the space keys (⌥⌘← →), ⌘T and ⌘K play on the cards instead of leaving the page,
     /// so people can try them freely. Once every stop is done they go back to normal.
     private func catchShortcuts() {
         guard keyMonitor == nil else { return }
@@ -355,12 +360,13 @@ struct WelcomePage: View {
                 if n <= 3 { input.send(.space(n - 1)) }
                 return nil
             }
-            if mods == [.command, .option], event.keyCode == 123 || event.keyCode == 124 {
-                input.send(.spaceStep(event.keyCode == 124 ? 1 : -1))
+            let keys = Shortcuts.shared
+            if keys.matches(.nextSpace, event) || keys.matches(.previousSpace, event) {
+                input.send(.spaceStep(keys.matches(.nextSpace, event) ? 1 : -1))
                 return nil
             }
-            if mods == .command, key == "t" || key == "k" {
-                let mode: CommandBarMode = key == "t" ? .newTab : .commands
+            if keys.matches(.newTab, event) || keys.matches(.commands, event) {
+                let mode: CommandBarMode = keys.matches(.newTab, event) ? .newTab : .commands
                 input.send(.shortcut(mode))
                 complete(mode == .newTab ? .newTab : .commands)
                 return nil
@@ -370,6 +376,47 @@ struct WelcomePage: View {
     }
 
     static let space = "welcomePage"
+
+    /// Hides the cards behind the pinned header, with a soft 56pt fade where they meet it.
+    private var fadeUnderHeader: some View {
+        GeometryReader { g in
+            let cutoff = headerHeight - g.frame(in: .scrollView).minY
+            VStack(spacing: 0) {
+                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: 56)
+                Color.black.frame(height: g.size.height + 56)
+            }
+            .offset(y: cutoff)
+            .frame(width: g.size.width, height: g.size.height, alignment: .top)
+            .clipped()
+        }
+    }
+
+    /// The title, its line and the level bar. Pinned, it floats over the page's own shader while the
+    /// cards dissolve as they pass under it (see `fadeUnderHeader`).
+    private var header: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 10) {
+                Text("Make Browsa yours")
+                    .font(.system(size: 46, weight: .bold))
+                    .tracking(-1.4)
+                Text("Get the most out of Browsa in a few minutes")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 18)
+            .welcomeArrival(0, shown: shown)
+            LevelBar(done: progress.done.count)
+                .frame(maxWidth: 620)
+                .padding(.top, 30)
+                .welcomeArrival(1, shown: shown)
+        }
+        .padding(.bottom, 16)
+        .frame(maxWidth: 780)
+        .padding(.horizontal, 40)
+        .frame(maxWidth: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
+        .zIndex(1)
+    }
 
     private var gallery: some View {
         VStack(spacing: 20) {
@@ -382,7 +429,8 @@ struct WelcomePage: View {
             card(.tour, 5)
             card(.library, 6)
             card(.agents, 7)
-            card(.makeDefault, 8)
+            DefaultCard(done: progress.done.contains(.makeDefault)) { complete(.makeDefault) }
+                .welcomeArrival(8, shown: shown, distance: 22)
         }
     }
 
@@ -400,6 +448,13 @@ struct WelcomePage: View {
         let app = Bundle.main.bundleURL
         NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "http") { _ in }
         NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "https") { _ in }
+    }
+
+    /// Whether this Browsa already opens web links.
+    static var isDefaultBrowser: Bool {
+        guard let url = URL(string: "https://browsa.app"),
+              let app = NSWorkspace.shared.urlForApplication(toOpen: url) else { return false }
+        return Bundle(url: app)?.bundleIdentifier == Bundle.main.bundleIdentifier
     }
 }
 
@@ -471,8 +526,9 @@ private struct LevelBar: View {
         }
 
         private var label: some View {
-            (current ? Text("Level \(level.rawValue + 1) · ").foregroundStyle(.secondary).fontWeight(.regular) : Text(""))
-                + Text(level.name).foregroundStyle(reached ? .primary : .secondary)
+            let prefix = current ? Text("Level \(level.rawValue + 1) · ").foregroundStyle(.secondary).fontWeight(.regular) : Text("")
+            let name = Text(level.name).foregroundStyle(reached ? .primary : .secondary)
+            return Text("\(prefix)\(name)")
         }
     }
 }
@@ -617,7 +673,7 @@ private struct GalleryCard: View {
 
     private func arrived() {
         visited.insert(currentSpace)
-        if visited.count == 3, !done {
+        if visited.count >= 2, !done {
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(500))
                 complete()
@@ -660,8 +716,8 @@ private struct GalleryCard: View {
         case .importing:
             if let name = choice, let s = importer.sources.first(where: { $0.name == name }) { importer.pick(s) }
             Task { await importer.run(into: browser.library) }
-        case .tour: playing ? stopPlaying() : play(completeAt: 0.98)
-        case .library: play(completeAt: 0.6)
+        case .tour: WelcomeFilm.shared.toggle(finished: complete)
+        case .library: break
         case .agents: break
         case .makeDefault: play(completeAt: 0.5)
         case .newTab, .commands: pressPlay()
@@ -677,6 +733,12 @@ private struct GalleryCard: View {
                 if stop == .importing {
                     // The importer itself sits in the card's right side.
                     ImportPanel().environment(\.colorScheme, scheme)
+                } else if stop == .tour {
+                    // The film itself, playing in the card.
+                    FilmPanel(complete: complete)
+                } else if stop == .library {
+                    // The Agent Pack, for real: one switch turns on Radar, Notes and Agents.
+                    AgentPackPanel(done: done, complete: complete).environment(\.colorScheme, scheme)
                 } else if stop == .agents {
                     // So does the real agent connector, on the card's dark surface.
                     AgentConnectPanel(done: done, complete: complete).environment(\.colorScheme, .dark)
@@ -688,7 +750,15 @@ private struct GalleryCard: View {
                 }
             }
             .clipped()
-            .allowsHitTesting(stop == .importing || stop == .agents)
+            .contentShape(.rect)
+            // Make default: the settings menu in the hero is the control itself.
+            .gesture(TapGesture().onEnded {
+                guard !playing else { return }
+                WelcomePage.makeDefaultBrowser()
+                act()
+            }, isEnabled: stop == .makeDefault && !done)
+            .pointerStyle(stop == .makeDefault && !done ? .link : nil)
+            .allowsHitTesting(stop == .importing || stop == .agents || stop == .library || stop == .tour || stop == .makeDefault)
     }
 
     // MARK: Text column
@@ -739,19 +809,20 @@ private struct GalleryCard: View {
             } trailing: { Trackpad() } below: { EmptyView() }
         case .newTab, .commands:
             let t = stop == .newTab
-            Instruction(kind: .tryIt, done: done, title: t ? "Press ⌘T to open anything" : "Press ⌘K for every command") {
-                Text(t ? "Type a site, a search, or a tab's name" : "Split view, pin a tab, ask an agent").foregroundStyle(.secondary)
+            Instruction(kind: .tryIt, done: done, title: t ? "Press ⌘T to open anything" : "Press ⌘K to launch a plugin") {
+                Text(t ? "Type a site, a search, or a tab's name" : "Radar, Comments and every plugin").foregroundStyle(.secondary)
             } trailing: {
                 HStack(spacing: 4) { BigKey(text: "⌘"); BigKey(text: t ? "T" : "K") }
             } below: { EmptyView() }
         case .importing:
-            ImportLead(done: done)
+            ImportLead(done: done, skip: complete)
         case .tour:
-            Instruction(kind: .watch, done: done, title: "Watch the tour") {
-                Text("Ten seconds. No clicking needed.").foregroundStyle(.secondary)
+            let filmPlaying = WelcomeFilm.shared.isPlaying
+            Instruction(kind: .watch, done: done, title: "Watch the film") {
+                Text("Under forty seconds, with sound.").foregroundStyle(.secondary)
             } trailing: {
                 Button(action: act) {
-                    Image(systemName: playing ? "pause.fill" : "play.fill")
+                    Image(systemName: filmPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 15))
                         .foregroundStyle(.white)
                         .frame(width: 42, height: 42)
@@ -760,33 +831,99 @@ private struct GalleryCard: View {
                         .contentTransition(.symbolEffect(.replace))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(playing ? "Pause the tour" : "Play the tour")
+                .accessibilityLabel(filmPlaying ? "Pause the film" : "Play the film")
             } below: { EmptyView() }
         case .library:
-            Instruction(kind: .choose, done: done, title: "Pick a kit to start with") {
-                Text("Browse the whole Library any time").foregroundStyle(.secondary)
-            } trailing: {
-                ActionButton(title: "Add Kit", tint: tint, enabled: choice != nil && !playing, action: act)
-            } below: {
-                HStack(spacing: 6) {
-                    ForEach(WelcomeKits.all, id: \.name) { k in
-                        ChoiceChip(title: k.name, selected: choice == k.name) {
-                            Image(systemName: k.items[0].1).font(.system(size: 10, weight: .semibold)).foregroundStyle(k.items[0].2)
-                        } action: { choice = k.name }
-                    }
-                }
-            }
+            LibraryLead(done: done)
         case .agents:
             AgentsLead(done: done)
         case .makeDefault:
-            Instruction(kind: .tryIt, done: done, title: "Make Browsa your default") {
-                Text("macOS will ask you to confirm").foregroundStyle(.secondary)
-            } trailing: {
-                ActionButton(title: "Make Default", tint: tint, enabled: !playing) {
+            Instruction(kind: .tryIt, done: done, title: done ? "Browsa is your default" : "Make Browsa your default") {
+                Text(done ? "Links from everywhere open here." : "Click the menu on the right. macOS will ask you to confirm.").foregroundStyle(.secondary)
+            } trailing: { EmptyView() } below: { EmptyView() }
+        }
+    }
+}
+
+/// The last stop breaks the gallery's layout: one clean card, everything centred, one button.
+private struct DefaultCard: View {
+    let done: Bool
+    let complete: () -> Void
+    @State private var asking = false
+
+    var body: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable().interpolation(.high)
+                    .frame(width: 72, height: 72)
+                    .shadow(color: .black.opacity(0.25), radius: 10, y: 6)
+                    .overlay(alignment: .bottomTrailing) {
+                        if done {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 24, weight: .semibold))
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, Color(red: 0.16, green: 0.7, blue: 0.33))
+                                .offset(x: 6, y: 6)
+                                .transition(.scale(scale: 0.4).combined(with: .opacity))
+                        }
+                    }
+            }
+            .anchorPreference(key: WelcomeTileAnchors.self, value: .center) { [.makeDefault: $0] }
+            VStack(spacing: 6) {
+                Text(done ? "Browsa is your default" : "Set Browsa as your default")
+                    .font(.system(size: 26, weight: .bold))
+                    .tracking(-0.6)
+                Text(done ? "Links from Mail, Slack and everywhere else now open here."
+                          : "Links from Mail, Slack and everywhere else will open here.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white.opacity(0.82))
+            }
+            .multilineTextAlignment(.center)
+            .contentTransition(.opacity)
+            if !done {
+                Button {
+                    asking = true
+                    // Clicking is enough to tick it, whatever the person answers macOS.
                     WelcomePage.makeDefaultBrowser()
-                    act()
+                    complete()
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(2))
+                        asking = false
+                    }
+                } label: {
+                    Text("Make Default")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.62, green: 0.2, blue: 0.04))
+                        .padding(.horizontal, 26).padding(.vertical, 11)
+                        .background(.white, in: .capsule)
+                        .shadow(color: .black.opacity(0.18), radius: 8, y: 4)
                 }
-            } below: { EmptyView() }
+                .buttonStyle(.plain)
+                .disabled(asking)
+                .padding(.top, 6)
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                Text("macOS will ask you to confirm.")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+        .background { SurfaceBackground(surface: WelcomeStop.makeDefault.surface) }
+        .clipShape(.rect(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.12)))
+        .shadow(color: .black.opacity(0.06), radius: 6, y: 3)
+        .animation(.smooth(duration: 0.4), value: done)
+        .onAppear { if !done, WelcomePage.isDefaultBrowser { complete() } }
+        // Made default some other way (System Settings) while away: tick it on return.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if !done, WelcomePage.isDefaultBrowser { complete() }
+        }
+        .onChange(of: WelcomeDebug.shared.act?.id) {
+            guard let a = WelcomeDebug.shared.act, a.stop == .makeDefault else { return }
+            complete()
         }
     }
 }

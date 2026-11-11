@@ -171,10 +171,12 @@ xcodegen && open Browsa.xcodeproj   # then pick the BrowsaMac scheme and Run
   ⌘S hides it, and it slides back over the page when the pointer reaches the window's left edge.
 - **Command bar.** ⌘T (or ⌘K) opens a floating field with the same suggestions, inline completion
   and commands as the iPhone app. ⌘L opens it on the current address.
-- **Keyboard.** ⌘+ / ⌘- / ⌘0 zoom (remembered per site), ⌘W close tab, ⇧⌘T reopen, ⌘[ ⌘] back
-  and forward, ⌘R reload, ⌥⌘R reload without cache, ⌘. stop, ⌘F find, ⌘G and ⇧⌘G next and
-  previous match, ⌘D favourite, ⇧⌘D pin, ⇧⌘C copy link, ⌘1 to ⌘9 tabs, ⌃⇥ and ⇧⌘] next tab,
-  ⌃1 to ⌃9 and ⌥⌘← ⌥⌘→ spaces, ⇧⌘N private tab, ⌥⌘J downloads, ⌘Y archived tabs.
+- **Keyboard.** Arc's keys by default: ⌘D pin, ⇧⌘D favourite, ⇧⌘C copy link (⌥⇧⌘C as
+  Markdown), ⌥⌘↓ ⌥⌘↑ (or ⇧⌘] ⇧⌘[, ⌃⇥) next and previous tab, ⇧⌘K clear Today, ⌘1 to ⌘9 tabs,
+  ⌃1 to ⌃9 and ⌥⌘← ⌥⌘→ spaces, ⌘W close tab, ⇧⌘T reopen, ⌘[ ⌘] back and forward, ⌘R reload,
+  ⌥⌘R reload without cache, ⌘. stop, ⌘F find, ⌘G and ⇧⌘G next and previous match, ⇧⌘N private
+  tab, ⇧⌘J downloads, ⌘Y archived tabs, ⌥⌘I Web Inspector, ⌘+ / ⌘- / ⌘0 zoom (remembered per
+  site). Settings › Shortcuts switches to Chrome's or Safari's keys, or changes any of them.
   Cmd-click a link to open it in the background, Shift-Cmd-click to open it in front.
 - **Engine.** The Mac app is written against `BrowserEngine`, a small engine-neutral API, with
   WebKit as the only implementation. See [docs/engines.md](docs/engines.md) for what we learned

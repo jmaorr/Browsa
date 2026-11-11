@@ -50,7 +50,13 @@
       download: unsupported('downloads.download'), search: resolves([]), open: unsupported('downloads.open'),
       onCreated: event(), onChanged: event(), onErased: event(), onDeterminingFilename: event(),
     }),
-    offscreen: () => ({ createDocument: unsupported('offscreen'), closeDocument: resolves(undefined), hasDocument: resolves(false), Reason: offscreenReasons }),
+    // A hidden extension page Browsa keeps for the extension (ExtensionOffscreen.swift).
+    offscreen: () => ({
+      createDocument: (p) => offscreenCall('create', p && p.url).then(() => undefined),
+      closeDocument: () => offscreenCall('close').then(() => undefined),
+      hasDocument: () => offscreenCall('has').then((url) => !!url),
+      Reason: offscreenReasons,
+    }),
     sidePanel: () => ({ setOptions: resolves(undefined), setPanelBehavior: resolves(undefined), open: unsupported('sidePanel.open'), getOptions: resolves({}) }),
     identity: () => ({ launchWebAuthFlow: unsupported('identity.launchWebAuthFlow'), getRedirectURL: (p = '') => `https://${chrome.runtime.id}.chromiumapp.org/${p}`, onSignInChanged: event() }),
     contentSettings: () => ({}),
@@ -68,12 +74,19 @@
     permissions: ['onAdded', 'onRemoved'],
     commands: ['onCommand'],
   };
+  const offscreenCall = (action, url) => chrome.runtime.sendNativeMessage('browsa.offscreen', { action, url });
   const offscreenReasons = Object.fromEntries(['TESTING', 'AUDIO_PLAYBACK', 'IFRAME_SCRIPTING', 'DOM_SCRAPING', 'BLOBS', 'DOM_PARSER',
     'USER_MEDIA', 'DISPLAY_MEDIA', 'WEB_RTC', 'CLIPBOARD', 'LOCAL_STORAGE', 'WORKERS', 'BATTERY_STATUS', 'MATCH_MEDIA', 'GEOLOCATION'].map(r => [r, r]));
   // Constants and small helpers Chrome has on namespaces WebKit does provide. Extensions read some of
   // them at startup (chrome.offscreen.Reason.CLIPBOARD, chrome.scripting.ExecutionWorld.MAIN).
   const extras = {
-    runtime: { getContexts: () => Promise.resolve([]) },
+    // Only the offscreen document is reported; other contexts aren't tracked.
+    runtime: { getContexts: (filter = {}) => {
+      const types = filter.contextTypes;
+      if (types && !types.includes('OFFSCREEN_DOCUMENT')) return Promise.resolve([]);
+      return offscreenCall('has').then((url) => url ? [{ contextType: 'OFFSCREEN_DOCUMENT', documentUrl: url, documentOrigin: new URL(url).origin,
+        contextId: 'browsa-offscreen', tabId: -1, windowId: -1, frameId: -1, incognito: false }] : [], () => []);
+    } },
     scripting: { ExecutionWorld: { ISOLATED: 'ISOLATED', MAIN: 'MAIN' } },
     tabs: { TAB_ID_NONE: -1, TAB_INDEX_NONE: -1 },
     windows: { WINDOW_ID_NONE: -1, WINDOW_ID_CURRENT: -2 },
@@ -108,7 +121,9 @@
     }
     if (root.storage && root.storage.managed === undefined) {
       try {
-        keep(root.storage).managed = { get: resolves({}), getBytesInUse: resolves(0), onChanged: event() };
+        // Chrome's callback form too: Grammarly passes a callback and waits for it (timing out otherwise).
+        const answer = (value) => (...args) => { const cb = args.find(a => typeof a === 'function'); if (cb) setTimeout(() => cb(value)); return Promise.resolve(value); };
+        keep(root.storage).managed = { get: answer({}), getBytesInUse: answer(0), onChanged: event() };
         missing.push('storage.managed');
       } catch (e) {}
     }
@@ -123,6 +138,29 @@
     const chromeUA = ua.replace(/ Version\/[\d.]+/, '').replace(/ Safari\/[\d.]+/, '') + ' Chrome/142.0.0.0 Safari/537.36';
     try { Object.defineProperty(Object.getPrototypeOf(navigator), 'userAgent', { get: () => chromeUA, configurable: true }); } catch (e) {}
     try { Object.defineProperty(Object.getPrototypeOf(navigator), 'vendor', { get: () => 'Google Inc.', configurable: true }); } catch (e) {}
+  }
+
+  // Copying from an extension page without a click (Chrome allows it with the clipboardWrite
+  // permission, e.g. Paper Snapshot's offscreen page). WebKit refuses document.execCommand('copy')
+  // there, so when it does, the page's own copy handler runs on a stand-in clipboard and Browsa
+  // writes what it set (ExtensionOffscreen.swift, "browsa.clipboard").
+  if (!isWorker && globalThis.document && typeof document.execCommand === 'function') {
+    const execCommand = document.execCommand;
+    document.execCommand = function (command, ...rest) {
+      const done = execCommand.call(this, command, ...rest);
+      if (done || String(command).toLowerCase() !== 'copy' || typeof DataTransfer !== 'function') return done;
+      try {
+        const data = new DataTransfer();
+        const copy = new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true });
+        (document.activeElement || document).dispatchEvent(copy);
+        const items = {};
+        for (const type of data.types) items[type] = data.getData(type);
+        if (!Object.keys(items).length) return false;
+        const sent = chrome.runtime.sendNativeMessage('browsa.clipboard', { items });
+        if (sent && sent.catch) sent.catch(() => {});
+        return true;
+      } catch (e) { return false; }
+    };
   }
 
   if (!isWorker) return;

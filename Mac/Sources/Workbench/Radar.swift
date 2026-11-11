@@ -122,12 +122,23 @@ final class RadarStore {
         scanTask = Task { [weak self] in
             while !Task.isCancelled {
                 let found = await RadarScanner.scan(ignoring: ownPorts)
-                guard let self else { return }
+                guard let self, !Task.isCancelled else { return }
                 self.apply(found)
                 let interval: Duration = NSApp.isActive ? .seconds(2) : .seconds(6)
                 try? await Task.sleep(for: interval)
             }
         }
+    }
+
+    /// Stops watching, when Radar is switched off. Forgets what it saw, so nothing stale shows if
+    /// it comes back on.
+    func stopLive() {
+        scanTask?.cancel()
+        scanTask = nil
+        restartHandler = nil
+        restarting = []
+        stoppedAt = [:]
+        servers = []
     }
 
     /// Merges a scan in: new servers arrive, gone ones turn stopped, and stopped ones that come

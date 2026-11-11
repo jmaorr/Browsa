@@ -94,7 +94,7 @@ private struct ReaderControls: View {
                 .help("Larger Text (⌘+)")
             Divider().frame(height: 14)
             Button { browser.closeReader() } label: { Image(systemName: "doc.plaintext.fill") }
-                .help("Hide Reader (⇧⌘R)")
+                .help(Shortcuts.shared.help("Hide Reader", .reader))
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
@@ -241,7 +241,7 @@ private struct EmptyPage: View {
             Button { browser.showCommandBar(.newTab) } label: {
                 HStack(spacing: 6) {
                     Text("New Tab")
-                    Text("⌘T").foregroundStyle(.secondary)
+                    if let key = Shortcuts.shared.display(.newTab) { Text(key).foregroundStyle(.secondary) }
                 }
             }
             .buttonStyle(.bordered)
@@ -273,9 +273,9 @@ private struct FindBar: View {
                 Text("Not found").font(.caption).foregroundStyle(.secondary)
             }
             Button { browser.findNext(backwards: true) } label: { Image(systemName: "chevron.up") }
-                .buttonStyle(.plain).help("Previous (⇧⌘G)")
+                .buttonStyle(.plain).help(Shortcuts.shared.help("Previous", .findPrevious))
             Button { browser.findNext() } label: { Image(systemName: "chevron.down") }
-                .buttonStyle(.plain).help("Next (⌘G)")
+                .buttonStyle(.plain).help(Shortcuts.shared.help("Next", .findNext))
             Button { browser.closeFind() } label: { Image(systemName: "xmark") }
                 .buttonStyle(.plain).help("Done (Esc)")
         }
