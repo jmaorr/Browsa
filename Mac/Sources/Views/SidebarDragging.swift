@@ -383,7 +383,7 @@ struct LiftedTabRow: View {
                     .frame(width: lift.size.width, height: lift.size.height)
                     .opacity(asTile ? 0 : 1)
                 if let url = tab.url {
-                    FaviconView(url: url, size: overSpace ? 18 : 26, chip: true, letter: tab.displayTitle)
+                    FaviconView(url: url, size: overSpace ? 18 : 26, chip: true, letter: tab.displayTitle, isPrivate: tab.isPrivate)
                         .frame(width: size.width, height: size.height)
                         .background(SelectedFill(), in: .rect(cornerRadius: 12, style: .continuous))
                         .opacity(asTile ? 1 : 0)

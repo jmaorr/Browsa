@@ -106,6 +106,8 @@ struct FaviconView: View {
     var chip = false
     /// Shown until the icon loads. Defaults to the host's first letter.
     var letter: String?
+    /// A private tab's icon: fetched without the disk cache, so the site isn't left in Caches.
+    var isPrivate = false
 
     private var host: String { URLNormalizer.displayHost(url) }
 
@@ -128,7 +130,7 @@ struct FaviconView: View {
     var body: some View {
         // Cached in memory, so a row that's rebuilt (dragged to another section, a space switch)
         // shows its icon straight away instead of flashing its letter while it loads again.
-        FaviconImage(url: iconURL) { image in
+        FaviconImage(url: iconURL, isPrivate: isPrivate) { image in
             if let image {
                 Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
                     .padding(chip ? size * 0.12 : 0)
@@ -194,11 +196,16 @@ struct PanelFill: ShapeStyle {
 }
 
 /// A tab's icon: its favicon, or a globe before it has a page.
-@MainActor private enum FaviconCache { static var images: [URL: NSImage] = [:] }
+@MainActor private enum FaviconCache {
+    static var images: [URL: NSImage] = [:]
+    /// No disk cache or cookies, for private tabs' icons.
+    static let ephemeral = URLSession(configuration: .ephemeral)
+}
 
 /// Loads a site icon once per launch and keeps it in memory.
 private struct FaviconImage<Content: View>: View {
     let url: URL?
+    var isPrivate = false
     @ViewBuilder let content: (NSImage?) -> Content
     @State private var image: NSImage?
 
@@ -208,7 +215,7 @@ private struct FaviconImage<Content: View>: View {
                 guard let url else { image = nil; return }
                 if let hit = FaviconCache.images[url] { image = hit; return }
                 image = nil
-                guard let (data, response) = try? await URLSession.shared.data(from: url),
+                guard let (data, response) = try? await (isPrivate ? FaviconCache.ephemeral : .shared).data(from: url),
                       (response as? HTTPURLResponse)?.statusCode ?? 200 < 400,
                       let loaded = NSImage(data: data) else { return }
                 FaviconCache.images[url] = loaded
@@ -233,7 +240,7 @@ struct TabIcon: View {
                 .interpolation(.high)
                 .frame(width: size, height: size)
         } else if let url = tab.url {
-            FaviconView(url: url, size: size)
+            FaviconView(url: url, size: size, isPrivate: tab.isPrivate)
         } else {
             Image(systemName: tab.isPrivate ? "eye.slash" : "globe")
                 .font(.system(size: size * 0.8))
