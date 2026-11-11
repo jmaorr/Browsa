@@ -4,9 +4,12 @@
 // Every element with `data-mw` gets a window. What it shows is pure CSS on `data-scene` and
 // `data-space`; this file only builds the markup and moves between scenes.
 
-import { ICON, FAV, travelBlog, devDocs, shop } from "/desktop-sites.js";
+import { ICON, FAV, travelBlog, devDocs, supper, library } from "/desktop-sites.js";
 
 const tab = (fav, title, page = "", extra = "") => `<div class="mw-tab"${page ? ` data-p="${page}"` : ""}>${fav}<span>${title}</span>${extra}</div>`;
+
+// The agent demo's steps, in the Activity card's words (Mac/Sources/Agents/AgentsUI.swift, AgentWords).
+const STEPS = ["Opened browsa.app/demo", "Read ‘Supper’", "Typed ‘6’ into guests", "Clicked ‘Add to menu’", "Clicked ‘Swap’", "Clicked ‘Saturday 5–7 pm’", "Left a note: “Dinner for 6, $28.20 all in…”"];
 
 const WINDOW = `
 <div class="mw-side">
@@ -15,10 +18,15 @@ const WINDOW = `
     <span class="mw-ib">${ICON.sidebarLeft}</span><span class="mw-ib">${ICON.back}</span><span class="mw-ib dim">${ICON.forward}</span><span class="mw-ib">${ICON.reload}</span>
     <span class="mw-ib end">${ICON.sidebarRight}</span>
   </div>
+  <div class="mw-drive">
+    <i class="mw-drive-ic">${ICON.rays}<i></i></i>
+    <span><b>Claude Code</b><span class="mw-drive-t">${STEPS.map((t, i) => `<em data-s="${i}">${t}</em>`).join("")}</span></span>
+    <i class="mw-drive-stop">${ICON.stop}</i>
+  </div>
   <div class="mw-addr">
     <span class="mw-lock">${ICON.lock}</span>
-    <span class="mw-host"><span data-p="travel">wanderandsalt.com</span><span data-p="docs">docs.tern.dev</span><span data-p="shop">localhost:3000</span></span>
-    <span class="mw-exts"><i class="x-key">${ICON.key}</i><i class="x-shield">${ICON.shield}</i><i class="x-moon">${ICON.moon}</i></span>
+    <span class="mw-host"><span data-p="travel">wanderandsalt.com</span><span data-p="docs">docs.tern.dev</span><span data-p="supper">browsa.app/demo</span><span data-p="library">Library</span></span>
+    <span class="mw-exts"><img class="x-1p" src="/media/ext/1password.png" alt="" width="16" height="16"></span>
   </div>
   <div class="mw-favs">
     <span>${FAV.post}</span><span>${FAV.pine}</span><span>${FAV.forge}</span><span>${FAV.tern}</span>
@@ -29,21 +37,22 @@ const WINDOW = `
     ${tab(FAV.kitchen, "Slow-roast tomatoes")}
     <div class="mw-today"></div>
     <div class="mw-newtab">${ICON.plus}New Tab</div>
+    ${tab(FAV.supper, "Supper · Plan a dinner", "supper", '<b class="mw-pins">3</b>')}
+    ${tab(FAV.books, "Library", "library")}
     ${tab(FAV.rail, "Oslo to Bodø · Nordic Rail")}
-    ${tab(FAV.ws, "Hamnøy cabins · Wander & Salt")}
   </div>
   <div class="mw-list sp-w">
     <div class="mw-spacehead">${ICON.briefcase}Work</div>
     ${tab(FAV.tern, "Webhooks · Tern Docs", "docs")}
-    ${tab(FAV.nw, "Northwind · Checkout", "shop", '<b class="mw-badge">3</b>')}
+    ${tab(FAV.nw, "Northwind · Checkout", "", '<b class="mw-badge">3</b>')}
     <div class="mw-today"></div>
     <div class="mw-newtab">${ICON.plus}New Tab</div>
     ${tab(FAV.forge, "Bigger pay button #212")}
     ${tab(FAV.pine, "Standup notes")}
   </div>
   <div class="mw-list sp-a">
-    <div class="mw-spacehead">${ICON.sparkles}Agent</div>
-    ${tab(FAV.nw, "Northwind · Checkout", "shop")}
+    <div class="mw-spacehead">${ICON.rays}Agent</div>
+    ${tab(FAV.supper, "Supper · Plan a dinner", "supper")}
     <div class="mw-today"></div>
     <div class="mw-newtab">${ICON.plus}New Tab</div>
   </div>
@@ -55,46 +64,57 @@ const WINDOW = `
   </div>
   <div class="mw-bottom">
     <span class="mw-ib">${ICON.download}</span>
-    <span class="mw-dots"><i class="d-p">${ICON.house}</i><i class="d-w">${ICON.briefcase}</i><i class="d-a">${ICON.sparkles}</i></span>
+    <span class="mw-dots"><i class="d-p">${ICON.house}</i><i class="d-w">${ICON.briefcase}</i><i class="d-a">${ICON.rays}</i></span>
     <span class="mw-ib">${ICON.plus}</span>
   </div>
 </div>
 <div class="mw-page">
   <div class="mw-site" data-p="travel">${travelBlog}</div>
   <div class="mw-site" data-p="docs">${devDocs}</div>
-  <div class="mw-site" data-p="shop">${shop}</div>
-  <i class="mw-cursor">${ICON.cursor}</i>
+  <div class="mw-site" data-p="supper">${supper}</div>
+  <div class="mw-site" data-p="library">${library}</div>
 </div>
 <div class="mw-panel">
   <div class="mw-panel-h">
     <b class="t-notes">Notes</b><b class="t-agents">Agents</b>
-    <span class="mw-rail"><i class="r-notes">${ICON.bubble}</i><i class="r-agents">${ICON.sparkles}</i><i class="r-radar">${ICON.radar}</i></span>
+    <span class="mw-rail"><i class="r-notes">${ICON.bubble}</i><i class="r-agents">${ICON.rays}</i><i>${ICON.download}</i><i>${ICON.radar}</i></span>
     <span class="mw-ib">${ICON.sidebarRight}</span>
   </div>
   <div class="mw-pane notes">
-    <div class="mw-note">
-      <p class="who"><b>You</b><em>12 min</em></p>
-      <p class="quote">Pay $329</p>
-      <p>The pay button is hard to spot on small screens.</p>
-      <div class="reply"><p class="who ai">${ICON.sparkles}<b>Claude Code</b></p><p>Made it full width with more contrast on feat/pay-button. Have a look on :3001.</p></div>
+    <div class="mw-ntools">
+      <span class="mw-comment">${ICON.plusBubble}<b class="c-off">Comment</b><b class="c-on">Picking</b></span>
+      <span class="mw-scope"><b class="on">This Page</b><b>This Site</b></span>
+      <i class="mw-more">${ICON.ellipsis}</i>
     </div>
-    <div class="mw-note">
-      <p class="who"><b>You</b><em>8 min</em></p>
-      <p>Card field should say which cards we take.</p>
+    <div class="mw-note n1">
+      <p class="who"><i class="pin">1</i><b class="ai">${ICON.rays}Claude Code</b><em>4m</em></p>
+      <p class="quote">Your menu</p>
+      <p>Dinner for 6, $28.20 all in, with a vegetarian main. Delivery Saturday 5–7 pm. Press Place order when you’re happy.</p>
     </div>
-    <div class="mw-note done">
-      <p class="who"><b>You</b><span class="ok">${ICON.check}Resolved</span></p>
-      <p>Typo in "Order sumary".</p>
+    <div class="mw-note n2">
+      <p class="who"><i class="pin">2</i><b class="ai">${ICON.rays}Claude Code</b><em>4m</em></p>
+      <p class="sel">${ICON.scope}#ingredient-parmesan</p>
+      <p>Swapped the Parmesan for a vegetarian hard cheese: traditional Parmesan is made with animal rennet.</p>
+      <div class="reply"><p class="who"><b>You</b><em>2m</em></p><p>Good catch, thank you.</p></div>
+    </div>
+    <div class="mw-note n3">
+      <p class="who"><i class="pin">3</i><b>You</b><em>now</em></p>
+      <p class="sel">${ICON.scope}Place order button</p>
+      <p class="typed">Add a dessert before we order. Something light.</p>
     </div>
   </div>
   <div class="mw-pane agents">
-    <div class="mw-agent-h"><span>${ICON.sparkles}<b>Claude Code</b><em>Working on localhost:3000</em></span><span class="mw-stop">${ICON.stop}Stop</span></div>
-    <div class="mw-feed"><code>tab_open</code><span>localhost:3000/checkout</span></div>
-    <div class="mw-feed"><code>page_read</code><span>Checkout · 3 fields</span></div>
-    <div class="mw-feed"><code>page_type</code><span>Email</span></div>
-    <div class="mw-feed"><code>page_type</code><span>Name on card</span></div>
-    <div class="mw-feed"><code>page_click</code><span>Pay $329</span></div>
-    <div class="mw-feed"><code>page_screenshot</code><span>Saved</span></div>
+    <div class="mw-astat">
+      <i class="dot"></i>
+      <span><b>Driving</b><em>${ICON.rays}Claude Code</em></span>
+      <i class="mw-more">${ICON.ellipsis}</i>
+      <span class="mw-stop">Stop</span>
+    </div>
+    <p class="mw-acap">Activity</p>
+    <div class="mw-run">
+      <p class="mw-run-h">${ICON.rays}<b>Claude Code</b><em>now</em><i>${ICON.chevronDown}</i></p>
+      ${STEPS.map((t, i) => `<p class="mw-step" data-s="${i}"><i>${ICON.tick}</i><span>${t}</span></p>`).join("")}
+    </div>
   </div>
 </div>
 <div class="mw-cmd">
@@ -104,13 +124,8 @@ const WINDOW = `
     <div class="mw-row">${ICON.search}<span><b>lofoten northern lights forecast</b></span></div>
     <div class="mw-row">${ICON.search}<span><b>lofoten winter ferry bodø</b></span></div>
     <div class="mw-row">${ICON.book}<span><b>Lofoten</b><em>Wikipedia</em></span></div>
-    <div class="mw-row">${ICON.bubble}<span><b>Notes</b><em>Notes on this page, for you and your agents</em></span><u>Tool</u></div>
+    <div class="mw-row">${ICON.bubble}<span><b>Notes</b><em>Notes on any page, for you and your agents</em></span><u>Tool</u></div>
   </div>
-</div>
-<div class="mw-pop">
-  <div class="mw-pop-h">${ICON.key}<b>Passwords</b></div>
-  <div class="mw-pop-r on"><i>A</i><span><b>ada@northwind.dev</b><em>localhost</em></span><u>Fill</u></div>
-  <div class="mw-pop-r"><i>T</i><span><b>test-buyer</b><em>localhost</em></span><u>Fill</u></div>
 </div>
 <div class="mw-hl"></div>`;
 
@@ -124,10 +139,14 @@ function readPausedChoice() {
 }
 let paused = readPausedChoice() === "1" || (reduced && readPausedChoice() !== "0");
 
-// Each scene's space, unless the scene changes it partway through.
-const SPACE = { sidebar: "personal", focus: "personal", command: "personal", spaces: "personal", work: "work", panel: "work", extensions: "work", agent: "agent" };
-// And the page it shows.
-const PAGE = { work: "docs", panel: "shop", extensions: "shop", agent: "shop" };
+// Each scene's space and page.
+const SPACE = { sidebar: "personal", focus: "personal", command: "personal", spaces: "work", work: "work", notes: "personal", extensions: "personal", agent: "agent" };
+const PAGE = { spaces: "docs", work: "docs", notes: "supper", extensions: "library", agent: "supper" };
+// Which Supper capture each scene opens on; the agent moves through 0 to 4 as it works.
+const SHOT = { notes: 4, agent: 0 };
+// The agent's timeline: when each step lands (ms), and the capture it leaves on the page.
+const AGENT_AT = [300, 1300, 2500, 3700, 4900, 6100];
+const AGENT_SHOT = [0, 1, 2, 3, 4, 4];
 
 const windows = [...document.querySelectorAll("[data-mw]")];
 windows.forEach((mw, n) => {
@@ -139,20 +158,43 @@ windows.forEach((mw, n) => {
   mw.dataset.page ||= PAGE[mw.dataset.scene] || "travel";
 });
 
+// Marks the agent's progress: the step it's on, and which Activity rows have landed.
+function agentStep(mw, n) {
+  mw.dataset.step = n;
+  const done = n === "" ? -1 : n === "done" ? STEPS.length - 1 : n;
+  mw.querySelectorAll(".mw-step").forEach((r, i) => r.classList.toggle("on", i <= done));
+  mw.querySelectorAll(".mw-drive-t em").forEach((e, i) => e.classList.toggle("on", i === Math.max(done, 0)));
+}
+
 function show(mw, scene) {
-  clearTimeout(mw._timer);
+  clearInterval(mw._timer);
   // Restart the scene's CSS animations even when it's shown twice in a row.
   mw.dataset.scene = "";
   void mw.offsetWidth;
   mw.dataset.scene = scene;
   mw.dataset.space = SPACE[scene] || "personal";
   mw.dataset.page = PAGE[scene] || "travel";
-  if (scene === "spaces") {
-    mw._timer = setTimeout(() => {
-      mw.dataset.space = "work";
-      mw.dataset.page = "docs";
-    }, 1100);
-  }
+  mw.dataset.shot = SHOT[scene] ?? 0;
+  agentStep(mw, "");
+  if (scene !== "agent") return;
+  // The agent works through its steps on a clock that stops while motion is paused.
+  let t = 0;
+  let n = 0;
+  mw._timer = setInterval(() => {
+    if (paused) return;
+    t += 100;
+    while (n < AGENT_AT.length && t >= AGENT_AT[n]) {
+      agentStep(mw, n);
+      // The click lands, then the page answers.
+      const shot = AGENT_SHOT[n];
+      setTimeout(() => (mw.dataset.shot = shot), n ? 420 : 0);
+      n++;
+    }
+    if (n === AGENT_AT.length && t >= AGENT_AT[n - 1] + 900) {
+      agentStep(mw, "done");
+      clearInterval(mw._timer);
+    }
+  }, 100);
 }
 
 // Small windows that cycle on their own: data-cycle="sidebar focus".
@@ -176,6 +218,7 @@ windows
 windows.filter((mw) => !mw.dataset.cycle && !mw.hasAttribute("data-hero-window")).forEach((mw) => show(mw, mw.dataset.scene));
 
 // The hero: one big window, a row of tabs, a caption that changes with them.
+const HOLD = { notes: 6400, extensions: 5600, agent: 9400 };
 const hero = document.querySelector("[data-hero-window]");
 if (hero) {
   const tabs = [...document.querySelectorAll("[data-scene-pick]")];
@@ -215,15 +258,22 @@ if (hero) {
   };
   const syncCycle = () => {
     const run = inView && !paused && !picked;
-    if (run && !timer) timer = setInterval(() => pick(order[(order.indexOf(current) + 1) % order.length]), 5200);
+    // Each scene stays long enough to play out; the agent's takes longest.
+    if (run && !timer) timer = setTimeout(() => {
+      timer = 0;
+      pick(order[(order.indexOf(current) + 1) % order.length]);
+      syncCycle();
+    }, HOLD[current] || 5200);
     else if (!run && timer) {
-      clearInterval(timer);
+      clearTimeout(timer);
       timer = 0;
     }
   };
   tabs.forEach((t) =>
     t.addEventListener("click", () => {
       picked = true;
+      clearTimeout(timer);
+      timer = 0;
       syncCycle();
       pick(t.dataset.scenePick);
     }),
@@ -245,6 +295,7 @@ const syncMotion = () => {
   motion.setAttribute("aria-pressed", String(paused));
   motion.querySelector("span").textContent = paused ? "Play motion" : "Pause motion";
   window._syncHero?.();
+  window._syncBento?.();
 };
 motion?.addEventListener("click", () => {
   paused = !paused;
@@ -255,12 +306,76 @@ motion?.addEventListener("click", () => {
 });
 syncMotion();
 
-// The developer page: pointing at a manifest key, or its legend entry, outlines where it lands.
+// The little things: the bento's loops start once it's in view, and the shortcut keys take turns.
+const bento = document.querySelector("[data-bento]");
+if (bento) {
+  // Browsa's own preset, from Mac/Sources/State/Shortcuts.swift. Modifiers in the Mac's order: ⌃ ⌥ ⇧ ⌘.
+  const KEYS = [
+    ["⌘K", "Commands and tools"],
+    ["⌘T", "New tab"],
+    ["⌘S", "Hide the sidebar"],
+    ["⌘D", "Pin tab"],
+    ["⇧⌘D", "Add to Favourites"],
+    ["⌃1", "First space"],
+    ["⇧⌘R", "Reader"],
+    ["⇧⌘J", "Downloads"],
+    ["⇧⌘T", "Reopen closed tab"],
+    ["⌥⌘↓", "Next tab"],
+    ["⇧⌘K", "Clear Today"],
+    ["⌘Y", "Archived tabs"],
+    ["⇧⌘N", "Private tab"],
+    ["⇧⌘M", "Notes"],
+  ];
+  const caps = bento.querySelector(".v-caps");
+  const act = bento.querySelector(".v-act");
+  const cheat = bento.querySelector(".v-cheat");
+  cheat.innerHTML = KEYS.map(([k, name]) => `<span><kbd>${k}</kbd>${name}</span>`).join("");
+  const chips = [...cheat.children];
+  let k = 0;
+  let inView = false;
+  let timer = 0;
+  const showKey = (n) => {
+    k = n;
+    chips.forEach((c, i) => c.classList.toggle("on", i === n));
+    const [combo, name] = KEYS[n];
+    caps.innerHTML = [...combo].map((c) => `<kbd class="cap is-new">${c}</kbd>`).join("");
+    act.classList.add("is-out");
+    setTimeout(() => {
+      act.textContent = name;
+      act.classList.remove("is-out");
+    }, 150);
+    // Press the keys down together, a beat after they land.
+    setTimeout(() => caps.querySelectorAll(".cap").forEach((c) => c.classList.replace("is-new", "is-down")), 520);
+    setTimeout(() => caps.querySelectorAll(".cap").forEach((c) => c.classList.remove("is-down")), 760);
+  };
+  chips.forEach((c, i) => c.classList.toggle("on", i === 0));
+  const sync = () => {
+    const run = inView && !paused && !document.hidden;
+    if (run) bento.classList.add("is-on");
+    if (run && !timer) timer = setInterval(() => showKey((k + 1) % KEYS.length), 2000);
+    else if (!run && timer) {
+      clearInterval(timer);
+      timer = 0;
+    }
+  };
+  new IntersectionObserver(([e]) => {
+    inView = e.isIntersecting;
+    sync();
+  }, { threshold: 0.15 }).observe(bento);
+  document.addEventListener("visibilitychange", sync);
+  window._syncBento = sync;
+}
+
+// The developer page: a picker under the window, like the Mac page's hero. Each part outlines
+// where it lands, and lights its key in the manifest; pointing at a key picks it too.
 const anatomy = document.querySelector("[data-anatomy]");
 if (anatomy) {
-  const keys = [...document.querySelectorAll("[data-points]")];
+  const tabs = [...document.querySelectorAll(".t-tab[data-points]")];
+  const keys = [...document.querySelectorAll(".code [data-points]")];
+  const pill = document.querySelector(".anatomy .t-tabs-pill");
+  const caption = document.querySelector(".anatomy-caption");
   const hl = anatomy.querySelector(".mw-hl");
-  const SCENES = { sidebar: "work", badges: "work", panel: "panel", commands: "command", agentTools: "agent" };
+  const SCENES = { sidebar: "work", badges: "work", panel: "notes", commands: "command", agentTools: "agent" };
   const TARGET = { sidebar: ".mw-sect", badges: ".sp-w .mw-badge", panel: ".mw-panel", commands: ".mw-cmd-rows", agentTools: ".mw-pane.agents" };
   let lit = "";
   const outline = () => {
@@ -270,33 +385,51 @@ if (anatomy) {
     const r = el.getBoundingClientRect();
     Object.assign(hl.style, { left: `${r.left - a.left}px`, top: `${r.top - a.top}px`, width: `${r.width}px`, height: `${r.height}px` });
   };
-  const light = (part) => {
+  const movePill = (animate) => {
+    const t = tabs.find((t) => t.dataset.points === lit);
+    if (!t) return;
+    if (!animate) pill.style.transition = "none";
+    pill.style.transform = `translateX(${t.offsetLeft}px)`;
+    pill.style.width = `${t.offsetWidth}px`;
+    if (!animate) {
+      void pill.offsetWidth;
+      pill.style.transition = "";
+    }
+  };
+  const light = (part, animate = true) => {
     if (lit === part) return;
     lit = part;
     anatomy.dataset.lit = part;
     hl.classList.remove("on");
     show(anatomy, SCENES[part]);
     keys.forEach((k) => k.classList.toggle("is-lit", k.dataset.points === part));
+    const t = tabs.find((t) => t.dataset.points === part);
+    tabs.forEach((x) => x.setAttribute("aria-pressed", String(x === t)));
+    movePill(animate);
+    caption.classList.add("is-out");
+    setTimeout(() => {
+      caption.textContent = t.dataset.caption;
+      caption.classList.remove("is-out");
+    }, animate ? 150 : 0);
     setTimeout(() => {
       outline();
       hl.classList.add("on");
     }, reduced ? 0 : 520);
   };
-  for (const k of keys) {
-    k.addEventListener("mouseenter", () => light(k.dataset.points));
-    k.addEventListener("focus", () => light(k.dataset.points));
-    k.addEventListener("click", () => light(k.dataset.points));
-  }
-  addEventListener("resize", outline);
-  // Until someone points, walk through them.
+  // Until someone picks, walk through them.
   let touched = false;
-  keys.forEach((k) => k.addEventListener("pointerenter", () => (touched = true)));
-  const parts = [...new Set(keys.map((k) => k.dataset.points))];
+  for (const el of [...tabs, ...keys]) {
+    el.addEventListener("click", () => ((touched = true), light(el.dataset.points)));
+    el.addEventListener("focus", () => light(el.dataset.points));
+  }
+  for (const k of keys) k.addEventListener("mouseenter", () => ((touched = true), light(k.dataset.points)));
+  addEventListener("resize", () => (outline(), movePill(false)));
+  const parts = tabs.map((t) => t.dataset.points);
   let i = 0;
-  light(parts[0]);
+  light(parts[0], false);
   setInterval(() => {
     if (touched || paused) return;
     i = (i + 1) % parts.length;
     light(parts[i]);
-  }, 2800);
+  }, 3200);
 }

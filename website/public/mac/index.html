@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Browsa for Mac</title>
 <meta name="description" content="Browsa for Mac: a calm WebKit browser with a sidebar for your spaces, a panel for your tools, and room for the extensions and agents you already use.">
-<!-- Unlisted until launch: drop this and add Mac and Download to the other pages' nav. -->
+<!-- Kept out of search until launch: drop this noindex then. -->
 <meta name="robots" content="noindex">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f4f1">
@@ -21,7 +21,7 @@
 <script type="module" src="/desktop.js"></script>
 </head>
 <body>
-<a class="skip" href="#extensions">Skip to features</a>
+<a class="skip" href="#details">Skip to features</a>
 
 <header class="bar">
   <a class="brand" href="/"><img src="/media/orb.webp" alt="" width="26" height="26">Browsa</a>
@@ -54,11 +54,11 @@
       <div class="t-tabs" role="group" aria-label="Show">
         <span class="t-tabs-pill" aria-hidden="true"></span>
         <button type="button" class="t-tab" data-scene-pick="sidebar" aria-pressed="true" data-caption="Spaces, favourites and tabs live down the side, where a wide screen has room for them.">Sidebar</button>
-        <button type="button" class="t-tab" data-scene-pick="spaces" aria-pressed="false" data-caption="Work and life each keep their own tabs and colour. Swipe between them.">Spaces</button>
+        <button type="button" class="t-tab" data-scene-pick="spaces" aria-pressed="false" data-caption="Work and life each keep their own tabs and colour. Swipe between them, or press ⌃1 and ⌃2.">Spaces</button>
         <button type="button" class="t-tab" data-scene-pick="command" aria-pressed="false" data-caption="One bar for everything: places, searches, open tabs and every tool's commands. Press ⌘K.">⌘K</button>
-        <button type="button" class="t-tab" data-scene-pick="panel" aria-pressed="false" data-caption="Tools open in a panel beside the page, never on top of it. Notes keeps your thoughts with the page they're about.">Workbench</button>
-        <button type="button" class="t-tab" data-scene-pick="extensions" aria-pressed="false" data-caption="Your password manager and favourite extensions, from the Chrome Web Store, in a WebKit browser.">Extensions</button>
-        <button type="button" class="t-tab" data-scene-pick="agent" aria-pressed="false" data-caption="A coding agent can use the browser you're looking at, in its own space, with Stop always in reach.">Agents</button>
+        <button type="button" class="t-tab" data-scene-pick="notes" aria-pressed="false" data-caption="Pin a note to anything on a page. It stays with the page, and your agents can read it and reply.">Notes</button>
+        <button type="button" class="t-tab" data-scene-pick="extensions" aria-pressed="false" data-caption="Your password manager and favourite Chrome extensions, tested by us and added in one click from the Library.">Extensions</button>
+        <button type="button" class="t-tab" data-scene-pick="agent" aria-pressed="false" data-caption="Claude Code, Codex or Cursor can use Browsa in an Agent space you can watch, with Stop always in reach.">Agents</button>
       </div>
       <p id="scene-caption" aria-live="polite"></p>
       <button type="button" class="motion" id="motion" aria-pressed="false">
@@ -68,91 +68,218 @@
     </div>
   </section>
 
-  <section class="section" aria-labelledby="calm-title">
-    <h2 id="calm-title">Made for a big screen, and out of your way.</h2>
-    <div class="mini-features">
-      <article>
-        <div data-mw data-cycle="sidebar focus" data-every="2600" role="img" aria-label="The sidebar sliding away so the page fills the window, then sliding back."></div>
-        <h3>The page gets the whole window</h3>
-        <p>Hide the sidebar with ⌘S and it peeks back in when you reach for the edge.</p>
-      </article>
-      <article>
-        <div data-mw data-cycle="spaces sidebar" data-every="3000" role="img" aria-label="Switching from the Personal space to the Work space. The sidebar's colour and tabs change together."></div>
-        <h3>Spaces, curated your way</h3>
-        <p>Pins, tabs and a colour for each part of your life, so neither one follows you into the other.</p>
-      </article>
-    </div>
+  <section class="section" id="details" aria-labelledby="details-title">
+    <h2 id="details-title">All the little things, taken care of.</h2>
+    <p class="sub">The parts you notice on day thirty, not day one. Each of them made by hand, and none of them in your way.</p>
 
-    <dl class="more" aria-label="Also in Browsa for Mac">
-      <div><dt>Keyboard first</dt><dd>Every action has a shortcut, and <kbd>⌘K</kbd> finds the ones you forget.</dd></div>
-      <div><dt>Reader</dt><dd>Just the words and pictures, set so you can settle in.</dd></div>
-      <div><dt>Windows</dt><dd>As many as you like, sharing one library of spaces.</dd></div>
-      <div><dt>Blocking</dt><dd>Ads, trackers and cookie banners, handled before the page loads.</dd></div>
-      <div><dt>Privacy</dt><dd>Global Privacy Control on by default. Clear history and data when you quit, if you like.</dd></div>
-      <div><dt>On iPhone too</dt><dd>The same spaces idea, <a href="/">handcrafted for iPhone Duo</a>.</dd></div>
-    </dl>
-  </section>
-
-  <section class="section" id="extensions" aria-labelledby="ext-title">
-    <h2 id="ext-title">Bring the extensions you rely on.</h2>
-    <p class="sub">Browsa installs extensions from where they already live and keeps them up to date itself, once a day. If an update wants more access, it asks you first.</p>
-    <div class="flow">
-      <div class="flow-sources">
-        <div><span class="src-ic safari" aria-hidden="true">S</span><p><b>Safari extensions</b><span>From the apps already on your Mac</span></p></div>
-        <div><span class="src-ic chrome" aria-hidden="true">C</span><p><b>Chrome Web Store</b><span>Paste a link in Settings</span></p></div>
-        <div><span class="src-ic firefox" aria-hidden="true">F</span><p><b>Firefox Add-ons</b><span>Paste a link in Settings</span></p></div>
-      </div>
-      <div class="flow-lines" aria-hidden="true">
-        <svg viewBox="0 0 120 240" preserveAspectRatio="none">
-          <path d="M0 40 C60 40 60 120 120 120"/><path class="dash" d="M0 40 C60 40 60 120 120 120"/>
-          <path d="M0 120 L120 120"/><path class="dash" d="M0 120 L120 120"/>
-          <path d="M0 200 C60 200 60 120 120 120"/><path class="dash" d="M0 200 C60 200 60 120 120 120"/>
-        </svg>
-      </div>
-      <div class="flow-target"><img src="/media/orb.webp" alt="" width="88" height="88">Browsa</div>
-    </div>
-    <div class="ext-grid" aria-label="Tested and working">
-      <div class="ext"><span class="mono m1" aria-hidden="true">1P</span><b>1Password</b><span>Works</span></div>
-      <div class="ext"><span class="mono m2" aria-hidden="true">LP</span><b>LastPass</b><span>Works</span></div>
-      <div class="ext"><span class="mono m3" aria-hidden="true">D</span><b>Dashlane</b><span>Works</span></div>
-      <div class="ext"><span class="mono m4" aria-hidden="true">G</span><b>Grammarly</b><span>Works</span></div>
-      <div class="ext"><span class="mono m5" aria-hidden="true">uB</span><b>uBlock Origin Lite</b><span>Works</span></div>
-      <div class="ext"><span class="mono m6" aria-hidden="true">DR</span><b>Dark Reader</b><span>Works</span></div>
-    </div>
-    <p class="ext-note">Tested so far. More are on the way, and the <a href="/mac/developers/#limits">developer page</a> lists what WebKit can't do yet. Names belong to their owners.</p>
-  </section>
-
-  <section class="section" aria-labelledby="agents-title">
-    <div class="split">
-      <div>
-        <h2 id="agents-title">A browser your agents can share.</h2>
-        <p>Turn on Agents in Settings and coding agents like Claude Code can open pages, read them and test your work, in the browser you're already signed in to.</p>
-        <ul class="points">
-          <li><span><b>In their own space.</b> Agents open pages in an Agent space, outlined so you always know.</span></li>
-          <li><span><b>Asked, not assumed.</b> Acting on a new site asks you first. Your own localhost never does.</span></li>
-          <li><span><b>One Stop button.</b> It halts anything that would change a page, until you say so.</span></li>
-        </ul>
-      </div>
-      <div class="agent-visual">
-        <div class="term" aria-label="Adding Browsa to Claude Code from a terminal">
-          <div class="term-bar"><i></i><i></i><i></i></div>
-          <pre><span class="dim">$</span> claude mcp add --transport http browsa <span class="key">http://127.0.0.1:47913/mcp</span>
-<span class="ok">✓</span> Added browsa</pre>
+    <div class="bento" data-bento>
+      <article class="bt bt-keys">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="v-keys"><span class="v-caps"><kbd class="cap">⌘</kbd><kbd class="cap">K</kbd></span><b class="v-act">Commands and tools</b></div>
+          <div class="v-cheat"></div>
         </div>
-        <div data-mw data-scene="agent" role="img" aria-label="An agent working in Browsa's Agent space, with each step listed in the Agents panel beside a red Stop button."></div>
-      </div>
+        <h3>Every action has a shortcut, and they’re yours</h3>
+        <p>Arc’s keys out of the box, or Chrome’s or Safari’s with one switch, and you can change any of them in Settings. <kbd>⌘K</kbd> shows each one beside its command.</p>
+      </article>
+
+      <article class="bt bt-spaces">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="bw bw-side bw-crop-r">
+            <span class="bw-lights"><i></i><i></i><i></i></span>
+            <span class="bw-addr"><span class="sp-p"><img class="fi" src="/media/fav/airbnb.com.png" alt="" width="16" height="16">airbnb.com</span><span class="sp-w"><img class="fi" src="/media/fav/figma.com.png" alt="" width="16" height="16">figma.com</span></span>
+            <span class="bw-swap"><span class="bw-list sp-p">
+              <span class="bw-tab on"><img class="fi" src="/media/fav/airbnb.com.png" alt="" width="16" height="16"><span>Cabins in Lofoten · Airbnb</span></span>
+              <span class="bw-tab"><img class="fi" src="/media/fav/are.na.png" alt="" width="16" height="16"><span>Slow web · Are.na</span></span>
+              <span class="bw-tab"><img class="fi" src="/media/fav/spotify.com.png" alt="" width="16" height="16"><span>Discover Weekly</span></span>
+            </span>
+            <span class="bw-list sp-w">
+              <span class="bw-tab on"><img class="fi" src="/media/fav/figma.com.png" alt="" width="16" height="16"><span>Browsa Mac – Figma</span></span>
+              <span class="bw-tab"><img class="fi" src="/media/fav/linear.app.png" alt="" width="16" height="16"><span>Launch · Linear</span></span>
+              <span class="bw-tab"><img class="fi" src="/media/fav/github.com.png" alt="" width="16" height="16"><span>jmaorr/Browsa · GitHub</span></span>
+            </span></span>
+            <span class="bw-bottom"><i class="bw-dl"></i><span class="bw-spaces"><i class="sp-a"></i><i class="sp-b"></i></span><i class="bw-tune"></i></span>
+          </div>
+        </div>
+        <h3>Spaces</h3>
+        <p>Work and life keep their own tabs and colour. Swipe between them, or press <kbd>⌃1</kbd>.</p>
+      </article>
+
+      <article class="bt bt-pin">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="bw bw-side bw-pins bw-crop-r">
+            <span class="bw-tab a"><img class="fi" src="/media/fav/mail.google.com.png" alt="" width="16" height="16"><span>Inbox (3)</span></span>
+            <span class="bw-tab b"><img class="fi" src="/media/fav/calendar.google.com.png" alt="" width="16" height="16"><span>Week 46 · Calendar</span></span>
+            <span class="bw-rule"></span>
+            <span class="bw-new"><i></i>New Tab</span>
+            <span class="bw-tab m on"><img class="fi" src="/media/fav/figma.com.png" alt="" width="16" height="16"><span>Browsa Mac – Figma</span></span>
+            <span class="bw-tab c"><img class="fi" src="/media/fav/wikipedia.org.png" alt="" width="16" height="16"><span>Web browser – Wikipedia</span></span>
+          </div>
+          <kbd class="v-chip">⌘D</kbd>
+        </div>
+        <h3>Pinning</h3>
+        <p>Keep a tab for good. It stays put, and closing it just puts it to sleep.</p>
+      </article>
+
+      <article class="bt bt-fav">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="bw bw-side bw-favs-wrap bw-crop-r">
+            <span class="bw-favs"><span><img class="fi" src="/media/fav/mail.google.com.png" alt="" width="20" height="20"></span><span><img class="fi" src="/media/fav/calendar.google.com.png" alt="" width="20" height="20"></span><span><img class="fi" src="/media/fav/github.com.png" alt="" width="20" height="20"></span><span><img class="fi" src="/media/fav/figma.com.png" alt="" width="20" height="20"></span><span><img class="fi" src="/media/fav/linear.app.png" alt="" width="20" height="20"></span><span><img class="fi" src="/media/fav/notion.so.png" alt="" width="20" height="20"></span><span><img class="fi" src="/media/fav/nytimes.com.png" alt="" width="20" height="20"></span><span class="slot"><img class="fi" src="/media/fav/spotify.com.png" alt="" width="20" height="20"></span></span>
+          </div>
+          <kbd class="v-chip">⇧⌘D</kbd>
+        </div>
+        <h3>Favourites</h3>
+        <p>The handful of sites you live in, one click away in every space.</p>
+      </article>
+
+      <article class="bt bt-dl">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="bw bw-panel bw-crop-b">
+            <span class="bw-ph"><b>Downloads</b><span class="bw-rail"><i><svg viewBox="0 0 24 24"><path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v6a2.5 2.5 0 0 1-2.5 2.5H11l-4 3.5V15h0a2.5 2.5 0 0 1-2-2.5z"/><path d="M8.5 8.5h7M8.5 11.5h4.5"/></svg></i><i><svg viewBox="0 0 24 24"><path class="fill" d="M10 3.5 11.7 8.3 16.5 10 11.7 11.7 10 16.5 8.3 11.7 3.5 10 8.3 8.3z"/><path class="fill" d="M17.5 14l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg></i><i class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v8M8.5 12.5 12 16l3.5-3.5"/></svg></i><i><svg viewBox="0 0 24 24"><circle class="fill" cx="12" cy="12" r="1.8"/><path d="M8.5 15.5a5 5 0 0 1 0-7M15.5 8.5a5 5 0 0 1 0 7M5.6 18.4a9 9 0 0 1 0-12.8M18.4 5.6a9 9 0 0 1 0 12.8"/></svg></i><i class="sep"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M15 5v14"/></svg></i></span></span>
+            <span class="bw-file go"><i class="doc pdf"></i><span><b>Lofoten itinerary.pdf</b><em><span class="going">2.1 of 4.2 MB</span><span class="done">airbnb.com · 10:34 am</span></em><span class="prog"><i></i></span></span><i class="bw-act"><svg viewBox="0 0 24 24"><circle class="fill" cx="12" cy="12" r="9"/><path class="knock" d="m9 9 6 6M15 9l-6 6"/></svg></i></span>
+            <span class="bw-file"><i class="doc img"></i><span><b>photo-2026-11-08.jpg</b><em>icloud.com · 1:29 pm</em></span><i class="bw-act"><svg viewBox="0 0 24 24"><circle class="fill" cx="12" cy="12" r="9"/><circle class="knock" cx="11" cy="11" r="3.2"/><path class="knock" d="m13.4 13.4 2.6 2.6"/></svg></i></span>
+            <span class="bw-file"><i class="doc"></i><span><b>Quarterly report.pdf</b><em>docs.google.com · 1:29 pm</em></span><i class="bw-act"><svg viewBox="0 0 24 24"><circle class="fill" cx="12" cy="12" r="9"/><circle class="knock" cx="11" cy="11" r="3.2"/><path class="knock" d="m13.4 13.4 2.6 2.6"/></svg></i></span>
+          </div>
+        </div>
+        <h3>Downloads</h3>
+        <p>In a panel beside the page, never a bar across it. <kbd>⇧⌘J</kbd></p>
+      </article>
+
+      <article class="bt bt-ads">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="bw bw-win ads">
+            <span class="bw-mside"><span class="bw-lights"><i></i><i></i><i></i></span><span class="bw-addr"><img class="fi" src="/media/fav/theverge.com.png" alt="" width="16" height="16">theverge.com</span><span class="bw-tab on"><img class="fi" src="/media/fav/theverge.com.png" alt="" width="16" height="16"><span>The Verge</span></span><span class="bw-tab"><img class="fi" src="/media/fav/youtube.com.png" alt="" width="16" height="16"><span>YouTube</span></span></span>
+            <span class="bw-pg"><span class="bw-cap"><img class="before" src="/media/bento/verge-ads.jpg" alt=""><img class="after" src="/media/bento/verge-clean.jpg" alt=""><span class="v-ad"><b>The winter edit</b><em>Up to 40% off coats, knits and boots</em><u>Shop now</u><i>Ad</i></span></span></span>
+          </div>
+          <span class="v-shield"><span class="b">Without blocking</span><span class="a"><i></i>Blocked in Browsa</span></span>
+        </div>
+        <h3>Ad blocking, built in</h3>
+        <p>Ads and trackers are gone before the page draws. No extension needed.</p>
+      </article>
+
+      <article class="bt bt-cookie">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="bw bw-win cookie">
+            <span class="bw-mside"><span class="bw-lights"><i></i><i></i><i></i></span><span class="bw-addr"><img class="fi" src="/media/fav/theguardian.com.png" alt="" width="16" height="16">theguardian.com</span><span class="bw-tab on"><img class="fi" src="/media/fav/theguardian.com.png" alt="" width="16" height="16"><span>The Guardian</span></span><span class="bw-tab"><img class="fi" src="/media/fav/bonappetit.com.png" alt="" width="16" height="16"><span>Bon Appétit</span></span></span>
+            <span class="bw-pg"><span class="bw-cap"><img class="before" src="/media/bento/guardian-banner.jpg" alt=""><img class="after" src="/media/bento/guardian-clean.jpg" alt=""></span></span>
+          </div>
+          <span class="v-shield ok"><span class="b">Asking</span><span class="a"><i></i>Declined for you</span></span>
+        </div>
+        <h3>Cookie banners, declined</h3>
+        <p>Browsa answers “reject all” for you, so the banner never gets in the way.</p>
+      </article>
+
+      <article class="bt bt-reader">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="bw bw-win reader">
+            <span class="bw-mside"><span class="bw-lights"><i></i><i></i><i></i></span><span class="bw-addr"><img class="fi" src="/media/fav/aeon.co.png" alt="" width="16" height="16">aeon.co</span><span class="bw-tab on"><img class="fi" src="/media/fav/aeon.co.png" alt="" width="16" height="16"><span>Aeon</span></span><span class="bw-tab"><img class="fi" src="/media/fav/pitchfork.com.png" alt="" width="16" height="16"><span>Pitchfork</span></span></span>
+            <span class="bw-pg"><span class="bw-cap"><img class="before" src="/media/bento/longread.jpg" alt=""><img class="after" src="/media/bento/longread-reader.jpg" alt=""></span></span>
+          </div>
+          
+          <kbd class="v-chip">⇧⌘R</kbd>
+        </div>
+        <h3>Reader</h3>
+        <p>Just the words and pictures, set in a calm column so you can settle in.</p>
+      </article>
+
+      <article class="bt bt-link">
+        <div class="bt-vis" aria-hidden="true">
+          <span class="v-url"><i></i><span>wanderandsalt.com/lofoten</span><span class="trk">?utm_source=newsletter&amp;utm_medium=email&amp;fbclid=IwAR2kz9</span></span>
+          <span class="v-clean">Tracking removed</span>
+        </div>
+        <h3>Clean links</h3>
+        <p>The tracking tags stuck on the end of links come off before you open or share them.</p>
+      </article>
+
+      <article class="bt bt-archive">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="bw bw-side bw-arch bw-crop-r">
+            <span class="bw-tab on"><img class="fi" src="/media/fav/airbnb.com.png" alt="" width="16" height="16"><span>Cabins in Lofoten</span></span>
+            <span class="bw-tab"><img class="fi" src="/media/fav/wikipedia.org.png" alt="" width="16" height="16"><span>Web browser</span></span>
+            <span class="bw-tab old"><img class="fi" src="/media/fav/theverge.com.png" alt="" width="16" height="16"><span>The Verge</span></span>
+            <span class="v-box"></span>
+          </div>
+        </div>
+        <h3>Tabs that tidy up</h3>
+        <p>Tabs you’ve left alone slip into the archive. <kbd>⌘Y</kbd> brings them back.</p>
+      </article>
+
+      <article class="bt bt-import">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="v-import">
+            <span class="v-from"><u>Arc</u><u>Chrome</u><u>Brave</u><u>Edge</u><u>Vivaldi</u><u>Safari</u></span>
+            <span class="v-lane"><i>Spaces</i><i>Pinned tabs</i><i>Bookmarks</i><i>History</i></span>
+            <img src="/media/orb.webp" alt="" width="56" height="56">
+          </div>
+        </div>
+        <h3>Moving from Arc? Your spaces come too.</h3>
+        <p>Bring spaces, pinned tabs, bookmarks and history from Arc or the browser you use now.</p>
+      </article>
+
+      <article class="bt bt-private">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="v-toggles">
+            <span><b>Private tab</b><kbd>⇧⌘N</kbd></span>
+            <span><b>Global Privacy Control</b><i class="sw on"></i></span>
+            <span><b>Forget everything when I quit</b><i class="sw flip"></i></span>
+          </div>
+        </div>
+        <h3>Private when you want it</h3>
+        <p>Private tabs leave no history. Sites are asked not to sell your data, and Browsa can forget it all when you quit.</p>
+      </article>
     </div>
+    <p class="bento-note">And as many windows as you like, sharing one library of spaces. On iPhone too, <a href="/">handcrafted for iPhone Duo</a>.</p>
   </section>
 
   <section class="section" aria-labelledby="film-title">
     <h2 id="film-title">See it move.</h2>
-    <!-- When the film is ready: drop browsa-mac.mp4 and a poster into /media and replace the
-         .film-card with <video controls playsinline preload="none" poster="/media/browsa-mac.webp"><source src="/media/browsa-mac.mp4" type="video/mp4"></video> -->
+    <p class="sub">Thirty-six seconds of Browsa for Mac: the sidebar, Radar, Notes, and an agent planning dinner.</p>
     <div class="film">
-      <div class="film-card">
-        <img src="/media/orb.webp" alt="" width="72" height="72">
-        <b>The Browsa for Mac film</b>
-        <span>Coming soon</span>
+      <video controls playsinline preload="none" poster="/media/browsa-mac.webp" aria-label="The Browsa for Mac film">
+        <source src="/media/browsa-mac.mp4" type="video/mp4">
+      </video>
+    </div>
+  </section>
+
+  <section class="section" id="library" aria-labelledby="library-title">
+    <h2 id="library-title">Make it yours, a switch at a time.</h2>
+    <p class="sub">The Library holds everything you can add to Browsa: our own plugins, in two packs, and Chrome extensions we’ve tested. Open it from <kbd>⌘K</kbd>.</p>
+    <div class="packs">
+      <article class="pack pk-a">
+        <span class="fan" aria-hidden="true"><i class="pi t-radar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fill" cx="12" cy="12" r="1.8"/><path d="M8.5 15.5a5 5 0 0 1 0-7M15.5 8.5a5 5 0 0 1 0 7M5.6 18.4a9 9 0 0 1 0-12.8M18.4 5.6a9 9 0 0 1 0 12.8"/></svg></i><i class="pi t-notes"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v6a2.5 2.5 0 0 1-2.5 2.5H11l-4 3.5V15h0a2.5 2.5 0 0 1-2-2.5z"/></svg></i><i class="pi t-agents"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M10.2 8.6c-.6-.3-1.2.3-.9.9l4.6 10.1c.3.6 1.1.5 1.3-.1l1.1-3.6c.1-.3.3-.5.6-.6l3.6-1.1c.6-.2.7-1-.1-1.3z"/><path d="M6.6 6.6 4.8 4.8M6 10H3.5M10 6V3.5"/></svg></i></span>
+        <div><h3>Agent Pack</h3><p>Radar finds your dev servers, Notes holds your feedback on pages, and Agents lets Claude Code, Codex or Cursor work through Browsa while you watch.</p></div>
+      </article>
+      <article class="pack pk-p">
+        <span class="fan" aria-hidden="true"><i class="pi t-block"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M8 11V6.2a1.3 1.3 0 0 1 2.6 0V10V4.8a1.3 1.3 0 0 1 2.6 0V10V5.8a1.3 1.3 0 0 1 2.6 0V11V8.3a1.3 1.3 0 0 1 2.6 0v6.2a6.5 6.5 0 0 1-6.5 6.5h-.3a6 6 0 0 1-4.6-2.2L4.5 15.5a1.3 1.3 0 0 1 2-1.7L8 15.5z"/></svg></i><i class="pi t-cookie"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M12 3.5 19 6v5.5c0 4.3-3 7.6-7 9-4-1.4-7-4.7-7-9V6z"/><path class="knock" d="m9 12 2.2 2.2L15.2 10"/></svg></i><i class="pi t-links"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 13.5a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1 1"/><path d="M13.5 10.5a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1-1"/></svg></i></span>
+        <div><h3>Privacy Pack</h3><p>On from the start. Ads and trackers are blocked, cookie banners are declined for you, and tracking comes off links before pages load.</p></div>
+      </article>
+    </div>
+    <h3 class="lx-title">Chrome extensions, verified to work</h3>
+    <div class="lx-grid">
+      <div class="lx"><img src="/media/ext/1password.png" alt="" width="44" height="44"><span><b>1Password</b><em>Passwords, passkeys and cards, filled for you.</em></span></div>
+      <div class="lx"><img src="/media/ext/ublock.png" alt="" width="44" height="44"><span><b>uBlock Origin Lite</b><em>Blocks ads and trackers, with no setup.</em></span></div>
+      <div class="lx"><img src="/media/ext/dark-reader.png" alt="" width="44" height="44"><span><b>Dark Reader</b><em>Dark mode for every website.</em></span></div>
+      <div class="lx"><img src="/media/ext/vimium.png" alt="" width="44" height="44"><span><b>Vimium</b><em>Browse with the keyboard: press f to click any link.</em></span></div>
+      <div class="lx"><img src="/media/ext/json-formatter.png" alt="" width="44" height="44"><span><b>JSON Formatter</b><em>Readable, collapsible JSON in the browser.</em></span></div>
+      <div class="lx"><img src="/media/ext/paper.png" alt="" width="44" height="44"><span><b>Paper Snapshot</b><em>Copy any part of a site into Paper as editable layers.</em></span></div>
+      <div class="lx"><img src="/media/ext/translate.png" alt="" width="44" height="44"><span><b>Google Translate</b><em>Select text on any page to translate it.</em></span></div>
+    </div>
+    <p class="ext-note">Add any of these in one click. Most others from the Chrome Web Store run too, through a compatibility layer on Apple’s WebKit; the ones above are the ones we’ve tested. Names and icons belong to their owners.</p>
+  </section>
+
+  <section class="section" id="agents" aria-labelledby="agents-title">
+    <div class="split">
+      <div>
+        <h2 id="agents-title">A browser your agents can share.</h2>
+        <p>Switch on the Agent Pack and add Browsa to Claude Code in one click. Codex, Cursor and other MCP agents get a line to paste. Then they can open pages, read them and test your work, in the browser you’re already signed in to.</p>
+        <ul class="points">
+          <li><span><b>In their own space.</b> Agents work in an Agent space. Your window never switches to it unless you choose to watch.</span></li>
+          <li><span><b>Your tabs stay yours.</b> In its own space an agent never stops to ask. Reading or using one of your tabs, or even seeing their list, asks you first.</span></li>
+          <li><span><b>Notes for both of you.</b> Leave a note on a page and your agent reads it, replies and resolves it.</span></li>
+          <li><span><b>Stop, always in reach.</b> At the top of the sidebar while an agent drives, and in the Agents panel.</span></li>
+        </ul>
+      </div>
+      <div class="agent-visual">
+        <div data-mw data-cycle="agent" data-every="10000" role="img" aria-label="Claude Code planning a dinner on the Supper demo site in Browsa's Agent space: a yellow pointer clicks through the page, the sidebar shows it driving with a Stop button, and the Agents panel lists each step."></div>
       </div>
     </div>
   </section>
@@ -160,12 +287,11 @@
   <section class="get" id="get" aria-labelledby="get-title">
     <img src="/media/orb.webp" alt="" width="72" height="72">
     <h2 id="get-title">Get Browsa for Mac.</h2>
-    <p>Free, open source, with no account and no analytics. Plugins will be free too.</p>
+    <p>Free and open source, with no account and no analytics. Plugins are free too.</p>
     <p class="actions">
       <a class="button" href="/mac/#get" data-download="mac" data-live-label="Download for Mac">Download for Mac</a>
       <a class="button ghost" href="https://github.com/jmaorr/Browsa">Build from source</a>
     </p>
-    <p class="soon-note" data-soon="mac">Browsa for Mac is being tested now. Want in early? Email <a href="mailto:hello@orriginal.me?subject=Browsa%20for%20Mac">hello@orriginal.me</a>, or build it yourself from GitHub.</p>
     <p class="req">macOS 26 or later</p>
   </section>
 </main>
