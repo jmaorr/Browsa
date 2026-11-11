@@ -75,7 +75,7 @@ Installed from the Chrome Web Store through Browsa's own add flow and checked wi
 | 1Password | 8.12.44.33 | ✅ | ✅ | Sign-in, sync, fill, passkeys (tested signed in) | ✅ Works |
 | LastPass | 4.157.0 | ✅ | ✅ log-in screen | Its field icons appear on login pages | ✅ Ready for sign-in |
 | Dashlane | 6.2645.0 | ✅ | ✅ log-in screen | Marks login forms (`data-dashlane-rid`) | ✅ Ready for sign-in |
-| Grammarly | 14.1345.0 | ✅ | ✅ sign-up screen | Attaches to text areas (`grammarly-extension`) | ✅ Ready for sign-in |
+| Grammarly | 14.1345.0 | ✅ | ✅ sign-up screen | Attaches to text areas (`grammarly-extension`) | ❌ Not supported (see 2026-11-11) |
 | uBlock Origin Lite | 2026.1103 | ✅ | ✅ | Blocks ad and tracker scripts (googlesyndication, google-analytics) | ✅ Works |
 | Dark Reader | 4.9.135 | ✅ | ✅ | Pages go dark | ✅ Works |
 | Paper Snapshot | 0.4.13 | ✅ | button, no popup | The button starts its element picker ("click to start") | ✅ Works; pasting into Paper not tried |
@@ -95,6 +95,7 @@ extensions that ignore scripted ones (`isTrusted`).
 | JSON Formatter | 0.10.2 | api.github.com shows formatted JSON with its Raw/Parsed toggle | ✅ Verified |
 | Vimium | 2.4.2 | A real `f` key shows link hints; its popup works. A scripted key does nothing, as in Chrome. WebKit logs "content_scripts entry has no specified matches" for its second entry (`file:///` CSS only), which doesn't matter | ✅ Verified |
 | Paper Snapshot | 0.4.13 | Snapshot and paste into Paper work (tested by hand), after adding offscreen documents and the clipboard fallback below | ✅ Verified |
+| Grammarly | 14.1346.0 | Its sign-in server rejects the extension's `webkit-extension://` origin ("TOKEN_REFRESH_FAILED Invalid origin"), and the popup stays on "Grammarly is starting" (init times out). Needs Grammarly to accept Browsa; we don't fake Chrome's extension origin | ❌ Not supported |
 | Google Translate | 2.0.18 | Highlight and translate works by hand (the harness's synthetic double-click doesn't show the icon). Its bubble is a little hard to scroll; that's Google's own UI | ✅ Verified |
 
 New in this pass:
