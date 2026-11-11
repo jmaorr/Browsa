@@ -15,7 +15,7 @@ repo="${0:A:h:h}"
 ref="${1:-origin/main}"
 work="$HOME/Library/Caches/com.orriginal.browsa.install"
 src="$work/src"
-# ~/Applications, always: /Applications needs admin rights (temporary on Josh's Mac), and one fixed
+# ~/Applications, always: /Applications needs admin rights on some Macs, and one fixed
 # place means a single copy. Launch Services and the default-browser setting treat it the same.
 app="${BROWSA_INSTALL_PATH:-$HOME/Applications/Browsa.app}"
 bundle_id="com.orriginal.browsa"

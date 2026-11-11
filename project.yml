@@ -137,7 +137,7 @@ targets:
         PRODUCT_NAME: Browsa
         # Only Release builds use it: that's the copy in ~/Applications (tools/install-mac.sh),
         # whose data (~/Library/Application Support/com.orriginal.browsa, ~/Library/WebKit and
-        # ~/Library/HTTPStorages under the same ID) holds Josh's sign-ins, tabs and extensions.
+        # ~/Library/HTTPStorages under the same ID) holds your real sign-ins, tabs and extensions.
         PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa
         BROWSA_APP_NAME: Browsa
         BROWSA_UPDATES: "NO"

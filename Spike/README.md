@@ -49,7 +49,7 @@ Run `tools/spikectl` with no arguments for the full list. Everything goes over
 `http://127.0.0.1:47930` (`GET /` lists the routes), so curl works too.
 
 Input is posted into the app's own event queue: no Accessibility permission, the real pointer
-never moves, and the window can stay in the background while Josh works. Screenshots and
+never moves, and the window can stay in the background while you work. Screenshots and
 recordings use the terminal's Screen Recording permission (`screencapture -l` and
 `tools/spike-record.swift`, a ScreenCaptureKit window recorder built on first use).
 
