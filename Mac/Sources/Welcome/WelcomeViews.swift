@@ -226,7 +226,7 @@ enum WelcomeLevel: Int, CaseIterable {
     @discardableResult func complete(_ stop: WelcomeStop) -> WelcomeLevel? {
         guard !done.contains(stop) else { return nil }
         let before = level
-        withAnimation(.smooth(duration: 0.8)) { done.insert(stop) }
+        _ = withAnimation(.smooth(duration: 0.8)) { done.insert(stop) }
         UserDefaults.standard.set(done.map(\.rawValue), forKey: Self.key)
         return level != before ? level : nil
     }
@@ -347,7 +347,7 @@ struct WelcomePage: View {
         }
     }
 
-    /// While onboarding, ⌃1–9, ⌥⌘← →, ⌘T and ⌘K play on the cards instead of leaving the page,
+    /// While onboarding, ⌃1–9, the space keys (⌥⌘← →), ⌘T and ⌘K play on the cards instead of leaving the page,
     /// so people can try them freely. Once every stop is done they go back to normal.
     private func catchShortcuts() {
         guard keyMonitor == nil else { return }
@@ -360,12 +360,13 @@ struct WelcomePage: View {
                 if n <= 3 { input.send(.space(n - 1)) }
                 return nil
             }
-            if mods == [.command, .option], event.keyCode == 123 || event.keyCode == 124 {
-                input.send(.spaceStep(event.keyCode == 124 ? 1 : -1))
+            let keys = Shortcuts.shared
+            if keys.matches(.nextSpace, event) || keys.matches(.previousSpace, event) {
+                input.send(.spaceStep(keys.matches(.nextSpace, event) ? 1 : -1))
                 return nil
             }
-            if mods == .command, key == "t" || key == "k" {
-                let mode: CommandBarMode = key == "t" ? .newTab : .commands
+            if keys.matches(.newTab, event) || keys.matches(.commands, event) {
+                let mode: CommandBarMode = keys.matches(.newTab, event) ? .newTab : .commands
                 input.send(.shortcut(mode))
                 complete(mode == .newTab ? .newTab : .commands)
                 return nil
@@ -530,8 +531,9 @@ private struct LevelBar: View {
         }
 
         private var label: some View {
-            (current ? Text("Level \(level.rawValue + 1) · ").foregroundStyle(.secondary).fontWeight(.regular) : Text(""))
-                + Text(level.name).foregroundStyle(reached ? .primary : .secondary)
+            let prefix = current ? Text("Level \(level.rawValue + 1) · ").foregroundStyle(.secondary).fontWeight(.regular) : Text("")
+            let name = Text(level.name).foregroundStyle(reached ? .primary : .secondary)
+            return Text("\(prefix)\(name)")
         }
     }
 }

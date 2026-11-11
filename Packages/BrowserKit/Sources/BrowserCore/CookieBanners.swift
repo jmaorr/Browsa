@@ -21,21 +21,33 @@ public final class CookieBannerHandler: NSObject, WKScriptMessageHandler {
         self.onDeclined = onDeclined
     }
 
-    /// The bundled script, wrapped so it does nothing on sites the user switched blockers off for.
-    public static func script(skipping hosts: Set<String>) -> WKUserScript? {
-        guard let bundle = bundledSource else { return nil }
+    /// The user scripts to install, each wrapped so it does nothing on sites the user switched
+    /// blockers off for. The full script (about half a megabyte) goes into main frames only, so a
+    /// page full of ad and embed iframes doesn't parse it dozens of times. Subframes get a tiny gate
+    /// instead: it recognises the few consent managers that draw their banner inside an iframe and
+    /// asks for the full script ("loadFrame"), which the handler then loads into that one frame.
+    public static func scripts(skipping hosts: Set<String>) -> [WKUserScript] {
+        guard let bundle = bundledSource else { return [] }
         let skip = (try? JSONEncoder().encode(hosts.sorted())).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
-        let source = """
-        (function () {
-          var skip = \(skip), h = location.hostname;
-          if (skip.some(function (d) { return h === d || h.endsWith('.' + d); })) return;
-        \(bundle)
-        })();
-        """
-        return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: world)
+        func wrapped(_ body: String) -> String {
+            """
+            (function () {
+              var skip = \(skip), h = location.hostname;
+              if (skip.some(function (d) { return h === d || h.endsWith('.' + d); })) return;
+            \(body)
+            })();
+            """
+        }
+        var scripts = [WKUserScript(source: wrapped(bundle), injectionTime: .atDocumentStart, forMainFrameOnly: true, in: world)]
+        if let gate = frameGateSource {
+            scripts.append(WKUserScript(source: wrapped(gate), injectionTime: .atDocumentStart, forMainFrameOnly: false, in: world))
+        }
+        return scripts
     }
 
     private static let bundledSource: String? = Bundle.module.url(forResource: "autoconsent", withExtension: "js")
+        .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+    private static let frameGateSource: String? = Bundle.module.url(forResource: "autoconsent-frames", withExtension: "js")
         .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
 
     public func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -43,6 +55,11 @@ public final class CookieBannerHandler: NSObject, WKScriptMessageHandler {
               let webView = message.webView else { return }
         let frame = message.frameInfo
         switch type {
+        case "loadFrame":
+            // A subframe's gate found a consent manager that lives in frames. The gate already
+            // checked the user's allowlist for this frame.
+            guard !frame.isMainFrame, let source = Self.bundledSource else { return }
+            webView.evaluateJavaScript(source, in: frame, in: Self.world, completionHandler: nil)
         case "eval":
             guard let id = body["id"] as? String, let code = body["code"] as? String else { return }
             Task { @MainActor in
@@ -68,13 +85,13 @@ public final class CookieBannerHandler: NSObject, WKScriptMessageHandler {
 extension WebViewPool {
     /// Installs (or removes) the cookie-banner script and its message handler everywhere.
     func setAutoconsent(enabled: Bool, skipping hosts: Set<String>, browser: BrowserState) {
-        let script = enabled ? CookieBannerHandler.script(skipping: hosts) : nil
+        let scripts = enabled ? CookieBannerHandler.scripts(skipping: hosts) : []
         for c in allContentControllers {
-            // Our only user script; replace it wholesale when the allowlist changes.
+            // Our only user scripts; replace them wholesale when the allowlist changes.
             c.removeAllUserScripts()
             c.removeScriptMessageHandler(forName: CookieBannerHandler.messageName, contentWorld: CookieBannerHandler.world)
-            guard let script else { continue }
-            c.addUserScript(script)
+            guard !scripts.isEmpty else { continue }
+            scripts.forEach(c.addUserScript)
             c.add(CookieBannerHandler { [weak browser] in browser?.cookieBannerDeclined(in: $0) }, contentWorld: CookieBannerHandler.world,
                   name: CookieBannerHandler.messageName)
         }

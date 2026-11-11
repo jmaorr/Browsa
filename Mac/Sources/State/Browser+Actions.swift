@@ -52,6 +52,7 @@ extension Browser {
             out.append(BrowserCommand(id: "close", title: "Close Tab", keywords: ["tab"]))
             if let url = tab.url {
                 out.append(BrowserCommand(id: "copy-link", title: "Copy Link", subtitle: url.absoluteString, keywords: ["url", "share"]))
+                out.append(BrowserCommand(id: "copy-markdown", title: "Copy Link as Markdown", keywords: ["url", "md", "share"]))
                 out.append(BrowserCommand(id: "reload", title: "Reload Page", keywords: ["refresh"]))
                 out.append(BrowserCommand(id: "find", title: "Find on Page", keywords: ["search", "text"]))
                 out.append(BrowserCommand(id: "reader", title: isReaderShowing ? "Hide Reader" : "Show Reader",
@@ -63,6 +64,9 @@ extension Browser {
                 out.append(BrowserCommand(id: "blockers", title: blockingDisabledForCurrentSite ? "Turn Blockers On for This Site" : "Turn Blockers Off for This Site",
                                           keywords: ["ads", "adblock", "trackers", "content blocker"]))
                 out.append(BrowserCommand(id: "share", title: "Share…", keywords: ["send"]))
+                if library.developerTools {
+                    out.append(BrowserCommand(id: "inspector", title: "Web Inspector", keywords: ["developer", "devtools", "inspect", "console"]))
+                }
             }
             for s in regularSpaces where s.id != selectedSpaceID && !tab.isPrivate {
                 out.append(BrowserCommand(id: "move:" + s.id.uuidString, title: "Move Tab to \(s.name)", subtitle: "Space", keywords: ["space"]))
@@ -70,6 +74,9 @@ extension Browser {
         }
         if currentSpace.today.count > 1 {
             out.append(BrowserCommand(id: "close-others", title: "Close Other Tabs", keywords: ["tabs", "clean"]))
+        }
+        if currentSpace.listedToday.contains(where: { $0.id != currentTab?.id }) {
+            out.append(BrowserCommand(id: "clear-today", title: "Clear Today's Tabs", keywords: ["tabs", "clean", "close all"]))
         }
         if let last = recentlyClosed.last {
             out.append(BrowserCommand(id: "reopen", title: "Reopen Closed Tab", subtitle: last.displayTitle, keywords: ["undo", "restore"]))
@@ -127,6 +134,7 @@ extension Browser {
         "panel": "sidebar.right", "private": "eye.slash", "close-private": "eye.slash", "new-space": "plus.rectangle.on.rectangle",
         "downloads": "arrow.down.circle", "archive": "archivebox", "settings": "gearshape", "library": "square.grid.2x2", "space": "square.stack",
         "move": "arrow.right.square", "restore": "archivebox", "ext": "puzzlepiece.extension",
+        "copy-markdown": "link.badge.plus", "clear-today": "xmark.circle", "inspector": "hammer",
     ]
 
     func run(command id: String) {
@@ -142,6 +150,9 @@ extension Browser {
         case "favourite": if let t = currentTab, let url = t.url { addFavorite(url: url, title: t.displayTitle) }
         case "close": if let t = currentTab { close(t) }
         case "copy-link": copyCurrentLink()
+        case "copy-markdown": copyCurrentLinkAsMarkdown()
+        case "clear-today": withAnimation(Motion.snappy) { clearToday() }
+        case "inspector": showWebInspector()
         case "reload": reload()
         case "find": showFind()
         case "reader": toggleReader()
@@ -209,6 +220,70 @@ extension Browser {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(clean.absoluteString, forType: .string)
         showToast("Link copied")
+    }
+
+    /// `[Title](url)`, like Arc's ⌥⇧⌘C.
+    func copyCurrentLinkAsMarkdown() {
+        guard let tab = currentTab, let url = tab.url else { return }
+        let clean = settings.cleanLinks ? LinkCleaner.cleaned(url) : url
+        let title = tab.displayTitle.replacingOccurrences(of: "[", with: "\\[").replacingOccurrences(of: "]", with: "\\]")
+        let link = clean.absoluteString.replacingOccurrences(of: "(", with: "%28").replacingOccurrences(of: ")", with: "%29")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("[\(title)](\(link))", forType: .string)
+        showToast("Markdown link copied")
+    }
+
+    /// ⌥⌘I. WebKit has no public call to open the inspector, so this uses the one Safari's
+    /// Develop menu uses, and does nothing if it's ever gone.
+    func showWebInspector() {
+        guard currentTab?.url != nil, let view = currentController?.page.view else { return }
+        guard library.developerTools else {
+            showToast("Turn on Inspect Element in Settings › Engine")
+            return
+        }
+        let getter = NSSelectorFromString("_inspector"), show = NSSelectorFromString("show")
+        guard view.responds(to: getter),
+              let inspector = view.perform(getter)?.takeUnretainedValue() as? NSObject,
+              inspector.responds(to: show) else { return }
+        inspector.perform(show)
+    }
+
+    /// An action's extra keys (⇧⌘] beside ⌥⌘↓, say), which the menu can't show, land here.
+    func perform(_ action: ShortcutAction) {
+        switch action {
+        case .newTab: showCommandBar(.newTab)
+        case .openLocation: showCommandBar(.editCurrent)
+        case .commands: showCommandBar(.commands)
+        case .newWindow: library.openWindow()
+        case .privateTab: run(command: "private")
+        case .close: if let t = currentTab { withAnimation(Motion.snappy) { close(t) } }
+        case .reopen: reopenClosedTab()
+        case .closeOthers: if let t = currentTab { closeOtherTabs(than: t) }
+        case .clearToday: withAnimation(Motion.snappy) { clearToday() }
+        case .nextTab: selectAdjacentTab(1)
+        case .previousTab: selectAdjacentTab(-1)
+        case .pin: if let t = currentTab, !t.isPrivate { withAnimation(Motion.snappy) { togglePinned(t) } }
+        case .favourite: toggleFavoriteForCurrentTab()
+        case .archive: isArchivePresented = true
+        case .nextSpace: selectAdjacentSpace(1)
+        case .previousSpace: selectAdjacentSpace(-1)
+        case .sidebar: withAnimation(Motion.dock) { toggleSidebar() }
+        case .panel: togglePanel()
+        case .notes: showPanel("notes", toggles: true)
+        case .downloads: showPanel("downloads", toggles: true)
+        case .back: goBack()
+        case .forward: goForward()
+        case .reload: reload()
+        case .hardReload: reloadFromOrigin()
+        case .stop: stopLoading()
+        case .find: showFind()
+        case .findNext: findNext()
+        case .findPrevious: findNext(backwards: true)
+        case .copyLink: copyCurrentLink()
+        case .copyMarkdown: copyCurrentLinkAsMarkdown()
+        case .reader: toggleReader()
+        case .inspector: showWebInspector()
+        }
     }
 
     func shareCurrentPage() {

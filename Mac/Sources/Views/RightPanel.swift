@@ -64,7 +64,7 @@ struct RightPanel: View {
                 .help(t.title)
             }
             Divider().frame(height: 14)
-            SidebarIconButton(symbol: "xmark", help: "Close Panel (⌥⌘S)") { browser.togglePanel() }
+            SidebarIconButton(symbol: "xmark", help: Shortcuts.shared.help("Close Panel", .panel)) { browser.togglePanel() }
         }
         .padding(.leading, 12)
         .padding(.trailing, 6)

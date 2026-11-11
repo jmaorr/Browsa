@@ -219,7 +219,7 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
     }
 
     func unloadAll() {
-        for c in contexts.values { try? controller.unload(c) }
+        for c in contexts.values { ExtensionOffscreen.close(for: c); try? controller.unload(c) }
         contexts = [:]
         loaded = []
     }
@@ -341,6 +341,14 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             return
         }
         #endif
+        if applicationIdentifier == ExtensionOffscreen.applicationIdentifier {
+            ExtensionOffscreen.handle(message, for: extensionContext, reply: replyHandler)
+            return
+        }
+        if applicationIdentifier == ExtensionOffscreen.clipboardIdentifier {
+            ExtensionOffscreen.writeClipboard(message, for: extensionContext, reply: replyHandler)
+            return
+        }
         replyHandler(nil, Self.noNativeMessaging(applicationIdentifier))
     }
 
