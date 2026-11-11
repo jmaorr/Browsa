@@ -33,6 +33,14 @@ The Mac link is automatic: once `tools/publish-mac.sh` has put `Browsa.dmg` in t
 The Worker also serves the Sparkle appcast (`/mac/appcast.xml`) and every release file from that
 bucket. See `docs/mac-releases.md`.
 
+## Usage counts
+
+The Worker counts Mac update checks (by app version) and downloads (by file) in Workers Analytics
+Engine, dataset `browsa_usage`, with no IP, user agent, location or ID. Sparkle checks about once a
+day, so update checks per day are a rough count of Macs running Browsa. Read them with
+`scripts/usage.sh [days]` (needs `CLOUDFLARE_ACCOUNT_ID` and an API token with Account Analytics
+Read). The dataset is created on the first write after deploy; it keeps three months.
+
 `scripts/build-clips.sh` rebuilds the clips and stills in `public/media` from raw simulator captures.
 
 When the app's network behaviour changes, update `public/privacy/index.html` and its date.

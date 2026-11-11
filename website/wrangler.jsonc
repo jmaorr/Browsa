@@ -11,6 +11,8 @@
   },
   // Mac releases: appcast.xml, Sparkle zips and deltas, and the DMGs, under mac/ (tools/publish-mac.sh).
   "r2_buckets": [{ "binding": "RELEASES", "bucket_name": "browsa-releases" }],
+  // Update checks and downloads, counted with no IP or ID (see count() in src/index.js).
+  "analytics_engine_datasets": [{ "binding": "USAGE", "dataset": "browsa_usage" }],
   "routes": [
     { "pattern": "browsa.app", "custom_domain": true },
     { "pattern": "www.browsa.app", "custom_domain": true }
