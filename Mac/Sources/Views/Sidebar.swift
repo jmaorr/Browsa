@@ -680,13 +680,15 @@ struct SpaceSwitcher: View {
             ForEach(Array(browser.shownSpaces.enumerated()), id: \.element.id) { i, s in
                 let selected = s.id == browser.selectedSpaceID
                 Button { withAnimation(Motion.spring) { browser.selectSpace(s) } } label: {
-                    Image(systemName: selected ? s.symbol : "circle.fill")
-                        .font(.system(size: selected ? 12 : 6))
+                    // Every space shows its icon, like Arc; the ones you're not in are dimmed.
+                    Image(systemName: s.symbol)
+                        .font(.system(size: 12))
                         .frame(width: 22, height: 22)
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(selected ? .primary : .tertiary)
+                .foregroundStyle(.primary)
+                .opacity(selected ? 1 : 0.45)
                 // A tab dragged over the dot: the space shows its icon, ready to take it.
                 .overlay {
                     if dragging.target == .space(s.id) {

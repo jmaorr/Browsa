@@ -95,6 +95,9 @@ struct SpaceTabs: View {
             .transition(.spaceListChange(forward: forward))
         }
         .scrollIndicators(.never)
+        // However the space changes (a swipe, a key, a click), the old list slides out as the new one
+        // slides in. Swipes and keys change it outside any animation, so the old list used to vanish.
+        .animation(Motion.spring, value: space.id)
         .scrollPosition($scroll)
         .onScrollGeometryChange(for: [CGFloat].self) { g in
             [g.contentOffset.y, max(0, g.contentSize.height - g.containerSize.height)]

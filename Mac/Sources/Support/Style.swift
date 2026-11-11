@@ -69,11 +69,12 @@ extension View {
 }
 
 extension AnyTransition {
-    /// The outgoing list leaves toward the side away from the new space.
+    /// The outgoing list leaves toward the side away from the new space, the same distance the new
+    /// rows arrive from (see SpaceCascade), so out and in read as one movement.
     @MainActor static func spaceListChange(forward: Bool) -> AnyTransition {
         guard !Motion.reduced else { return .opacity }
         return .asymmetric(insertion: .identity,
-                           removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity))
+                           removal: .offset(x: forward ? -120 : 120).combined(with: .opacity))
     }
 }
 
