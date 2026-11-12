@@ -69,12 +69,16 @@ ol { margin: 6px 0 0; padding-left: 20px; }
 
   <section>
     <h2>2. Echo test</h2>
-    <p class="small muted" style="margin:0 0 10px">Set your speakers to a normal call volume, don't wear headphones, and stay quiet for about 10 seconds.</p>
+    <p class="small muted" style="margin:0 0 10px">Set your speakers to a normal call volume, don't wear headphones, and stay quiet while the test sound plays.</p>
     <div class="row">
       <button id="echoBtn" class="primary" disabled>Run echo test</button>
       <label class="small"><input type="checkbox" id="callMode" checked> Play it like a call (WebRTC)</label>
       <label class="small">Test volume <input type="range" id="vol" min="0.1" max="1" step="0.05" value="0.7"></label>
       <button id="playEcho" disabled>Play back what the mic heard</button>
+    </div>
+    <div class="row small" style="margin-top:10px">
+      <label>Test sound: speech-like bursts, or a recording <input type="file" id="soundFile" accept="audio/*"></label>
+      <span id="soundName" class="muted"></span>
     </div>
     <canvas id="chart" width="1600" height="300"></canvas>
     <div class="small muted" style="margin-top:6px">Blue bands: test sound playing. Line: what the mic heard, in dBFS. A good result stays flat through the bands.</div>
@@ -197,8 +201,8 @@ for (const id of ["device", "ec", "ns", "agc"]) $(id).addEventListener("change",
 // ---------- test sound ----------
 // Speech-like bursts: a few harmonics with a moving pitch plus band noise, shaped like syllables.
 const PRE = 1.5, BURSTS = 12, BURST = 0.45, GAP = 0.25, POST = 1.0;
-const schedule = Array.from({ length: BURSTS }, (_, i) => [PRE + i * (BURST + GAP), PRE + i * (BURST + GAP) + BURST]);
-const TOTAL = PRE + BURSTS * (BURST + GAP) + POST;
+let schedule = Array.from({ length: BURSTS }, (_, i) => [PRE + i * (BURST + GAP), PRE + i * (BURST + GAP) + BURST]);
+let TOTAL = PRE + BURSTS * (BURST + GAP) + POST;
 
 function makeTestWav() {
   const n = Math.round(TOTAL * SR), data = new Float32Array(n);
@@ -216,6 +220,11 @@ function makeTestWav() {
       data[i] = env * (0.18 * v + 0.15 * lp);
     }
   });
+  return encodeWav(data);
+}
+
+function encodeWav(data) {
+  const n = data.length;
   let peak = 0; for (const v of data) peak = Math.max(peak, Math.abs(v));
   const buf = new ArrayBuffer(44 + n * 2), dv = new DataView(buf);
   const w = (o, s) => [...s].forEach((c, i) => dv.setUint8(o + i, c.charCodeAt(0)));
@@ -226,7 +235,41 @@ function makeTestWav() {
   for (let i = 0; i < n; i++) dv.setInt16(44 + i * 2, Math.max(-1, Math.min(1, data[i] / peak * 0.9)) * 32767, true);
   return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
 }
-const testUrl = makeTestWav();
+let testUrl = makeTestWav();
+
+// A recording of real speech as the test sound (a file you pick, or ?sound=<file next to this page>).
+// The bands come from where the recording itself is loud.
+async function useRecording(arrayBuffer, name) {
+  const decoded = await new OfflineAudioContext(1, 1, SR).decodeAudioData(arrayBuffer);
+  const len = decoded.length, mono = new Float32Array(len);
+  for (let c = 0; c < decoded.numberOfChannels; c++) { const d = decoded.getChannelData(c); for (let i = 0; i < len; i++) mono[i] += d[i] / decoded.numberOfChannels; }
+  const pre = Math.round(PRE * SR), data = new Float32Array(pre + len + Math.round(POST * SR));
+  data.set(mono, pre);
+  const hop = Math.round(0.02 * SR), levels = [];
+  for (let i = 0; i + hop <= len; i += hop) { let p = 0; for (let k = i; k < i + hop; k++) p += mono[k] * mono[k]; levels.push(10 * Math.log10(p / hop + 1e-12)); }
+  const top = Math.max(...levels), on = levels.map(l => l > top - 30);
+  const bands = [];
+  on.forEach((v, i) => {
+    const t = PRE + i * 0.02;
+    if (!v) return;
+    const last = bands[bands.length - 1];
+    if (last && t - last[1] < 0.15) last[1] = t + 0.02; else bands.push([t, t + 0.02]);
+  });
+  schedule = bands.filter(([a, b]) => b - a >= 0.1);
+  TOTAL = data.length / SR;
+  URL.revokeObjectURL(testUrl);
+  testUrl = encodeWav(data);
+  $("soundName").textContent = `Using ${name} (${(len / SR).toFixed(0)} s, ${schedule.length} speech bands)`;
+  draw([]);
+}
+$("soundFile").addEventListener("change", async e => {
+  const f = e.target.files[0];
+  if (f) await useRecording(await f.arrayBuffer(), f.name).catch(err => $("soundName").textContent = "Couldn't read that file: " + err.message);
+});
+{
+  const q = new URLSearchParams(location.search).get("sound");
+  if (q) fetch(q).then(r => r.arrayBuffer()).then(b => useRecording(b, q)).catch(err => $("soundName").textContent = "Couldn't load " + q + ": " + err.message);
+}
 
 function recorder() {
   const types = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"];
