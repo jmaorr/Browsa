@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mic and echo test</title>
+<style>
+:root {
+  --bg: #f6f6f4; --card: #fff; --ink: #1c1c1e; --muted: #6b6b70; --line: #e3e3e0;
+  --accent: #3a6df0; --good: #1f8a4c; --warn: #b7791f; --bad: #c53030;
+  --ref: rgba(58,109,240,.16);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161618; --card: #222225; --ink: #f2f2f4; --muted: #9a9aa0; --line: #343438;
+          --accent: #7a9cff; --good: #4cc27f; --warn: #e0a64a; --bad: #f06a6a; --ref: rgba(122,156,255,.18); }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 28px 16px 60px; }
+h1 { font-size: 24px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 0 0 10px; }
+p.lede { color: var(--muted); margin: 0 0 20px; }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+label { display: inline-flex; gap: 6px; align-items: center; }
+select, input[type=text] { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); max-width: 100%; }
+select { min-width: 240px; }
+button { font: inherit; font-weight: 600; padding: 8px 14px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .5; cursor: default; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+code, .mono { font: 12.5px/1.4 ui-monospace, "SF Mono", Menlo, monospace; }
+#meter { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; flex: 1; min-width: 160px; }
+#meterFill { height: 100%; width: 0; background: var(--good); transition: width 60ms linear; }
+canvas { width: 100%; height: 150px; display: block; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); margin-top: 10px; }
+.verdict { font-size: 18px; font-weight: 700; margin-top: 10px; }
+.good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+.scroll { overflow-x: auto; }
+#settings { white-space: pre-wrap; margin-top: 8px; }
+ol { margin: 6px 0 0; padding-left: 20px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Mic and echo test</h1>
+  <p class="lede">Open this page in Browsa, Safari, Arc and Chrome on the same Mac with the same speakers and mic, run the echo test in each, and compare the results table. It plays speech-like sound through your speakers while you stay quiet, and measures how much of it your mic sends back. That leftover is what people on a call hear as echo.</p>
+
+  <section>
+    <h2>1. Microphone</h2>
+    <div class="row">
+      <button id="start" class="primary">Allow microphone</button>
+      <label>Mic <select id="device" disabled><option>Allow the microphone first</option></select></label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <label><input type="checkbox" id="ec" checked> Echo cancellation</label>
+      <label><input type="checkbox" id="ns" checked> Noise suppression</label>
+      <label><input type="checkbox" id="agc" checked> Auto gain</label>
+      <span class="muted small">On is what Google Meet asks for.</span>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <span class="small muted">Live level</span><div id="meter"><div id="meterFill"></div></div><span id="meterDb" class="mono small">–</span>
+    </div>
+    <div id="settings" class="mono small muted"></div>
+  </section>
+
+  <section>
+    <h2>2. Echo test</h2>
+    <p class="small muted" style="margin:0 0 10px">Set your speakers to a normal call volume, don't wear headphones, and stay quiet while the test sound plays.</p>
+    <div class="row">
+      <button id="echoBtn" class="primary" disabled>Run echo test</button>
+      <label class="small"><input type="checkbox" id="callMode" checked> Play it like a call (WebRTC)</label>
+      <label class="small">Test volume <input type="range" id="vol" min="0.1" max="1" step="0.05" value="0.7"></label>
+      <button id="playEcho" disabled>Play back what the mic heard</button>
+    </div>
+    <div class="row small" style="margin-top:10px">
+      <label>Test sound: speech-like bursts, or a recording <input type="file" id="soundFile" accept="audio/*"></label>
+      <span id="soundName" class="muted"></span>
+    </div>
+    <canvas id="chart" width="1600" height="300"></canvas>
+    <div class="small muted" style="margin-top:6px">Blue bands: test sound playing. Line: what the mic heard, in dBFS. A good result stays flat through the bands.</div>
+    <div id="verdict" class="verdict"></div>
+    <div id="detail" class="small muted"></div>
+  </section>
+
+  <section>
+    <h2>3. Voice check</h2>
+    <p class="small muted" style="margin:0 0 10px">Records 5 seconds of you talking, then plays it back, so you can hear how you sound with these settings.</p>
+    <div class="row">
+      <button id="voiceBtn" disabled>Record 5 seconds</button>
+      <audio id="voicePlayer" controls style="max-width:100%"></audio>
+    </div>
+  </section>
+
+  <section>
+    <h2>Results</h2>
+    <div class="row" style="margin-bottom:10px">
+      <label>Browser <input type="text" id="browser" size="16"></label>
+      <button id="copy" disabled>Copy results</button>
+      <button id="clear" disabled>Clear</button>
+    </div>
+    <div class="scroll"><table>
+      <thead><tr><th>Browser</th><th>Mic</th><th>Asked EC/NS/AGC</th><th>Got</th><th>Noise floor</th><th>During test sound</th><th>Echo</th><th>Result</th></tr></thead>
+      <tbody id="results"></tbody>
+    </table></div>
+    <p class="small muted">Results are kept in this browser only. Copy them and paste into the thread to compare browsers.</p>
+  </section>
+</main>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const SR = 48000;
+let stream = null, ctx = null, analyser = null, meterTimer = null;
+let lastEchoBlobUrl = null;
+
+// ---------- browser label ----------
+function guessBrowser() {
+  const ua = navigator.userAgent;
+  if (/Edg\//.test(ua)) return "Edge";
+  if (/Chrome\//.test(ua)) return "Chrome / Arc";
+  if (/Firefox\//.test(ua)) return "Firefox";
+  if (/Safari\//.test(ua)) return "Safari or Browsa";
+  return "Unknown";
+}
+try { $("browser").value = localStorage.getItem("echo.browser") || guessBrowser(); } catch { $("browser").value = guessBrowser(); }
+$("browser").addEventListener("change", () => { try { localStorage.setItem("echo.browser", $("browser").value); } catch {} });
+
+// ---------- mic ----------
+function constraints() {
+  const audio = { echoCancellation: $("ec").checked, noiseSuppression: $("ns").checked, autoGainControl: $("agc").checked };
+  const id = $("device").value;
+  if (id && id !== "default" && !$("device").disabled) audio.deviceId = { exact: id };
+  return { audio };
+}
+
+async function openMic() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = await navigator.mediaDevices.getUserMedia(constraints());
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === "suspended") await ctx.resume();
+  const src = ctx.createMediaStreamSource(stream);
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  src.connect(analyser);
+  const track = stream.getAudioTracks()[0];
+  const s = track.getSettings ? track.getSettings() : {};
+  const ba = window.__browsaCallAudio;
+  $("settings").textContent = `Using: ${track.label || "unknown mic"}${ba ? "  ·  Browsa call audio: " + ba.mode : ""}\nGot: echoCancellation=${s.echoCancellation} noiseSuppression=${s.noiseSuppression} autoGainControl=${s.autoGainControl} sampleRate=${s.sampleRate ?? "?"} channelCount=${s.channelCount ?? "?"}`;
+  startMeter();
+  ["echoBtn", "voiceBtn"].forEach(b => $(b).disabled = false);
+}
+
+async function fillDevices() {
+  const list = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audioinput");
+  const current = stream?.getAudioTracks()[0]?.getSettings?.().deviceId;
+  const sel = $("device");
+  sel.innerHTML = "";
+  for (const d of list) {
+    const o = document.createElement("option");
+    o.value = d.deviceId; o.textContent = d.label || "Microphone";
+    if (d.deviceId === current) o.selected = true;
+    sel.appendChild(o);
+  }
+  sel.disabled = false;
+}
+
+function levelDb() {
+  const buf = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(buf);
+  let sum = 0;
+  for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+  const rms = Math.sqrt(sum / buf.length);
+  return rms > 0 ? 20 * Math.log10(rms) : -150;
+}
+
+function startMeter() {
+  clearInterval(meterTimer);
+  meterTimer = setInterval(() => {
+    if (!analyser) return;
+    const db = levelDb();
+    $("meterFill").style.width = Math.max(0, Math.min(100, (db + 90) / 90 * 100)) + "%";
+    $("meterDb").textContent = db <= -149 ? "silent" : db.toFixed(0) + " dB";
+  }, 50);
+}
+
+$("start").addEventListener("click", async () => {
+  try {
+    await openMic();
+    await fillDevices();
+    $("start").textContent = "Restart microphone";
+  } catch (e) {
+    $("settings").textContent = "Couldn't open the microphone: " + (e.name || "") + " " + (e.message || e);
+  }
+});
+for (const id of ["device", "ec", "ns", "agc"]) $(id).addEventListener("change", () => { if (stream) openMic().catch(e => $("settings").textContent = "Couldn't open the microphone: " + e.message); });
+
+// ---------- test sound ----------
+// Speech-like bursts: a few harmonics with a moving pitch plus band noise, shaped like syllables.
+const PRE = 1.5, BURSTS = 12, BURST = 0.45, GAP = 0.25, POST = 1.0;
+let schedule = Array.from({ length: BURSTS }, (_, i) => [PRE + i * (BURST + GAP), PRE + i * (BURST + GAP) + BURST]);
+let TOTAL = PRE + BURSTS * (BURST + GAP) + POST;
+
+function makeTestWav() {
+  const n = Math.round(TOTAL * SR), data = new Float32Array(n);
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647 * 2 - 1;
+  let lp = 0, phase = 0;
+  schedule.forEach(([a, b], k) => {
+    const f0 = 110 + (k % 4) * 35;
+    for (let i = Math.round(a * SR); i < Math.round(b * SR); i++) {
+      const t = i / SR - a, env = Math.sin(Math.PI * t / BURST) ** 0.6;
+      const f = f0 * (1 + 0.15 * Math.sin(2 * Math.PI * 3 * t));
+      phase += 2 * Math.PI * f / SR;
+      let v = 0;
+      for (let h = 1; h <= 12; h++) v += Math.sin(h * phase) / h * (h < 4 ? 1 : 0.6);
+      lp += 0.35 * (rnd() - lp);
+      data[i] = env * (0.18 * v + 0.15 * lp);
+    }
+  });
+  return encodeWav(data);
+}
+
+function encodeWav(data) {
+  const n = data.length;
+  let peak = 0; for (const v of data) peak = Math.max(peak, Math.abs(v));
+  const buf = new ArrayBuffer(44 + n * 2), dv = new DataView(buf);
+  const w = (o, s) => [...s].forEach((c, i) => dv.setUint8(o + i, c.charCodeAt(0)));
+  w(0, "RIFF"); dv.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt ");
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, SR, true); dv.setUint32(28, SR * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  w(36, "data"); dv.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) dv.setInt16(44 + i * 2, Math.max(-1, Math.min(1, data[i] / peak * 0.9)) * 32767, true);
+  return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+}
+let testUrl = makeTestWav();
+
+// A recording of real speech as the test sound (a file you pick, or ?sound=<file next to this page>).
+// The bands come from where the recording itself is loud.
+async function useRecording(arrayBuffer, name) {
+  const decoded = await new OfflineAudioContext(1, 1, SR).decodeAudioData(arrayBuffer);
+  const len = decoded.length, mono = new Float32Array(len);
+  for (let c = 0; c < decoded.numberOfChannels; c++) { const d = decoded.getChannelData(c); for (let i = 0; i < len; i++) mono[i] += d[i] / decoded.numberOfChannels; }
+  const pre = Math.round(PRE * SR), data = new Float32Array(pre + len + Math.round(POST * SR));
+  data.set(mono, pre);
+  const hop = Math.round(0.02 * SR), levels = [];
+  for (let i = 0; i + hop <= len; i += hop) { let p = 0; for (let k = i; k < i + hop; k++) p += mono[k] * mono[k]; levels.push(10 * Math.log10(p / hop + 1e-12)); }
+  const top = Math.max(...levels), on = levels.map(l => l > top - 30);
+  const bands = [];
+  on.forEach((v, i) => {
+    const t = PRE + i * 0.02;
+    if (!v) return;
+    const last = bands[bands.length - 1];
+    if (last && t - last[1] < 0.15) last[1] = t + 0.02; else bands.push([t, t + 0.02]);
+  });
+  schedule = bands.filter(([a, b]) => b - a >= 0.1);
+  TOTAL = data.length / SR;
+  URL.revokeObjectURL(testUrl);
+  testUrl = encodeWav(data);
+  $("soundName").textContent = `Using ${name} (${(len / SR).toFixed(0)} s, ${schedule.length} speech bands)`;
+  draw([]);
+}
+$("soundFile").addEventListener("change", async e => {
+  const f = e.target.files[0];
+  if (f) await useRecording(await f.arrayBuffer(), f.name).catch(err => $("soundName").textContent = "Couldn't read that file: " + err.message);
+});
+{
+  const q = new URLSearchParams(location.search).get("sound");
+  if (q) fetch(q).then(r => r.arrayBuffer()).then(b => useRecording(b, q)).catch(err => $("soundName").textContent = "Couldn't load " + q + ": " + err.message);
+}
+
+function recorder() {
+  const types = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"];
+  const mimeType = types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported?.(t));
+  return new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+}
+
+// ---------- echo test ----------
+$("echoBtn").addEventListener("click", async () => {
+  $("echoBtn").disabled = true; $("playEcho").disabled = true;
+  $("verdict").textContent = "Stay quiet…"; $("verdict").className = "verdict"; $("detail").textContent = "";
+  const samples = [];
+  const chunks = [];
+  const rec = recorder();
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  rec.start();
+  const play = $("callMode").checked ? playLikeACall() : playOnElement();
+  const timer = setInterval(() => {
+    // Timeline follows the player's own clock, so a slow start doesn't skew the bands.
+    const t = play.clock();
+    samples.push([t > 0 ? t : -1, levelDb()]);
+    draw(samples);
+  }, 20);
+  await play.done.catch(e => { $("detail").textContent = "Couldn't play the test sound: " + e.message; });
+  clearInterval(timer);
+  rec.stop();
+  await new Promise(r => rec.onstop = r);
+  if (lastEchoBlobUrl) URL.revokeObjectURL(lastEchoBlobUrl);
+  lastEchoBlobUrl = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType }));
+  $("playEcho").disabled = false; $("echoBtn").disabled = false;
+  score(samples.filter(s => s[0] >= 0));
+});
+
+// The test sound as a plain media element.
+function playOnElement() {
+  const audio = new Audio(testUrl);
+  audio.volume = Number($("vol").value);
+  const done = audio.play().then(() => new Promise(r => audio.onended = r));
+  return { clock: () => audio.currentTime, done };
+}
+
+// The test sound the way a call arrives: sent through a WebRTC connection on this page and played
+// from the received track, like Meet plays the other people's voices.
+function playLikeACall() {
+  let started = 0, pcs = [];
+  const done = (async () => {
+    const actx = ctx;
+    const buf = await actx.decodeAudioData(await (await fetch(testUrl)).arrayBuffer());
+    const a = new RTCPeerConnection(), b = new RTCPeerConnection();
+    pcs = [a, b];
+    a.onicecandidate = e => e.candidate && b.addIceCandidate(e.candidate);
+    b.onicecandidate = e => e.candidate && a.addIceCandidate(e.candidate);
+    const out = new Audio();
+    out.volume = Number($("vol").value);
+    const got = new Promise(r => b.ontrack = e => r(e.streams[0] || new MediaStream([e.track])));
+    const send = actx.createMediaStreamDestination();
+    a.addTrack(send.stream.getAudioTracks()[0], send.stream);
+    await a.setLocalDescription(await a.createOffer());
+    await b.setRemoteDescription(a.localDescription);
+    await b.setLocalDescription(await b.createAnswer());
+    await a.setRemoteDescription(b.localDescription);
+    out.srcObject = await got;
+    await out.play();
+    await new Promise(r => setTimeout(r, 400));   // let the connection settle
+    const node = actx.createBufferSource();
+    node.buffer = buf; node.connect(send);
+    started = actx.currentTime;
+    node.start();
+    await new Promise(r => node.onended = r);
+    await new Promise(r => setTimeout(r, 300));
+    out.pause(); pcs.forEach(pc => pc.close());
+  })();
+  // Network and jitter buffer add a little delay; scoring allows 150 ms after each band.
+  return { clock: () => started ? ctx.currentTime - started : -1, done };
+}
+
+$("playEcho").addEventListener("click", () => { if (lastEchoBlobUrl) new Audio(lastEchoBlobUrl).play(); });
+
+const powMean = arr => arr.length ? 10 * Math.log10(arr.reduce((s, d) => s + 10 ** (d / 10), 0) / arr.length) : NaN;
+const median = arr => { const a = [...arr].sort((x, y) => x - y); return a.length ? a[Math.floor(a.length / 2)] : NaN; };
+
+function score(samples) {
+  // Echo arrives a little late; give it 150 ms either side of each band.
+  const inBurst = t => schedule.some(([a, b]) => t >= a + 0.05 && t <= b + 0.15);
+  const quiet = samples.filter(([t]) => t > 0.2 && t < PRE - 0.1).map(s => s[1]);
+  const during = samples.filter(([t]) => inBurst(t)).map(s => s[1]);
+  const floor = median(quiet), echoLvl = powMean(during);
+  const above = echoLvl - floor;
+  let text, cls;
+  if (floor < -120 && echoLvl < -120) { text = "Mic is silent: it sent no sound at all"; cls = "bad"; }
+  else if (above <= 3) { text = "No echo got through"; cls = "good"; }
+  else if (above <= 10) { text = "Faint echo got through"; cls = "warn"; }
+  else { text = "Echo got through"; cls = "bad"; }
+  $("verdict").textContent = text; $("verdict").className = "verdict " + cls;
+  $("detail").textContent = `Noise floor ${fmt(floor)}, during test sound ${fmt(echoLvl)}, so the echo is ${isFinite(above) ? above.toFixed(1) + " dB" : "?"} above the floor. Under 3 dB is good; over 10 dB, people will hear themselves.`;
+  const track = stream.getAudioTracks()[0], s = track.getSettings ? track.getSettings() : {};
+  addResult({
+    browser: $("browser").value, mic: track.label || "?",
+    asked: [$("ec"), $("ns"), $("agc")].map(c => c.checked ? "on" : "off").join("/"),
+    got: [s.echoCancellation, s.noiseSuppression, s.autoGainControl].map(v => v === undefined ? "?" : v ? "on" : "off").join("/"),
+    floor: fmt(floor), during: fmt(echoLvl), echo: isFinite(above) ? above.toFixed(1) + " dB" : "?", result: text,
+  });
+}
+const fmt = d => !isFinite(d) ? "?" : d <= -149 ? "silent" : d.toFixed(1) + " dBFS";
+
+function draw(samples) {
+  const c = $("chart"), g = c.getContext("2d"), W = c.width, H = c.height, css = getComputedStyle(document.documentElement);
+  g.clearRect(0, 0, W, H);
+  const x = t => t / TOTAL * W, y = d => H - (Math.max(-100, Math.min(0, d)) + 100) / 100 * H;
+  g.fillStyle = css.getPropertyValue("--ref");
+  schedule.forEach(([a, b]) => g.fillRect(x(a), 0, x(b) - x(a), H));
+  g.strokeStyle = css.getPropertyValue("--line"); g.lineWidth = 1;
+  g.fillStyle = css.getPropertyValue("--muted"); g.font = "20px -apple-system, system-ui";
+  for (const d of [-80, -60, -40, -20]) { g.beginPath(); g.moveTo(0, y(d)); g.lineTo(W, y(d)); g.stroke(); g.fillText(d + " dB", 6, y(d) - 4); }
+  g.strokeStyle = css.getPropertyValue("--accent"); g.lineWidth = 3; g.beginPath();
+  let started = false;
+  for (const [t, d] of samples) { if (t < 0) continue; started ? g.lineTo(x(t), y(d)) : g.moveTo(x(t), y(d)); started = true; }
+  g.stroke();
+}
+draw([]);
+
+// ---------- voice check ----------
+$("voiceBtn").addEventListener("click", async () => {
+  $("voiceBtn").disabled = true;
+  const chunks = [], rec = recorder();
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  rec.start();
+  for (let s = 5; s > 0; s--) { $("voiceBtn").textContent = `Recording… ${s}`; await new Promise(r => setTimeout(r, 1000)); }
+  rec.stop(); await new Promise(r => rec.onstop = r);
+  $("voicePlayer").src = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType }));
+  $("voicePlayer").play();
+  $("voiceBtn").textContent = "Record 5 seconds"; $("voiceBtn").disabled = false;
+});
+
+// ---------- results ----------
+let results = [];
+try { results = JSON.parse(localStorage.getItem("echo.results") || "[]"); } catch {}
+const COLS = ["browser", "mic", "asked", "got", "floor", "during", "echo", "result"];
+function renderResults() {
+  const tb = $("results"); tb.innerHTML = "";
+  for (const r of results) {
+    const tr = document.createElement("tr");
+    for (const k of COLS) { const td = document.createElement("td"); td.textContent = r[k]; tr.appendChild(td); }
+    tb.appendChild(tr);
+  }
+  $("copy").disabled = $("clear").disabled = !results.length;
+}
+function addResult(r) { results.push(r); try { localStorage.setItem("echo.results", JSON.stringify(results)); } catch {} renderResults(); }
+$("clear").addEventListener("click", () => { results = []; try { localStorage.removeItem("echo.results"); } catch {} renderResults(); });
+$("copy").addEventListener("click", async () => {
+  const head = "| Browser | Mic | Asked EC/NS/AGC | Got | Noise floor | During test | Echo | Result |\n|---|---|---|---|---|---|---|---|\n";
+  const md = head + results.map(r => "| " + COLS.map(k => r[k]).join(" | ") + " |").join("\n") + `\n\nUA: ${navigator.userAgent}`;
+  try { await navigator.clipboard.writeText(md); $("copy").textContent = "Copied"; } catch { prompt("Copy these results:", md); }
+  setTimeout(() => $("copy").textContent = "Copy results", 1500);
+});
+renderResults();
+})();
+</script>
+</body>
+</html>
