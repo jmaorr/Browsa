@@ -3,7 +3,8 @@
 # WebAssembly for Browsa's call audio: Packages/BrowserKit/Sources/WebKitEngine/Resources/call-audio-apm.wasm.
 #
 # Sources: the freedesktop.org webrtc-audio-processing release (BSD-3-Clause, see its COPYING),
-# pinned below. Needs git, python3 and ninja; installs Emscripten and Meson under $WORK.
+# pinned below. Needs git and Python 3.10+ (set PYTHON, or have uv or python3.1x on PATH); installs
+# Emscripten, Meson and Ninja under $WORK.
 set -eu
 TAG=${APM_TAG:-v1.3}
 EMSDK_VERSION=${EMSDK_VERSION:-latest}
@@ -13,10 +14,18 @@ WORK=${WORK:-$HOME/Library/Caches/browsa-call-audio}
 OUT="$REPO/Packages/BrowserKit/Sources/WebKitEngine/Resources/call-audio-apm.wasm"
 mkdir -p "$WORK" && cd "$WORK"
 
+# Emscripten needs Python 3.10+; macOS's python3 is 3.9.
+if [ -z "${PYTHON:-}" ]; then
+  for p in python3.13 python3.12 python3.11 python3.10; do command -v $p >/dev/null && PYTHON=$(command -v $p) && break; done
+  [ -z "${PYTHON:-}" ] && command -v uv >/dev/null && PYTHON=$(uv python find '>=3.10' 2>/dev/null || true)
+fi
+[ -n "${PYTHON:-}" ] || { echo "Needs Python 3.10+ (set PYTHON=...)" >&2; exit 1; }
+[ -x venv/bin/meson ] && [ -x venv/bin/ninja ] || { rm -rf venv; "$PYTHON" -m venv venv && venv/bin/pip install -q meson ninja; }
+export PATH="$WORK/venv/bin:$PATH" EMSDK_PYTHON="$WORK/venv/bin/python3"
+
 [ -d emsdk ] || git clone --depth 1 https://github.com/emscripten-core/emsdk.git
 (cd emsdk && ./emsdk install "$EMSDK_VERSION" && ./emsdk activate "$EMSDK_VERSION") >/dev/null
 . ./emsdk/emsdk_env.sh >/dev/null 2>&1
-[ -x venv/bin/meson ] || { python3 -m venv venv && venv/bin/pip install -q meson; }
 
 [ -d apm ] || git clone --depth 1 --branch "$TAG" https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing.git apm
 
