@@ -260,6 +260,12 @@
     if (tuningTimer || !handler()) return;
     tuningTimer = setInterval(() => { if (voices.size) readTuning(); else { clearInterval(tuningTimer); tuningTimer = null; } }, 1000);
   }
+  // Lines for Browsa's call log (~/Library/Logs/Browsa/call-audio.log), so a bad call can be explained.
+  function logEvent(what, detail) {
+    const h = handler();
+    if (!h) return;
+    try { h.postMessage({ type: 'event', what, detail: JSON.stringify(detail || {}) }).catch(() => {}); } catch {}
+  }
   function reportStats() {
     const h = handler();
     if (!h || window.top !== window || !state.last) return;
@@ -271,21 +277,66 @@
   const flagsFor = asked => (asked.echoCancellation ? 1 : 0) | (asked.noiseSuppression ? 2 : 0) | (asked.autoGainControl ? 4 : 0);
 
   // ---------- echo reference: the call's incoming audio ----------
-  function addReference(track) {
-    if (!track || track.kind !== 'audio') return;
+  // Tracks the page captured itself (mics, processed or raw) must never count as "played", or the
+  // echo canceller would cancel the user's own voice.
+  const localTracks = new WeakSet();
+  const referenced = new Set();
+  function addReference(track, kind) {
+    if (!track || track.kind !== 'audio' || localTracks.has(track) || referenced.has(track.id)) return;
     try {
       const src = context().createMediaStreamSource(new MediaStream([track]));
       src.connect(refBus);
+      referenced.add(track.id);
       state.references++;
-      track.addEventListener('ended', () => { try { src.disconnect(); } catch {} state.references--; }, { once: true });
-    } catch (e) { state.error = 'reference: ' + e.message; }
+      logEvent('reference', { kind, total: state.references });
+      track.addEventListener('ended', () => {
+        try { src.disconnect(); } catch {}
+        referenced.delete(track.id); state.references--;
+      }, { once: true });
+    } catch (e) { state.error = 'reference: ' + e.message; logEvent('error', { where: 'reference', message: e.message }); }
+  }
+  function addReferenceStream(stream, kind) {
+    if (!stream || typeof stream.getAudioTracks !== 'function') return;
+    stream.getAudioTracks().forEach(t => addReference(t, kind));
+    try { stream.addEventListener('addtrack', e => addReference(e.track, kind)); } catch {}
+  }
+
+  // Calls play the other people through media elements (srcObject), whatever made the stream, even a
+  // peer connection set up where this script can't see it (a sandboxed frame, a worker).
+  const srcObject = window.HTMLMediaElement && Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'srcObject');
+  if (srcObject && srcObject.set) {
+    Object.defineProperty(HTMLMediaElement.prototype, 'srcObject', {
+      ...srcObject,
+      set(v) { srcObject.set.call(this, v); try { if (window.MediaStream && v instanceof MediaStream) addReferenceStream(v, 'element'); } catch {} },
+    });
+  }
+  // And some play them through Web Audio (decoded in the page, then to the speakers): tap anything
+  // a page connects to its speakers.
+  if (window.AudioNode && window.AudioDestinationNode) {
+    const nativeConnect = AudioNode.prototype.connect;
+    const taps = new WeakMap();
+    AudioNode.prototype.connect = function connect(dest, ...rest) {
+      const result = nativeConnect.call(this, dest, ...rest);
+      try {
+        if (dest instanceof AudioDestinationNode && this.context !== ctx) {
+          let tap = taps.get(this.context);
+          if (!tap) {
+            tap = this.context.createMediaStreamDestination();
+            taps.set(this.context, tap);
+            addReference(tap.stream.getAudioTracks()[0], 'webaudio');
+          }
+          nativeConnect.call(this, tap);
+        }
+      } catch {}
+      return result;
+    };
   }
 
   const NativePC = window.RTCPeerConnection;
   if (NativePC) {
     const Wrapped = function RTCPeerConnection(...args) {
       const pc = new NativePC(...args);
-      pc.addEventListener('track', e => addReference(e.track));
+      pc.addEventListener('track', e => addReference(e.track, 'peer'));
       return pc;
     };
     Wrapped.prototype = NativePC.prototype;
@@ -313,8 +364,8 @@
     const voice = await voiceNode(c, { autoGainControl: asked.autoGainControl }, m => {
       if (!m || id !== trackCount) return;
       if (m.type === 'stats') { state.last = m; reportStats(); }
-      if (m.type === 'engine') state.engine = m.ok ? 'webrtc' : 'none';
-      if (m.type === 'engine-error') state.error = 'engine: ' + m.message;
+      if (m.type === 'engine') { state.engine = m.ok ? 'webrtc' : 'none'; logEvent('engine', { ok: m.ok }); }
+      if (m.type === 'engine-error') { state.error = 'engine: ' + m.message; logEvent('error', { where: 'engine', message: m.message }); }
     });
     voices.add(voice);
     const t = await readTuning();
@@ -374,7 +425,7 @@
     if (!audio) return nativeGUM(constraints);
     const asked = Object.fromEntries(PROCESSING.map(k => [k, wants(audio, k)]));
     // Browsa only takes over when the site wants processing. Raw requests (music sites) pass straight through.
-    if (!asked.echoCancellation && !asked.noiseSuppression && !asked.autoGainControl) return nativeGUM(constraints);
+    if (!asked.echoCancellation && !asked.noiseSuppression && !asked.autoGainControl) { logEvent('passthrough', {}); return nativeGUM(constraints).then(s => { s.getAudioTracks().forEach(t => localTracks.add(t)); return s; }); }
     const rawAudio = typeof audio === 'object' ? { ...audio } : {};
     for (const k of PROCESSING) rawAudio[k] = false;
     // Every input the device has (up to two), so Settings › Audio can mix them or pick one.
@@ -383,14 +434,19 @@
     const stream = await nativeGUM({ ...constraints, audio: rawAudio });
     const raw = stream.getAudioTracks()[0];
     if (!raw) return stream;
+    localTracks.add(raw);
     try {
       const processed = await processTrack(raw, asked);
+      localTracks.add(processed);
       stream.removeTrack(raw);
       stream.addTrack(processed);
       state.mode = 'browsa';
+      logEvent('takeover', { asked, label: raw.label, settings: raw.getSettings ? raw.getSettings() : {} });
+      setTimeout(() => logEvent('check', { references: state.references, engine: state.engine, processor: state.processor, error: state.error }), 15000);
     } catch (e) {
       // Fall back to WebKit's own processing rather than fail the call.
       state.mode = 'webkit'; state.error = e.message;
+      logEvent('fallback', { message: e.message });
       raw.stop();
       return nativeGUM(constraints);
     }
