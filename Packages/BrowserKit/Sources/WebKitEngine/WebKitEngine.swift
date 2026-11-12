@@ -252,8 +252,10 @@ public final class WebKitEngine: BrowserEngine {
             }
             controller.add(handler, contentWorld: CookieBannerHandler.world, name: CookieBannerHandler.messageName)
         }
+        controller.removeScriptMessageHandler(forName: CallAudioHandler.name, contentWorld: .page)
         if callAudioProcessing, let script = Self.callAudioScript {
             controller.addUserScript(script)
+            controller.addScriptMessageHandler(CallAudioHandler(), contentWorld: .page, name: CallAudioHandler.name)
         }
         if blocking.globalPrivacyControl {
             controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,
@@ -316,6 +318,24 @@ enum SafariUserAgent {
     static var applicationName: String {
         let v = ProcessInfo.processInfo.operatingSystemVersion
         return "Version/\(v.majorVersion).\(v.minorVersion) Safari/605.1.15"
+    }
+}
+/// Hands the call audio script WebRTC's audio processing (WebAssembly, about a megabyte) when a page
+/// first opens a processed mic, so pages that never use the mic don't carry it. Page world: sites can
+/// ask for it too, which costs nothing but the bytes.
+final class CallAudioHandler: NSObject, WKScriptMessageHandlerWithReply {
+    static let name = "browsaCallAudio"
+    @MainActor private static var apmBase64: String?? = nil
+
+    @MainActor
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
+                               replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void) {
+        guard (message.body as? [String: Any])?["type"] as? String == "apm" else { return replyHandler(nil, "unknown request") }
+        if Self.apmBase64 == nil {
+            Self.apmBase64 = Bundle.module.url(forResource: "call-audio-apm", withExtension: "wasm")
+                .flatMap { try? Data(contentsOf: $0) }?.base64EncodedString()
+        }
+        replyHandler(Self.apmBase64 ?? nil, nil)
     }
 }
 #endif
