@@ -12,7 +12,7 @@ let engineLog = Logger(subsystem: "com.orriginal.browsa", category: "webkit")
 /// Blocking uses BrowserCore's AdGuard-derived content rule lists and DuckDuckGo's autoconsent,
 /// exactly like the iOS app.
 @MainActor
-public final class WebKitEngine: BrowserEngine {
+public final class WebKitEngine: BrowserEngine, CallAudioConfigurable {
     public let info: EngineInfo
     public var downloadsDirectory: URL
     public var developerToolsEnabled = false {
@@ -36,6 +36,12 @@ public final class WebKitEngine: BrowserEngine {
     public var callAudioProcessing = true {
         didSet { if callAudioProcessing != oldValue { for controller in allContentControllers { install(on: controller) } } }
     }
+    /// Settings › Audio. Pages read it about once a second while a call runs, so changes apply live;
+    /// switching processing to the system's applies to pages loaded after.
+    public var callAudio = CallAudioTuning() {
+        didSet { callAudioProcessing = callAudio.processing == .browsa }
+    }
+    public var onCallAudioStats: ((CallAudioStats) -> Void)?
     private static let callAudioScript: WKUserScript? = {
         guard let url = Bundle.module.url(forResource: "call-audio", withExtension: "js"),
               let source = try? String(contentsOf: url, encoding: .utf8) else { return nil }
@@ -255,7 +261,9 @@ public final class WebKitEngine: BrowserEngine {
         controller.removeScriptMessageHandler(forName: CallAudioHandler.name, contentWorld: .page)
         if callAudioProcessing, let script = Self.callAudioScript {
             controller.addUserScript(script)
-            controller.addScriptMessageHandler(CallAudioHandler(), contentWorld: .page, name: CallAudioHandler.name)
+            controller.addScriptMessageHandler(CallAudioHandler(tuning: { [weak self] in self?.callAudio ?? CallAudioTuning() },
+                                                               stats: { [weak self] in self?.onCallAudioStats?($0) }),
+                                              contentWorld: .page, name: CallAudioHandler.name)
         }
         if blocking.globalPrivacyControl {
             controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,
@@ -326,16 +334,42 @@ enum SafariUserAgent {
 final class CallAudioHandler: NSObject, WKScriptMessageHandlerWithReply {
     static let name = "browsaCallAudio"
     @MainActor private static var apmBase64: String?? = nil
+    private let tuning: @MainActor () -> CallAudioTuning
+    private let stats: @MainActor (CallAudioStats) -> Void
+
+    init(tuning: @escaping @MainActor () -> CallAudioTuning, stats: @escaping @MainActor (CallAudioStats) -> Void) {
+        self.tuning = tuning
+        self.stats = stats
+    }
 
     @MainActor
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
                                replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void) {
-        guard (message.body as? [String: Any])?["type"] as? String == "apm" else { return replyHandler(nil, "unknown request") }
+        let body = message.body as? [String: Any] ?? [:]
+        switch body["type"] as? String {
+        case "settings":
+            return replyHandler(tuning().scriptValue, nil)
+        case "stats":
+            // Only the main frame's numbers, so an embedded frame can't fake them.
+            guard message.frameInfo.isMainFrame else { return replyHandler(nil, nil) }
+            func num(_ k: String) -> Double? { (body[k] as? NSNumber)?.doubleValue.nilIfNaN }
+            stats(CallAudioStats(micDb: num("levelDb") ?? -120, gainDb: num("gainDb"), echoRemovedDb: num("erle"),
+                                 delayMs: num("delayMs"), echoLeakLikelihood: num("residual"),
+                                 engine: body["engine"] as? String ?? "none", hasReference: (num("references") ?? 0) > 0))
+            return replyHandler(nil, nil)
+        case "apm":
+            break
+        default:
+            return replyHandler(nil, "unknown request")
+        }
         if Self.apmBase64 == nil {
             Self.apmBase64 = Bundle.module.url(forResource: "call-audio-apm", withExtension: "wasm")
                 .flatMap { try? Data(contentsOf: $0) }?.base64EncodedString()
         }
         replyHandler(Self.apmBase64 ?? nil, nil)
     }
+}
+private extension Double {
+    var nilIfNaN: Double? { isNaN || isInfinite ? nil : self }
 }
 #endif

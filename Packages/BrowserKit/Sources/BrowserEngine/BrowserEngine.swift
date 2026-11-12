@@ -471,3 +471,64 @@ public final class EngineDownload: Identifiable {
         if status == .running { status = .cancelled }
     }
 }
+
+// MARK: - Call audio
+
+/// How Browsa processes the microphone on calls (Meet, Zoom, Teams and the like). Settings › Audio.
+public struct CallAudioTuning: Codable, Equatable, Sendable {
+    public enum Processing: String, Codable, Sendable { case browsa, system }
+    /// Which inputs of an audio interface make up the mic. Some interfaces put a mic on input 2 only.
+    public enum Inputs: String, Codable, Sendable { case mix, first, second }
+
+    /// Browsa's own processing (WebRTC's, as in Chrome), or the system's voice processing.
+    public var processing: Processing = .browsa
+    public var inputs: Inputs = .mix
+    /// -1 off, 0 low, 1 moderate, 2 high, 3 very high.
+    public var noiseSuppression: Int = 2
+    /// Speaker-to-mic delay hint for the echo canceller, in ms. 0 lets it find the delay itself.
+    public var echoDelayMs: Int = 0
+    /// Mic level before any processing, in dB.
+    public var micLevelDb: Double = 0
+    /// Auto gain: how fast it may turn the mic up or down, in dB per second.
+    public var gainSpeed: Double = 3
+    /// Auto gain: it never lifts background noise above this, in dBFS.
+    public var noiseCeilingDb: Double = -50
+    public var rumbleFilter = true
+    public var typingRemover = false
+
+    public init() {}
+
+    /// What the call audio script reads.
+    public var scriptValue: [String: Any] {
+        ["inputs": inputs.rawValue, "noise": noiseSuppression, "delayMs": echoDelayMs, "micLevelDb": micLevelDb,
+         "gainSpeed": gainSpeed, "noiseCeilingDb": noiseCeilingDb, "rumble": rumbleFilter, "typing": typingRemover]
+    }
+}
+
+/// The latest numbers from a page using call audio, about once a second.
+public struct CallAudioStats: Sendable, Equatable {
+    public var micDb: Double
+    public var gainDb: Double?
+    /// How much echo the echo canceller removes, in dB.
+    public var echoRemovedDb: Double?
+    /// The speaker-to-mic delay the echo canceller measured, in ms.
+    public var delayMs: Double?
+    /// 0...1: how likely it is that echo still gets through.
+    public var echoLeakLikelihood: Double?
+    public var engine: String
+    public var hasReference: Bool
+    public var at: Date
+
+    public init(micDb: Double, gainDb: Double?, echoRemovedDb: Double?, delayMs: Double?, echoLeakLikelihood: Double?,
+                engine: String, hasReference: Bool, at: Date = Date()) {
+        self.micDb = micDb; self.gainDb = gainDb; self.echoRemovedDb = echoRemovedDb; self.delayMs = delayMs
+        self.echoLeakLikelihood = echoLeakLikelihood; self.engine = engine; self.hasReference = hasReference; self.at = at
+    }
+}
+
+/// Engines that can run Browsa's call audio.
+@MainActor
+public protocol CallAudioConfigurable: AnyObject {
+    var callAudio: CallAudioTuning { get set }
+    var onCallAudioStats: ((CallAudioStats) -> Void)? { get set }
+}

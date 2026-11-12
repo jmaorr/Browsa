@@ -488,6 +488,17 @@ enum Preferences {
         set { d.set(newValue, forKey: "useSafariExtensions") }
     }
 
+    /// Settings › Audio: how Browsa processes the mic on calls.
+    static var callAudio: CallAudioTuning {
+        get {
+            var t = (d.data(forKey: "callAudio")).flatMap { try? JSONDecoder().decode(CallAudioTuning.self, from: $0) } ?? CallAudioTuning()
+            // The spike's old switch: `defaults write <bundle id> callAudioProcessing -bool NO`.
+            if d.data(forKey: "callAudio") == nil, d.object(forKey: "callAudioProcessing") as? Bool == false { t.processing = .system }
+            return t
+        }
+        set { d.set(try? JSONEncoder().encode(newValue), forKey: "callAudio") }
+    }
+
     /// Inspect Element in the page's context menu. On in Debug builds.
     static var developerTools: Bool {
         get {

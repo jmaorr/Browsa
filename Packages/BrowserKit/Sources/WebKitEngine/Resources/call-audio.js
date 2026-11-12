@@ -41,6 +41,7 @@
       out: new Float32Array(FRAME * 8), outRead: 0, outWrite: 0, outCount: 0,
       gainDb: 0, noiseDb: -70, speechDb: -30, peakEnv: 0, frames: 0, farHold: 0, stopped: false,
       engine: null,                          // an echo canceller plugs in here
+      inputs: 'mix', tuning: null,           // Settings › Audio
     };
 
     // One 10 ms frame: mic and reference in, processed mic out (in place).
@@ -74,7 +75,10 @@
         if (v.peakEnv > 0.89) x *= 0.89 / v.peakEnv;   // soft limit at about -1 dBFS
         mic[i] = x;
       }
-      if (++v.frames % 100 === 0) post({ type: 'stats', levelDb: lvl, gainDb: v.gainDb, noiseDb: v.noiseDb, refDb: db(refPow), engine: !!v.engine });
+      if (++v.frames % 100 === 0) {
+        const st = v.engine ? v.engine.stats() : {};
+        post({ type: 'stats', levelDb: lvl, gainDb: v.gainDb, noiseDb: v.noiseDb, refDb: db(refPow), engine: !!v.engine, ...st });
+      }
     }
 
     // Any block size in and out. Averages every channel the device gives, so a mic on input 2 of an
@@ -83,7 +87,12 @@
       const n = out.length;
       for (let i = 0; i < n; i++) {
         let m = 0;
-        if (micIn && micIn.length) { for (let c = 0; c < micIn.length; c++) m += micIn[c][i]; m /= micIn.length; }
+        if (micIn && micIn.length) {
+          // Input 1 or 2 only, when Settings › Audio says so and the device has that input.
+          const pick = v.inputs === 'first' ? 0 : v.inputs === 'second' && micIn.length > 1 ? 1 : -1;
+          if (pick >= 0) m = micIn[pick][i];
+          else { for (let c = 0; c < micIn.length; c++) m += micIn[c][i]; m /= micIn.length; }
+        }
         let r = 0;
         if (refIn && refIn.length) { for (let c = 0; c < refIn.length; c++) r += refIn[c][i]; r /= refIn.length; }
         v.mic[v.fill] = m; v.ref[v.fill] = r;
@@ -102,10 +111,11 @@
       if ('autoGainControl' in m) v.agcOn = m.autoGainControl;
       if (m.stop) { v.stopped = true; if (v.engine) v.engine.destroy(); v.engine = null; }
       if (m.flags !== undefined && v.engine) v.engine.configure(m.flags);
+      if (m.tuning) { v.tuning = m.tuning; v.inputs = m.tuning.inputs || 'mix'; if (v.engine) v.engine.tune(m.tuning); }
     };
     // WebRTC's audio processing (echo canceller, noise suppressor, gain controller) as WebAssembly.
     v.loadEngine = (bytes, flags) => {
-      try { v.engine = makeApm(bytes, flags); }
+      try { v.engine = makeApm(bytes, flags); if (v.tuning) v.engine.tune(v.tuning); }
       catch (e) { post({ type: 'engine-error', message: String(e && e.message || e) }); }
       post({ type: 'engine', ok: !!v.engine });
     };
@@ -147,6 +157,18 @@
           if (x.apm_process(h, 0) !== 0) return false;
           mic.set(new Float32Array(memory.buffer, micPtr, mic.length));
           return true;
+        },
+        // Keys match apm_set in tools/call-audio/apm_wasm.cc.
+        tune(t) {
+          if (!x.apm_set) return;
+          const set = (k, val) => { if (typeof val === 'number' || typeof val === 'boolean') x.apm_set(h, k, Number(val)); };
+          set(1, t.noise); set(2, t.delayMs); set(3, t.micLevelDb); set(4, t.gainSpeed);
+          set(5, t.noiseCeilingDb); set(6, t.rumble); set(7, t.typing);
+        },
+        stats() {
+          if (!x.apm_stat) return {};
+          const n = k => { const val = x.apm_stat(h, k); return Number.isFinite(val) ? val : null; };
+          return { erle: n(1), delayMs: n(3), residual: n(4) };
         },
         destroy() { try { x.apm_destroy(h); } catch {} },
       };
@@ -220,6 +242,32 @@
     }
     return apmBytes;
   }
+  // ---------- Settings › Audio, read from Browsa about once a second while a call runs ----------
+  const voices = new Set();
+  let tuning = null, tuningJSON = '', tuningTimer = null;
+  const handler = () => window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.browsaCallAudio;
+  async function readTuning() {
+    const h = handler();
+    if (!h) return null;
+    try {
+      const t = await h.postMessage({ type: 'settings' });
+      const json = JSON.stringify(t || null);
+      if (t && json !== tuningJSON) { tuningJSON = json; tuning = t; state.tuning = t; for (const voice of voices) voice.settings({ tuning: t }); }
+    } catch {}
+    return tuning;
+  }
+  function watchTuning() {
+    if (tuningTimer || !handler()) return;
+    tuningTimer = setInterval(() => { if (voices.size) readTuning(); else { clearInterval(tuningTimer); tuningTimer = null; } }, 1000);
+  }
+  function reportStats() {
+    const h = handler();
+    if (!h || window.top !== window || !state.last) return;
+    const l = state.last;
+    h.postMessage({ type: 'stats', levelDb: l.levelDb, gainDb: l.gainDb, erle: l.erle ?? NaN, delayMs: l.delayMs ?? NaN,
+                    residual: l.residual ?? NaN, engine: state.engine, references: state.references }).catch(() => {});
+  }
+
   const flagsFor = asked => (asked.echoCancellation ? 1 : 0) | (asked.noiseSuppression ? 2 : 0) | (asked.autoGainControl ? 4 : 0);
 
   // ---------- echo reference: the call's incoming audio ----------
@@ -264,10 +312,14 @@
     const id = ++trackCount;
     const voice = await voiceNode(c, { autoGainControl: asked.autoGainControl }, m => {
       if (!m || id !== trackCount) return;
-      if (m.type === 'stats') state.last = m;
+      if (m.type === 'stats') { state.last = m; reportStats(); }
       if (m.type === 'engine') state.engine = m.ok ? 'webrtc' : 'none';
       if (m.type === 'engine-error') state.error = 'engine: ' + m.message;
     });
+    voices.add(voice);
+    const t = await readTuning();
+    if (t) voice.settings({ tuning: t });
+    watchTuning();
     loadApm().then(bytes => { if (bytes) voice.engine(bytes, flagsFor(asked)); else state.engine = 'none'; });
     const dest = c.createMediaStreamDestination();
     dest.channelCount = 1;
@@ -304,6 +356,7 @@
       if (stopped) return; stopped = true;
       raw.stop();
       voice.settings({ stop: true });
+      voices.delete(voice);
       for (const n of [src, voice.out, voice.refTap]) { try { n && n.disconnect(); } catch {} }
       if (voice.kind === 'worklet') { try { refBus.disconnect(voice.ref); } catch {} }
       state.active--;
@@ -324,6 +377,8 @@
     if (!asked.echoCancellation && !asked.noiseSuppression && !asked.autoGainControl) return nativeGUM(constraints);
     const rawAudio = typeof audio === 'object' ? { ...audio } : {};
     for (const k of PROCESSING) rawAudio[k] = false;
+    // Every input the device has (up to two), so Settings › Audio can mix them or pick one.
+    if (rawAudio.channelCount === undefined) rawAudio.channelCount = { ideal: 2 };
     if (Array.isArray(rawAudio.advanced)) rawAudio.advanced = rawAudio.advanced.filter(a => !Object.keys(a).some(k => /^goog|^echo|^noise|^autoGain/.test(k)));
     const stream = await nativeGUM({ ...constraints, audio: rawAudio });
     const raw = stream.getAudioTracks()[0];
