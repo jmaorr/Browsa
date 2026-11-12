@@ -8,6 +8,8 @@ struct Prompt: Identifiable, Equatable {
     enum Kind: Equatable {
         case dialog(EngineDialog)
         case permission(EnginePermission, host: String)
+        /// A site wants to hand a link to another app (Zoom, FaceTime, the App Store).
+        case openApp(app: String, host: String)
         /// A connected coding agent wants to act on a site for the first time.
         case agent(caller: String, action: String, host: String)
     }

@@ -261,9 +261,14 @@ final class Library {
         lru.append(id)
     }
 
+    /// Unloads the least recently used pages past `capacity`. Never one on screen, and never one
+    /// that's busy: a call, music or a half-written message would be lost, so those stay loaded
+    /// even if that means more than `capacity` live pages for a while.
     private func evictIfNeeded(keeping id: UUID) {
         let onScreen = Set(windows.compactMap { $0.currentTab?.id })
-        while lru.count > capacity, let victim = lru.first(where: { $0 != id && !onScreen.contains($0) }) {
+        while lru.count > capacity, let victim = lru.first(where: { candidate in
+            candidate != id && !onScreen.contains(candidate) && controllers[candidate]?.page.state.isBusy != true
+        }) {
             unload(victim)
         }
     }

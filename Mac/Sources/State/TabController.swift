@@ -100,7 +100,7 @@ final class TabController: EnginePageDelegate {
         let scheme = request.url.scheme?.lowercased() ?? ""
         guard ["http", "https", "about", "blob", "data", "file", "javascript", "webkit-extension"].contains(scheme) else {
             // mailto:, zoommtg:, App Store links and the like belong to other apps.
-            NSWorkspace.shared.open(request.url)
+            await openInApp(request)
             return .cancel
         }
         if request.isMainFrame, library.settings.cleanLinks, request.method == "GET",
@@ -110,6 +110,41 @@ final class TabController: EnginePageDelegate {
         }
         return .allow
     }
+
+    /// Hands a link to the app that opens it, asking first, as Safari and Chrome do: a page could
+    /// otherwise launch Zoom, FaceTime or the App Store by itself. The answer is kept per site and
+    /// per kind of link, like camera and microphone. A frame inside the page (an ad, an embed) only
+    /// gets to ask when it was a click on a link. Email links open straight away.
+    private func openInApp(_ request: NavigationRequest) async {
+        let url = request.url
+        let scheme = url.scheme?.lowercased() ?? ""
+        guard request.isMainFrame || request.kind == .link else { return }
+        guard let appURL = NSWorkspace.shared.urlForApplication(toOpen: url) else {
+            window?.showToast("No app on this Mac opens \(scheme): links")
+            return
+        }
+        // Typed into the address bar on an empty tab, or an email link: no site to ask about.
+        guard scheme != "mailto", let host = page.state.url?.host() ?? tab.url?.host(), let library else {
+            NSWorkspace.shared.open(url)
+            return
+        }
+        let key = Self.openAppKey(scheme)
+        if let saved = library.settings.sitePermissions[host]?[key] {
+            if saved { NSWorkspace.shared.open(url) }
+            return
+        }
+        guard let window else { return }
+        let app = FileManager.default.displayName(atPath: appURL.path).replacingOccurrences(of: ".app", with: "")
+        let answer = await window.ask(.openApp(app: app, host: host), from: tab)
+        // Cancelled because the tab went away: don't remember a "no" the user never gave.
+        guard answer != .cancel || window.currentTab?.id == tab.id else { return }
+        let allowed = answer == .ok
+        library.settings.sitePermissions[host, default: [:]][key] = allowed
+        if allowed { NSWorkspace.shared.open(url) }
+    }
+
+    /// The saved-answer key for opening one kind of link in its app, such as "app:zoommtg".
+    static func openAppKey(_ scheme: String) -> String { "app:" + scheme }
 
     func page(_ page: any EnginePage, didCommit url: URL?) {
         tab.loadError = nil

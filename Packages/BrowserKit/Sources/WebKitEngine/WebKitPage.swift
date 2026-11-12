@@ -1,6 +1,7 @@
 #if os(macOS)
 import AppKit
 import WebKit
+import CoreServices
 import BrowserEngine
 
 /// One WKWebView, behind the engine-neutral `EnginePage`.
@@ -60,7 +61,29 @@ public final class WebKitPage: NSObject, EnginePage {
             webView.observe(\.themeColor, options: [.new]) { wv, _ in
                 MainActor.assumeIsolated { state.themeColor = wv.themeColor?.cgColor }
             },
+            webView.observe(\.cameraCaptureState, options: [.new]) { wv, _ in
+                MainActor.assumeIsolated { state.isCapturing = wv.cameraCaptureState != .none || wv.microphoneCaptureState != .none }
+            },
+            webView.observe(\.microphoneCaptureState, options: [.new]) { wv, _ in
+                MainActor.assumeIsolated { state.isCapturing = wv.cameraCaptureState != .none || wv.microphoneCaptureState != .none }
+            },
         ]
+    }
+
+    /// What each frame last said about sound and typing, by the frame's own token.
+    private var frameActivity: [String: PageActivity.Report] = [:]
+
+    /// A frame's activity script reported in.
+    func activityChanged(_ report: PageActivity.Report) {
+        frameActivity[report.frame] = report
+        updateActivity()
+    }
+
+    private func updateActivity() {
+        let playing = frameActivity.values.contains { $0.audible }
+        let typed = frameActivity.values.contains { $0.typed }
+        if state.isPlayingAudio != playing { state.isPlayingAudio = playing }
+        if state.hasUnsavedInput != typed { state.hasUnsavedInput = typed }
     }
 
     // MARK: EnginePage
@@ -218,6 +241,9 @@ extension WebKitPage: WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         awaitingRestore = false
+        // A new document: the old one's sound and drafts are gone, and its frames report afresh.
+        frameActivity = [:]
+        updateActivity()
         delegate?.page(self, didCommit: webView.url)
         engine?.extensionPageChanged(self)
     }
@@ -360,10 +386,13 @@ final class DownloadBridge: NSObject, WKDownloadDelegate {
     weak var engine: WebKitEngine?
     private var items: [ObjectIdentifier: EngineDownload] = [:]
     private var progress: [ObjectIdentifier: NSKeyValueObservation] = [:]
+    /// The page each download started from, for its quarantine record.
+    private var origins: [ObjectIdentifier: URL] = [:]
 
     func adopt(_ download: WKDownload, from page: WebKitPage) {
         download.delegate = self
         let source = download.originalRequest?.url
+        origins[ObjectIdentifier(download)] = page.webView.url
         let item = EngineDownload(filename: source?.lastPathComponent ?? "Download", sourceURL: source)
         item.cancelHandler = { [weak download] in download?.cancel { _ in } }
         let key = ObjectIdentifier(download)
@@ -391,6 +420,9 @@ final class DownloadBridge: NSObject, WKDownloadDelegate {
         let key = ObjectIdentifier(download)
         items[key]?.progress = 1
         items[key]?.status = .finished
+        if let url = items[key]?.fileURL {
+            Self.quarantine(url, source: items[key]?.sourceURL, origin: origins[key])
+        }
         // Bounce the Downloads stack in the Dock, like Safari.
         if let url = items[key]?.fileURL {
             DistributedNotificationCenter.default().post(name: .init("com.apple.DownloadFileFinished"), object: url.path)
@@ -407,6 +439,27 @@ final class DownloadBridge: NSObject, WKDownloadDelegate {
     private func finish(_ key: ObjectIdentifier) {
         progress[key] = nil
         items[key] = nil
+        origins[key] = nil
+    }
+
+    /// Marks a finished download as coming from the internet, so Gatekeeper checks an app or
+    /// installer before it first opens, as it does for Safari's downloads. Browsa isn't sandboxed,
+    /// so macOS doesn't do this for it. A file that already carries the mark keeps it.
+    nonisolated static func quarantine(_ file: URL, source: URL?, origin: URL?) {
+        var url = file
+        if let existing = try? url.resourceValues(forKeys: [.quarantinePropertiesKey]), existing.quarantineProperties != nil { return }
+        var props: [String: Any] = [
+            kLSQuarantineTypeKey as String: kLSQuarantineTypeWebDownload as String,
+            kLSQuarantineAgentNameKey as String: Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Browsa",
+            kLSQuarantineAgentBundleIdentifierKey as String: Bundle.main.bundleIdentifier ?? "com.orriginal.browsa",
+            kLSQuarantineTimeStampKey as String: Date(),
+        ]
+        // Only real web addresses are recorded: a data: or blob: URL can be huge and says nothing.
+        if let source, ["http", "https"].contains(source.scheme?.lowercased() ?? "") { props[kLSQuarantineDataURLKey as String] = source }
+        if let origin, ["http", "https"].contains(origin.scheme?.lowercased() ?? "") { props[kLSQuarantineOriginURLKey as String] = origin }
+        var values = URLResourceValues()
+        values.quarantineProperties = props
+        do { try url.setResourceValues(values) } catch { print("Couldn't quarantine \(file.lastPathComponent): \(error)") }
     }
 
     /// "report.pdf" becomes "report 2.pdf" if taken.
