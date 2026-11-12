@@ -290,7 +290,8 @@ private struct PrivacySettings: View {
 
     private func summary(_ perms: [String: Bool]) -> String {
         perms.sorted { $0.key < $1.key }.map { k, v in
-            let name = EnginePermission(rawValue: k).map { "\($0)" } ?? k
+            let name = EnginePermission(rawValue: k).map { "\($0)" }
+                ?? (k.hasPrefix("app:") ? "\(k.dropFirst(4)) links" : k)
             return "\(name): \(v ? "allowed" : "denied")"
         }.joined(separator: ", ")
     }
