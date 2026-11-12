@@ -91,7 +91,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return Library(engine: WebKitEngine(), history: HistoryStore(fileURL: nil), snapshotURL: nil)
         }
         #endif
-        return Library(engine: WebKitEngine())
+        let engine = WebKitEngine()
+        return Library(engine: engine)
     }
     private var keyMonitor: Any?
     private var archiveTimer: Timer?

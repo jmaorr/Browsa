@@ -41,6 +41,12 @@ final class Library {
     var useSafariExtensions: Bool {
         didSet { Preferences.useSafariExtensions = useSafariExtensions; reloadExtensions() }
     }
+    /// Settings › Audio. Live: pages in a call pick changes up within a second.
+    var callAudio: CallAudioTuning {
+        didSet { Preferences.callAudio = callAudio; (engine as? CallAudioConfigurable)?.callAudio = callAudio }
+    }
+    /// The latest numbers from a page in a call, for the Audio settings readout.
+    var callAudioStats: CallAudioStats?
     /// The extensions running now, for the toolbar.
     private(set) var extensions: [EngineExtension] = []
     /// Bumped when pins change or an extension updates its action, so the address pill redraws.
@@ -87,6 +93,7 @@ final class Library {
         clearDataOnQuit = Preferences.clearDataOnQuit
         developerTools = Preferences.developerTools
         useSafariExtensions = Preferences.useSafariExtensions
+        callAudio = Preferences.callAudio
         let support = snapshotURL?.deletingLastPathComponent()
         extensionCatalog = ExtensionCatalog(fileURL: support?.appending(path: "extensions.json"))
         extensionInstaller = ExtensionInstaller(
@@ -109,6 +116,10 @@ final class Library {
         }
         suggest = makeSuggestEngine()
         engine.developerToolsEnabled = developerTools
+        if let calls = engine as? CallAudioConfigurable {
+            calls.callAudio = callAudio
+            calls.onCallAudioStats = { [weak self] in self?.callAudioStats = $0 }
+        }
         applyBlocking()
         archiveStaleTabs()
         engine.extensionHost = self
