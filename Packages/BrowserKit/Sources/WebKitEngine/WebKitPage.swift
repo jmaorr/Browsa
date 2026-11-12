@@ -60,7 +60,29 @@ public final class WebKitPage: NSObject, EnginePage {
             webView.observe(\.themeColor, options: [.new]) { wv, _ in
                 MainActor.assumeIsolated { state.themeColor = wv.themeColor?.cgColor }
             },
+            webView.observe(\.cameraCaptureState, options: [.new]) { wv, _ in
+                MainActor.assumeIsolated { state.isCapturing = wv.cameraCaptureState != .none || wv.microphoneCaptureState != .none }
+            },
+            webView.observe(\.microphoneCaptureState, options: [.new]) { wv, _ in
+                MainActor.assumeIsolated { state.isCapturing = wv.cameraCaptureState != .none || wv.microphoneCaptureState != .none }
+            },
         ]
+    }
+
+    /// What each frame last said about sound and typing, by the frame's own token.
+    private var frameActivity: [String: PageActivity.Report] = [:]
+
+    /// A frame's activity script reported in.
+    func activityChanged(_ report: PageActivity.Report) {
+        frameActivity[report.frame] = report
+        updateActivity()
+    }
+
+    private func updateActivity() {
+        let playing = frameActivity.values.contains { $0.audible }
+        let typed = frameActivity.values.contains { $0.typed }
+        if state.isPlayingAudio != playing { state.isPlayingAudio = playing }
+        if state.hasUnsavedInput != typed { state.hasUnsavedInput = typed }
     }
 
     // MARK: EnginePage
@@ -218,6 +240,9 @@ extension WebKitPage: WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         awaitingRestore = false
+        // A new document: the old one's sound and drafts are gone, and its frames report afresh.
+        frameActivity = [:]
+        updateActivity()
         delegate?.page(self, didCommit: webView.url)
         engine?.extensionPageChanged(self)
     }
