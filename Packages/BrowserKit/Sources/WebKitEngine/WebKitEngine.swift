@@ -30,6 +30,18 @@ public final class WebKitEngine: BrowserEngine {
         configuration.preferences.setValue(on, forKey: "developerExtrasEnabled")
     }
 
+    /// Browsa's own mic processing for calls (Resources/call-audio.js) instead of Apple's voice
+    /// processing, which lets echo through and over-boosts some audio interfaces. Applies to pages
+    /// loaded after it changes.
+    public var callAudioProcessing = true {
+        didSet { if callAudioProcessing != oldValue { for controller in allContentControllers { install(on: controller) } } }
+    }
+    private static let callAudioScript: WKUserScript? = {
+        guard let url = Bundle.module.url(forResource: "call-audio", withExtension: "js"),
+              let source = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page)
+    }()
+
     private let standardConfiguration: WKWebViewConfiguration
     private var ephemeralConfiguration: WKWebViewConfiguration
     /// For pages the app renders (Reader): no storage, no JavaScript, no rules or scripts.
@@ -239,6 +251,9 @@ public final class WebKitEngine: BrowserEngine {
                 page.delegate?.pageDidDeclineCookieBanner(page)
             }
             controller.add(handler, contentWorld: CookieBannerHandler.world, name: CookieBannerHandler.messageName)
+        }
+        if callAudioProcessing, let script = Self.callAudioScript {
+            controller.addUserScript(script)
         }
         if blocking.globalPrivacyControl {
             controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,

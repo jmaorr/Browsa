@@ -91,7 +91,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return Library(engine: WebKitEngine(), history: HistoryStore(fileURL: nil), snapshotURL: nil)
         }
         #endif
-        return Library(engine: WebKitEngine())
+        let engine = WebKitEngine()
+        // Spike switch until there's a setting: `defaults write <bundle id> callAudioProcessing -bool NO`.
+        engine.callAudioProcessing = UserDefaults.standard.object(forKey: "callAudioProcessing") as? Bool ?? true
+        return Library(engine: engine)
     }
     private var keyMonitor: Any?
     private var archiveTimer: Timer?

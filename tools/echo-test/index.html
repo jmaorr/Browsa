@@ -72,6 +72,7 @@ ol { margin: 6px 0 0; padding-left: 20px; }
     <p class="small muted" style="margin:0 0 10px">Set your speakers to a normal call volume, don't wear headphones, and stay quiet for about 10 seconds.</p>
     <div class="row">
       <button id="echoBtn" class="primary" disabled>Run echo test</button>
+      <label class="small"><input type="checkbox" id="callMode" checked> Play it like a call (WebRTC)</label>
       <label class="small">Test volume <input type="range" id="vol" min="0.1" max="1" step="0.05" value="0.7"></label>
       <button id="playEcho" disabled>Play back what the mic heard</button>
     </div>
@@ -143,7 +144,8 @@ async function openMic() {
   src.connect(analyser);
   const track = stream.getAudioTracks()[0];
   const s = track.getSettings ? track.getSettings() : {};
-  $("settings").textContent = `Using: ${track.label || "unknown mic"}\nGot: echoCancellation=${s.echoCancellation} noiseSuppression=${s.noiseSuppression} autoGainControl=${s.autoGainControl} sampleRate=${s.sampleRate ?? "?"} channelCount=${s.channelCount ?? "?"}`;
+  const ba = window.__browsaCallAudio;
+  $("settings").textContent = `Using: ${track.label || "unknown mic"}${ba ? "  ·  Browsa call audio: " + ba.mode : ""}\nGot: echoCancellation=${s.echoCancellation} noiseSuppression=${s.noiseSuppression} autoGainControl=${s.autoGainControl} sampleRate=${s.sampleRate ?? "?"} channelCount=${s.channelCount ?? "?"}`;
   startMeter();
   ["echoBtn", "voiceBtn"].forEach(b => $(b).disabled = false);
 }
@@ -241,16 +243,14 @@ $("echoBtn").addEventListener("click", async () => {
   const rec = recorder();
   rec.ondataavailable = e => e.data.size && chunks.push(e.data);
   rec.start();
-  // Played through a media element, the way a call site plays the other people's voices.
-  const audio = new Audio(testUrl);
-  audio.volume = Number($("vol").value);
+  const play = $("callMode").checked ? playLikeACall() : playOnElement();
   const timer = setInterval(() => {
-    // Timeline follows the element's own clock, so a slow start doesn't skew the bands.
-    samples.push([audio.currentTime > 0 ? audio.currentTime : -1, levelDb()]);
+    // Timeline follows the player's own clock, so a slow start doesn't skew the bands.
+    const t = play.clock();
+    samples.push([t > 0 ? t : -1, levelDb()]);
     draw(samples);
   }, 20);
-  await audio.play().catch(e => { $("detail").textContent = "Couldn't play the test sound: " + e.message; });
-  await new Promise(r => audio.onended = r);
+  await play.done.catch(e => { $("detail").textContent = "Couldn't play the test sound: " + e.message; });
   clearInterval(timer);
   rec.stop();
   await new Promise(r => rec.onstop = r);
@@ -259,6 +259,49 @@ $("echoBtn").addEventListener("click", async () => {
   $("playEcho").disabled = false; $("echoBtn").disabled = false;
   score(samples.filter(s => s[0] >= 0));
 });
+
+// The test sound as a plain media element.
+function playOnElement() {
+  const audio = new Audio(testUrl);
+  audio.volume = Number($("vol").value);
+  const done = audio.play().then(() => new Promise(r => audio.onended = r));
+  return { clock: () => audio.currentTime, done };
+}
+
+// The test sound the way a call arrives: sent through a WebRTC connection on this page and played
+// from the received track, like Meet plays the other people's voices.
+function playLikeACall() {
+  let started = 0, pcs = [];
+  const done = (async () => {
+    const actx = ctx;
+    const buf = await actx.decodeAudioData(await (await fetch(testUrl)).arrayBuffer());
+    const a = new RTCPeerConnection(), b = new RTCPeerConnection();
+    pcs = [a, b];
+    a.onicecandidate = e => e.candidate && b.addIceCandidate(e.candidate);
+    b.onicecandidate = e => e.candidate && a.addIceCandidate(e.candidate);
+    const out = new Audio();
+    out.volume = Number($("vol").value);
+    const got = new Promise(r => b.ontrack = e => r(e.streams[0] || new MediaStream([e.track])));
+    const send = actx.createMediaStreamDestination();
+    a.addTrack(send.stream.getAudioTracks()[0], send.stream);
+    await a.setLocalDescription(await a.createOffer());
+    await b.setRemoteDescription(a.localDescription);
+    await b.setLocalDescription(await b.createAnswer());
+    await a.setRemoteDescription(b.localDescription);
+    out.srcObject = await got;
+    await out.play();
+    await new Promise(r => setTimeout(r, 400));   // let the connection settle
+    const node = actx.createBufferSource();
+    node.buffer = buf; node.connect(send);
+    started = actx.currentTime;
+    node.start();
+    await new Promise(r => node.onended = r);
+    await new Promise(r => setTimeout(r, 300));
+    out.pause(); pcs.forEach(pc => pc.close());
+  })();
+  // Network and jitter buffer add a little delay; scoring allows 150 ms after each band.
+  return { clock: () => started ? ctx.currentTime - started : -1, done };
+}
 
 $("playEcho").addEventListener("click", () => { if (lastEchoBlobUrl) new Audio(lastEchoBlobUrl).play(); });
 
