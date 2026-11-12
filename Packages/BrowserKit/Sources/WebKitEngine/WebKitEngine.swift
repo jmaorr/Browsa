@@ -266,6 +266,11 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable {
                                                                stats: { [weak self] in self?.onCallAudioStats?($0) }),
                                               contentWorld: .page, name: CallAudioHandler.name)
         }
+        controller.addUserScript(PageActivity.script)
+        controller.removeScriptMessageHandler(forName: PageActivity.messageName, contentWorld: PageActivity.world)
+        controller.add(PageActivity.Handler { [weak self] webView, report in
+            self?.page(for: webView)?.activityChanged(report)
+        }, contentWorld: PageActivity.world, name: PageActivity.messageName)
         if blocking.globalPrivacyControl {
             controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,
                                                   forMainFrameOnly: false, in: .page))
