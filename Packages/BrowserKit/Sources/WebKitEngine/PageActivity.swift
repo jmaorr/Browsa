@@ -5,7 +5,7 @@ import WebKit
 /// unloaded to save memory. One small script per frame, in its own world, out of the page's reach.
 /// Each frame reports only when its answer changes.
 enum PageActivity {
-    static let world = WKContentWorld.world(name: "browsa.activity")
+    @MainActor static let world = WKContentWorld.world(name: "browsa.activity")
     static let messageName = "browsaActivity"
 
     /// One frame's state. `frame` is a token the frame's script made up, unique per document.
@@ -15,7 +15,7 @@ enum PageActivity {
         let typed: Bool
     }
 
-    static var script: WKUserScript {
+    @MainActor static var script: WKUserScript {
         WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: world)
     }
 
