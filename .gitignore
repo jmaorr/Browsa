@@ -16,3 +16,6 @@ Mac/Info.plist
 Mac/Browsa.entitlements
 Spike/Info.plist
 Spike/SpikeBrowsa.entitlements
+
+# CEF for call tabs (tools/fetch-cef.sh)
+.cef/

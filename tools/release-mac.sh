@@ -45,6 +45,8 @@ git -C "$repo" archive "$commit" | tar -x -C "$src"
 
 echo "==> Archiving"
 cd "$src"
+# Chromium for call tabs (downloaded and checked once, then cached).
+tools/fetch-cef.sh
 xcodegen generate --quiet
 xcodebuild -project Browsa.xcodeproj -scheme BrowsaMac -configuration Release \
   -destination 'generic/platform=macOS' -derivedDataPath "$derived" -archivePath "$archive" \

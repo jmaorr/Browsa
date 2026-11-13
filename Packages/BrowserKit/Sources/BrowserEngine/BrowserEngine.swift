@@ -424,9 +424,12 @@ public enum EngineDialogResponse: Sendable, Equatable {
 
 public enum EnginePermission: String, Sendable, Codable, CaseIterable {
     case camera, microphone, cameraAndMicrophone, location, notifications
+    /// Sharing the screen (getDisplayMedia). Asked every time, never remembered.
+    case screen
 
     public var phrase: String {
         switch self {
+        case .screen: "share your entire screen"
         case .camera: "use your camera"
         case .microphone: "use your microphone"
         case .cameraAndMicrophone: "use your camera and microphone"

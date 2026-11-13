@@ -84,6 +84,9 @@ targets:
       - Mac/Sources
       - Mac/Resources
       - App/Browsa.icon
+      # Call tabs: Chromium (CEF) for Meet, Zoom and Teams. CEF itself comes from tools/fetch-cef.sh.
+      - path: Mac/Chromium
+        excludes: ["Helper/**", "embed-cef.sh"]
     dependencies:
       - package: BrowserKit
         product: BrowserCore
@@ -124,6 +127,10 @@ targets:
         NSCameraUsageDescription: Websites you allow can use the camera, for example for video calls.
         NSMicrophoneUsageDescription: Websites you allow can use the microphone, for example for video calls.
         NSLocationUsageDescription: Websites you allow can see your location, for example to show nearby places.
+        # Sign-ins in call tabs can use a passkey on a phone nearby (Bluetooth); without this macOS ends the app.
+        NSBluetoothAlwaysUsageDescription: Sign-ins can use a passkey on your phone nearby.
+        # CEF needs to see the app's event dispatch (CefAppProtocol).
+        NSPrincipalClass: BCEFApplication
         # Lets Browsa be picked as the default web browser in System Settings > Desktop & Dock.
         CFBundleURLTypes:
           - CFBundleURLName: Web
@@ -148,6 +155,14 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: Browsa
         ENABLE_HARDENED_RUNTIME: true
         COMBINE_HIDPI_IMAGES: true
+        # Call tabs (CEF)
+        CEF_ROOT: $(SRCROOT)/.cef/cef
+        HEADER_SEARCH_PATHS: ["$(CEF_ROOT)"]
+        OTHER_LDFLAGS: ["$(CEF_ROOT)/build/libcef_dll_wrapper/Release/libcef_dll_wrapper.a"]
+        CLANG_CXX_LANGUAGE_STANDARD: c++20
+        SWIFT_OBJC_BRIDGING_HEADER: Mac/Chromium/Bridge/BrowsaChromium-Bridging-Header.h
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) CALL_TABS
+        ENABLE_USER_SCRIPT_SANDBOXING: false
       configs:
         # Xcode runs and test builds get their own ID, so their data lives in a separate container
         # and never touches (or overwrites) the daily-driver app's.
@@ -155,6 +170,9 @@ targets:
           PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa.dev
           BROWSA_APP_NAME: Browsa Dev
     postBuildScripts:
+      - name: Embed Chromium
+        basedOnDependencyAnalysis: false
+        script: '"$SRCROOT/Mac/Chromium/embed-cef.sh"'
       # Only the daily-driver build offers itself as a web browser. Dev and test builds drop the
       # http/https and HTML handlers, so they never show up in System Settings' default browser list
       # or catch links from other apps.

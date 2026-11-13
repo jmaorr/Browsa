@@ -92,7 +92,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         #endif
         let engine = WebKitEngine()
-        return Library(engine: engine)
+        let library = Library(engine: engine)
+        #if CALL_TABS
+        // Meet, Zoom and Teams run on Chromium (see Mac/Chromium/CallTabs.swift).
+        CallTabs.install(in: library)
+        #endif
+        return library
     }
     private var keyMonitor: Any?
     private var archiveTimer: Timer?
@@ -196,6 +201,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        #if CALL_TABS
+        // Cmd-Q in the middle of a meeting would just drop you from it.
+        if !isClearingForQuit, !CallTabs.confirmLeaving(CallTabs.tabsInCall(in: library), quitting: true) { return .terminateCancel }
+        #endif
         guard library.clearDataOnQuit, !isClearingForQuit else { return .terminateNow }
         // Clearing is asynchronous; quit once it's done (or after a few seconds regardless).
         isClearingForQuit = true
@@ -223,6 +232,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         library.saveNow()
         library.margin.saveNow()
         library.agents.stop()
+        #if CALL_TABS
+        if ChromiumEngine.shared.isRunning { BCEFRuntime.shutdown() }
+        #endif
     }
 
     func applicationDidResignActive(_ notification: Notification) {

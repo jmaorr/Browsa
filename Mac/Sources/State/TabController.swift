@@ -9,6 +9,8 @@ import Suggest
 @MainActor
 final class TabController: EnginePageDelegate {
     let tab: BrowserTab
+    /// The engine the page runs on (`EngineInfo.id`): WebKit, or Chromium for a call tab.
+    let engineID: String
     private(set) var page: (any EnginePage)!
     private weak var library: Library?
     /// The window showing this tab, if any.
@@ -19,8 +21,9 @@ final class TabController: EnginePageDelegate {
     private var needsRecovery = false
     private var lastTermination: Date?
 
-    init(tab: BrowserTab, library: Library, makePage: (TabController) -> any EnginePage) {
+    init(tab: BrowserTab, library: Library, engineID: String? = nil, makePage: (TabController) -> any EnginePage) {
         self.tab = tab
+        self.engineID = engineID ?? library.engine.info.id
         self.library = library
         page = makePage(self)
         page.delegate = self
@@ -55,6 +58,10 @@ final class TabController: EnginePageDelegate {
     }
 
     func load(_ url: URL, source: Frecency.VisitSource) {
+        if let library, library.needsEngineSwap(self, to: url) {
+            library.swapEngine(of: tab, to: url, source: source)
+            return
+        }
         pendingSource = source
         tab.loadError = nil
         page.load(url)
@@ -99,8 +106,15 @@ final class TabController: EnginePageDelegate {
         }
         let scheme = request.url.scheme?.lowercased() ?? ""
         guard ["http", "https", "about", "blob", "data", "file", "javascript", "webkit-extension"].contains(scheme) else {
-            // mailto:, zoommtg:, App Store links and the like belong to other apps.
-            NSWorkspace.shared.open(request.url)
+            // mailto:, zoommtg:, App Store links and the like belong to other apps. Browsa asks first (as
+            // Chrome does), so a page can't throw you into an app: Zoom's join page fires zoommtg: on its
+            // own, and saying no keeps its "join from your browser" option. Email links just open.
+            Task { await openInApp(request.url) }
+            return .cancel
+        }
+        // A call site (or leaving one) moves the tab to the engine it runs on.
+        if request.isMainFrame, request.method == "GET", library.needsEngineSwap(self, to: request.url) {
+            library.swapEngine(of: tab, to: request.url)
             return .cancel
         }
         if request.isMainFrame, library.settings.cleanLinks, request.method == "GET",
@@ -109,6 +123,17 @@ final class TabController: EnginePageDelegate {
             return .redirect(clean)
         }
         return .allow
+    }
+
+    private func openInApp(_ url: URL) async {
+        guard let app = NSWorkspace.shared.urlForApplication(toOpen: url) else { return }
+        let scheme = url.scheme?.lowercased() ?? ""
+        if ["mailto", "tel", "facetime", "sms"].contains(scheme) { NSWorkspace.shared.open(url); return }
+        guard let window else { return }
+        let name = FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
+        let host = page.state.url?.host() ?? tab.url?.host() ?? ""
+        let answer = await window.ask(.dialog(.confirm(host: host, message: "Open \(name)? This page wants to open a link in \(name).")), from: tab)
+        if answer == .ok { NSWorkspace.shared.open(url) }
     }
 
     func page(_ page: any EnginePage, didCommit url: URL?) {
@@ -161,13 +186,15 @@ final class TabController: EnginePageDelegate {
 
     func page(_ page: any EnginePage, requestPermission permission: EnginePermission, host: String) async -> Bool {
         guard let library else { return false }
-        if let saved = library.settings.sitePermissions[host]?[permission.rawValue] { return saved }
+        // Screen sharing is asked every time, like other browsers do.
+        let remembers = permission != .screen
+        if remembers, let saved = library.settings.sitePermissions[host]?[permission.rawValue] { return saved }
         guard let window else { return false }
         let answer = await window.ask(.permission(permission, host: host), from: tab)
         // Cancelled because the tab went away: don't remember a "no" the user never gave.
         guard answer != .cancel || window.currentTab?.id == tab.id else { return false }
         let granted = answer == .ok
-        library.settings.sitePermissions[host, default: [:]][permission.rawValue] = granted
+        if remembers { library.settings.sitePermissions[host, default: [:]][permission.rawValue] = granted }
         return granted
     }
 
