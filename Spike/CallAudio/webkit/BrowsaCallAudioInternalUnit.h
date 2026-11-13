@@ -16,7 +16,6 @@
 
 #if ENABLE(MEDIA_STREAM) && PLATFORM(MAC) && USE(LIBWEBRTC)
 
-#include "BrowsaAudioTimeline.h"
 #include "CoreAudioCaptureUnit.h"
 #include "Logging.h"
 #include <AudioToolbox/AudioToolbox.h>
@@ -25,10 +24,19 @@
 #include <vector>
 #include <wtf/TZoneMallocInlines.h>
 
+#include <pal/cf/AudioToolboxSoftLink.h>
+
+// The timing half is shared with Spike/CallAudio/core (AudioTimeline.h), plain C++ with raw buffers.
+WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
+#include "BrowsaAudioTimeline.h"
+WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
+
 WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
+IGNORE_CLANG_WARNINGS_BEGIN("nullability-completeness")
 #include <webrtc/api/audio/builtin_audio_processing_builder.h>
 #include <webrtc/api/environment/environment_factory.h>
 #include <webrtc/modules/audio_processing/include/audio_processing.h>
+IGNORE_CLANG_WARNINGS_END
 WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_END
 
 WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
@@ -119,9 +127,9 @@ private:
     static AudioUnit makeHALUnit()
     {
         AudioComponentDescription description = { kAudioUnitType_Output, kAudioUnitSubType_HALOutput, kAudioUnitManufacturer_Apple, 0, 0 };
-        AudioComponent component = AudioComponentFindNext(nullptr, &description);
+        AudioComponent component = PAL::AudioComponentFindNext(nullptr, &description);
         AudioUnit unit = nullptr;
-        if (!component || AudioComponentInstanceNew(component, &unit) != noErr)
+        if (!component || PAL::AudioComponentInstanceNew(component, &unit) != noErr)
             return nullptr;
         return unit;
     }
@@ -206,10 +214,10 @@ private:
         if (!m_outUnit)
             return kAudioUnitErr_FailedInitialization;
         AURenderCallbackStruct render = { speakerThunk, this };
-        if ((error = AudioUnitSetProperty(m_outUnit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &m_outputDevice, sizeof(m_outputDevice)))
-            || (error = AudioUnitSetProperty(m_outUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, outputBus, &m_speakerFormat, sizeof(m_speakerFormat)))
-            || (error = AudioUnitSetProperty(m_outUnit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, outputBus, &render, sizeof(render)))
-            || (error = AudioUnitInitialize(m_outUnit))) {
+        if ((error = PAL::AudioUnitSetProperty(m_outUnit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &m_outputDevice, sizeof(m_outputDevice)))
+            || (error = PAL::AudioUnitSetProperty(m_outUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, outputBus, &m_speakerFormat, sizeof(m_speakerFormat)))
+            || (error = PAL::AudioUnitSetProperty(m_outUnit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, outputBus, &render, sizeof(render)))
+            || (error = PAL::AudioUnitInitialize(m_outUnit))) {
             RELEASE_LOG_ERROR(WebRTC, "BrowsaCallAudioInternalUnit speaker setup failed, error %d", (int)error);
             uninitialize();
             return error;
@@ -221,23 +229,23 @@ private:
             uninitialize();
             return kAudioUnitErr_FailedInitialization;
         }
-        if ((error = AudioUnitSetProperty(m_inUnit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, inputBus, &on, sizeof(on)))
-            || (error = AudioUnitSetProperty(m_inUnit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output, outputBus, &off, sizeof(off)))
-            || (error = AudioUnitSetProperty(m_inUnit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &m_inputDevice, sizeof(m_inputDevice)))) {
+        if ((error = PAL::AudioUnitSetProperty(m_inUnit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, inputBus, &on, sizeof(on)))
+            || (error = PAL::AudioUnitSetProperty(m_inUnit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output, outputBus, &off, sizeof(off)))
+            || (error = PAL::AudioUnitSetProperty(m_inUnit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &m_inputDevice, sizeof(m_inputDevice)))) {
             RELEASE_LOG_ERROR(WebRTC, "BrowsaCallAudioInternalUnit microphone device setup failed, error %d", (int)error);
             uninitialize();
             return error;
         }
         AudioStreamBasicDescription deviceFormat = { };
         UInt32 size = sizeof(deviceFormat);
-        AudioUnitGetProperty(m_inUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, inputBus, &deviceFormat, &size);
+        PAL::AudioUnitGetProperty(m_inUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, inputBus, &deviceFormat, &size);
         m_deviceChannels = std::max<int>(1, std::min<int>(8, deviceFormat.mChannelsPerFrame));
         m_deviceRate = deviceFormat.mSampleRate > 0 ? deviceFormat.mSampleRate : processingRate;
         auto captureFormat = floatFormat(m_deviceRate, m_deviceChannels);
         AURenderCallbackStruct input = { microphoneThunk, this };
-        if ((error = AudioUnitSetProperty(m_inUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, inputBus, &captureFormat, sizeof(captureFormat)))
-            || (error = AudioUnitSetProperty(m_inUnit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0, &input, sizeof(input)))
-            || (error = AudioUnitInitialize(m_inUnit))) {
+        if ((error = PAL::AudioUnitSetProperty(m_inUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, inputBus, &captureFormat, sizeof(captureFormat)))
+            || (error = PAL::AudioUnitSetProperty(m_inUnit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0, &input, sizeof(input)))
+            || (error = PAL::AudioUnitInitialize(m_inUnit))) {
             RELEASE_LOG_ERROR(WebRTC, "BrowsaCallAudioInternalUnit microphone setup failed, error %d", (int)error);
             uninitialize();
             return error;
@@ -263,7 +271,6 @@ private:
         config.pipeline.maximum_internal_processing_rate = 48000;
         config.high_pass_filter.enabled = true;
         config.echo_canceller.enabled = true;
-        config.echo_canceller.mobile_mode = false;
         config.noise_suppression.enabled = true;
         config.noise_suppression.level = webrtc::AudioProcessing::Config::NoiseSuppression::kHigh;
         config.gain_controller2.enabled = true;
@@ -286,8 +293,8 @@ private:
         for (AudioUnit* unit : { &m_inUnit, &m_outUnit }) {
             if (!*unit)
                 continue;
-            AudioUnitUninitialize(*unit);
-            AudioComponentInstanceDispose(*unit);
+            PAL::AudioUnitUninitialize(*unit);
+            PAL::AudioComponentInstanceDispose(*unit);
             *unit = nullptr;
         }
         m_processing = nullptr;
@@ -301,10 +308,10 @@ private:
             return kAudioUnitErr_Uninitialized;
         if (m_started)
             return noErr;
-        if (auto error = AudioOutputUnitStart(m_outUnit))
+        if (auto error = PAL::AudioOutputUnitStart(m_outUnit))
             return error;
-        if (auto error = AudioOutputUnitStart(m_inUnit)) {
-            AudioOutputUnitStop(m_outUnit);
+        if (auto error = PAL::AudioOutputUnitStart(m_inUnit)) {
+            PAL::AudioOutputUnitStop(m_outUnit);
             return error;
         }
         m_started = true;
@@ -315,8 +322,8 @@ private:
     {
         if (!m_started)
             return noErr;
-        AudioOutputUnitStop(m_inUnit);
-        AudioOutputUnitStop(m_outUnit);
+        PAL::AudioOutputUnitStop(m_inUnit);
+        PAL::AudioOutputUnitStop(m_outUnit);
         m_started = false;
         return noErr;
     }
@@ -382,7 +389,7 @@ private:
         list->mNumberBuffers = m_deviceChannels;
         for (int c = 0; c < m_deviceChannels; ++c)
             list->mBuffers[c] = { 1, static_cast<UInt32>(frames * sizeof(float)), m_deviceBuffers[c].data() };
-        if (auto error = AudioUnitRender(m_inUnit, flags, stamp, bus, frames, list))
+        if (auto error = PAL::AudioUnitRender(m_inUnit, flags, stamp, bus, frames, list))
             return error;
 
         // The first two inputs summed, so a microphone on input 2 of an interface counts. Later channels
