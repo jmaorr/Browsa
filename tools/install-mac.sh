@@ -34,11 +34,13 @@ echo "==> Exporting $ref ($commit)"
 rm -rf "$work/export" && mkdir -p "$work/export" "$src"
 git -C "$repo" archive "$commit" | tar -x -C "$work/export"
 # Copy only files that changed, keeping the rest's timestamps so the build stays incremental.
-rsync -rlc --delete --exclude Browsa.xcodeproj "$work/export/" "$src/"
+rsync -rlc --delete --exclude Browsa.xcodeproj --exclude .cef "$work/export/" "$src/"
 rm -rf "$work/export"
 
 echo "==> Building Browsa (Release)"
 cd "$src"
+# Chromium for call tabs (downloaded and checked once, then cached).
+tools/fetch-cef.sh
 xcodegen generate --quiet
 xcodebuild -project Browsa.xcodeproj -scheme BrowsaMac -configuration Release \
   -destination 'platform=macOS' -derivedDataPath "$work/DerivedData" \
