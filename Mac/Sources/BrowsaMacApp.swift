@@ -98,6 +98,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var archiveTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        TapCheck.runIfAsked()   // SPIKE
+        #endif
         // Sign-ins from the sandbox days, once. Pages that loaded before they're in reload.
         CookieImport.runIfNeeded { [weak self] in
             guard let library = self?.library else { return }

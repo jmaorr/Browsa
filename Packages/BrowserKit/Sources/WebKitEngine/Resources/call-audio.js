@@ -40,7 +40,7 @@
       agcOn: options.autoGainControl !== false, siteAgc: options.autoGainControl !== false,
       mic: new Float32Array(FRAME), ref: new Float32Array(FRAME), fill: 0,
       out: new Float32Array(FRAME * 8), outRead: 0, outWrite: 0, outCount: 0,
-      gainDb: 0, noiseDb: -70, speechDb: -30, peakEnv: 0, frames: 0, farHold: 0, stopped: false,
+      gainDb: 0, appliedDb: 0, noiseDb: -70, speechDb: -30, peakEnv: 0, frames: 0, farHold: 0, stopped: false,
       engine: null,                          // an echo canceller plugs in here
       inputs: 'mix', tuning: null,           // Settings › Audio
     };
@@ -60,11 +60,12 @@
       const speaking = v.farHold === 0 && lvl > v.noiseDb + 9 && lvl > -65;
       if (v.agcOn && !(v.engine && v.engine.gain)) {
         if (speaking) v.speechDb = 0.97 * v.speechDb + 0.03 * lvl;
-        // Aim speech at -23 dBFS like WebRTC's gain controller, within -18 to +12 dB, and never lift the
+        // Aim speech at -23 dBFS like WebRTC's gain controller, within -18 to +6 dB (a big digital boost also
+        // boosts whatever echo is left), and never lift the
         // background above Settings › Audio's noise ceiling.
         const t = v.tuning || {};
         const ceiling = typeof t.noiseCeilingDb === 'number' ? t.noiseCeilingDb - v.noiseDb : 12;
-        const target = Math.max(-18, Math.min(12, ceiling, -23 - v.speechDb));
+        const target = Math.max(-18, Math.min(6, ceiling, -23 - v.speechDb));
         // Gain only rises from the user's own speech, never while the call's audio plays; it can always come down.
         const up = (typeof t.gainSpeed === 'number' ? t.gainSpeed : 3) / 100;   // dB/s to dB per frame
         const step = target > v.gainDb ? (speaking ? up : 0) : 0.25;
@@ -72,7 +73,13 @@
       } else {
         v.gainDb += (0 - v.gainDb) * 0.1;
       }
-      const g = 10 ** (v.gainDb / 20);
+      // While the other side talks, what's left after echo cancelling is mostly their own voice, faintly:
+      // don't turn that up (they'd hear themselves, and their echo canceller may cut them off). The boost
+      // comes back at once when the user talks over them, louder than that residue.
+      const duck = v.farHold > 0 && lvl < v.noiseDb + 12;
+      const applied = duck ? Math.min(0, v.gainDb) : v.gainDb;
+      v.appliedDb += Math.max(-0.5, Math.min(duck ? 0.5 : 2, applied - v.appliedDb));   // dB per 10 ms
+      const g = 10 ** (v.appliedDb / 20);
       for (let i = 0; i < FRAME; i++) {
         let x = mic[i] * g;
         const a = Math.abs(x);
@@ -82,7 +89,7 @@
       }
       if (++v.frames % 100 === 0) {
         const st = v.engine ? v.engine.stats() : {};
-        post({ type: 'stats', levelDb: lvl, gainDb: v.gainDb, noiseDb: v.noiseDb, refDb: db(refPow), engine: !!v.engine, ...st });
+        post({ type: 'stats', levelDb: lvl, gainDb: v.appliedDb, noiseDb: v.noiseDb, refDb: db(refPow), engine: !!v.engine, ...st });
       }
     }
 
@@ -370,7 +377,34 @@
       return true;
     } catch (e) { logEvent('error', { where: 'route', message: e.message }); return false; }
   }
-  function onContextState() { for (const r of routes.values()) applyRoute(r); }
+  function onContextState() {
+    for (const r of routes.values()) applyRoute(r);
+    updateGraphs();
+    // WebKit can suspend audio in a page that's out of view. A call keeps going in a background tab,
+    // so ask for it back whenever the mic is in use.
+    if (ctx && ctx.state !== 'running' && ctx.state !== 'closed' && voices.size) ctx.resume().catch(() => {});
+    logEvent('audio-state', { state: ctx && ctx.state, hidden: document.hidden });
+  }
+  // While the tab is in the background, the page's own elements play the call (as they did before
+  // Browsa played it), so switching tabs can never silence the other people. Browsa takes over again
+  // when the tab comes back.
+  const players = new Set(), known = new WeakSet();   // elements given a call stream (WeakRefs)
+  function onVisibility() {
+    if (document.hidden) {
+      for (const el of [...routes.keys()]) unroute(el);
+    } else {
+      for (const w of [...players]) {
+        const el = w.deref();
+        if (!el) { players.delete(w); continue; }
+        const stream = srcObject && srcObject.get.call(el);
+        if (stream && !routes.has(el)) route(el, stream);
+      }
+      if (ctx && ctx.state !== 'running' && voices.size) ctx.resume().catch(() => {});
+    }
+    updateGraphs();
+    logEvent('visibility', { hidden: document.hidden, routed: routes.size, state: ctx && ctx.state });
+  }
+  document.addEventListener('visibilitychange', onVisibility);
   if (mutedProp && mutedProp.set) {
     Object.defineProperty(HTMLMediaElement.prototype, 'muted', {
       ...mutedProp,
@@ -390,30 +424,75 @@
         srcObject.set.call(this, v);
         try {
           const stream = window.MediaStream && v instanceof MediaStream ? v : null;
-          if (!route(this, stream) && stream) addReferenceStream(stream, 'element');
+          if (stream && window.WeakRef && !known.has(this)) { known.add(this); players.add(new WeakRef(this)); }
+          if ((document.hidden || !route(this, stream)) && stream) addReferenceStream(stream, 'element');
         } catch {}
       },
     });
   }
-  // And some play them through Web Audio (decoded in the page, then to the speakers): tap anything
-  // a page connects to its speakers.
+  // And some play them through Web Audio (Meet does, for some of a call's sound): whatever a page
+  // connects to its own speakers goes through a tap. During a call Browsa plays that tap itself, like the
+  // elements above, so the echo canceller hears exactly what the speakers play; otherwise (no call, tab in
+  // the background, Browsa's audio not running) the page's graph plays as usual and the tap is a plain
+  // reference.
+  const pageGraphs = new Map();            // page AudioContext -> { tap, dest, nodes, taken, src, gain }
+  let nativeConnect = null, nativeDisconnect = null;
+  function takeGraph(e) {
+    if (e.taken || !ctx || ctx.state !== 'running' || document.hidden || !voices.size) return;
+    const track = e.tap.stream.getAudioTracks()[0];
+    try {
+      e.src = ctx.createMediaStreamSource(new MediaStream([track]));
+      e.gain = ctx.createGain();
+      e.src.connect(e.gain); e.gain.connect(ctx.destination); e.gain.connect(refBus);
+      for (const n of e.nodes) { try { nativeDisconnect.call(n, e.dest); } catch {} }
+      dropReference(track.id); routedTracks.add(track.id); state.references++;
+      e.taken = true;
+      logEvent('route', { kind: 'webaudio', nodes: e.nodes.size, total: state.references });
+    } catch (err) { logEvent('error', { where: 'route-webaudio', message: err.message }); giveGraph(e); }
+  }
+  function giveGraph(e) {
+    const track = e.tap.stream.getAudioTracks()[0];
+    for (const n of e.nodes) { try { nativeConnect.call(n, e.dest); } catch {} }
+    if (e.src) { try { e.src.disconnect(); e.gain.disconnect(); } catch {} e.src = e.gain = null; }
+    if (e.taken) { routedTracks.delete(track.id); state.references--; e.taken = false; }
+    addReference(track, 'webaudio');
+  }
+  function updateGraphs() {
+    const own = ctx && ctx.state === 'running' && !document.hidden && voices.size > 0;
+    for (const e of pageGraphs.values()) own ? takeGraph(e) : (e.taken && giveGraph(e));
+  }
   if (window.AudioNode && window.AudioDestinationNode) {
-    const nativeConnect = AudioNode.prototype.connect;
-    const taps = new WeakMap();
+    nativeConnect = AudioNode.prototype.connect;
+    nativeDisconnect = AudioNode.prototype.disconnect;
     AudioNode.prototype.connect = function connect(dest, ...rest) {
-      const result = nativeConnect.call(this, dest, ...rest);
       try {
-        if (dest instanceof AudioDestinationNode && this.context !== ctx) {
-          let tap = taps.get(this.context);
-          if (!tap) {
-            tap = this.context.createMediaStreamDestination();
-            taps.set(this.context, tap);
-            addReference(tap.stream.getAudioTracks()[0], 'webaudio');
+        if (dest instanceof AudioDestinationNode && this.context !== ctx && rest.length === 0) {
+          let e = pageGraphs.get(this.context);
+          if (!e) {
+            e = { tap: this.context.createMediaStreamDestination(), dest, nodes: new Set(), taken: false };
+            pageGraphs.set(this.context, e);
+            addReference(e.tap.stream.getAudioTracks()[0], 'webaudio');
           }
-          nativeConnect.call(this, tap);
+          e.nodes.add(this);
+          nativeConnect.call(this, e.tap);
+          if (!e.taken) nativeConnect.call(this, dest);
+          updateGraphs();
+          return dest;
         }
       } catch {}
-      return result;
+      return nativeConnect.call(this, dest, ...rest);
+    };
+    AudioNode.prototype.disconnect = function disconnect(...args) {
+      const e = this.context !== ctx ? pageGraphs.get(this.context) : null;
+      if (e && e.nodes.has(this)) {
+        if (args.length === 0 || typeof args[0] === 'number') e.nodes.delete(this);   // everything from it goes
+        else if (args[0] === e.dest) {
+          e.nodes.delete(this);
+          try { nativeDisconnect.call(this, e.tap); } catch {}
+          if (e.taken) return undefined;   // Browsa had already taken it off the speakers
+        }
+      }
+      return nativeDisconnect.apply(this, args);
     };
   }
 
@@ -453,6 +532,7 @@
       if (m.type === 'engine-error') { state.error = 'engine: ' + m.message; logEvent('error', { where: 'engine', message: m.message }); }
     });
     voices.add(voice);
+    updateGraphs();
     const t = await readTuning();
     if (t) voice.settings({ tuning: t });
     watchTuning();
@@ -493,6 +573,7 @@
       raw.stop();
       voice.settings({ stop: true });
       voices.delete(voice);
+      updateGraphs();
       for (const n of [src, voice.out, voice.refTap]) { try { n && n.disconnect(); } catch {} }
       if (voice.kind === 'worklet') { try { refBus.disconnect(voice.ref); } catch {} }
       state.active--;

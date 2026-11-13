@@ -123,6 +123,7 @@ targets:
         SUEnableAutomaticChecks: true
         NSCameraUsageDescription: Websites you allow can use the camera, for example for video calls.
         NSMicrophoneUsageDescription: Websites you allow can use the microphone, for example for video calls.
+        NSAudioCaptureUsageDescription: Browsa listens to the sound it plays on calls so it can remove echo from your microphone.
         NSLocationUsageDescription: Websites you allow can see your location, for example to show nearby places.
         # Lets Browsa be picked as the default web browser in System Settings > Desktop & Dock.
         CFBundleURLTypes:
