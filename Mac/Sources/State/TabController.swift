@@ -9,6 +9,8 @@ import Suggest
 @MainActor
 final class TabController: EnginePageDelegate {
     let tab: BrowserTab
+    /// The engine the page runs on (`EngineInfo.id`): WebKit, or Chromium for a call tab.
+    let engineID: String
     private(set) var page: (any EnginePage)!
     private weak var library: Library?
     /// The window showing this tab, if any.
@@ -19,8 +21,9 @@ final class TabController: EnginePageDelegate {
     private var needsRecovery = false
     private var lastTermination: Date?
 
-    init(tab: BrowserTab, library: Library, makePage: (TabController) -> any EnginePage) {
+    init(tab: BrowserTab, library: Library, engineID: String? = nil, makePage: (TabController) -> any EnginePage) {
         self.tab = tab
+        self.engineID = engineID ?? library.engine.info.id
         self.library = library
         page = makePage(self)
         page.delegate = self
@@ -55,6 +58,10 @@ final class TabController: EnginePageDelegate {
     }
 
     func load(_ url: URL, source: Frecency.VisitSource) {
+        if let library, library.needsEngineSwap(self, to: url) {
+            library.swapEngine(of: tab, to: url, source: source)
+            return
+        }
         pendingSource = source
         tab.loadError = nil
         page.load(url)
@@ -101,6 +108,11 @@ final class TabController: EnginePageDelegate {
         guard ["http", "https", "about", "blob", "data", "file", "javascript", "webkit-extension"].contains(scheme) else {
             // mailto:, zoommtg:, App Store links and the like belong to other apps.
             NSWorkspace.shared.open(request.url)
+            return .cancel
+        }
+        // A call site (or leaving one) moves the tab to the engine it runs on.
+        if request.isMainFrame, request.method == "GET", library.needsEngineSwap(self, to: request.url) {
+            library.swapEngine(of: tab, to: request.url)
             return .cancel
         }
         if request.isMainFrame, library.settings.cleanLinks, request.method == "GET",
