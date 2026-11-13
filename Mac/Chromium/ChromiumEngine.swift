@@ -150,6 +150,7 @@ final class ChromiumPage: NSObject, EnginePage, BCEFBrowserDelegate {
 
     func browserLoadEnded(_ url: String, status: Int32) {
         guard let u = URL(string: url) else { return }
+        browser.executeJavaScript(Self.screenShareShim)
         delegate?.page(self, didFinish: u, title: state.title)
     }
 
@@ -179,13 +180,67 @@ final class ChromiumPage: NSObject, EnginePage, BCEFBrowserDelegate {
 
     func browserDidClose() {}
 
+    /// CEF's embedded mode has no screen picker, so the standard getDisplayMedia() fails ("something
+    /// went wrong" in Meet). Instead a page's getDisplayMedia() asks Browsa (through the console
+    /// channel), Browsa shows its own screen and window picker, and the page then captures the picked
+    /// source through Chromium's desktop source request. Runs after each load; pages only call
+    /// getDisplayMedia() when you click Present or Share.
+    static let screenShareShim = """
+    (() => {
+      const md = navigator.mediaDevices;
+      if (!md || md.__browsaScreenShare) return;
+      Object.defineProperty(md, '__browsaScreenShare', { value: true });
+      md.getDisplayMedia = function getDisplayMedia() {
+        return new Promise((resolve, reject) => {
+          window.__browsaPicked = id => {
+            window.__browsaPicked = null;
+            if (!id) return reject(new DOMException('Permission denied', 'NotAllowedError'));
+            md.getUserMedia({ audio: false, video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: id,
+              maxWidth: 3840, maxHeight: 2160, maxFrameRate: 30 } } }).then(resolve, reject);
+          };
+          console.log('__browsa:pick-screen');
+        });
+      };
+    })();
+    """
+    /// The user picked a source just now, so the capture request that follows needs no second prompt.
+    private var screenPickedAt: Date?
+
+    func browserWantsExternalURL(_ url: String) {
+        guard let u = URL(string: url), let delegate else { return }
+        let request = NavigationRequest(url: u, kind: .link, isMainFrame: true, method: "GET")
+        Task { _ = await delegate.page(self, decide: request) }
+    }
+
+    func browserPageMessage(_ message: String) {
+        guard message == "pick-screen" else { return }
+        let host = state.url?.host() ?? "this site"
+        Task {
+            var picked: String?
+            #if DEBUG
+            if CallTabs.testHosts.contains(host), CGPreflightScreenCaptureAccess() {
+                picked = "screen:\(CGMainDisplayID()):0"   // test pages: no sheet
+            } else {
+                picked = await ScreenSharePicker.pick(host: host, in: view.window)
+            }
+            #else
+            picked = await ScreenSharePicker.pick(host: host, in: view.window)
+            #endif
+            if picked != nil { screenPickedAt = Date() }
+            let arg = picked.map { "'\($0)'" } ?? "null"
+            browser.executeJavaScript("window.__browsaPicked && window.__browsaPicked(\(arg))")
+        }
+    }
+
     func browserRequestsMedia(_ origin: String, audio: Bool, video: Bool, screen: Bool, decide: @escaping (Bool) -> Void) {
         let host = URL(string: origin)?.host() ?? origin
         guard let delegate else { decide(false); return }
         if screen {
-            // CEF has no source picker: a yes shares the entire screen (macOS asks once for Screen
-            // Recording). Asked every time.
-            Task { decide(await delegate.page(self, requestPermission: .screen, host: host)) }
+            // Allowed when the user has just picked what to share in Browsa's picker; anything else
+            // asking for the screen is refused.
+            let fresh = screenPickedAt.map { Date().timeIntervalSince($0) < 15 } ?? false
+            screenPickedAt = nil
+            decide(fresh)
             return
         }
         let kind: EnginePermission = audio && video ? .cameraAndMicrophone : video ? .camera : .microphone

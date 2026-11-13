@@ -36,6 +36,11 @@ NS_SWIFT_UI_ACTOR
 - (void)browserRequestsMedia:(NSString *)origin audio:(BOOL)audio video:(BOOL)video screen:(BOOL)screen decide:(void (^)(BOOL allowed))decide;
 /// The page wants to show notifications.
 - (void)browserRequestsNotifications:(NSString *)origin decide:(void (^)(BOOL allowed))decide;
+/// A page script asked Browsa for something, by logging `__browsa:<message>` to the console (the only
+/// page-to-app channel CEF's embedded mode has without a message router).
+- (void)browserPageMessage:(NSString *)message;
+/// The page tried to open a link for another app (zoommtg:, msteams: and the like).
+- (void)browserWantsExternalURL:(NSString *)url;
 @end
 
 /// One Chromium browser (a tab's page) inside an NSView.

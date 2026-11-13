@@ -192,7 +192,8 @@ class BClient : public CefClient,
                 public CefLoadHandler,
                 public CefRequestHandler,
                 public CefFindHandler,
-                public CefPermissionHandler {
+                public CefPermissionHandler,
+                public CefResourceRequestHandler {
  public:
   explicit BClient(BCEFBrowser *owner) : owner_(owner) {}
 
@@ -202,6 +203,17 @@ class BClient : public CefClient,
   CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
   CefRefPtr<CefFindHandler> GetFindHandler() override { return this; }
   CefRefPtr<CefPermissionHandler> GetPermissionHandler() override { return this; }
+
+  // Links for other apps (zoommtg:, msteams:…): Browsa decides (it asks before opening an app), and
+  // the page stays where it is, so a site's "join from your browser" option is still there.
+  CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefRequest>,
+                                                                 bool, bool, const CefString &, bool &) override { return this; }
+  void OnProtocolExecution(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, CefRefPtr<CefRequest> request, bool &allow_os_execution) override {
+    allow_os_execution = false;
+    NSString *url = NS(request->GetURL());
+    __weak BCEFBrowser *owner = owner_;
+    dispatch_async(dispatch_get_main_queue(), ^{ [owner.delegate browserWantsExternalURL:url]; });
+  }
 
   // Permissions: Browsa asks (or remembers) and CEF hears back later, on the main thread, exactly once.
   // Camera and mic come twice: first as a permission prompt (the site asking), then as the media
@@ -259,6 +271,12 @@ class BClient : public CefClient,
   void OnAddressChange(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, const CefString &url) override {
     if (frame->IsMain()) [owner_.delegate browserAddressChanged:NS(url)];
   }
+  bool OnConsoleMessage(CefRefPtr<CefBrowser>, cef_log_severity_t, const CefString &message, const CefString &, int) override {
+    NSString *m = NS(message);
+    if (![m hasPrefix:@"__browsa:"]) return false;
+    [owner_.delegate browserPageMessage:[m substringFromIndex:9]];
+    return true;
+  }
   void OnTitleChange(CefRefPtr<CefBrowser>, const CefString &title) override {
     [owner_.delegate browserTitleChanged:NS(title)];
   }
@@ -275,7 +293,8 @@ class BClient : public CefClient,
   }
   void OnLoadError(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, ErrorCode errorCode, const CefString &errorText,
                    const CefString &failedUrl) override {
-    if (frame->IsMain() && errorCode != ERR_ABORTED)
+    // A navigation cancelled on purpose, or a link handed to another app, isn't a failed page.
+    if (frame->IsMain() && errorCode != ERR_ABORTED && errorCode != ERR_UNKNOWN_URL_SCHEME)
       [owner_.delegate browserLoadFailed:NS(failedUrl) code:errorCode text:NS(errorText)];
   }
 
