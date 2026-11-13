@@ -24,6 +24,7 @@
     if (!ctx) {
       ctx = new AudioContext({ sampleRate: RATE, latencyHint: 'interactive' });
       refBus = ctx.createGain();
+      ctx.addEventListener('statechange', () => onContextState());
     }
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     return ctx;
@@ -59,10 +60,14 @@
       const speaking = v.farHold === 0 && lvl > v.noiseDb + 9 && lvl > -65;
       if (v.agcOn && !(v.engine && v.engine.gain)) {
         if (speaking) v.speechDb = 0.97 * v.speechDb + 0.03 * lvl;
-        // Aim speech at -23 dBFS like WebRTC's gain controller, within -18 to +12 dB.
-        const target = Math.max(-18, Math.min(12, -23 - v.speechDb));
-        // Gain only rises from the user's own speech; it can always come down.
-        const step = target > v.gainDb ? (speaking ? 0.015 : 0) : 0.25;   // dB per frame: ~1.5 dB/s up, fast down
+        // Aim speech at -23 dBFS like WebRTC's gain controller, within -18 to +12 dB, and never lift the
+        // background above Settings › Audio's noise ceiling.
+        const t = v.tuning || {};
+        const ceiling = typeof t.noiseCeilingDb === 'number' ? t.noiseCeilingDb - v.noiseDb : 12;
+        const target = Math.max(-18, Math.min(12, ceiling, -23 - v.speechDb));
+        // Gain only rises from the user's own speech, never while the call's audio plays; it can always come down.
+        const up = (typeof t.gainSpeed === 'number' ? t.gainSpeed : 3) / 100;   // dB/s to dB per frame
+        const step = target > v.gainDb ? (speaking ? up : 0) : 0.25;
         v.gainDb += Math.max(-step, Math.min(step, target - v.gainDb));
       } else {
         v.gainDb += (0 - v.gainDb) * 0.1;
@@ -145,12 +150,14 @@
       const x = inst.exports;
       memory = x.memory;
       if (x._initialize) x._initialize();
-      const h = x.apm_create(flags);
+      // WebRTC's own gain controller learns from residual echo and turns it up; the gain above holds
+      // still while the call's audio plays, so it does the gain instead.
+      const h = x.apm_create(flags & 3);
       if (!h) throw new Error('apm_create failed');
       const micPtr = x.apm_mic(h), refPtr = x.apm_ref(h);
       return {
-        gain: (flags & 4) !== 0,
-        configure(f) { x.apm_configure(h, f); this.gain = (f & 4) !== 0; },
+        gain: false,
+        configure(f) { x.apm_configure(h, f & 3); },
         process(mic, ref) {
           const heap = new Float32Array(memory.buffer);
           heap.set(mic, micPtr >> 2); heap.set(ref, refPtr >> 2);
@@ -260,6 +267,12 @@
     if (tuningTimer || !handler()) return;
     tuningTimer = setInterval(() => { if (voices.size) readTuning(); else { clearInterval(tuningTimer); tuningTimer = null; } }, 1000);
   }
+  // Lines for Browsa's call log (~/Library/Logs/Browsa/call-audio.log), so a bad call can be explained.
+  function logEvent(what, detail) {
+    const h = handler();
+    if (!h) return;
+    try { h.postMessage({ type: 'event', what, detail: JSON.stringify(detail || {}) }).catch(() => {}); } catch {}
+  }
   function reportStats() {
     const h = handler();
     if (!h || window.top !== window || !state.last) return;
@@ -271,21 +284,142 @@
   const flagsFor = asked => (asked.echoCancellation ? 1 : 0) | (asked.noiseSuppression ? 2 : 0) | (asked.autoGainControl ? 4 : 0);
 
   // ---------- echo reference: the call's incoming audio ----------
-  function addReference(track) {
-    if (!track || track.kind !== 'audio') return;
+  // Tracks the page captured itself (mics, processed or raw) must never count as "played", or the
+  // echo canceller would cancel the user's own voice.
+  const localTracks = new WeakSet();
+  const peerTracks = new WeakSet();        // audio that arrived over a peer connection
+  const referenced = new Map();            // track id -> its plain reference source
+  const routedTracks = new Set();          // track ids Browsa plays itself (see "Browsa plays the call" below)
+  function addReference(track, kind) {
+    if (!track || track.kind !== 'audio' || localTracks.has(track) || referenced.has(track.id) || routedTracks.has(track.id)) return;
     try {
       const src = context().createMediaStreamSource(new MediaStream([track]));
       src.connect(refBus);
+      referenced.set(track.id, src);
       state.references++;
-      track.addEventListener('ended', () => { try { src.disconnect(); } catch {} state.references--; }, { once: true });
-    } catch (e) { state.error = 'reference: ' + e.message; }
+      logEvent('reference', { kind, total: state.references });
+      track.addEventListener('ended', () => dropReference(track.id), { once: true });
+    } catch (e) { state.error = 'reference: ' + e.message; logEvent('error', { where: 'reference', message: e.message }); }
+  }
+  function dropReference(id) {
+    const src = referenced.get(id);
+    if (!src) return;
+    try { src.disconnect(); } catch {}
+    referenced.delete(id); state.references--;
+  }
+  function addReferenceStream(stream, kind) {
+    if (!stream || typeof stream.getAudioTracks !== 'function') return;
+    stream.getAudioTracks().forEach(t => addReference(t, kind));
+    try { stream.addEventListener('addtrack', e => addReference(e.track, kind)); } catch {}
+  }
+
+  // ---------- Browsa plays the call ----------
+  // A plain reference is a second copy of the call's audio, buffered on its own: at the start of a call it
+  // reaches the echo canceller hundreds of milliseconds after the speakers play it, then drifts, and an
+  // echo canceller can't remove echo it hasn't been told about yet. So, like Chrome, Browsa plays the
+  // call's incoming audio itself, through the same audio graph the echo canceller listens to. The page's
+  // element stays the player as far as the page can tell (play, pause, volume and muted all still work);
+  // only its own output is silenced while Browsa's plays.
+  const mutedProp = window.HTMLMediaElement && Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'muted');
+  const pageMuted = new WeakMap();         // element -> muted, as the page set it
+  const routes = new Map();                // element -> what Browsa plays for it
+  const isMuted = el => pageMuted.has(el) ? pageMuted.get(el) : mutedProp.get.call(el);
+  function applyRoute(r) {
+    const playing = ctx && ctx.state === 'running';
+    // Until Browsa's audio is running (a page that hasn't been clicked yet), the element plays as usual.
+    if (mutedProp.get.call(r.el) !== (playing || isMuted(r.el))) mutedProp.set.call(r.el, playing || isMuted(r.el));
+    const level = playing && !isMuted(r.el) && !r.el.paused ? r.el.volume : 0;
+    r.gain.gain.setTargetAtTime(level, ctx.currentTime, 0.01);
+  }
+  function unroute(el) {
+    const r = routes.get(el);
+    if (!r) return;
+    routes.delete(el);
+    for (const e of r.events) el.removeEventListener(e, r.on);
+    try { r.src.disconnect(); r.gain.disconnect(); } catch {}
+    for (const t of r.tracks) { routedTracks.delete(t.id); state.references--; }
+    if (mutedProp.get.call(el) !== isMuted(el)) mutedProp.set.call(el, isMuted(el));
+    state.routed = routes.size;
+    for (const t of r.tracks) if (t.readyState === 'live') addReference(t, 'peer');
+  }
+  function route(el, stream) {
+    unroute(el);
+    if (!mutedProp || !stream || typeof stream.getAudioTracks !== 'function' || el.sinkId) return false;
+    const tracks = stream.getAudioTracks().filter(t => peerTracks.has(t) && t.readyState === 'live');
+    if (!tracks.length) return false;
+    try {
+      const c = context();
+      const src = c.createMediaStreamSource(new MediaStream(tracks));
+      const gain = c.createGain();
+      gain.gain.value = 0;
+      src.connect(gain); gain.connect(c.destination); gain.connect(refBus);
+      const r = { el, src, gain, tracks, events: ['play', 'playing', 'pause', 'volumechange', 'ended', 'emptied'] };
+      r.on = () => applyRoute(r);
+      for (const e of r.events) el.addEventListener(e, r.on);
+      for (const t of tracks) {
+        dropReference(t.id); routedTracks.add(t.id); state.references++;
+        t.addEventListener('ended', () => { if (routes.get(el) === r && r.tracks.every(x => x.readyState === 'ended')) unroute(el); }, { once: true });
+      }
+      if (!pageMuted.has(el)) pageMuted.set(el, mutedProp.get.call(el));   // before Browsa changes the element's own
+      routes.set(el, r);
+      state.routed = routes.size;
+      logEvent('route', { tracks: tracks.length, total: state.references });
+      applyRoute(r);
+      return true;
+    } catch (e) { logEvent('error', { where: 'route', message: e.message }); return false; }
+  }
+  function onContextState() { for (const r of routes.values()) applyRoute(r); }
+  if (mutedProp && mutedProp.set) {
+    Object.defineProperty(HTMLMediaElement.prototype, 'muted', {
+      ...mutedProp,
+      get() { return isMuted(this); },
+      set(v) { pageMuted.set(this, !!v); const r = routes.get(this); if (r) applyRoute(r); else mutedProp.set.call(this, v); },
+    });
+  }
+
+  // Calls play the other people through media elements (srcObject), whatever made the stream, even a
+  // peer connection set up where this script can't see it (a sandboxed frame, a worker): those get a
+  // plain reference.
+  const srcObject = window.HTMLMediaElement && Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'srcObject');
+  if (srcObject && srcObject.set) {
+    Object.defineProperty(HTMLMediaElement.prototype, 'srcObject', {
+      ...srcObject,
+      set(v) {
+        srcObject.set.call(this, v);
+        try {
+          const stream = window.MediaStream && v instanceof MediaStream ? v : null;
+          if (!route(this, stream) && stream) addReferenceStream(stream, 'element');
+        } catch {}
+      },
+    });
+  }
+  // And some play them through Web Audio (decoded in the page, then to the speakers): tap anything
+  // a page connects to its speakers.
+  if (window.AudioNode && window.AudioDestinationNode) {
+    const nativeConnect = AudioNode.prototype.connect;
+    const taps = new WeakMap();
+    AudioNode.prototype.connect = function connect(dest, ...rest) {
+      const result = nativeConnect.call(this, dest, ...rest);
+      try {
+        if (dest instanceof AudioDestinationNode && this.context !== ctx) {
+          let tap = taps.get(this.context);
+          if (!tap) {
+            tap = this.context.createMediaStreamDestination();
+            taps.set(this.context, tap);
+            addReference(tap.stream.getAudioTracks()[0], 'webaudio');
+          }
+          nativeConnect.call(this, tap);
+        }
+      } catch {}
+      return result;
+    };
   }
 
   const NativePC = window.RTCPeerConnection;
   if (NativePC) {
     const Wrapped = function RTCPeerConnection(...args) {
       const pc = new NativePC(...args);
-      pc.addEventListener('track', e => addReference(e.track));
+      pc.addEventListener('track', e => { peerTracks.add(e.track); addReference(e.track, 'peer'); });
       return pc;
     };
     Wrapped.prototype = NativePC.prototype;
@@ -313,8 +447,8 @@
     const voice = await voiceNode(c, { autoGainControl: asked.autoGainControl }, m => {
       if (!m || id !== trackCount) return;
       if (m.type === 'stats') { state.last = m; reportStats(); }
-      if (m.type === 'engine') state.engine = m.ok ? 'webrtc' : 'none';
-      if (m.type === 'engine-error') state.error = 'engine: ' + m.message;
+      if (m.type === 'engine') { state.engine = m.ok ? 'webrtc' : 'none'; logEvent('engine', { ok: m.ok }); }
+      if (m.type === 'engine-error') { state.error = 'engine: ' + m.message; logEvent('error', { where: 'engine', message: m.message }); }
     });
     voices.add(voice);
     const t = await readTuning();
@@ -374,7 +508,7 @@
     if (!audio) return nativeGUM(constraints);
     const asked = Object.fromEntries(PROCESSING.map(k => [k, wants(audio, k)]));
     // Browsa only takes over when the site wants processing. Raw requests (music sites) pass straight through.
-    if (!asked.echoCancellation && !asked.noiseSuppression && !asked.autoGainControl) return nativeGUM(constraints);
+    if (!asked.echoCancellation && !asked.noiseSuppression && !asked.autoGainControl) { logEvent('passthrough', {}); return nativeGUM(constraints).then(s => { s.getAudioTracks().forEach(t => localTracks.add(t)); return s; }); }
     const rawAudio = typeof audio === 'object' ? { ...audio } : {};
     for (const k of PROCESSING) rawAudio[k] = false;
     // Every input the device has (up to two), so Settings › Audio can mix them or pick one.
@@ -383,14 +517,19 @@
     const stream = await nativeGUM({ ...constraints, audio: rawAudio });
     const raw = stream.getAudioTracks()[0];
     if (!raw) return stream;
+    localTracks.add(raw);
     try {
       const processed = await processTrack(raw, asked);
+      localTracks.add(processed);
       stream.removeTrack(raw);
       stream.addTrack(processed);
       state.mode = 'browsa';
+      logEvent('takeover', { asked, label: raw.label, settings: raw.getSettings ? raw.getSettings() : {} });
+      setTimeout(() => logEvent('check', { references: state.references, engine: state.engine, processor: state.processor, error: state.error }), 15000);
     } catch (e) {
       // Fall back to WebKit's own processing rather than fail the call.
       state.mode = 'webkit'; state.error = e.message;
+      logEvent('fallback', { message: e.message });
       raw.stop();
       return nativeGUM(constraints);
     }

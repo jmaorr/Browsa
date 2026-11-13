@@ -4,6 +4,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include "api/audio/echo_canceller3_config.h"
+#include "api/audio/echo_control.h"
+#include "modules/audio_processing/aec3/echo_canceller3.h"
 #include "modules/audio_processing/include/audio_processing.h"
 
 #define EXPORT extern "C" __attribute__((used, visibility("default")))
@@ -24,6 +27,45 @@ enum Key {
   kHighPass = 6,         // 0/1: rumble filter
   kTransient = 7,        // 0/1: typing and click remover
   kFixedGainDb = 8,      // extra gain after processing, 0..+20 dB
+  // Echo canceller (AEC3) tuning. Changing one rebuilds the processor, so set them before a call.
+  kSuppress = 20,        // residual echo suppression: scales the suppressor's masking thresholds (1 default, lower = stronger)
+  kNearendSuppress = 21, // the same while the user talks over the far end (1 default)
+  kEchoGain = 22,        // AEC3's assumed echo path strength before it has measured one (1 default)
+  kBoundedErl = 23,      // 0/1: assume the echo path loses at least some level (laptop-like setups)
+  kAudibility = 24,      // scales the level below which echo counts as inaudible (1 default, higher = suppress less)
+  kFilterBlocks = 25,    // echo path length the linear filter models, in 4 ms blocks (13 default); rooms and
+                         // speakers with a long bass tail need more
+};
+
+webrtc::EchoCanceller3Config Aec3Config(float suppress, float nearend, float echo_gain, bool bounded, float audibility, int blocks) {
+  webrtc::EchoCanceller3Config c;
+  if (blocks > 0) {
+    c.filter.refined.length_blocks = c.filter.coarse.length_blocks = blocks;
+    c.filter.refined_initial.length_blocks = c.filter.coarse_initial.length_blocks = blocks < 12 ? blocks : 12;
+  }
+  auto scale = [](webrtc::EchoCanceller3Config::Suppressor::MaskingThresholds& m, float k) {
+    m.enr_transparent *= k; m.enr_suppress *= k;
+  };
+  scale(c.suppressor.normal_tuning.mask_lf, suppress);
+  scale(c.suppressor.normal_tuning.mask_hf, suppress);
+  scale(c.suppressor.nearend_tuning.mask_lf, nearend);
+  scale(c.suppressor.nearend_tuning.mask_hf, nearend);
+  c.ep_strength.default_gain = echo_gain;
+  c.ep_strength.bounded_erl = bounded;
+  c.echo_audibility.floor_power *= audibility;
+  c.echo_audibility.low_render_limit *= audibility;
+  c.echo_audibility.normal_render_limit *= audibility;
+  return c;
+}
+
+class Aec3Factory : public webrtc::EchoControlFactory {
+ public:
+  explicit Aec3Factory(const webrtc::EchoCanceller3Config& c) : config_(c) {}
+  std::unique_ptr<webrtc::EchoControl> Create(int rate, int render_channels, int capture_channels) override {
+    return std::make_unique<webrtc::EchoCanceller3>(config_, rate, render_channels, capture_channels);
+  }
+ private:
+  webrtc::EchoCanceller3Config config_;
 };
 
 struct Instance {
@@ -39,7 +81,20 @@ struct Instance {
   bool high_pass = true;
   bool transient = false;
   float fixed_gain_db = 0;
+  // Stronger residual echo suppression than WebRTC's defaults: Browsa's reference is close to what the
+  // speakers play but not exact, and desk speakers with bass leave a residual the defaults let through.
+  // Measured on the echo test page: no loss of the user's voice when talking over the far end.
+  float suppress = 0.25f, nearend_suppress = 0.25f, echo_gain = 1, audibility = 1;
+  int filter_blocks = 0;
+  bool bounded_erl = false;
 };
+
+webrtc::AudioProcessing* Build(Instance* in) {
+  return webrtc::AudioProcessingBuilder()
+      .SetEchoControlFactory(std::make_unique<Aec3Factory>(
+          Aec3Config(in->suppress, in->nearend_suppress, in->echo_gain, in->bounded_erl, in->audibility, in->filter_blocks)))
+      .Create();
+}
 
 void Apply(Instance* in) {
   using Config = webrtc::AudioProcessing::Config;
@@ -68,7 +123,7 @@ EXPORT Instance* apm_create(int flags) {
   std::memset(in->mic, 0, sizeof in->mic);
   std::memset(in->ref, 0, sizeof in->ref);
   in->flags = flags;
-  in->apm = webrtc::AudioProcessingBuilder().Create();
+  in->apm = Build(in);
   if (!in->apm) { delete in; return nullptr; }
   Apply(in);
   in->apm->Initialize();
@@ -87,6 +142,21 @@ EXPORT void apm_set(Instance* in, int key, float value) {
     case kHighPass: in->high_pass = value != 0; break;
     case kTransient: in->transient = value != 0; break;
     case kFixedGainDb: in->fixed_gain_db = value; break;
+    case kSuppress: case kNearendSuppress: case kEchoGain: case kBoundedErl: case kAudibility: case kFilterBlocks: {
+      if (key == kSuppress) in->suppress = value;
+      if (key == kNearendSuppress) in->nearend_suppress = value;
+      if (key == kEchoGain) in->echo_gain = value;
+      if (key == kBoundedErl) in->bounded_erl = value != 0;
+      if (key == kAudibility) in->audibility = value;
+      if (key == kFilterBlocks) in->filter_blocks = static_cast<int>(value);
+      auto* fresh = Build(in);
+      if (!fresh) return;
+      delete in->apm;
+      in->apm = fresh;
+      Apply(in);
+      in->apm->Initialize();
+      return;
+    }
     default: return;
   }
   Apply(in);

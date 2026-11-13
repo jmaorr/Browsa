@@ -349,10 +349,14 @@ final class CallAudioHandler: NSObject, WKScriptMessageHandlerWithReply {
         switch body["type"] as? String {
         case "settings":
             return replyHandler(tuning().scriptValue, nil)
+        case "event":
+            CallAudioLog.write(message, what: body["what"] as? String ?? "?", detail: body["detail"] as? String ?? "")
+            return replyHandler(nil, nil)
         case "stats":
             // Only the main frame's numbers, so an embedded frame can't fake them.
             guard message.frameInfo.isMainFrame else { return replyHandler(nil, nil) }
             func num(_ k: String) -> Double? { (body[k] as? NSNumber)?.doubleValue.nilIfNaN }
+            CallAudioLog.stats(message, body)
             stats(CallAudioStats(micDb: num("levelDb") ?? -120, gainDb: num("gainDb"), echoRemovedDb: num("erle"),
                                  delayMs: num("delayMs"), echoLeakLikelihood: num("residual"),
                                  engine: body["engine"] as? String ?? "none", hasReference: (num("references") ?? 0) > 0))
@@ -369,6 +373,53 @@ final class CallAudioHandler: NSObject, WKScriptMessageHandlerWithReply {
         replyHandler(Self.apmBase64 ?? nil, nil)
     }
 }
+/// ~/Library/Logs/Browsa/call-audio.log: one line per call audio event (took over the mic, engine
+/// loaded, call audio found, fell back) and a stats line every 10 s, so a call that went wrong can
+/// be explained afterwards. Private windows aren't logged. Kept under 1 MB.
+@MainActor
+enum CallAudioLog {
+    private static var lastStats = Date.distantPast
+    private static let url = FileManager.default.homeDirectoryForCurrentUser
+        .appending(path: "Library/Logs/Browsa/call-audio.log")
+    private static let stamp: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
+    }()
+
+    static func write(_ message: WKScriptMessage, what: String, detail: String) {
+        guard message.webView?.configuration.websiteDataStore.isPersistent ?? false else { return }
+        let host = message.frameInfo.securityOrigin.host
+        let frame = message.frameInfo.isMainFrame ? "" : " (frame)"
+        append("\(stamp.string(from: Date())) \(host)\(frame) \(what) \(detail)\n")
+    }
+
+    static func stats(_ message: WKScriptMessage, _ body: [String: Any]) {
+        guard Date().timeIntervalSince(lastStats) >= 10 else { return }
+        lastStats = Date()
+        func f(_ k: String) -> String {
+            guard let n = (body[k] as? NSNumber)?.doubleValue, n.isFinite else { return "-" }
+            return String(format: "%.2f", n)
+        }
+        write(message, what: "stats", detail: "mic=\(f("levelDb"))dB gain=\(f("gainDb"))dB erle=\(f("erle"))dB delay=\(f("delayMs"))ms "
+              + "residual=\(f("residual")) engine=\(body["engine"] as? String ?? "-") references=\(f("references"))")
+    }
+
+    private static func append(_ line: String) {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let size = (try? fm.attributesOfItem(atPath: url.path))?[.size] as? Int, size > 1_000_000 {
+            try? fm.removeItem(at: url.deletingPathExtension().appendingPathExtension("old.log"))
+            try? fm.moveItem(at: url, to: url.deletingPathExtension().appendingPathExtension("old.log"))
+        }
+        guard let data = line.data(using: .utf8) else { return }
+        if let h = try? FileHandle(forWritingTo: url) {
+            defer { try? h.close() }
+            _ = try? h.seekToEnd(); try? h.write(contentsOf: data)
+        } else {
+            try? data.write(to: url)
+        }
+    }
+}
+
 private extension Double {
     var nilIfNaN: Double? { isNaN || isInfinite ? nil : self }
 }
