@@ -178,6 +178,14 @@ final class ChromiumPage: NSObject, EnginePage, BCEFBrowserDelegate {
     }
 
     func browserShouldNavigate(_ url: String, userGesture: Bool) -> Bool {
+        // Links for other apps (Zoom's join page fires zoommtg: itself) are stopped before they
+        // navigate, so the page stays as it was whatever the answer to "Open Zoom?" (letting Chromium
+        // try them leaves its "site can't be reached" page behind).
+        if let u = URL(string: url), let scheme = u.scheme?.lowercased(),
+           !["http", "https", "about", "data", "blob", "file", "chrome", "devtools"].contains(scheme) {
+            browserWantsExternalURL(url)
+            return false
+        }
         guard let u = URL(string: url), let gate = Self.navigationGate else { return true }
         return gate(self, u, userGesture)
     }
