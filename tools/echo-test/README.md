@@ -24,7 +24,9 @@ node bot.mjs --selftest                                   # silent local check, 
 node bot.mjs --url https://meet.google.com/abc-defg-hij   # your meeting, opened in Browsa
 ```
 
-Open meet.new in Browsa (signed in), pass its link, admit "Echo bot" when it knocks, and stay quiet while
+As of November 2026 Meet sends an automated guest to its marketing page instead of the lobby ("System info
+will be sent to confirm you're not a bot"), so on Meet itself this only gets as far as the join page; `--selftest`
+still checks the recording and scoring. Open meet.new in Browsa (signed in), pass its link, admit "Echo bot" when it knocks, and stay quiet while
 it talks (60 s by default, `--seconds` to change). It prints Browsa's call log alongside and saves the
 recording in `runs/` (left: what it sent, right: what came back). Uses Playwright's Chromium if installed,
 else the Google Chrome app with a throwaway profile.

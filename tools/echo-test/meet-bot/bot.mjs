@@ -187,12 +187,16 @@ try {
   } else {
     log('Opening', URL_);
     await page.goto(URL_, { waitUntil: 'domcontentloaded' });
-    const click = async (re, ms = 2000) => { const b = page.getByRole('button', { name: re }).first(); if (await b.isVisible({ timeout: ms }).catch(() => false)) { await b.click(); return true; } return false; };
+    const click = async (re, ms = 2000) => {
+      const b = page.getByRole('button', { name: re }).first();
+      if (!(await b.waitFor({ state: 'visible', timeout: ms }).then(() => true, () => false))) return false;
+      await b.click(); return true;
+    };
     await click(/got it|dismiss/i, 4000);
     const nameBox = page.getByRole('textbox', { name: /name/i }).first();
-    if (await nameBox.isVisible({ timeout: 15000 }).catch(() => false)) await nameBox.fill(NAME);
+    if (await nameBox.waitFor({ state: 'visible', timeout: 30000 }).then(() => true, () => false)) await nameBox.fill(NAME);
     await click(/turn off camera/i, 5000);
-    if (!(await click(/ask to join|join now|join anyway/i, 15000))) {
+    if (!(await click(/ask to join|join now|join anyway/i, 30000))) {
       const text = (await page.locator('body').innerText().catch(() => '')).slice(0, 300).replace(/\s+/g, ' ');
       throw new Error('No join button. The page says: ' + text);
     }
