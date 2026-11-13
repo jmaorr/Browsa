@@ -219,9 +219,11 @@ class Core final : public CallAudioCore {
     abl->mNumberBuffers = micChannels_;
     for (int c = 0; c < micChannels_; c++) abl->mBuffers[c] = {1, UInt32(frames * sizeof(float)), micBuffers_[c].data()};
     if (OSStatus e = AudioUnitRender(inUnit_, flags, ts, bus, frames, abl)) return e;
-    // Every input summed: a mic on input 2 of an interface counts as much as one on input 1.
+    // The first two inputs summed: a mic on input 2 of an interface counts as much as one on input 1.
+    // Later channels are left out; on interfaces like the Scarlett they are loopback of the computer's sound.
     float mix[8192];
-    for (UInt32 i = 0; i < frames; i++) { float m = 0; for (int c = 0; c < micChannels_; c++) m += micBuffers_[c][i]; mix[i] = m; }
+    const int use = std::min(micChannels_, 2);
+    for (UInt32 i = 0; i < frames; i++) { float m = 0; for (int c = 0; c < use; c++) m += micBuffers_[c][i]; mix[i] = m; }
     micClock_.update(double(micIndex_), stampSeconds(ts) - inLatency_);
     micRing_.write(mix, frames);
     micIndex_ += frames;
