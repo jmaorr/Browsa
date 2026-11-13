@@ -30,3 +30,18 @@ still checks the recording and scoring. Open meet.new in Browsa (signed in), pas
 it talks (60 s by default, `--seconds` to change). It prints Browsa's call log alongside and saves the
 recording in `runs/` (left: what it sent, right: what came back). Uses Playwright's Chromium if installed,
 else the Google Chrome app with a throwaway profile.
+
+### By hand, when Meet turns the bot away
+
+Start a separate Chrome with a throwaway profile whose mic is the recording and whose own sound is muted,
+then click "Ask to join" yourself and admit it in Browsa:
+
+```sh
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --user-data-dir="$(mktemp -d)" --no-first-run \
+  --disable-features=AudioServiceSandbox --use-fake-device-for-media-stream --use-fake-ui-for-media-stream \
+  --use-file-for-fake-audio-capture="$PWD/meet-bot/standup.wav" --mute-audio https://meet.google.com/abc-defg-hij
+```
+
+`--disable-features=AudioServiceSandbox` matters: without it Chrome's sandboxed audio service can't read the
+file and the guest sends silence ("Failed to read … as input to the fake device" with `--enable-logging=stderr`).
+Run the bot once (`node meet-bot/bot.mjs --selftest`) to create `standup.wav`.
