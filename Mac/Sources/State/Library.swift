@@ -128,6 +128,7 @@ final class Library {
             calls.onCallAudioStats = { [weak self] in self?.callAudioStats = $0 }
         }
         applyBlocking()
+        BoostStore.shared.attach(engine: engine)
         archiveStaleTabs()
         engine.extensionHost = self
         reloadExtensions()

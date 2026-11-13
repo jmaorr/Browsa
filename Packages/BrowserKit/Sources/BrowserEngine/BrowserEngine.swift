@@ -64,6 +64,9 @@ public protocol BrowserEngine: AnyObject {
     func extensionActionState(extensionID: String, for page: (any EnginePage)?) -> EngineActionState?
     /// A tab came to the front of its window, or its window came to the front.
     func pageDidBecomeActive(_ page: any EnginePage)
+
+    /// Per-site styles and scripts the user wrote (Boosts). Applied to pages loaded from now on.
+    func applyBoosts(_ boosts: [PageBoost])
 }
 
 public extension BrowserEngine {
@@ -78,6 +81,51 @@ public extension BrowserEngine {
     func performAction(extensionID: String, for page: (any EnginePage)?, anchor: PlatformView?) {}
     func extensionActionState(extensionID: String, for page: (any EnginePage)?) -> EngineActionState? { nil }
     func pageDidBecomeActive(_ page: any EnginePage) {}
+    func applyBoosts(_ boosts: [PageBoost]) {}
+}
+
+// MARK: - Boosts
+
+/// A user's own CSS and script for one site (Arc called these Boosts). The script runs in its own
+/// isolated world: it sees the page's DOM, never the page's JavaScript.
+public struct PageBoost: Sendable, Equatable {
+    /// "example.com" also covers its subdomains.
+    public var host: String
+    public var css: String
+    public var script: String
+
+    public init(host: String, css: String, script: String) {
+        self.host = host
+        self.css = css
+        self.script = script
+    }
+
+    /// The world Boost styles and scripts run in.
+    public static let world = "browsa.boost"
+
+    /// Defines `__browsaBoostCSS(css)` in the Boost world: replaces the Boost's style sheet. A
+    /// constructed sheet isn't inline style, so sites' Content Security Policies don't block it; a
+    /// <style> element is the fallback.
+    public static let applyCSSFunction = """
+    globalThis.__browsaBoostCSS = globalThis.__browsaBoostCSS || ((css) => {
+      try {
+        let sheet = globalThis.__browsaBoostSheet;
+        if (!sheet) {
+          sheet = new CSSStyleSheet();
+          globalThis.__browsaBoostSheet = sheet;
+          document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+        }
+        sheet.replaceSync(css);
+      } catch (e) {
+        const put = () => {
+          let s = document.getElementById('__browsa_boost');
+          if (!s) { s = document.createElement('style'); s.id = '__browsa_boost'; (document.head || document.documentElement).appendChild(s); }
+          s.textContent = css;
+        };
+        if (document.documentElement) put(); else document.addEventListener('DOMContentLoaded', put, { once: true });
+      }
+    });
+    """
 }
 
 // MARK: - Extensions
