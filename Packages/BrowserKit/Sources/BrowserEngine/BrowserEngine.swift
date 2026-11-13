@@ -495,13 +495,35 @@ public struct CallAudioTuning: Codable, Equatable, Sendable {
     public var noiseCeilingDb: Double = -50
     public var rumbleFilter = true
     public var typingRemover = false
+    /// Automatic mic volume, for sites that ask for it (Meet, Zoom and Teams do).
+    public var autoGain = true
 
     public init() {}
 
-    /// What the call audio script reads.
+    // Settings saved by older versions lack newer keys: those take their defaults instead of the whole
+    // setting being thrown away.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = CallAudioTuning()
+        processing = try c.decodeIfPresent(Processing.self, forKey: .processing) ?? d.processing
+        inputs = try c.decodeIfPresent(Inputs.self, forKey: .inputs) ?? d.inputs
+        noiseSuppression = try c.decodeIfPresent(Int.self, forKey: .noiseSuppression) ?? d.noiseSuppression
+        echoDelayMs = try c.decodeIfPresent(Int.self, forKey: .echoDelayMs) ?? d.echoDelayMs
+        micLevelDb = try c.decodeIfPresent(Double.self, forKey: .micLevelDb) ?? d.micLevelDb
+        gainSpeed = try c.decodeIfPresent(Double.self, forKey: .gainSpeed) ?? d.gainSpeed
+        noiseCeilingDb = try c.decodeIfPresent(Double.self, forKey: .noiseCeilingDb) ?? d.noiseCeilingDb
+        rumbleFilter = try c.decodeIfPresent(Bool.self, forKey: .rumbleFilter) ?? d.rumbleFilter
+        typingRemover = try c.decodeIfPresent(Bool.self, forKey: .typingRemover) ?? d.typingRemover
+        autoGain = try c.decodeIfPresent(Bool.self, forKey: .autoGain) ?? d.autoGain
+    }
+
+    /// What the call audio script reads. Settings › Audio offers the processing, the input, the noise level
+    /// (low to high) and auto gain; the rest are fixed at their defaults, whatever an older version saved.
     public var scriptValue: [String: Any] {
-        ["inputs": inputs.rawValue, "noise": noiseSuppression, "delayMs": echoDelayMs, "micLevelDb": micLevelDb,
-         "gainSpeed": gainSpeed, "noiseCeilingDb": noiseCeilingDb, "rumble": rumbleFilter, "typing": typingRemover]
+        let d = CallAudioTuning()
+        return ["inputs": inputs.rawValue, "noise": max(0, min(noiseSuppression, 2)), "autoGain": autoGain,
+                "delayMs": d.echoDelayMs, "micLevelDb": d.micLevelDb, "gainSpeed": d.gainSpeed,
+                "noiseCeilingDb": d.noiseCeilingDb, "rumble": d.rumbleFilter, "typing": d.typingRemover]
     }
 }
 
