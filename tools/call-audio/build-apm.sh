@@ -53,7 +53,7 @@ ninja -C build
 INC="-I apm -I apm/webrtc -I build"
 for d in build/subprojects/abseil-cpp* apm/subprojects/abseil-cpp*; do [ -d "$d" ] && INC="$INC -I $d"; done
 LIBS=$(find build -name '*.a' | sort | tr '\n' ' ')
-em++ -O3 -std=c++17 -fno-exceptions -DWEBRTC_POSIX $INC "$HERE/apm_wasm.cc" -Wl,--start-group $LIBS -Wl,--end-group \
+em++ -O3 -std=c++17 -fno-exceptions -DWEBRTC_POSIX -DWEBRTC_APM_DEBUG_DUMP=0 $INC "$HERE/apm_wasm.cc" -Wl,--start-group $LIBS -Wl,--end-group \
   -sSTANDALONE_WASM --no-entry -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=8MB \
   -sEXPORTED_FUNCTIONS=_apm_create,_apm_configure,_apm_set,_apm_stat,_apm_mic,_apm_ref,_apm_process,_apm_destroy,_malloc,_free \
   -o "$OUT"
