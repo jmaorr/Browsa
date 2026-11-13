@@ -43,6 +43,9 @@ NS_SWIFT_UI_ACTOR
 - (void)browserWantsExternalURL:(NSString *)url;
 /// The page started or stopped using the mic or camera (a call, as far as Browsa is concerned).
 - (void)browserMediaAccessChanged:(BOOL)audio video:(BOOL)video;
+/// A page opens a window. YES: it opens as a real Chromium pop-up window that stays connected to the
+/// page (sign-in windows report back to their opener). NO: it becomes an ordinary Browsa tab.
+- (BOOL)browserShouldOpenPopupWindow:(NSString *)url;
 @end
 
 /// One Chromium browser (a tab's page) inside an NSView.

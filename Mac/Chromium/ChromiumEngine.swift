@@ -226,6 +226,11 @@ final class ChromiumPage: NSObject, EnginePage, BCEFBrowserDelegate {
 
     func browserMediaAccessChanged(_ audio: Bool, video: Bool) { isInCall = audio || video }
 
+    func browserShouldOpenPopupWindow(_ url: String) -> Bool {
+        guard let host = URL(string: url)?.host() else { return false }
+        return CallTabs.matches(host, CallTabs.signInHosts)
+    }
+
     func browserWantsExternalURL(_ url: String) {
         guard let u = URL(string: url), let delegate else { return }
         let request = NavigationRequest(url: u, kind: .link, isMainFrame: true, method: "GET")

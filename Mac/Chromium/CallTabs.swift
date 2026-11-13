@@ -12,8 +12,12 @@ enum CallTabs {
     /// Sign-in and helper pages a call site sends you through. A call tab stays on Chromium for these
     /// (so the sign-in lands in Chromium's cookies), but they don't pull an ordinary tab over.
     static let callAdjacentHosts = ["accounts.google.com", "google.com", "gstatic.com", "googleusercontent.com",
-                                    "login.microsoftonline.com", "login.live.com", "microsoft.com", "office.com",
-                                    "live.com", "skype.com", "zoom.com", "zoomgov.com"]
+                                    "microsoftonline.com", "login.live.com", "microsoft.com", "office.com", "office.net",
+                                    "microsoft365.com", "cloud.microsoft", "live.com", "skype.com", "msauth.net",
+                                    "zoom.com", "zoomgov.com"]
+    /// Sign-in pages a call site opens in a pop-up window, which has to report back to it.
+    static let signInHosts = ["accounts.google.com", "microsoftonline.com", "login.live.com", "login.microsoft.com",
+                              "msauth.net", "zoom.us", "zoom.com"]
 
     static func matches(_ host: String, _ list: [String]) -> Bool {
         let h = host.lowercased()

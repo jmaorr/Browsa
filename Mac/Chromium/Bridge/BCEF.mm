@@ -186,6 +186,11 @@ static NSMutableSet<NSNumber *> *gOpenPrompts;
 
 static NSString *NS(const CefString &s) { return [NSString stringWithUTF8String:s.ToString().c_str()] ?: @""; }
 
+/// The client for sign-in pop-up windows: CEF's own window handling, nothing reported to Browsa.
+class BPopupClient : public CefClient {
+  IMPLEMENT_REFCOUNTING(BPopupClient);
+};
+
 class BClient : public CefClient,
                 public CefDisplayHandler,
                 public CefLifeSpanHandler,
@@ -307,8 +312,16 @@ class BClient : public CefClient,
   void OnBeforeClose(CefRefPtr<CefBrowser>) override { [owner_ didClose]; }
   bool OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, int, const CefString &target_url, const CefString &,
                      WindowOpenDisposition disposition, bool, const CefPopupFeatures &, CefWindowInfo &,
-                     CefRefPtr<CefClient> &, CefBrowserSettings &, CefRefPtr<CefDictionaryValue> &, bool *) override {
-    // Browsa has no popup windows: every new window becomes a tab.
+                     CefRefPtr<CefClient> &client, CefBrowserSettings &, CefRefPtr<CefDictionaryValue> &, bool *) override {
+    // Sign-in windows (Microsoft and Google) open as real pop-ups, so they can hand the sign-in back to
+    // the call page that opened them. They get their own plain client: their address and title must
+    // never land on the opener's tab.
+    if ([owner_.delegate browserShouldOpenPopupWindow:NS(target_url)]) {
+      BLog(@"popup window %@", NS(target_url));
+      client = new BPopupClient();
+      return false;
+    }
+    // Everything else becomes a Browsa tab.
     BOOL background = disposition == CEF_WOD_NEW_BACKGROUND_TAB;
     [owner_.delegate browserWantsNewTab:NS(target_url) foreground:!background];
     return true;
