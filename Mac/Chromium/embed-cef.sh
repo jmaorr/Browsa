@@ -12,7 +12,9 @@ SIGN="${EXPANDED_CODE_SIGN_IDENTITY:-}"
 [ -n "$SIGN" ] || SIGN="-"
 NAME="Browsa Helper"
 ENTITLEMENTS="$SRCROOT/Mac/Chromium/Helper/helper.entitlements"
-if [ "$SIGN" = "-" ]; then RUNTIME=""; else RUNTIME="--options runtime --timestamp"; fi
+# Hardened runtime whenever there's a real identity; a secure timestamp (needs Apple's server) only for
+# Release, which notarisation checks.
+if [ "$SIGN" = "-" ]; then RUNTIME=""; elif [ "${CONFIGURATION:-}" = "Release" ]; then RUNTIME="--options runtime --timestamp"; else RUNTIME="--options runtime --timestamp=none"; fi
 mkdir -p "$FRAMEWORKS"
 
 # CEF ships a flat framework (Resources/Info.plist at the top), which Xcode's product validation

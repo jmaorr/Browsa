@@ -22,8 +22,17 @@ enum CallTabs {
 
     static func isCallSite(_ url: URL?) -> Bool {
         guard let url, ["http", "https"].contains(url.scheme?.lowercased() ?? ""), let host = url.host() else { return false }
-        return matches(host, callHosts)
+        return matches(host, callHosts + testHosts)
     }
+
+    /// Debug builds: BROWSA_CALL_TEST_HOSTS=localhost,… routes test pages to Chromium too.
+    static let testHosts: [String] = {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["BROWSA_CALL_TEST_HOSTS"]?.split(separator: ",").map(String.init) ?? []
+        #else
+        []
+        #endif
+    }()
 
     static func staysInCallTab(_ url: URL?) -> Bool {
         guard let url else { return false }

@@ -1,5 +1,6 @@
 #import "BCEF.h"
 
+#import <objc/runtime.h>
 #include <cmath>
 #include <vector>
 
@@ -20,16 +21,31 @@
 @interface BCEFApplication () <CefAppProtocol>
 @end
 
-@implementation BCEFApplication {
-  BOOL _handlingSendEvent;
-}
+// No instance variables: Browsa's NSApp is made by SwiftUI (which ignores NSPrincipalClass), so
+// BCEFRuntime switches that object's class to this one before CEF starts, and that is only safe
+// while this subclass adds no storage.
+static BOOL gHandlingSendEvent = NO;
 
-- (BOOL)isHandlingSendEvent { return _handlingSendEvent; }
-- (void)setHandlingSendEvent:(BOOL)handling { _handlingSendEvent = handling; }
+@implementation BCEFApplication
+
+- (BOOL)isHandlingSendEvent { return gHandlingSendEvent; }
+- (void)setHandlingSendEvent:(BOOL)handling { gHandlingSendEvent = handling; }
 
 - (void)sendEvent:(NSEvent *)event {
   CefScopedSendingEvent sendingEventScoper;
   [super sendEvent:event];
+}
+
+// Uncaught exceptions on the main thread (Chromium calling into AppKit), named in Browsa's call log
+// before AppKit ends the app, so a crash says what it was.
+- (void)reportException:(NSException *)exception {
+  NSString *line = [NSString stringWithFormat:@"%@ uncaught %@: %@\n%@\n", NSDate.date, exception.name, exception.reason,
+                    [exception.callStackSymbols componentsJoinedByString:@"\n"]];
+  NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Logs/Browsa/exceptions.log"];
+  NSFileHandle *h = [NSFileHandle fileHandleForWritingAtPath:path];
+  if (!h) { [NSFileManager.defaultManager createFileAtPath:path contents:nil attributes:nil]; h = [NSFileHandle fileHandleForWritingAtPath:path]; }
+  [h seekToEndOfFile]; [h writeData:[line dataUsingEncoding:NSUTF8StringEncoding]]; [h closeFile];
+  [super reportException:exception];
 }
 
 @end
@@ -75,6 +91,12 @@ static CefRefPtr<BApp> gApp;
 
 + (BOOL)startWithCachePath:(NSString *)cachePath {
   if (gStarted) return YES;
+  // CEF talks to NSApp through CefAppProtocol (isHandlingSendEvent and friends). Without it, the
+  // first capture or input event ends in "unrecognized selector".
+  if (![NSApp isKindOfClass:[BCEFApplication class]]) {
+    NSAssert(class_getInstanceSize([BCEFApplication class]) == class_getInstanceSize([NSApp class]), @"BCEFApplication must add no storage");
+    object_setClass(NSApp, [BCEFApplication class]);
+  }
   gLoader = new CefScopedLibraryLoader();
   if (!gLoader->LoadInMain()) {
     NSLog(@"[cef] could not load the Chromium Embedded Framework");
@@ -145,6 +167,23 @@ static CefRefPtr<BApp> gApp;
 }
 @end
 
+static void BLog(NSString *format, ...) NS_FORMAT_FUNCTION(1, 2);
+/// Call tab events for ~/Library/Logs/Browsa/call-tabs.log.
+static void BLog(NSString *format, ...) {
+  va_list args; va_start(args, format);
+  NSString *line = [[NSString alloc] initWithFormat:format arguments:args];
+  va_end(args);
+  line = [NSString stringWithFormat:@"%@ %@\n", NSDate.date, line];
+  NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Logs/Browsa/call-tabs.log"];
+  NSFileHandle *h = [NSFileHandle fileHandleForWritingAtPath:path];
+  if (!h) { [NSFileManager.defaultManager createFileAtPath:path contents:nil attributes:nil]; h = [NSFileHandle fileHandleForWritingAtPath:path]; }
+  [h seekToEndOfFile]; [h writeData:[line dataUsingEncoding:NSUTF8StringEncoding]]; [h closeFile];
+}
+
+/// Permission prompts Chromium still has open. It dismisses a prompt when the page is hidden or
+/// navigates; answering one after that trips a CHECK in CEF, so late answers are dropped.
+static NSMutableSet<NSNumber *> *gOpenPrompts;
+
 static NSString *NS(const CefString &s) { return [NSString stringWithUTF8String:s.ToString().c_str()] ?: @""; }
 
 class BClient : public CefClient,
@@ -167,8 +206,13 @@ class BClient : public CefClient,
   // Permissions: Browsa asks (or remembers) and CEF hears back later, on the main thread, exactly once.
   // Camera and mic come twice: first as a permission prompt (the site asking), then as the media
   // request itself (the capture starting); both go to the same Browsa answer.
+  void OnDismissPermissionPrompt(CefRefPtr<CefBrowser>, uint64_t promptID, cef_permission_request_result_t result) override {
+    BLog(@"prompt %llu dismissed %d", promptID, result);
+    [gOpenPrompts removeObject:@(promptID)];
+  }
   bool OnRequestMediaAccessPermission(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, const CefString &origin,
                                       uint32_t requested, CefRefPtr<CefMediaAccessCallback> callback) override {
+    BLog(@"media %@ 0x%x", NS(origin), requested);
     BOOL audio = (requested & CEF_MEDIA_PERMISSION_DEVICE_AUDIO_CAPTURE) != 0;
     BOOL video = (requested & CEF_MEDIA_PERMISSION_DEVICE_VIDEO_CAPTURE) != 0;
     BOOL screen = (requested & (CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE | CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE)) != 0;
@@ -183,8 +227,11 @@ class BClient : public CefClient,
     });
     return true;
   }
-  bool OnShowPermissionPrompt(CefRefPtr<CefBrowser>, uint64_t, const CefString &origin, uint32_t requested,
+  bool OnShowPermissionPrompt(CefRefPtr<CefBrowser>, uint64_t promptID, const CefString &origin, uint32_t requested,
                               CefRefPtr<CefPermissionPromptCallback> callback) override {
+    BLog(@"prompt %llu %@ 0x%x", promptID, NS(origin), requested);
+    if (!gOpenPrompts) gOpenPrompts = [NSMutableSet set];
+    [gOpenPrompts addObject:@(promptID)];
     CefRefPtr<CefPermissionPromptCallback> cb = callback;
     NSString *o = NS(origin);
     BOOL audio = (requested & CEF_PERMISSION_TYPE_MIC_STREAM) != 0;
@@ -193,7 +240,12 @@ class BClient : public CefClient,
     dispatch_async(dispatch_get_main_queue(), ^{
       id<BCEFBrowserDelegate> d = owner_.delegate;
       void (^answer)(BOOL) = ^(BOOL allowed) {
-        dispatch_async(dispatch_get_main_queue(), ^{ cb->Continue(allowed ? CEF_PERMISSION_RESULT_ACCEPT : CEF_PERMISSION_RESULT_DENY); });
+        dispatch_async(dispatch_get_main_queue(), ^{
+          if (![gOpenPrompts containsObject:@(promptID)]) { BLog(@"prompt %llu already gone, answer %d dropped", promptID, allowed); return; }
+          [gOpenPrompts removeObject:@(promptID)];
+          BLog(@"prompt %llu answered %d", promptID, allowed);
+          cb->Continue(allowed ? CEF_PERMISSION_RESULT_ACCEPT : CEF_PERMISSION_RESULT_DENY);
+        });
       };
       if (!d) { answer(NO); return; }
       if (audio || video) [d browserRequestsMedia:o audio:audio video:video screen:NO decide:answer];
