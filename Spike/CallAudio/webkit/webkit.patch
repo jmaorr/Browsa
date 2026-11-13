@@ -1,0 +1,30 @@
+--- a/Source/WebCore/platform/mediastream/cocoa/CoreAudioCaptureUnit.cpp
++++ b/Source/WebCore/platform/mediastream/cocoa/CoreAudioCaptureUnit.cpp
+@@ -58,6 +58,7 @@
+ #if PLATFORM(MAC)
++#include "BrowsaCallAudioInternalUnit.h"
+ #include "CoreAudioCaptureDevice.h"
+ #include "CoreAudioCaptureDeviceManager.h"
+ #endif
+@@ -115,6 +116,12 @@ std::expected<UniqueRef<CoreAudioCaptureUnit::InternalUnit>, OSStatus> CoreAudioCaptureInternalUnit::create(bool shouldUseVPIO)
+ {
+ #if PLATFORM(MAC)
++    // Browsa: WebRTC's audio processing in place of Apple's voice processing.
++    if (shouldUseVPIO && BrowsaCallAudioInternalUnit::isEnabled()) {
++        UniqueRef<CoreAudioCaptureUnit::InternalUnit> result = makeUniqueRef<BrowsaCallAudioInternalUnit>();
++        return result;
++    }
++
+     if (shouldUseVPIO) {
+         if (auto ioUnit = CoreAudioCaptureUnit::defaultSingleton().takeStoredVPIOUnit()) {
+@@ -824,7 +831,7 @@ void CoreAudioCaptureUnit::prewarmAudioUnitCreation(CompletionHandler<void()>&& callback)
+-    if (!enableEchoCancellation()) {
++    if (!enableEchoCancellation() || BrowsaCallAudioInternalUnit::isEnabled()) {
+         callback();
+         return;
+     }
+--- a/Source/ThirdParty/libwebrtc/Configurations/libwebrtc.exp
++++ b/Source/ThirdParty/libwebrtc/Configurations/libwebrtc.exp
+@@ end of file @@
++__ZN6webrtc29BuiltinAudioProcessingBuilder5BuildERKNS_11EnvironmentE
++__ZTVN6webrtc29BuiltinAudioProcessingBuilderE
