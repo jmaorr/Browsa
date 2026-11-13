@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreAudio
 import AppKit
 import BrowserCore
 import BrowserEngine
@@ -301,6 +302,8 @@ private struct PrivacySettings: View {
 /// Settings › Audio: how Browsa handles the mic on calls (Meet, Zoom, Teams and the like).
 private struct AudioSettings: View {
     @Environment(Library.self) private var browser
+    /// Inputs on the Mac's current mic. The input picker is only for audio interfaces with two or more.
+    @State private var micChannels = AudioSettings.defaultInputChannels()
 
     var body: some View {
         @Bindable var browser = browser
@@ -308,92 +311,46 @@ private struct AudioSettings: View {
         Form {
             Section {
                 Picker("Call audio", selection: $browser.callAudio.processing) {
-                    Text("Browsa").tag(CallAudioTuning.Processing.browsa)
+                    Text("Browsa (recommended)").tag(CallAudioTuning.Processing.browsa)
                     Text("macOS").tag(CallAudioTuning.Processing.system)
                 }
             } footer: {
                 Text(browsa
-                     ? "Browsa cleans up your mic on calls the way Chrome does: it removes echo, background noise and keeps your level steady. Changes below apply within a second, even mid-call."
-                     : "macOS voice processing, the same as Safari. On some audio interfaces it lets echo through or makes your mic very loud. Applies to pages you open or reload after switching.")
+                     ? "Browsa removes echo and background noise on calls, like Chrome does."
+                     : "macOS voice processing, like Safari. Some audio interfaces let echo through. Reload a call to switch.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section {
-                Picker("Inputs", selection: $browser.callAudio.inputs) {
-                    Text("Mix all").tag(CallAudioTuning.Inputs.mix)
-                    Text("Input 1 only").tag(CallAudioTuning.Inputs.first)
-                    Text("Input 2 only").tag(CallAudioTuning.Inputs.second)
-                }
-                LabeledContent("Mic level") {
-                    HStack {
-                        Slider(value: $browser.callAudio.micLevelDb, in: -20...20, step: 1)
-                        Text(Self.db(browser.callAudio.micLevelDb)).monospacedDigit().frame(width: 52, alignment: .trailing)
-                    }
-                }
-            } header: { Text("Microphone") } footer: {
-                Text("For audio interfaces with more than one input: pick the one your mic is plugged into if the other is silent. Mic level turns the mic up or down before anything else.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            .disabled(!browsa)
-            Section {
-                LabeledContent("Speaker delay") {
-                    HStack {
-                        Slider(value: Binding(get: { Double(browser.callAudio.echoDelayMs) },
-                                              set: { browser.callAudio.echoDelayMs = Int($0) }), in: 0...250, step: 10)
-                        Text(browser.callAudio.echoDelayMs == 0 ? "Auto" : "\(browser.callAudio.echoDelayMs) ms")
-                            .monospacedDigit().frame(width: 52, alignment: .trailing)
-                    }
-                }
-            } header: { Text("Echo") } footer: {
-                Text("How long sound takes from your speakers back into your mic. Auto lets Browsa find it; set it if people hear an echo at the start of a call.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            .disabled(!browsa)
-            Section {
-                Picker("Noise suppression", selection: $browser.callAudio.noiseSuppression) {
-                    Text("Off").tag(-1)
-                    Text("Low").tag(0)
-                    Text("Moderate").tag(1)
-                    Text("High").tag(2)
-                    Text("Very high").tag(3)
-                }
-                Toggle("Remove rumble", isOn: $browser.callAudio.rumbleFilter)
-                Toggle("Remove typing and clicks", isOn: $browser.callAudio.typingRemover)
-            } header: { Text("Noise") } footer: {
-                Text("Higher suppression removes more background sound but can make your voice sound thinner.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            .disabled(!browsa)
-            Section {
-                LabeledContent("Speed") {
-                    HStack {
-                        Slider(value: $browser.callAudio.gainSpeed, in: 1...10, step: 0.5)
-                        Text(String(format: "%.1f dB/s", browser.callAudio.gainSpeed)).monospacedDigit().frame(width: 64, alignment: .trailing)
-                    }
-                }
-                LabeledContent("Noise ceiling") {
-                    HStack {
-                        Slider(value: $browser.callAudio.noiseCeilingDb, in: -70...(-30), step: 1)
-                        Text("\(Int(browser.callAudio.noiseCeilingDb)) dB").monospacedDigit().frame(width: 64, alignment: .trailing)
-                    }
-                }
-            } header: { Text("Auto gain") } footer: {
-                Text("Used when the site asks for auto gain, as Meet, Zoom and Teams do. Speed is how fast your level may change; the ceiling stops it turning background noise up past that level.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            .disabled(!browsa)
             if browsa {
-                Section("Now") {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                Section {
+                    if micChannels >= 2 || browser.callAudio.inputs != .mix {
+                        Picker("Microphone", selection: $browser.callAudio.inputs) {
+                            Text("Both inputs").tag(CallAudioTuning.Inputs.mix)
+                            Text("Input 1").tag(CallAudioTuning.Inputs.first)
+                            Text("Input 2").tag(CallAudioTuning.Inputs.second)
+                        }
+                    }
+                    Picker("Background noise reduction", selection: Binding(
+                        get: { max(0, min(browser.callAudio.noiseSuppression, 2)) },
+                        set: { browser.callAudio.noiseSuppression = $0 })) {
+                        Text("Low").tag(0)
+                        Text("Medium").tag(1)
+                        Text("High").tag(2)
+                    }
+                    Toggle("Automatic mic volume", isOn: $browser.callAudio.autoGain)
+                }
+                Section {
+                    TimelineView(.periodic(from: .now, by: 0.5)) { context in
                         if let s = browser.callAudioStats, context.date.timeIntervalSince(s.at) < 3 {
-                            VStack(alignment: .leading, spacing: 4) {
-                                LabeledContent("Mic", value: "\(Int(s.micDb.rounded())) dBFS")
-                                LabeledContent("Echo removed", value: s.echoRemovedDb.map { "\(Int($0.rounded())) dB" } ?? (s.hasReference ? "Measuring…" : "No call audio playing"))
-                                LabeledContent("Measured delay", value: s.delayMs.map { "\(Int($0)) ms" } ?? "–")
-                                LabeledContent("Echo leaking", value: s.echoLeakLikelihood.map { "\(Int(($0 * 100).rounded()))% likely" } ?? "–")
-                                LabeledContent("Engine", value: s.engine == "webrtc" ? "WebRTC" : "Browsa basic")
+                            HStack {
+                                Text(s.hasReference ? "On a call · echo cancelling" : "On a call")
+                                Spacer()
+                                Gauge(value: max(0, min(1, (s.micDb + 60) / 60))) { EmptyView() }
+                                    .gaugeStyle(.accessoryLinearCapacity)
+                                    .frame(width: 120)
+                                    .accessibilityLabel("Mic level")
                             }
                         } else {
-                            Text("No call is using the mic right now.").foregroundStyle(.secondary)
+                            Text("Not on a call").foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -407,9 +364,25 @@ private struct AudioSettings: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear { micChannels = Self.defaultInputChannels() }
     }
 
-    private static func db(_ v: Double) -> String { v == 0 ? "0 dB" : String(format: "%+.0f dB", v) }
+    /// Input channels on the default input device (the mic calls use unless a site picks another).
+    static func defaultInputChannels() -> Int {
+        var device = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice,
+                                                 mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device) == noErr else { return 1 }
+        address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreamConfiguration,
+                                             mScope: kAudioDevicePropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
+        guard AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr, size > 0 else { return 1 }
+        let raw = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+        defer { raw.deallocate() }
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, raw) == noErr else { return 1 }
+        let list = UnsafeMutableAudioBufferListPointer(raw.assumingMemoryBound(to: AudioBufferList.self))
+        return list.reduce(0) { $0 + Int($1.mNumberChannels) }
+    }
 }
 
 private struct EngineSettings: View {

@@ -37,7 +37,7 @@
     const FRAME = 480;                       // 10 ms at 48 kHz, the frame size WebRTC's processing uses
     const db = x => 10 * Math.log10(x + 1e-12);
     const v = {
-      agcOn: options.autoGainControl !== false,
+      agcOn: options.autoGainControl !== false, siteAgc: options.autoGainControl !== false,
       mic: new Float32Array(FRAME), ref: new Float32Array(FRAME), fill: 0,
       out: new Float32Array(FRAME * 8), outRead: 0, outWrite: 0, outCount: 0,
       gainDb: 0, noiseDb: -70, speechDb: -30, peakEnv: 0, frames: 0, farHold: 0, stopped: false,
@@ -113,10 +113,12 @@
       }
     };
     v.settings = m => {
-      if ('autoGainControl' in m) v.agcOn = m.autoGainControl;
+      if ('autoGainControl' in m) v.siteAgc = m.autoGainControl;
       if (m.stop) { v.stopped = true; if (v.engine) v.engine.destroy(); v.engine = null; }
       if (m.flags !== undefined && v.engine) v.engine.configure(m.flags);
       if (m.tuning) { v.tuning = m.tuning; v.inputs = m.tuning.inputs || 'mix'; if (v.engine) v.engine.tune(m.tuning); }
+      // Auto gain runs when the site asks for it, unless Settings › Audio turned it off.
+      v.agcOn = v.siteAgc && !(v.tuning && v.tuning.autoGain === false);
     };
     // WebRTC's audio processing (echo canceller, noise suppressor, gain controller) as WebAssembly.
     v.loadEngine = (bytes, flags) => {
