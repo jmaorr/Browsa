@@ -106,8 +106,10 @@ final class TabController: EnginePageDelegate {
         }
         let scheme = request.url.scheme?.lowercased() ?? ""
         guard ["http", "https", "about", "blob", "data", "file", "javascript", "webkit-extension"].contains(scheme) else {
-            // mailto:, zoommtg:, App Store links and the like belong to other apps.
-            NSWorkspace.shared.open(request.url)
+            // mailto:, zoommtg:, App Store links and the like belong to other apps. Browsa asks first (as
+            // Chrome does), so a page can't throw you into an app: Zoom's join page fires zoommtg: on its
+            // own, and saying no keeps its "join from your browser" option. Email links just open.
+            Task { await openInApp(request.url) }
             return .cancel
         }
         // A call site (or leaving one) moves the tab to the engine it runs on.
@@ -121,6 +123,17 @@ final class TabController: EnginePageDelegate {
             return .redirect(clean)
         }
         return .allow
+    }
+
+    private func openInApp(_ url: URL) async {
+        guard let app = NSWorkspace.shared.urlForApplication(toOpen: url) else { return }
+        let scheme = url.scheme?.lowercased() ?? ""
+        if ["mailto", "tel", "facetime", "sms"].contains(scheme) { NSWorkspace.shared.open(url); return }
+        guard let window else { return }
+        let name = FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
+        let host = page.state.url?.host() ?? tab.url?.host() ?? ""
+        let answer = await window.ask(.dialog(.confirm(host: host, message: "Open \(name)? This page wants to open a link in \(name).")), from: tab)
+        if answer == .ok { NSWorkspace.shared.open(url) }
     }
 
     func page(_ page: any EnginePage, didCommit url: URL?) {

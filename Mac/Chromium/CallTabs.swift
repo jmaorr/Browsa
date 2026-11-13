@@ -48,11 +48,16 @@ enum CallTabs {
         let chromium = ChromiumEngine.shared
         library.engineChooser = { [weak library] tab, url in
             guard let library else { return chromium }
-            if let id = forced[tab.id] { return id == chromium.info.id ? chromium : library.engine }
-            if isCallSite(url) { return chromium }
+            if let id = forced[tab.id] { return id == chromium.info.id && available(in: library) ? chromium : library.engine }
+            if isCallSite(url) { return available(in: library) ? chromium : library.engine }
             let current = library.existingController(for: tab)?.engineID
             if current == chromium.info.id, staysInCallTab(url) { return chromium }
             return library.engine
+        }
+        library.closeGuard = { [weak library] tab in
+            guard let library else { return true }
+            let inCall = tabsInCall(in: library).filter { $0.id == tab.id }
+            return confirmLeaving(inCall, quitting: false)
         }
         // A call tab that follows a link off the call site (and its sign-in pages) hands the tab back to
         // WebKit. Redirects and the site's own navigations stay put.
@@ -63,6 +68,39 @@ enum CallTabs {
             DispatchQueue.main.async { library.swapEngine(of: tab, to: url) }
             return false
         }
+    }
+
+    /// Whether Chromium can run (it starts here, with the first call tab). If it can't, call sites open
+    /// on WebKit as before, with one notice per launch.
+    private static var toldUnavailable = false
+    static func available(in library: Library) -> Bool {
+        if ChromiumEngine.shared.startIfNeeded() { return true }
+        if !toldUnavailable {
+            toldUnavailable = true
+            library.activeWindow?.showToast("Calls open in a normal tab: Browsa's Chromium for calls didn't start")
+        }
+        return false
+    }
+
+    // MARK: Calls in progress
+
+    /// Tabs whose page is using the mic or camera right now.
+    static func tabsInCall(in library: Library) -> [BrowserTab] {
+        library.allTabs.filter { (library.existingController(for: $0)?.page as? ChromiumPage)?.isInCall == true }
+    }
+
+    /// Before closing a tab that's in a call: asks. True to go ahead.
+    static func confirmLeaving(_ tabs: [BrowserTab], quitting: Bool) -> Bool {
+        guard let tab = tabs.first else { return true }
+        let alert = NSAlert()
+        let name = tab.title.isEmpty ? (tab.url?.host() ?? "a call") : tab.title
+        alert.messageText = quitting ? "You're on a call. Quit Browsa?" : "Leave the call?"
+        alert.informativeText = quitting
+            ? "\(name) is using your microphone or camera. Quitting ends the call."
+            : "\(name) is using your microphone or camera. Closing the tab ends the call."
+        alert.addButton(withTitle: quitting ? "Quit" : "Leave Call")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     /// Open in Chromium / Open in WebKit for the current tab.

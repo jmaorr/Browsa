@@ -277,6 +277,10 @@ class BClient : public CefClient,
     [owner_.delegate browserPageMessage:[m substringFromIndex:9]];
     return true;
   }
+  void OnMediaAccessChange(CefRefPtr<CefBrowser>, bool has_video_access, bool has_audio_access) override {
+    BLog(@"media access video %d audio %d", has_video_access, has_audio_access);
+    [owner_.delegate browserMediaAccessChanged:has_audio_access video:has_video_access];
+  }
   void OnTitleChange(CefRefPtr<CefBrowser>, const CefString &title) override {
     [owner_.delegate browserTitleChanged:NS(title)];
   }

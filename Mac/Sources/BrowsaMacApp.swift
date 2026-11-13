@@ -201,6 +201,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        #if CALL_TABS
+        // Cmd-Q in the middle of a meeting would just drop you from it.
+        if !isClearingForQuit, !CallTabs.confirmLeaving(CallTabs.tabsInCall(in: library), quitting: true) { return .terminateCancel }
+        #endif
         guard library.clearDataOnQuit, !isClearingForQuit else { return .terminateNow }
         // Clearing is asynchronous; quit once it's done (or after a few seconds regardless).
         isClearingForQuit = true

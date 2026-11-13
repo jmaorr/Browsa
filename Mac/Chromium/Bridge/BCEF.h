@@ -41,6 +41,8 @@ NS_SWIFT_UI_ACTOR
 - (void)browserPageMessage:(NSString *)message;
 /// The page tried to open a link for another app (zoommtg:, msteams: and the like).
 - (void)browserWantsExternalURL:(NSString *)url;
+/// The page started or stopped using the mic or camera (a call, as far as Browsa is concerned).
+- (void)browserMediaAccessChanged:(BOOL)audio video:(BOOL)video;
 @end
 
 /// One Chromium browser (a tab's page) inside an NSView.

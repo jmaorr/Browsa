@@ -23,12 +23,20 @@ final class ChromiumEngine: BrowserEngine {
         return URL.applicationSupportDirectory.appending(path: id).appending(path: "Chromium")
     }
 
-    private func startIfNeeded() {
-        guard !started else { return }
+    private var failed = false
+
+    /// Starts CEF if it isn't yet. False when it can't (framework missing or broken): call sites then
+    /// stay on WebKit.
+    @discardableResult
+    func startIfNeeded() -> Bool {
+        guard !started else { return true }
+        guard !failed else { return false }
+        defer { failed = !started }
         try? FileManager.default.createDirectory(at: Self.profileDirectory, withIntermediateDirectories: true)
         started = BCEFRuntime.start(withCachePath: Self.profileDirectory.path())
         info = EngineInfo(id: "chromium", name: "Chromium",
                           version: started ? "CEF \(BCEFRuntime.version())" : "failed to start", capabilities: info.capabilities)
+        return started
     }
 
     var isRunning: Bool { started }
@@ -55,6 +63,8 @@ final class ChromiumPage: NSObject, EnginePage, BCEFBrowserDelegate {
     private let browser: BCEFBrowser
     private let profile: BrowsingProfile
     private var findContinuation: CheckedContinuation<Bool, Never>?
+    /// The page is using the mic or camera: there's a call going on in this tab.
+    private(set) var isInCall = false
     private var lastFind = ""
     /// Main-frame navigations Browsa should look at before Chromium follows them (leaving the call
     /// site for an ordinary page hands the tab back to WebKit). Set by the app.
@@ -205,6 +215,8 @@ final class ChromiumPage: NSObject, EnginePage, BCEFBrowserDelegate {
     """
     /// The user picked a source just now, so the capture request that follows needs no second prompt.
     private var screenPickedAt: Date?
+
+    func browserMediaAccessChanged(_ audio: Bool, video: Bool) { isInCall = audio || video }
 
     func browserWantsExternalURL(_ url: String) {
         guard let u = URL(string: url), let delegate else { return }

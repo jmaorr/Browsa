@@ -316,8 +316,8 @@ private struct AudioSettings: View {
                 }
             } footer: {
                 Text(browsa
-                     ? "Browsa removes echo and background noise on calls, like Chrome does."
-                     : "macOS voice processing, like Safari. Some audio interfaces let echo through. Reload a call to switch.")
+                     ? "Browsa removes echo and background noise on calls, like Chrome does. Meet, Zoom and Teams run on Chromium and use its own call audio; this applies to other call sites."
+                     : "macOS voice processing, like Safari. Some audio interfaces let echo through. Meet, Zoom and Teams use Chromium's own call audio either way. Reload a call to switch.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if browsa {

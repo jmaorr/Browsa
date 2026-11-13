@@ -72,6 +72,8 @@ final class Library {
     /// Which engine a tab's page uses for a URL: `engine` (WebKit) unless something else is set up.
     /// The full Browsa build sets this for call tabs (Meet, Zoom, Teams run on Chromium).
     @ObservationIgnored var engineChooser: ((BrowserTab, URL?) -> any BrowserEngine)?
+    /// Asked before a tab closes; false keeps it open (a call tab asks "Leave the call?").
+    @ObservationIgnored var closeGuard: ((BrowserTab) -> Bool)?
     /// Bumped when a tab's page moves to another engine, so views show the new page.
     private(set) var pageSwaps = 0
     let history: HistoryStore
@@ -363,6 +365,7 @@ final class Library {
     // MARK: Closing
 
     func close(_ tab: BrowserTab) {
+        if let closeGuard, !closeGuard(tab) { return }
         for w in windows { w.cancelPrompts(for: tab.id) }
         if !tab.isPrivate, !tab.isPinned, tab.url != nil {
             controllers[tab.id]?.freeze()
