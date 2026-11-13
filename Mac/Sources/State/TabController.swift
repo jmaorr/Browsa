@@ -173,13 +173,15 @@ final class TabController: EnginePageDelegate {
 
     func page(_ page: any EnginePage, requestPermission permission: EnginePermission, host: String) async -> Bool {
         guard let library else { return false }
-        if let saved = library.settings.sitePermissions[host]?[permission.rawValue] { return saved }
+        // Screen sharing is asked every time, like other browsers do.
+        let remembers = permission != .screen
+        if remembers, let saved = library.settings.sitePermissions[host]?[permission.rawValue] { return saved }
         guard let window else { return false }
         let answer = await window.ask(.permission(permission, host: host), from: tab)
         // Cancelled because the tab went away: don't remember a "no" the user never gave.
         guard answer != .cancel || window.currentTab?.id == tab.id else { return false }
         let granted = answer == .ok
-        library.settings.sitePermissions[host, default: [:]][permission.rawValue] = granted
+        if remembers { library.settings.sitePermissions[host, default: [:]][permission.rawValue] = granted }
         return granted
     }
 

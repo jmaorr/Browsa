@@ -53,6 +53,9 @@ class BApp : public CefApp, public CefBrowserProcessHandler {
                                      CefRefPtr<CefCommandLine> command_line) override {
     // Keychain prompts for Chromium's own password store aren't wanted in a spike.
     command_line->AppendSwitch("use-mock-keychain");
+    // getDisplayMedia: try macOS's own screen and window picker (ScreenCaptureKit's content sharing
+    // picker), which Chromium can use on macOS 15 and later.
+    command_line->AppendSwitchWithValue("enable-features", "UseSCContentSharingPicker");
   }
 
   void OnScheduleMessagePumpWork(int64_t delay_ms) override {

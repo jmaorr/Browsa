@@ -183,9 +183,9 @@ final class ChromiumPage: NSObject, EnginePage, BCEFBrowserDelegate {
         let host = URL(string: origin)?.host() ?? origin
         guard let delegate else { decide(false); return }
         if screen {
-            // Step 3 brings a screen and window picker; until then Browsa says no rather than
-            // sharing the whole screen unasked.
-            decide(false)
+            // CEF has no source picker: a yes shares the entire screen (macOS asks once for Screen
+            // Recording). Asked every time.
+            Task { decide(await delegate.page(self, requestPermission: .screen, host: host)) }
             return
         }
         let kind: EnginePermission = audio && video ? .cameraAndMicrophone : video ? .camera : .microphone
