@@ -306,7 +306,9 @@ final class Library {
 
     private func evictIfNeeded(keeping id: UUID) {
         let onScreen = Set(windows.compactMap { $0.currentTab?.id })
-        while lru.count > capacity, let victim = lru.first(where: { $0 != id && !onScreen.contains($0) }) {
+        // Pages on another engine (call tabs, on Chromium) are never unloaded: that would end a call.
+        let evictable = { (t: UUID) in t != id && !onScreen.contains(t) && self.controllers[t]?.engineID ?? self.engine.info.id == self.engine.info.id }
+        while lru.count > capacity, let victim = lru.first(where: evictable) {
             unload(victim)
         }
     }

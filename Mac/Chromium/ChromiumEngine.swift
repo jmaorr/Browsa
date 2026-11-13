@@ -35,12 +35,7 @@ final class ChromiumEngine: BrowserEngine {
 
     func makePage(options: PageOptions, delegate: any EnginePageDelegate) -> any EnginePage {
         startIfNeeded()
-        var url = options.url
-        if url == nil, let data = options.sessionState,
-           let saved = try? JSONDecoder().decode([String: String].self, from: data), let s = saved["url"] {
-            url = URL(string: s)
-        }
-        let page = ChromiumPage(url: url, profile: options.profile)
+        let page = ChromiumPage(url: options.url, profile: options.profile)
         page.delegate = delegate
         return page
     }
@@ -111,8 +106,9 @@ final class ChromiumPage: NSObject, EnginePage, BCEFBrowserDelegate {
         browser.stopFinding()
     }
 
-    /// CEF keeps no back/forward list Browsa can save, so a restored call tab reopens its page.
-    func sessionState() -> Data? { state.url.flatMap { try? JSONEncoder().encode(["url": $0.absoluteString]) } }
+    /// CEF keeps no back/forward list Browsa can save: a restored call tab reopens its URL (the tab
+    /// keeps it), and nothing Chromium-shaped ever reaches a WebKit page's session restore.
+    func sessionState() -> Data? { nil }
 
     func evaluate(_ body: String, inWorld world: String) async throws -> Any? {
         let json: String? = await withCheckedContinuation { c in
