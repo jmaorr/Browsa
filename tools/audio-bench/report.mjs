@@ -20,7 +20,9 @@ function strip(r) {
   let grid = "";
   for (const d of [-20, -40, -60, -80]) grid += `<line class="grid" x1="0" x2="${W}" y1="${y(d)}" y2="${y(d)}"/><text class="gridlabel" x="${W - 4}" y="${+y(d) - 3}">${d}</text>`;
   const act = (arr, cls, yy) => arr.map((v, i) => (v > -60 ? `<rect class="${cls}" x="${x(i * s.frameSec)}" y="${yy}" width="${(W / n + 0.5).toFixed(1)}" height="4"/>` : "")).join("");
-  return `<svg viewBox="0 0 ${W} ${H + 14}" role="img" aria-label="Sent level over time for ${esc(r.name)}">
+  const blocks = r.analysis?.guest?.blocks || [];
+  const marks = blocks.filter((b) => b.audible).map((b) => `<rect class="${b.annoying ? "annoy" : "aud"}" x="${x(b.t)}" y="${H - 6}" width="${(W / dur * 0.2 + 0.5).toFixed(1)}" height="6"><title>${b.t.toFixed(1)} s: echo ${b.echoDb} dBFS, ${b.lossDb} dB below their voice</title></rect>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H + 14}" role="img" aria-label="Sent level over time for ${esc(r.name)}">${marks}
 ${bands}${grid}${line(s.raw, "raw")}${line(s.sent, "sent")}
 ${act(s.far, "actf", H + 2)}${act(s.near, "actn", H + 8)}</svg>`;
 }
@@ -47,8 +49,16 @@ function details(r) {
   else if (a.roomEchoAboveQuietDb != null) facts.push(`room echo at the mic ${num(a.roomEchoAboveQuietDb)} dB above quiet; canceller removed ${num(a.echoRemovedDb)} dB of the correlated echo`);
   if (a.voiceKeptDb != null && m.mode !== "raw") facts.push(`your voice ${num(a.voiceKeptDb)} dB against the raw mic (${num(a.rawSendLevelDb)} dBFS raw)`);
   if (m.delayMs != null && m.mode === "webrtc") facts.push(`canceller delay ${num(m.delayMs, 0)} ms, drift ${num(m.driftPpm)} ppm, resyncs ${m.resyncs}, misses ${m.referenceMisses}, clock resets ${m.clockResets}`);
+  const g = a.guest;
+  if (g) {
+    const f = g.segments.far, b = g.segments.both;
+    facts.unshift(`<b>Guest's ear</b> (one-way ${g.oneWayMs} ms + Browsa ${g.localMs} ms echo path, T = ${num(g.T, 0)} ms; G.131 needs ${num(g.requiredLossDb.acceptable)} dB echo loss to be acceptable, ${num(g.requiredLossDb.limiting)} dB not to be annoying): ` +
+      (f ? `far end only: echo loss ${f.echoLossIsLowerBound ? "≥ " : ""}${num(f.echoLossDb)} dB (TELR ≈ ${num(f.telrDb)}, f = ${num(f.g131Margin)}), audible in ${f.audibleSec} s of ${f.farSpeechSec} s (${num(f.audiblePct)}%; first 5 s ${num(f.first5sAudiblePct)}%, after ${num(f.afterAudiblePct)}%)${f.worst ? `, worst at ${f.worst.t} s: ${f.worst.lossDb} dB below their voice` : ""}` : "") +
+      (b ? `; both talking: echo loss ${b.echoLossIsLowerBound ? "≥ " : ""}${num(b.echoLossDb)} dB (f ${b.echoLossIsLowerBound ? "≥ " : ""}${num(b.g131Margin)}), audible ${num(b.audiblePct)}% (in ${num(b.unmeasurablePct)}% of it the echo, if any, sat too far under your voice to measure, about 10 dB down)${b.worst ? `, worst at ${b.worst.t} s: ${b.worst.lossDb} dB` : ""}` : ""));
+  }
   if (r.notes) facts.push(esc(r.notes));
-  return `<ul class="facts">${facts.map((f) => `<li>${f}</li>`).join("")}</ul>`;
+  const listen = r.analysis?.listen?.length ? `<p class="listen">${r.analysis.listen.map((f) => `<span>${esc(f.label)} <audio controls preload="none" src="${esc(f.href)}"></audio></span>`).join("")}</p>` : "";
+  return `<ul class="facts">${facts.map((f) => `<li>${f}</li>`).join("")}</ul>${listen}`;
 }
 
 export function renderReport(run) {
@@ -92,13 +102,15 @@ svg { width:100%; height:auto; display:block; margin-top:4px; }
 .grid { stroke:var(--line); stroke-width:1; }
 polyline { fill:none; stroke-width:1.4; } .sent { stroke:var(--sent); } .raw { stroke:var(--raw); stroke-width:1; }
 .actf { fill:var(--actf); } .actn { fill:var(--actn); }
+.aud { fill:var(--warnfg); } .annoy { fill:var(--badfg); }
+audio { height:32px; vertical-align:middle; } .listen { margin:6px 0 0; font-size:12.5px; color:var(--muted); } .listen span { margin-right:16px; }
 .facts { margin:6px 0 0; padding-left:18px; color:var(--muted); font-size:12.5px; }
 .legend span { display:inline-block; margin-right:14px; } .sw { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
 </style></head><body><main>
 <h1>Audio Bench</h1>
 <p class="muted">${esc(run.startedAt)} · ${esc(run.description)}</p>
 <div class="scroll"><table><thead><tr><th scope="col" style="text-align:left">Subject</th>${head}</tr></thead><tbody>${rows}</tbody></table></div>
-<p class="muted legend"><span><i class="sw" style="background:var(--sent)"></i>sent</span><span><i class="sw" style="background:var(--raw)"></i>raw mic</span><span><i class="sw" style="background:var(--actf)"></i>far end playing</span><span><i class="sw" style="background:var(--actn)"></i>talker playing</span>Hover a column for what it measures.</p>
+<p class="muted legend"><span><i class="sw" style="background:var(--sent)"></i>sent</span><span><i class="sw" style="background:var(--raw)"></i>raw mic</span><span><i class="sw" style="background:var(--actf)"></i>far end playing</span><span><i class="sw" style="background:var(--actn)"></i>talker playing</span><span><i class="sw" style="background:var(--warnfg)"></i>guest would hear their echo</span><span><i class="sw" style="background:var(--badfg)"></i>…annoyingly</span>Hover a column for what it measures.</p>
 ${sections}
 </main></body></html>`;
 }

@@ -7,7 +7,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { RATE, analyze, boundaries, readWav, scheduled } from "./analyze.mjs";
+import { RATE, analyze, boundaries, readWav, scheduled, writeWavFloat } from "./analyze.mjs";
 import { renderReport } from "./report.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -103,7 +103,31 @@ function analyzeDir(dir, kind) {
     try { start = JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8")).scheduleStartSec; } catch {}
     opts = { farLagMs: start != null ? [start * 1000 - 50, start * 1000 + 400] : [-500, 4000], nearLagMs: [-500, 5000] };
   }
-  return analyze(rec, stim, seconds, opts);
+  let meta = {};
+  try { meta = JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8")); } catch {}
+  opts.guest = { oneWayMs: parseFloat(args["one-way-ms"] || "300"), localMs: meta.delayMs > 0 ? meta.delayMs : 50 };
+  const a = analyze(rec, stim, seconds, opts);
+  a.listen = guestFiles(dir, rec.sent, a);
+  return a;
+}
+
+// What the far participant would hear: what Browsa sends back during their speech (far end only, then both
+// talking), arriving one network round trip after they spoke. Also mixed under their own voice at the true
+// relative level, and turned up 30 dB so faint leak is easy to judge. Listen at low volume.
+function guestFiles(dir, sent, a) {
+  if (!a.guest) return [];
+  const F = Math.round((a.farLagMs * RATE) / 1000), rt = Math.round((2 * a.guest.oneWayMs * RATE) / 1000);
+  const from = b[1], to = b[4], n = to + rt + RATE;
+  const back = new Float32Array(n), withOwn = new Float32Array(n), loud = new Float32Array(n);
+  for (let p = from; p < to; p++) {
+    const v = sent[p + F] || 0, t = p + rt;
+    back[t] = v;
+    loud[t] = Math.max(-1, Math.min(1, v * 31.6));
+  }
+  for (let p = 0; p < n; p++) withOwn[p] = back[p] + (p < stim.far.length ? stim.far[p] : 0);
+  const files = [["guest-hears.wav", back, "Guest hears (their echo)"], ["guest-hears-with-own-voice.wav", withOwn, "Under their own voice"], ["guest-hears-plus30dB.wav", loud, "Echo +30 dB"]];
+  for (const [name, data] of files) writeWavFloat(path.join(dir, name), [data], RATE);
+  return files.map(([name, , label]) => ({ label, href: "file://" + path.join(dir, name) }));
 }
 
 function writeReport(dir, result) {
@@ -249,7 +273,6 @@ async function browserSubject(key, volume, extra = {}) {
   if (p?.talker) await p.talker;
   if (r.timeout) { console.log("timed out"); return { id, name, volume, status: "skipped: timed out (needs a click?)", dir }; }
   if (r.error) { console.log(`failed: ${r.error.name}`); return { id, name, volume, status: `skipped: ${r.error.name}: ${r.error.message}`, dir }; }
-  const { writeWavFloat } = await import("./analyze.mjs");
   writeWavFloat(path.join(dir, "sent.wav"), [r.pcm], RATE);
   const meta = { ...(p.meta || {}), output: args.out || "default output", talkerOutput: args["talker-out"] };
   fs.writeFileSync(path.join(dir, "meta.json"), JSON.stringify(meta, null, 2));

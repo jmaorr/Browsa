@@ -149,8 +149,9 @@ export function coherentPower(x, s, a, b, lag, cacheX) {
     explained += c * sxx;
   }
   for (let f = 0; f < K; f++) { const [xr, xi] = X[f]; for (let k = 0; k <= NFFT / 2; k++) total += xr[k] * xr[k] + xi[k] * xi[k]; }
-  const fraction = total > 0 ? explained / total : 0;
-  return { power: fraction * power(x, a, b), fraction };
+  const fraction = total > 0 ? explained / total : 0, p = power(x, a, b);
+  // Twice what chance coherence over K frames gives: a smaller "explained" power can't be told from none.
+  return { power: fraction * p, fraction, limit: (2 / K) * p };
 }
 
 // The stimulus delay (in samples) that explains the most of x in [a, b): lags from lo to hi ms.
@@ -266,6 +267,7 @@ export function analyze(rec, stim, seconds, opts = {}) {
     // distortion, the suppressor's leftovers), and tells it apart from room noise that happens to be there.
     out.echoRhythm = envelopeCorrelation(x, RATE, stim.far, f0 / S, f1 / S, F / S);
     out.echoCoherentDb = db(coh.power);
+    out.echoCoherentLimitDb = db(coh.limit);
     out.echoCoherentAboveQuietDb = out.echoCoherentDb - out.floorDb;
     out.echoToSpeechDb = out.sendLevelDb != null ? out.echoCoherentDb - out.sendLevelDb : null;
     if (rec.raw) {
@@ -283,10 +285,24 @@ export function analyze(rec, stim, seconds, opts = {}) {
     const a = d0, z = d1;
     const nearDt = coherentPower(x, stim.near, a, z, nearLag.lag), farDt = coherentPower(x, stim.far, a, z, farLag.lag);
     out.dtNearCoherentDb = db(nearDt.power);
-    out.dtEchoCoherentDb = db(farDt.power);
+    // While both talk, model the sent signal from both known sources, so your voice doesn't hide the echo.
+    const two = twoSourceSegment(x, stim.far, stim.near, a, z, farLag.lag, nearLag.lag);
+    out.dtEchoCoherentDb = db(two.power);
+    out.dtEchoCoherentLimitDb = db(two.limit);
+    out.dtEchoSingleSourceDb = db(farDt.power);
     out.talkOverKeptDb = out.nearAloneCoherentDb != null ? out.dtNearCoherentDb - out.nearAloneCoherentDb : null;
     out.dtEchoToSpeechDb = out.dtEchoCoherentDb - out.dtNearCoherentDb;
     out.dtLevelDb = db(power(x, a, z));
+  }
+
+  // The guest's ear: their own voice coming back to them.
+  if (has.far) {
+    out.guest = guestEar(x, stim.far, F, out.windows, out.floorDb, { ...opts.guest, stimNear: stim.near, nearLag: nearLag.lag, overallEchoDb: { far: out.echoCoherentDb, both: out.dtEchoCoherentDb }, overallLimitDb: { far: out.echoCoherentLimitDb, both: out.dtEchoCoherentLimitDb } });
+    const g = out.guest.segments;
+    out.guestAudiblePct = g.far?.audiblePct ?? null;
+    out.guestDtAudiblePct = g.both?.audiblePct ?? null;
+    out.guestMargin = g.far?.g131Margin ?? null;
+    out.guestWorstLossDb = g.far?.worst?.lossDb ?? null;
   }
 
   // Level over time for the report: 100 ms frames of sent (and raw), plus stimulus activity.
@@ -321,6 +337,9 @@ export function analyze(rec, stim, seconds, opts = {}) {
 // ---------- verdicts ----------
 const band = (v, good, warn, lowerIsBetter = true) => v == null || !isFinite(v) ? "na" : lowerIsBetter ? (v <= good ? "good" : v <= warn ? "warn" : "bad") : (v >= good ? "good" : v >= warn ? "warn" : "bad");
 export const METRICS = [
+  { key: "guestAudiblePct", label: "Guest hears own echo", unit: "% of their speech", grade: (v) => band(v, 0, 5), help: "Far end only: share of the other person's speech (200 ms blocks) whose echo comes back above the noise and louder than the ITU-T G.131 'acceptable' talker-echo limit for the assumed delay. Faint, intermittent leak shows up here." },
+  { key: "guestDtAudiblePct", label: "…while both talk", unit: "%", grade: (v) => band(v, 0, 10), help: "The same while you both talk." },
+  { key: "guestMargin", label: "G.131 margin", unit: "f", grade: (v) => band(v, 14, 8, false), help: "ITU-T G.131 f(T, TELR) over the far-end stretch: 14 or more is above the 'acceptable' curve, 8 or less below the 'limiting case' (annoying)." },
   { key: "echoAboveQuietDb", label: "Echo (level above quiet)", unit: "dB", grade: (v) => band(v, 3, 10), help: "Far end only: how much louder the sent audio gets. Under 3 dB good, over 10 dB the other side hears themselves." },
   { key: "echoRhythm", label: "Leftover follows far end", unit: "0–1", grade: (v) => band(v, 0.2, 0.4), help: "How closely what's sent in the far-end-only stretch follows the far end's rhythm (envelope correlation). Low: any level rise there is room noise, not echo. High: echo is getting through, even if distorted." },
   { key: "echoToSpeechDb", label: "Echo vs your voice (correlated)", unit: "dB", grade: (v) => band(v, -30, -20), help: "Far-end recording found inside the sent audio, against your speech level. Noise can't fake it." },
@@ -336,4 +355,182 @@ export function grade(result) {
   const g = {};
   for (const m of METRICS) g[m.key] = m.grade(result[m.key]);
   return g;
+}
+
+// ---------- the guest's ear: does the other person hear their own voice come back? ----------
+//
+// Talker echo is judged by ITU-T G.131 (11/2003) clause 3, rule "derived from formula 3-22/G.107"
+// (the same expression as G.107 (06/2015) eq. 7-22 for TERV):
+//   f(T, TELR) = TELR - 40 log10((1 + T/10) / (1 + T/150)) + 6 exp(-0.3 T^2)
+//   f >= 14: above the "acceptable" curve, not annoying; 8 < f < 14: probably annoying; f <= 8: below the
+//   "limiting case" curve, annoying. T: mean one-way transmission time in ms (half the talker's
+//   mouth-to-ear round trip). G.131 notes "acceptable" corresponds to E-model R = 74, "limiting" to R = 60.
+// TELR = SLR + RLR + echo loss (G.131 clause 3, "TELR = SLR + RLR + Le"). Here the echo loss is measured
+// digitally: the far end's level as it arrives at Browsa against the level of the far-end-correlated
+// signal Browsa sends back (a terminal coupling loss). SLR + RLR default to G.107's 8 + 2 dB.
+export function telrRequired(T, f) {
+  return f + 40 * Math.log10((1 + T / 10) / (1 + T / 150)) - 6 * Math.exp(-0.3 * T * T);
+}
+export function g131Margin(T, telr) {
+  return telr - 40 * Math.log10((1 + T / 10) / (1 + T / 150)) + 6 * Math.exp(-0.3 * T * T);
+}
+
+// Far-end-correlated power in x, per FFT frame, from coherence over a sliding ~1 s neighbourhood.
+function frameEcho(x, s, a, z, lag, half = 11) {
+  const X = spectra(x, a, z), S = spectra(s, a - lag, z - lag), K = Math.min(X.length, S.length);
+  const nb = NFFT / 2 + 1, out = new Float64Array(K), limit = new Float64Array(K);
+  // Per-frame auto and cross spectra in the band.
+  const sxx = [], sss = [], sr = [], si = [], tot = new Float64Array(K);
+  for (let f = 0; f < K; f++) {
+    const [xr, xi] = X[f], [tr, ti] = S[f];
+    const a1 = new Float64Array(nb), a2 = new Float64Array(nb), c1 = new Float64Array(nb), c2 = new Float64Array(nb);
+    for (let k = 0; k < nb; k++) {
+      a1[k] = xr[k] * xr[k] + xi[k] * xi[k];
+      tot[f] += a1[k];
+      if (k < LO || k > HI) continue;
+      a2[k] = tr[k] * tr[k] + ti[k] * ti[k];
+      c1[k] = xr[k] * tr[k] + xi[k] * ti[k];
+      c2[k] = xi[k] * tr[k] - xr[k] * ti[k];
+    }
+    sxx.push(a1); sss.push(a2); sr.push(c1); si.push(c2);
+  }
+  for (let f = 0; f < K; f++) {
+    const f0 = Math.max(0, f - half), f1 = Math.min(K - 1, f + half), n = f1 - f0 + 1;
+    let explained = 0;
+    for (let k = LO; k <= HI; k++) {
+      let A = 0, B = 0, R = 0, I = 0;
+      for (let g = f0; g <= f1; g++) { A += sxx[g][k]; B += sss[g][k]; R += sr[g][k]; I += si[g][k]; }
+      let c = A > 0 && B > 0 ? (R * R + I * I) / (A * B) : 0;
+      c = Math.max(0, (c - 1 / n) / (1 - 1 / n));
+      explained += c * sxx[f][k];
+    }
+    const start = a + f * HOP, p = power(x, start, start + NFFT);
+    out[f] = tot[f] > 0 ? (explained / tot[f]) * p : 0;
+    // What chance coherence over n frames alone would give: below about twice that, echo can't be told
+    // apart from the rest of the sent signal (the near-end voice, while both talk).
+    limit[f] = (2 / n) * p;
+  }
+  return { echo: out, limit };  // frame f covers [a + f*HOP, a + f*HOP + NFFT)
+}
+
+// opts: { oneWayMs (network, default 300), localMs (Browsa's own echo path, default 50), slrRlr (default 10),
+//         blockSec (default 0.2) }
+export function guestEar(x, stimFar, F, windows, floorDb, opts = {}) {
+  const S = RATE, oneWay = opts.oneWayMs ?? 300, local = opts.localMs ?? 50, slrRlr = opts.slrRlr ?? 10, blockSec = opts.blockSec ?? 0.2;
+  const T = oneWay + local / 2;  // mean one-way: half of (network out + back + Browsa's echo path)
+  const need = { acceptable: telrRequired(T, 14) - slrRlr, limiting: telrRequired(T, 8) - slrRlr };
+  const farActive = activeLevel(stimFar, 0, stimFar.length).level;
+  const res = { T, oneWayMs: oneWay, localMs: local, slrRlr, requiredLossDb: need, segments: {}, blocks: [] };
+
+  const segment = (name, [a0, a1]) => {
+    const a = Math.floor(a0 * S), z = Math.floor(a1 * S);
+    if (z - a < NFFT * 4) return;
+    const { echo: fe, limit: fl } = name === "both" && opts.stimNear ? twoSourceFrames(x, stimFar, opts.stimNear, a, z, F, opts.nearLag) : frameEcho(x, stimFar, a, z, F);
+    const framesPerBlock = Math.max(1, Math.round((blockSec * S) / HOP));
+    let farBlocks = 0, audible = 0, annoying = 0, unmeasurable = 0, first = { far: 0, audible: 0 }, worst = null;
+    let echoSum = 0, echoN = 0;
+    for (let f = 0; f + framesPerBlock <= fe.length; f += framesPerBlock) {
+      const start = a + f * HOP, end = start + framesPerBlock * HOP;
+      let e = 0, lim = 0;
+      for (let g = f; g < f + framesPerBlock; g++) { e += fe[g]; lim += fl[g]; }
+      e /= framesPerBlock; lim /= framesPerBlock;
+      const farDb = db(power(stimFar, start - F, end - F));
+      if (farDb < farActive - 20) continue;  // the far end isn't talking in this block
+      farBlocks++;
+      const echoDb = db(e), loss = farDb - echoDb;
+      echoSum += e; echoN++;
+      const measurable = e > lim;
+      if (!measurable) unmeasurable++;
+      const aboveNoise = measurable && echoDb > floorDb;
+      const isAudible = aboveNoise && loss < need.acceptable, isAnnoying = aboveNoise && loss < need.limiting;
+      if (isAudible) audible++;
+      if (isAnnoying) annoying++;
+      const t = start / S;
+      if (t < a0 + 5) { first.far++; if (isAudible) first.audible++; }
+      if (aboveNoise && (!worst || loss < worst.lossDb)) worst = { t: +t.toFixed(2), echoDb: +echoDb.toFixed(1), lossDb: +loss.toFixed(1) };
+      res.blocks.push({ t: +t.toFixed(2), seg: name, echoDb: +echoDb.toFixed(1), lossDb: +loss.toFixed(1), audible: isAudible, annoying: isAnnoying, measurable });
+    }
+    // The overall figure comes from coherence over the whole stretch (hundreds of frames, so chance coherence
+    // is about 27 dB down rather than 10), not from the per-block estimates.
+    const overallDb = opts.overallEchoDb?.[name];
+    const limitDb = opts.overallLimitDb?.[name];
+    // Below the measurement limit, report the loss the limit allows ("at least").
+    const atLimit = overallDb != null && limitDb != null && overallDb < limitDb;
+    const usedDb = atLimit ? limitDb : overallDb;
+    const overallLoss = usedDb != null && isFinite(usedDb) ? farActive - usedDb : echoN ? farActive - db(echoSum / echoN) : null;
+    res.segments[name] = {
+      farSpeechSec: +(farBlocks * framesPerBlock * HOP / S).toFixed(1),
+      audibleSec: +(audible * framesPerBlock * HOP / S).toFixed(1),
+      audiblePct: farBlocks ? +((100 * audible) / farBlocks).toFixed(1) : null,
+      annoyingPct: farBlocks ? +((100 * annoying) / farBlocks).toFixed(1) : null,
+      // Blocks where the echo, if any, was too far under the rest of the signal to measure (mostly while both talk).
+      unmeasurablePct: farBlocks ? +((100 * unmeasurable) / farBlocks).toFixed(1) : null,
+      first5sAudiblePct: first.far ? +((100 * first.audible) / first.far).toFixed(1) : null,
+      afterAudiblePct: farBlocks - first.far ? +((100 * (audible - first.audible)) / (farBlocks - first.far)).toFixed(1) : null,
+      echoLossDb: overallLoss,
+      echoLossIsLowerBound: atLimit,
+      telrDb: overallLoss != null ? overallLoss + slrRlr : null,
+      g131Margin: overallLoss != null ? g131Margin(T, overallLoss + slrRlr) : null,
+      worst,
+    };
+  };
+  segment("far", windows.far);
+  segment("both", windows.both);
+  return res;
+}
+
+// Two known sources in one recording (both talking): per bin, least-squares fit of x to the far end and the
+// talker together over K frames (a 2x2 cross-spectral solve), so the talker's voice no longer hides the
+// echo. Returns the far-end part's power and the measurement limit set by what neither source explains.
+// frames: optional [f0, f1) range of frames to sum (for time-resolved use); default all.
+function spectraSet(x, far, near, a, b, lagFar, lagNear) {
+  return { X: spectra(x, a, b), A: spectra(far, a - lagFar, b - lagFar), B: spectra(near, a - lagNear, b - lagNear) };
+}
+function twoSourceEcho(set, f0, f1, framePower) {
+  const { X, A, B } = set;
+  let echo = 0, resid = 0, total = 0;
+  const K = f1 - f0;
+  if (K < 4) return { power: 0, limit: 0 };
+  for (let k = LO; k <= HI; k++) {
+    let aa = 0, bb = 0, abr = 0, abi = 0, axr = 0, axi = 0, bxr = 0, bxi = 0, xx = 0;
+    for (let f = f0; f < f1; f++) {
+      const [xr, xi] = X[f], [ar, ai] = A[f], [br, bi] = B[f];
+      aa += ar[k] * ar[k] + ai[k] * ai[k]; bb += br[k] * br[k] + bi[k] * bi[k]; xx += xr[k] * xr[k] + xi[k] * xi[k];
+      // conj(a)*b, conj(a)*x, conj(b)*x
+      abr += ar[k] * br[k] + ai[k] * bi[k]; abi += ar[k] * bi[k] - ai[k] * br[k];
+      axr += ar[k] * xr[k] + ai[k] * xi[k]; axi += ar[k] * xi[k] - ai[k] * xr[k];
+      bxr += br[k] * xr[k] + bi[k] * xi[k]; bxi += br[k] * xi[k] - bi[k] * xr[k];
+    }
+    // Solve [aa, ab; conj(ab), bb] [h1; h2] = [ax; bx]
+    const det = aa * bb - (abr * abr + abi * abi);
+    if (!(det > 0)) continue;
+    // h1 = (bb*ax - ab*bx) / det
+    const h1r = (bb * axr - (abr * bxr - abi * bxi)) / det, h1i = (bb * axi - (abr * bxi + abi * bxr)) / det;
+    // h2 = (aa*bx - conj(ab)*ax) / det
+    const h2r = (aa * bxr - (abr * axr + abi * axi)) / det, h2i = (aa * bxi - (abr * axi - abi * axr)) / det;
+    const e1 = (h1r * h1r + h1i * h1i) * aa, e2 = (h2r * h2r + h2i * h2i) * bb;
+    // cross term between the two modelled parts
+    const cross = 2 * ((h1r * h2r + h1i * h2i) * abr - (h1r * h2i - h1i * h2r) * abi);
+    const r = Math.max(0, xx - e1 - e2 - cross);
+    echo += Math.max(0, e1 - r / K);  // bias: about one residual share per fitted source
+    resid += r;
+  }
+  for (let f = f0; f < f1; f++) { const [xr, xi] = X[f]; for (let k = 0; k <= NFFT / 2; k++) total += xr[k] * xr[k] + xi[k] * xi[k]; }
+  const scale = total > 0 ? framePower / total : 0;
+  return { power: echo * scale, limit: (2 / K) * resid * scale };
+}
+export function twoSourceSegment(x, far, near, a, b, lagFar, lagNear) {
+  const set = spectraSet(x, far, near, a, b, lagFar, lagNear), K = Math.min(set.X.length, set.A.length, set.B.length);
+  return twoSourceEcho(set, 0, K, power(x, a, b));
+}
+export function twoSourceFrames(x, far, near, a, b, lagFar, lagNear, half = 11) {
+  const set = spectraSet(x, far, near, a, b, lagFar, lagNear), K = Math.min(set.X.length, set.A.length, set.B.length);
+  const echo = new Float64Array(K), limit = new Float64Array(K);
+  for (let f = 0; f < K; f++) {
+    const f0 = Math.max(0, f - half), f1 = Math.min(K, f + half + 1);
+    const s0 = a + f0 * HOP, s1 = a + (f1 - 1) * HOP + NFFT;
+    const r = twoSourceEcho(set, f0, f1, power(x, s0, s1));
+    echo[f] = r.power; limit[f] = r.limit;
+  }
+  return { echo, limit };
 }
