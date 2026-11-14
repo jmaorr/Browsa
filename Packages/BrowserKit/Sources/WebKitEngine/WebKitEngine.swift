@@ -99,7 +99,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable {
         let c = WKWebViewConfiguration()
         c.websiteDataStore = store
         c.upgradeKnownHostsToHTTPS = true
-        c.mediaTypesRequiringUserActionForPlayback = .all
+        c.mediaTypesRequiringUserActionForPlayback = AudioBench.isEnabled ? [] : .all
         c.defaultWebpagePreferences.preferredContentMode = .desktop
         // Sites' own fullscreen buttons (YouTube, Netflix) work on the Mac.
         c.preferences.isElementFullscreenEnabled = true
@@ -424,3 +424,21 @@ private extension Double {
     var nilIfNaN: Double? { isNaN || isInfinite ? nil : self }
 }
 #endif
+
+/// tools/audio-bench: `BROWSA_AUDIO_BENCH=1` lets its page at http://localhost use the mic and play sound
+/// with nobody there to click. Never in the daily-driver build (com.orriginal.browsa).
+public enum AudioBench {
+    public static let isEnabled: Bool = ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH"] == "1"
+        && Bundle.main.bundleIdentifier != "com.orriginal.browsa"
+    /// Seconds between scripted tab switches during a bench call (BROWSA_AUDIO_BENCH_TAB_SWITCH), or nil.
+    public static var tabSwitchSeconds: Double? {
+        guard isEnabled, let s = ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH_TAB_SWITCH"], let v = Double(s), v >= 2 else { return nil }
+        return v
+    }
+    /// A page to open at launch (the bench's URL).
+    public static var launchURL: URL? {
+        guard isEnabled, let s = ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH_URL"], let url = URL(string: s),
+              ["localhost", "127.0.0.1"].contains(url.host ?? "") else { return nil }
+        return url
+    }
+}

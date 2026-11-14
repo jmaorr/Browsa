@@ -94,15 +94,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let engine = WebKitEngine()
         let library = Library(engine: engine)
         #if CALL_TABS
-        // Meet, Zoom and Teams run on Chromium (see Mac/Chromium/CallTabs.swift).
-        CallTabs.install(in: library)
+        // Meet, Zoom and Teams run on Chromium (see Mac/Chromium/CallTabs.swift). Not in the patched
+        // WebKit spike (Spike/CallAudio/webkit), where calls have to run on WebKit to test its audio.
+        if Bundle.main.bundleIdentifier != "com.orriginal.browsa.webkitspike" || ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH_CALL_TABS"] == "1" {
+            CallTabs.install(in: library)
+        }
         #endif
         return library
     }
     private var keyMonitor: Any?
     private var archiveTimer: Timer?
 
+    /// tools/audio-bench: open its page once a window is up (it can take a moment, and longer while the
+    /// screen is locked). Progress goes to stderr, which the bench keeps.
+    private func openAudioBenchPage(_ url: URL, attempt: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self else { return }
+            let hasWindow = self.library.activeWindow != nil
+            FileHandle.standardError.write(Data("AudioBench: attempt \(attempt), window \(hasWindow)\n".utf8))
+            if let window = self.library.activeWindow {
+                // A bench page from an earlier run comes back with the session: close it, or two pages play.
+                for old in self.library.allTabs where old.url?.path == url.path && ["localhost", "127.0.0.1"].contains(old.url?.host ?? "") {
+                    self.library.close(old)
+                }
+                // Make the page now: tabs normally get theirs when their view first draws, which doesn't
+                // happen while the screen is locked.
+                let tab = window.newTab(url: url, source: .link)
+                _ = self.library.controller(for: tab)
+                FileHandle.standardError.write(Data("AudioBench: opened \(url.absoluteString)\n".utf8))
+            } else if attempt >= 20 {
+                FileHandle.standardError.write(Data("AudioBench: no window, gave up\n".utf8))
+            } else {
+                self.openAudioBenchPage(url, attempt: attempt + 1)
+            }
+        }
+    }
+
+    /// tools/audio-bench: every `every` seconds, show a blank tab for 2 s and go back, as you might mid-call,
+    /// to check the call's audio carries on when its tab isn't in front.
+    private func scheduleAudioBenchTabSwitch(every: Double) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + every) { [weak self] in
+            guard let self, let window = self.library.activeWindow, let back = window.currentTab else { self?.scheduleAudioBenchTabSwitch(every: every); return }
+            let blank = window.newTab(url: URL(string: "about:blank"), source: .link)
+            FileHandle.standardError.write(Data("AudioBench: switched away from the call tab\n".utf8))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                window.select(back)
+                self.library.close(blank)
+                FileHandle.standardError.write(Data("AudioBench: back on the call tab\n".utf8))
+                self.scheduleAudioBenchTabSwitch(every: every)
+            }
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // tools/audio-bench opens its page at launch (test builds only; see AudioBench).
+        if let url = AudioBench.launchURL { openAudioBenchPage(url, attempt: 0) }
+        if let every = AudioBench.tabSwitchSeconds { scheduleAudioBenchTabSwitch(every: every) }
         // Sign-ins from the sandbox days, once. Pages that loaded before they're in reload.
         CookieImport.runIfNeeded { [weak self] in
             guard let library = self?.library else { return }
