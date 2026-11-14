@@ -31,7 +31,13 @@ const schedule = (q.get("schedule") || "4,20,15,20,3").split(",").map(Number);
 const constraints = { echoCancellation: q.get("ec") !== "0", noiseSuppression: q.get("ns") !== "0", autoGainControl: q.get("agc") !== "0" };
 const total = schedule.reduce((a, b) => a + b, 0);
 const $ = (id) => document.getElementById(id);
-const status = (t) => { $("status").textContent = t; };
+let lastSent = "";
+const status = (t) => {
+  $("status").textContent = t;
+  // The bench keeps these in page.log, for runs nobody watches.
+  const head = t.replace(/\d+ s left/, "running");
+  if (head !== lastSent) { lastSent = head; fetch(`/status?subject=${encodeURIComponent(subject)}`, { method: "POST", body: t }).catch(() => {}); }
+};
 const report = (path, body, type = "application/json") => fetch(`/${path}?subject=${encodeURIComponent(subject)}`, { method: "POST", headers: { "content-type": type }, body });
 
 const WORKLET = `
@@ -54,8 +60,10 @@ async function run() {
     const track = mic.getAudioTracks()[0];
     const settings = track.getSettings();
 
+    status(`Mic open: ${track.label}`);
     const ctx = new AudioContext({ sampleRate: 48000 });
     await ctx.resume();
+    status(`Audio context ${ctx.state}`);
     await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" })));
 
     // Record the processed mic track: exactly what a call would send.
@@ -77,7 +85,9 @@ async function run() {
     await pc2.setLocalDescription(); await pc1.setRemoteDescription(pc2.localDescription);
     const audio = new Audio();
     audio.srcObject = await remote;
+    status("Remote track ready, playing");
     await audio.play();
+    status("Playing far end");
 
     // Schedule: quiet, far only, near only (the bench's talker), both, quiet.
     const t0 = ctx.currentTime + 0.5;
@@ -119,6 +129,9 @@ async function run() {
   }
 }
 
+window.addEventListener("error", (e) => status(`Error: ${e.message}`));
+window.addEventListener("unhandledrejection", (e) => status(`Rejection: ${e.reason}`));
+status("Page loaded");
 if (q.get("manual") === "1" || subject === "manual") { $("start").hidden = false; $("start").onclick = run; status("Press Start, allow the microphone, then stay quiet until it says Done."); }
 else run();
 </script>

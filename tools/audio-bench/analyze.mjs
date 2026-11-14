@@ -269,6 +269,8 @@ export function analyze(rec, stim, seconds, opts = {}) {
     out.echoCoherentAboveQuietDb = out.echoCoherentDb - out.floorDb;
     out.echoToSpeechDb = out.sendLevelDb != null ? out.echoCoherentDb - out.sendLevelDb : null;
     if (rec.raw) {
+      // How loud you are at the mic against the far end's echo there: talk-over results depend on it.
+      out.nearToEchoAtMicDb = out.rawSendLevelDb != null ? out.rawSendLevelDb - activeLevel(rec.raw, f0, f1).level : null;
       const roomCoh = coherentPower(rec.raw, stim.far, f0, f1, F);
       out.roomEchoDb = db(roomCoh.power);
       out.roomEchoAboveQuietDb = db(power(rec.raw, f0, f1)) - db(power(rec.raw, q0, q1));

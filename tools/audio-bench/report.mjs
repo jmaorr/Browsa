@@ -41,6 +41,7 @@ function details(r) {
   if (m.talkerOutput) facts.push(`Talker: ${esc(m.talkerOutput)}`);
   if (r.volume != null) facts.push(`Volume ${r.volume}`);
   if (a.farLagMs != null) facts.push(`far end found ${Math.round(a.farLagMs)} ms from the schedule in the recording, talker ${Math.round(a.nearLagMs)} ms`);
+  if (a.nearToEchoAtMicDb != null) facts.push(`you at the mic ${num(a.nearToEchoAtMicDb)} dB louder than the far end's echo there (talk-over results depend on this)`);
   if (a.windows5s) facts.push(`5 s echo windows: ${a.windows5s.join(" ")} dB`);
   if (a.roomEchoAboveQuietDb != null && m.mode === "raw") facts.push(`room echo at the mic ${num(a.roomEchoAboveQuietDb)} dB above quiet`);
   else if (a.roomEchoAboveQuietDb != null) facts.push(`room echo at the mic ${num(a.roomEchoAboveQuietDb)} dB above quiet; canceller removed ${num(a.echoRemovedDb)} dB of the correlated echo`);

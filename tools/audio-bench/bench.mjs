@@ -16,10 +16,10 @@ const HOME = os.homedir();
 const DERIVED = path.join(HOME, "Developer/Browsa/derived");
 const BENCH = path.join(DERIVED, "audio-bench");
 const LAB = path.join(DERIVED, "audio-lab/Browsa Audio Lab.app/Contents/MacOS/audiolab");
-const MAX_VOLUME = 40;
+const MAX_VOLUME = 60;
 
 // ---------- arguments ----------
-const args = { subjects: "webrtc,apple,raw", volumes: "", in: "", out: "", "talker-out": "MacBook Pro Speakers", "talker-volume": "0.3", schedule: "4,20,15,20,3" };
+const args = { subjects: "webrtc,apple,raw", volumes: "50,60", in: "", out: "", "talker-out": "MacBook Pro Speakers", "talker-volume": "1", schedule: "4,20,15,20,3" };
 for (let i = 2; i < process.argv.length; i++) {
   const a = process.argv[i];
   if (!a.startsWith("--")) continue;
@@ -38,9 +38,9 @@ if (args.reanalyze) args.schedule = JSON.parse(fs.readFileSync(path.join(path.re
 const seconds = args.schedule.split(",").map(Number);
 if (seconds.length !== 5 || seconds.some((s) => !(s >= 0))) throw new Error("--schedule needs five numbers");
 const total = seconds.reduce((a, b) => a + b, 0);
-const volumes = args.volumes ? args.volumes.split(",").map(Number) : [null];
+const volumes = args.volumes && args.volumes !== "same" ? args.volumes.split(",").map(Number) : [null];
 for (const v of volumes) if (v != null && (!(v >= 0) || v > MAX_VOLUME)) throw new Error(`volume ${v}: the bench never goes above ${MAX_VOLUME}`);
-const talkerVolume = Math.min(parseFloat(args["talker-volume"]), MAX_VOLUME / 100);
+const talkerVolume = Math.min(Math.max(parseFloat(args["talker-volume"]), 0), 1);
 
 // ---------- one bench at a time ----------
 fs.mkdirSync(BENCH, { recursive: true });
@@ -131,6 +131,7 @@ fs.mkdirSync(RUN, { recursive: true });
 
 const NATIVE = {
   webrtc: "Browsa core (WebRTC, native)",
+  "webrtc-agc": "Browsa core + auto gain (native)",
   apple: "Apple voice processing (native)",
   raw: "No processing (raw mic)",
 };
@@ -150,7 +151,7 @@ function run(cmd, argv, timeoutMs) {
 async function nativeSubject(mode, volume) {
   const id = volume == null ? mode : `${mode}-v${volume}`, dir = path.join(RUN, id);
   const name = NATIVE[mode] + (volume == null ? "" : ` @ volume ${volume}`);
-  const argv = ["--mode", mode, "--far", farWav, "--talker", nearWav, "--talker-out", args["talker-out"], "--talker-volume", String(talkerVolume),
+  const argv = ["--mode", mode === "webrtc-agc" ? "webrtc" : mode, ...(mode === "webrtc-agc" ? ["--gain"] : []), "--far", farWav, "--talker", nearWav, "--talker-out", args["talker-out"], "--talker-volume", String(talkerVolume),
     "--schedule", seconds.join(","), "--out-dir", dir];
   if (args.in) argv.push("--in", args.in);
   if (args.out) argv.push("--out", args.out);
@@ -189,7 +190,8 @@ const server = http.createServer((req, res) => {
       // The page's schedule starts now: the talker follows the same schedule from here.
       p.talker = run(LAB, ["--mode", "play", "--talker", nearWav, "--talker-out", args["talker-out"], "--talker-volume", String(talkerVolume),
         "--schedule", seconds.join(","), "--out-dir", path.join(p.dir, "talker")], (total + 20) * 1000);
-    } else if (url.pathname === "/meta") p.meta = JSON.parse(buf.toString("utf8"));
+    } else if (url.pathname === "/status") fs.appendFileSync(path.join(p.dir, "page.log"), `${new Date().toISOString()} ${buf.toString("utf8")}\n`);
+    else if (url.pathname === "/meta") p.meta = JSON.parse(buf.toString("utf8"));
     else if (url.pathname === "/error") p.resolve({ error: JSON.parse(buf.toString("utf8")) });
     else if (url.pathname === "/result") {
       const pcm = new Float32Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length - (buf.length % 4)));
@@ -205,8 +207,11 @@ for (let tries = 0; ; tries++, PORT++) {
   if (tries > 20) throw new Error("no free port for the bench page");
 }
 
+const SPIKE = path.join(DERIVED, "webkit-spike/run.sh");
 const BROWSERS = {
   chrome: { name: "Chrome (WebRTC processing)", start: chromeStart },
+  spike: { name: "Browsa WebKit Spike, patched (WebRTC in WebKit)", start: (url, dir) => spikeStart(url, dir, false) },
+  "spike-apple": { name: "Browsa WebKit Spike, Apple processing", start: (url, dir) => spikeStart(url, dir, true) },
   safari: { name: "Safari (manual, one click)", manual: true, start: (url) => run("open", ["-a", "Safari", url + "&manual=1"], 15000) },
 };
 function chromeStart(url, dir) {
@@ -217,12 +222,22 @@ function chromeStart(url, dir) {
   return { stop: () => new Promise((r) => { c.once("close", () => { children.delete(c); fs.rmSync(profile, { recursive: true, force: true }); r(); }); c.kill("SIGTERM"); setTimeout(() => c.kill("SIGKILL"), 4000); }) };
 }
 
+// Browsa WebKit Spike on the patched WebKit (Spike/CallAudio/webkit/build-browsa.sh), opened on the bench page
+// by its test-only AudioBench hook. Its stderr goes to app.log. (WebKit's own logs need admin to read.)
+function spikeStart(url, dir, apple) {
+  if (!fs.existsSync(SPIKE)) throw new Error(`no ${SPIKE}: run Spike/CallAudio/webkit/build-browsa.sh`);
+  const out = fs.openSync(path.join(dir, "app.log"), "w");
+  const app = spawn(SPIKE, apple ? ["apple"] : [], { stdio: ["ignore", out, out], env: { ...process.env, BROWSA_AUDIO_BENCH: "1", BROWSA_AUDIO_BENCH_URL: url } });
+  children.add(app);
+  return { stop: () => new Promise((r) => { if (app.exitCode != null) return r(); app.once("close", () => { children.delete(app); r(); }); app.kill("SIGTERM"); setTimeout(() => app.kill("SIGKILL"), 5000); }) };
+}
+
 async function browserSubject(key, volume, extra = {}) {
   const def = { ...BROWSERS[key], ...extra };
   const id = volume == null ? key : `${key}-v${volume}`, dir = path.join(RUN, id), name = def.name + (volume == null ? "" : ` @ volume ${volume}`);
   fs.mkdirSync(dir, { recursive: true });
   if (def.manual && !args.manual) return { id, name, volume, status: "skipped: needs a click (run with --manual)", dir };
-  const url = `http://localhost:${PORT}/bench.html?subject=${encodeURIComponent(id)}&schedule=${seconds.join(",")}`;
+  const url = `http://127.0.0.1:${PORT}/bench.html?subject=${encodeURIComponent(id)}&schedule=${seconds.join(",")}`;
   process.stdout.write(`${name}: running ${total} s… `);
   const done = new Promise((resolve) => pending.set(id, { dir, resolve }));
   const app = await def.start(url, dir);
