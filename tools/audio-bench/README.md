@@ -38,7 +38,7 @@ for a 10 minute far-end/double-talk soak that catches drift and gain creep).
 Native subjects run `Browsa Audio Lab` (built by `Spike/CallAudio/build.sh`). Run from a terminal (or
 Claude) that already has microphone access, it records with no prompt.
 
-Browser subjects open `page/bench.html` from the bench's local server (port 8766). The page asks for the
+Browser subjects open `page/bench.html` from the bench's local server (first free port from 8777). The page asks for the
 mic with Meet's constraints (echo cancellation, noise suppression, auto gain), plays the far end through a
 loopback `RTCPeerConnection` into an audio element (as a call does; WebKit only hands MediaStream audio to its
 echo canceller), records the processed mic track and posts it back. The bench starts the talker when the page
@@ -53,7 +53,8 @@ The same for every subject, from what would be sent plus the known stimuli. Each
 recording by coherence, so start-up offsets don't matter.
 
 - **Echo (level above quiet)**: far end only, sent level against the sent quiet level (the `tools/echo-test`
-  yardstick: under 3 dB good, over 10 dB heard). Also in 5 s windows.
+  yardstick: under 3 dB good, over 10 dB heard). Also in 5 s windows. **Leftover follows far end** says
+  whether a rise there is echo (follows the far end's rhythm, even distorted) or room noise.
 - **Echo vs your voice (correlated)**: how much of the sent signal is the far-end recording (magnitude-squared
   coherence, 100 Hz to 7 kHz), against your speech level. Room noise can't fake it or hide it.
 - **Echo while both talk** and **your voice kept in talk-over**: the same split during double-talk, and your

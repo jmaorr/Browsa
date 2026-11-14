@@ -186,7 +186,7 @@ function pearson(p, q) {
   return sp > 0 && sq > 0 ? spq / Math.sqrt(sp * sq) : 0;
 }
 // x is at the device rate; the stimulus sits `centreSec` later in x than in its own timeline.
-function envelopeCorrelation(x, rate, stim, aSec, bSec, centreSec) {
+export function envelopeCorrelation(x, rate, stim, aSec, bSec, centreSec) {
   const ex = envelope(x, rate, aSec * rate, bSec * rate);
   let best = 0;
   for (let lagMs = -150; lagMs <= 150; lagMs += 10) {
@@ -262,6 +262,9 @@ export function analyze(rec, stim, seconds, opts = {}) {
     out.firstWindowDb = out.windows5s[0] ?? null;
     out.worstLaterWindowDb = out.windows5s.length > 1 ? Math.max(...out.windows5s.slice(1)) : null;
     const coh = coherentPower(x, stim.far, f0, f1, farLag.lag);
+    // Does what's left follow the far end's rhythm? Catches residual echo the coherence can't (speaker
+    // distortion, the suppressor's leftovers), and tells it apart from room noise that happens to be there.
+    out.echoRhythm = envelopeCorrelation(x, RATE, stim.far, f0 / S, f1 / S, F / S);
     out.echoCoherentDb = db(coh.power);
     out.echoCoherentAboveQuietDb = out.echoCoherentDb - out.floorDb;
     out.echoToSpeechDb = out.sendLevelDb != null ? out.echoCoherentDb - out.sendLevelDb : null;
@@ -317,6 +320,7 @@ export function analyze(rec, stim, seconds, opts = {}) {
 const band = (v, good, warn, lowerIsBetter = true) => v == null || !isFinite(v) ? "na" : lowerIsBetter ? (v <= good ? "good" : v <= warn ? "warn" : "bad") : (v >= good ? "good" : v >= warn ? "warn" : "bad");
 export const METRICS = [
   { key: "echoAboveQuietDb", label: "Echo (level above quiet)", unit: "dB", grade: (v) => band(v, 3, 10), help: "Far end only: how much louder the sent audio gets. Under 3 dB good, over 10 dB the other side hears themselves." },
+  { key: "echoRhythm", label: "Leftover follows far end", unit: "0–1", grade: (v) => band(v, 0.2, 0.4), help: "How closely what's sent in the far-end-only stretch follows the far end's rhythm (envelope correlation). Low: any level rise there is room noise, not echo. High: echo is getting through, even if distorted." },
   { key: "echoToSpeechDb", label: "Echo vs your voice (correlated)", unit: "dB", grade: (v) => band(v, -30, -20), help: "Far-end recording found inside the sent audio, against your speech level. Noise can't fake it." },
   { key: "dtEchoToSpeechDb", label: "Echo while both talk", unit: "dB", grade: (v) => band(v, -25, -15), help: "Same, during double-talk, against your voice in the same stretch." },
   { key: "talkOverKeptDb", label: "Your voice kept in talk-over", unit: "dB", grade: (v) => band(v, -3, -8, false), help: "Your voice while both talk, against your voice alone. 0 dB is untouched; below -8 dB you get chopped." },

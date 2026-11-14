@@ -57,7 +57,7 @@ export function renderReport(run) {
     .map((r) => {
       if (r.status !== "ok") return `<tr><th scope="row">${esc(r.name)}</th><td class="skip" colspan="${METRICS.length}">${esc(r.status)}</td></tr>`;
       const g = grade(r.analysis);
-      return `<tr><th scope="row"><a href="#${esc(r.id)}">${esc(r.name)}</a></th>${METRICS.map((m) => `<td class="${g[m.key]}">${num(r.analysis[m.key], m.key === "clippedPct" ? 2 : 1)}</td>`).join("")}</tr>`;
+      return `<tr><th scope="row"><a href="#${esc(r.id)}">${esc(r.name)}</a></th>${METRICS.map((m) => `<td class="${g[m.key]}">${num(r.analysis[m.key], m.key === "clippedPct" || m.key === "echoRhythm" ? 2 : 1)}</td>`).join("")}</tr>`;
     })
     .join("");
   const sections = subjects

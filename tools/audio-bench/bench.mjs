@@ -95,7 +95,14 @@ function analyzeDir(dir, kind) {
   if (fs.existsSync(path.join(dir, "channels.wav"))) rec.channels = readWav(path.join(dir, "channels.wav"));
   // Native: the mic can start up to ~1 s after the speakers. Browsers: the page starts its schedule after
   // it starts recording, and the talker is started by the bench when the page says so.
-  const opts = kind === "native" ? { farLagMs: [-1500, 500], nearLagMs: [-1500, 1500] } : { farLagMs: [-500, 4000], nearLagMs: [-500, 5000] };
+  let opts = { farLagMs: [-1500, 500], nearLagMs: [-1500, 1500] };
+  if (kind !== "native") {
+    // The page says when its schedule started in its recording; the far end comes back a little after that
+    // (output and input latency). Without that, a well-cancelled far end leaves too little to find reliably.
+    let start = null;
+    try { start = JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8")).scheduleStartSec; } catch {}
+    opts = { farLagMs: start != null ? [start * 1000 - 50, start * 1000 + 400] : [-500, 4000], nearLagMs: [-500, 5000] };
+  }
   return analyze(rec, stim, seconds, opts);
 }
 
@@ -163,7 +170,7 @@ async function nativeSubject(mode, volume) {
 }
 
 // ---------- browsers: a local page that records what the mic track would send ----------
-const PORT = parseInt(args.port || "8766", 10);
+let PORT = parseInt(args.port || "8777", 10);
 const pending = new Map();  // subject id -> { dir, meta, resolve, talker }
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`), id = url.searchParams.get("subject");
@@ -191,7 +198,12 @@ const server = http.createServer((req, res) => {
     send(200, "ok");
   });
 });
-await new Promise((r, j) => server.once("error", j).listen(PORT, "127.0.0.1", r));
+// First free port from 8777 (other local servers may hold the usual ones).
+for (let tries = 0; ; tries++, PORT++) {
+  const ok = await new Promise((r) => { server.once("error", () => r(false)); server.listen(PORT, "127.0.0.1", () => r(true)); });
+  if (ok) break;
+  if (tries > 20) throw new Error("no free port for the bench page");
+}
 
 const BROWSERS = {
   chrome: { name: "Chrome (WebRTC processing)", start: chromeStart },
