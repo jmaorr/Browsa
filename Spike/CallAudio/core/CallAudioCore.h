@@ -18,6 +18,10 @@ struct CallAudioConfig {
   std::string inputDevice, outputDevice;    // name contains; empty = system default
   bool noiseSuppression = true, autoGain = false;
   double referenceLeadMs = 10;              // how far ahead of the microphone the reference is fed
+  unsigned channelMask = 0x3;               // device inputs that make up the mic (bit 0 = input 1); own path only
+  // Every device input as captured, at the device's rate, before mixing. Own path only (not Apple's
+  // voice processing, which keeps its inputs to itself). Called on the input audio thread.
+  std::function<void(const float* const* channels, int count, int frames)> channelTap;
 };
 
 struct CallAudioStatus {
