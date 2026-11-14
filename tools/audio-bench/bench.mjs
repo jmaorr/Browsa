@@ -284,7 +284,8 @@ function chromeStart(url, dir) {
 function spikeStart(url, dir, apple) {
   if (!fs.existsSync(SPIKE)) throw new Error(`no ${SPIKE}: run Spike/CallAudio/webkit/build-browsa.sh`);
   const out = fs.openSync(path.join(dir, "app.log"), "w");
-  const app = spawn(SPIKE, apple ? ["apple"] : [], { stdio: ["ignore", out, out], env: { ...process.env, BROWSA_AUDIO_BENCH: "1", BROWSA_AUDIO_BENCH_URL: url } });
+  const app = spawn(SPIKE, apple ? ["apple"] : [], { stdio: ["ignore", out, out], env: { ...process.env, BROWSA_AUDIO_BENCH: "1", BROWSA_AUDIO_BENCH_URL: url, ...(apple ? {} : { BROWSA_CALL_AUDIO_DUMP: path.join(dir, "unit-dump") }) } });
+  if (!apple) fs.mkdirSync(path.join(dir, "unit-dump"), { recursive: true });
   children.add(app);
   return { stop: () => new Promise((r) => { if (app.exitCode != null) return r(); app.once("close", () => { children.delete(app); r(); }); app.kill("SIGTERM"); setTimeout(() => app.kill("SIGKILL"), 5000); }) };
 }

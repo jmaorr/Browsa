@@ -30,6 +30,11 @@ LIBS=$(find build-native -name '*.a' | sort | tr '\n' ' ')
 
 c++ -std=c++17 -O2 -I "$HERE/core" "$HERE/test/timeline_test.cc" -o "$OUT/timeline_test" && "$OUT/timeline_test"
 
+# apm-replay: the same processing, offline, over a run's recorded mic and reference (no audio devices).
+c++ -std=c++17 -O2 -DWEBRTC_POSIX -DWEBRTC_MAC -DWEBRTC_APM_DEBUG_DUMP=0 -Wno-deprecated-declarations \
+  -I "$HERE/core" $INC "$HERE/core/Apm.cc" "$HERE/replay/main.cc" $LIBS -framework Foundation -framework CoreFoundation \
+  -o "$OUT/apm-replay"
+
 APP="$OUT/Browsa Audio Lab.app"
 rm -rf "$APP" && mkdir -p "$APP/Contents/MacOS"
 cp "$HERE/lab/Info.plist" "$APP/Contents/Info.plist"

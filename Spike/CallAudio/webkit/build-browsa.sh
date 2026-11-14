@@ -39,6 +39,9 @@ FW="$WEBKIT/WebKitBuild/Release"
 export DYLD_FRAMEWORK_PATH="\$FW" __XPC_DYLD_FRAMEWORK_PATH="\$FW"
 export DYLD_LIBRARY_PATH="\$FW" __XPC_DYLD_LIBRARY_PATH="\$FW"
 if [ "\${1:-}" = apple ]; then export BROWSA_CALL_AUDIO=apple __XPC_BROWSA_CALL_AUDIO=apple; fi
+# BROWSA_CALL_AUDIO_DUMP=<folder> (or 1): the patched unit writes raw.wav, ref.wav, sent.wav and meta.json there
+# when a call's mic stops, for offline replay (tools/audio-bench/replay.mjs).
+if [ -n "\${BROWSA_CALL_AUDIO_DUMP:-}" ]; then export __XPC_BROWSA_CALL_AUDIO_DUMP="\$BROWSA_CALL_AUDIO_DUMP"; fi
 exec "$OUT/Browsa WebKit Spike.app/Contents/MacOS/Browsa"
 EOF
 chmod +x "$OUT/run.sh"

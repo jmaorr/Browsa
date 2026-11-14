@@ -21,6 +21,9 @@
 #include <AudioToolbox/AudioToolbox.h>
 #include <CoreAudio/CoreAudio.h>
 #include <mach/mach_time.h>
+#include <string>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 #include <wtf/TZoneMallocInlines.h>
 
@@ -275,6 +278,10 @@ private:
         config.noise_suppression.level = webrtc::AudioProcessing::Config::NoiseSuppression::kHigh;
         config.gain_controller2.enabled = true;
         config.gain_controller2.adaptive_digital.enabled = true;
+        // libwebrtc's defaults allow 50 dB of gain and room noise up to -50 dBFS; on an open-speaker call that
+        // lifts the room and the canceller's leftovers too. Calls need a voice brought up, not a room.
+        config.gain_controller2.adaptive_digital.max_gain_db = 30;
+        config.gain_controller2.adaptive_digital.max_output_noise_level_dbfs = -60;
         m_processing = webrtc::BuiltinAudioProcessingBuilder(config).Build(webrtc::CreateEnvironment());
         if (!m_processing) {
             uninitialize();
@@ -284,12 +291,14 @@ private:
         RELEASE_LOG(WebRTC, "BrowsaCallAudioInternalUnit ready: microphone %.0f Hz x%d (latency %.1f ms), speakers %.0f Hz x%d (latency %.1f ms), WebKit microphone format %.0f Hz",
             m_deviceRate, m_deviceChannels, m_inputLatency * 1000, m_speakerFormat.mSampleRate, (int)m_speakerFormat.mChannelsPerFrame, m_outputLatency * 1000, m_micFormat.mSampleRate);
         m_initialized = true;
+        startDump();
         return noErr;
     }
 
     OSStatus uninitialize() final
     {
         stop();
+        finishDump();
         for (AudioUnit* unit : { &m_inUnit, &m_outUnit }) {
             if (!*unit)
                 continue;
@@ -368,6 +377,9 @@ private:
                     mono[i] += samples[i] / data->mNumberBuffers;
             }
         }
+        m_speakerCallbacks++;
+        if (producerFlags & kAudioUnitRenderAction_OutputIsSilence)
+            m_speakerSilentCallbacks++;
         m_speakerClock.update(static_cast<double>(m_speakerIndex), stampSeconds(stamp) + m_outputLatency);
         m_speakerRing.write(mono, frames);
         m_speakerIndex += frames;
@@ -417,6 +429,7 @@ private:
             else
                 memset(reference, 0, sizeof(reference));
 
+            dump(clean, reference);
             const webrtc::StreamConfig stream(48000, 1);
             float* referenceChannels[1] = { reference };
             float* cleanChannels[1] = { clean };
@@ -425,6 +438,7 @@ private:
             m_processing->ProcessStream(cleanChannels, stream, stream, cleanChannels);
             if (m_muted)
                 memset(clean, 0, sizeof(clean));
+            dumpClean(clean);
             m_cleanRing.write(clean, frameSize);
             m_cleanStart[m_cleanFrames++ % cleanStartCount] = start;
             m_micPosition += frameSize * m_micStep;
@@ -470,6 +484,102 @@ private:
         }
         return noErr;
     }
+
+    // ---------- debug dump (BROWSA_CALL_AUDIO_DUMP; WebKit's processes see it as __XPC_BROWSA_CALL_AUDIO_DUMP) ----------
+    // The raw mic, the reference and what was sent, 48 kHz, plus what WebKit negotiated, written when the unit
+    // stops, so a call can be replayed offline (tools/audio-bench, apm-replay). Value: a folder, or 1 for the
+    // process's temporary folder. Up to the first 10 minutes of each session.
+    static const char* dumpSetting()
+    {
+        const char* value = getenv("BROWSA_CALL_AUDIO_DUMP");
+        return value && *value && strcmp(value, "0") ? value : nullptr;
+    }
+    void startDump()
+    {
+        if (!dumpSetting())
+            return;
+        const size_t capacity = 600 * 48000;
+        for (auto* v : { &m_dumpMic, &m_dumpRef, &m_dumpClean })
+            v->assign(capacity, 0.f);
+        m_dumpFrames = 0;
+        m_dumpCleanFrames = 0;
+        m_speakerCallbacks = 0;
+        m_speakerSilentCallbacks = 0;
+    }
+    void dump(const float* mic, const float* reference)
+    {
+        if (m_dumpMic.empty() || m_dumpFrames + frameSize > m_dumpMic.size())
+            return;
+        memcpy(m_dumpMic.data() + m_dumpFrames, mic, frameSize * sizeof(float));
+        memcpy(m_dumpRef.data() + m_dumpFrames, reference, frameSize * sizeof(float));
+        m_dumpFrames += frameSize;
+    }
+    void dumpClean(const float* clean)
+    {
+        if (m_dumpClean.empty() || m_dumpCleanFrames + frameSize > m_dumpClean.size())
+            return;
+        memcpy(m_dumpClean.data() + m_dumpCleanFrames, clean, frameSize * sizeof(float));
+        m_dumpCleanFrames += frameSize;
+    }
+    static void writeFloatWav(const std::string& path, const std::vector<float>& data, size_t frames)
+    {
+        FILE* f = fopen(path.c_str(), "wb");
+        if (!f)
+            return;
+        const uint32_t bytes = static_cast<uint32_t>(frames * 4), rate = 48000, byteRate = rate * 4, riff = 36 + bytes, fmtLength = 16;
+        const uint16_t tag = 3, channels = 1, align = 4, bits = 32;
+        fwrite("RIFF", 1, 4, f); fwrite(&riff, 4, 1, f); fwrite("WAVEfmt ", 1, 8, f); fwrite(&fmtLength, 4, 1, f);
+        fwrite(&tag, 2, 1, f); fwrite(&channels, 2, 1, f); fwrite(&rate, 4, 1, f); fwrite(&byteRate, 4, 1, f); fwrite(&align, 2, 1, f); fwrite(&bits, 2, 1, f);
+        fwrite("data", 1, 4, f); fwrite(&bytes, 4, 1, f); fwrite(data.data(), 4, frames, f);
+        fclose(f);
+    }
+    void finishDump()
+    {
+        const char* setting = dumpSetting();
+        if (!setting || m_dumpMic.empty() || !m_dumpFrames)
+            return;
+        std::string folder = setting;
+        if (folder == "1") {
+            char temp[PATH_MAX] = { };
+            confstr(_CS_DARWIN_USER_TEMP_DIR, temp, sizeof(temp));
+            folder = temp;
+        }
+        folder += "/browsa-call-audio-" + std::to_string(getpid()) + "-" + std::to_string(time(nullptr));
+        if (mkdir(folder.c_str(), 0755)) {
+            RELEASE_LOG_ERROR(WebRTC, "BrowsaCallAudioInternalUnit: can't write the dump to %s (errno %d)", folder.c_str(), errno);
+            return;
+        }
+        // ref.wav is the reference each 10 ms of raw.wav was cancelled against: the bench's replay format.
+        writeFloatWav(folder + "/raw.wav", m_dumpMic, m_dumpFrames);
+        writeFloatWav(folder + "/ref.wav", m_dumpRef, m_dumpFrames);
+        writeFloatWav(folder + "/sent.wav", m_dumpClean, m_dumpCleanFrames);
+        auto describe = [](const AudioStreamBasicDescription& d) {
+            char text[200];
+            snprintf(text, sizeof(text), "{\"rate\": %.0f, \"channels\": %u, \"bits\": %u, \"float\": %s, \"interleaved\": %s}", d.mSampleRate, (unsigned)d.mChannelsPerFrame,
+                (unsigned)d.mBitsPerChannel, (d.mFormatFlags & kAudioFormatFlagIsFloat) ? "true" : "false", (d.mFormatFlags & kAudioFormatFlagIsNonInterleaved) ? "false" : "true");
+            return std::string(text);
+        };
+        if (FILE* f = fopen((folder + "/meta.json").c_str(), "w")) {
+            fprintf(f, "{\"mode\": \"webkit-unit\", \"inputRate\": %.0f, \"inputChannels\": %d, \"inputLatencyMs\": %.2f, \"outputLatencyMs\": %.2f,\n"
+                " \"webkitMicFormat\": %s,\n \"webkitSpeakerFormat\": %s,\n \"holdSamples\": %.1f, \"referenceLeadMs\": %.1f,\n"
+                " \"speakerCallbacks\": %llu, \"speakerSilentCallbacks\": %llu, \"referenceResyncs\": %d, \"referenceMisses\": %d,\n"
+                " \"speakerClockRate\": %.3f, \"micClockRate\": %.3f, \"capturedSeconds\": %.2f}\n",
+                m_deviceRate, m_deviceChannels, m_inputLatency * 1000, m_outputLatency * 1000, describe(m_micFormat).c_str(), describe(m_speakerFormat).c_str(),
+                m_holdSamples, referenceLead * 1000, (unsigned long long)m_speakerCallbacks.load(), (unsigned long long)m_speakerSilentCallbacks.load(),
+                m_referenceReader.resyncs, m_referenceReader.misses, m_speakerClock.rate(), m_micClock.rate(),
+                m_dumpFrames / 48000.0);
+            fclose(f);
+        }
+        RELEASE_LOG(WebRTC, "BrowsaCallAudioInternalUnit: dump written to %s", folder.c_str());
+        for (auto* v : { &m_dumpMic, &m_dumpRef, &m_dumpClean })
+            std::vector<float>().swap(*v);
+    }
+
+    std::vector<float> m_dumpMic, m_dumpRef, m_dumpClean;
+    size_t m_dumpFrames { 0 };
+    size_t m_dumpCleanFrames { 0 };
+    std::atomic<uint64_t> m_speakerCallbacks { 0 };
+    std::atomic<uint64_t> m_speakerSilentCallbacks { 0 };
 
     static constexpr double referenceLead = 0.010;
     static constexpr int cleanStartCount = 16;

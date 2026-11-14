@@ -15,9 +15,13 @@ class WebRtcApm : public Apm {
     c.echo_canceller.enabled = o.echo;
     c.echo_canceller.mobile_mode = false;
     c.noise_suppression.enabled = o.noise;
-    c.noise_suppression.level = webrtc::AudioProcessing::Config::NoiseSuppression::kHigh;
+    using NS = webrtc::AudioProcessing::Config::NoiseSuppression;
+    const NS::Level levels[] = {NS::kLow, NS::kModerate, NS::kHigh, NS::kVeryHigh};
+    c.noise_suppression.level = levels[o.noiseLevel < 0 ? 0 : o.noiseLevel > 3 ? 3 : o.noiseLevel];
     c.gain_controller2.enabled = o.gain;
     c.gain_controller2.adaptive_digital.enabled = o.gain;
+    c.gain_controller2.adaptive_digital.max_gain_change_db_per_second = o.gainMaxChangeDbPerSecond;
+    c.gain_controller2.adaptive_digital.max_output_noise_level_dbfs = o.gainMaxNoiseDbfs;
     c.residual_echo_detector.enabled = true;
     apm_->ApplyConfig(c);
     apm_->Initialize();
