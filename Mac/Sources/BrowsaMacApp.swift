@@ -130,9 +130,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// tools/audio-bench: every `every` seconds, show a blank tab for 2 s and go back, as you might mid-call,
+    /// to check the call's audio carries on when its tab isn't in front.
+    private func scheduleAudioBenchTabSwitch(every: Double) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + every) { [weak self] in
+            guard let self, let window = self.library.activeWindow, let back = window.currentTab else { self?.scheduleAudioBenchTabSwitch(every: every); return }
+            let blank = window.newTab(url: URL(string: "about:blank"), source: .link)
+            FileHandle.standardError.write(Data("AudioBench: switched away from the call tab\n".utf8))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                window.select(back)
+                self.library.close(blank)
+                FileHandle.standardError.write(Data("AudioBench: back on the call tab\n".utf8))
+                self.scheduleAudioBenchTabSwitch(every: every)
+            }
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // tools/audio-bench opens its page at launch (test builds only; see AudioBench).
         if let url = AudioBench.launchURL { openAudioBenchPage(url, attempt: 0) }
+        if let every = AudioBench.tabSwitchSeconds { scheduleAudioBenchTabSwitch(every: every) }
         // Sign-ins from the sandbox days, once. Pages that loaded before they're in reload.
         CookieImport.runIfNeeded { [weak self] in
             guard let library = self?.library else { return }

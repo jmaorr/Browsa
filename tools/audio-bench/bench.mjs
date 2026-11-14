@@ -75,8 +75,36 @@ function setVolume(v) {
 // ---------- stimuli ----------
 const STIM = path.join(BENCH, "stimuli");
 fs.mkdirSync(STIM, { recursive: true });
-const farWav = path.join(STIM, "far.wav"), nearWav = path.join(STIM, "near.wav");
-if (!fs.existsSync(farWav)) execFileSync("afconvert", ["-f", "WAVE", "-d", "LEI16@48000", "-c", "1", path.join(REPO, "tools/echo-test/standup.mp3"), farWav]);
+const standardFar = path.join(STIM, "far.wav"), nearWav = path.join(STIM, "near.wav");
+if (!fs.existsSync(standardFar)) execFileSync("afconvert", ["-f", "WAVE", "-d", "LEI16@48000", "-c", "1", path.join(REPO, "tools/echo-test/standup.mp3"), standardFar]);
+// The far end: the standup recording (default), "natural" (the same voice cut into phrases with pauses of
+// 0.3 to 1.8 s and phrases from 12 dB quieter to 3 dB louder, so word onsets after silence and quiet
+// phrases get tested), or any recording, e.g. of your own voice (people are most sensitive to their own).
+let farWav = standardFar;
+if (args.reanalyze) {
+  try { farWav = JSON.parse(fs.readFileSync(path.join(path.resolve(args.reanalyze), "results.json"), "utf8")).farStimulus || standardFar; } catch {}
+} else if (args.far === "natural") {
+  farWav = path.join(STIM, "far-natural.wav");
+  if (!fs.existsSync(farWav)) {
+    const src = readWav(standardFar).channels[0], out = [];
+    let seed = 7, p = 0, g = 0;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    const gains = [0, -6, -12, 3, -3, -9];
+    while (p < src.length && out.length < 120 * RATE) {
+      const len = Math.floor((2 + 2 * rnd()) * RATE), gain = 10 ** (gains[g++ % gains.length] / 20);
+      for (let i = 0; i < len && p < src.length; i++, p++) out.push(src[p] * gain * Math.min(1, i / 480, (len - i) / 480));
+      const pause = Math.floor((0.3 + 1.5 * rnd()) * RATE);
+      for (let i = 0; i < pause; i++) out.push(0);
+    }
+    let peak = 0;
+    for (const v of out) peak = Math.max(peak, Math.abs(v));
+    const k = peak > 0.89 ? 0.89 / peak : 1;
+    writeWavFloat(farWav, [Float32Array.from(out, (v) => v * k)], RATE);
+  }
+} else if (args.far) {
+  farWav = path.join(STIM, `far-${path.basename(args.far).replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_-]/g, "_")}.wav`);
+  execFileSync("afconvert", ["-f", "WAVE", "-d", "LEI16@48000", "-c", "1", path.resolve(args.far), farWav]);
+}
 if (!fs.existsSync(nearWav)) {
   // A different voice from the far end, standing in for you. About 45 s, so it doesn't loop in a normal run.
   const text = fs.readFileSync(path.join(HERE, "talker.txt"), "utf8");
@@ -85,6 +113,8 @@ if (!fs.existsSync(nearWav)) {
   execFileSync("afconvert", ["-f", "WAVE", "-d", "LEI16@48000", "-c", "1", aiff, nearWav]);
   fs.unlinkSync(aiff);
 }
+// --prepare-stimuli: make the stimulus files and stop (nothing is played).
+if (args["prepare-stimuli"]) { console.log(`far: ${farWav}\nnear: ${nearWav}`); process.exit(0); }
 const b = boundaries(seconds);
 const stim = { far: scheduled(readWav(farWav).channels[0], b, "far"), near: scheduled(readWav(nearWav).channels[0], b, "near") };
 
@@ -96,7 +126,10 @@ function analyzeDir(dir, kind) {
   // Native: the mic can start up to ~1 s after the speakers. Browsers: the page starts its schedule after
   // it starts recording, and the talker is started by the bench when the page says so.
   let opts = { farLagMs: [-1500, 500], nearLagMs: [-1500, 1500] };
-  if (kind !== "native") {
+  if (kind === "meet") {
+    // The guest's own recording: its schedule starts 0.3 s in; the echo comes back a network round trip later.
+    opts = { farLagMs: [200, 3000], nearLagMs: [-500, 4000] };
+  } else if (kind !== "native") {
     // The page says when its schedule started in its recording; the far end comes back a little after that
     // (output and input latency). Without that, a well-cancelled far end leaves too little to find reliably.
     let start = null;
@@ -281,6 +314,32 @@ async function browserSubject(key, volume, extra = {}) {
   return { id, name, volume, kind: "browser", status: "ok", dir, meta, analysis };
 }
 
+// The robot guest (guest.mjs) on a real Meet that the build under test is already in. It waits to be admitted;
+// once in, it talks (far end) on the schedule and the bench starts the stand-in talker in the room.
+async function meetSubject(volume) {
+  const id = volume == null ? "meet" : `meet-v${volume}`, dir = path.join(RUN, id);
+  const name = `Real Meet call, robot guest (${args.host || "host build not stated"})` + (volume == null ? "" : ` @ volume ${volume}`);
+  if (!args["meet-url"]) return { id, name, volume, status: "skipped: no --meet-url", dir };
+  fs.mkdirSync(dir, { recursive: true });
+  console.log(`${name}: asking to join ${args["meet-url"]}; admit "Echo guest" in the host browser.`);
+  const c = spawn(process.execPath, [path.join(HERE, "guest.mjs"), "--url", args["meet-url"], "--far", farWav, "--schedule", seconds.join(","), "--out-dir", dir,
+    "--wait-min", args["wait-min"] || "10"], { stdio: ["ignore", "pipe", "inherit"] });
+  children.add(c);
+  let talker = null;
+  c.stdout.on("data", (d) => {
+    if (/GUEST_STARTED/.test(String(d)) && !talker)
+      talker = run(LAB, ["--mode", "play", "--talker", nearWav, "--talker-out", args["talker-out"], "--talker-volume", String(talkerVolume),
+        "--schedule", seconds.join(","), "--out-dir", path.join(dir, "talker")], (total + 20) * 1000);
+  });
+  const code = await new Promise((r) => c.on("close", r));
+  children.delete(c);
+  if (talker) await talker;
+  if (code !== 0 || !fs.existsSync(path.join(dir, "sent.wav"))) return { id, name, volume, status: talker ? "failed during the call" : "skipped: not admitted (or Meet turned the guest away)", dir };
+  const analysis = analyzeDir(dir, "meet");
+  console.log(`  guest hears own echo in ${analysis.guestAudiblePct}% of their speech, G.131 f ${analysis.guestMargin?.toFixed(1)}`);
+  return { id, name, volume, kind: "meet", status: "ok", dir, meta: JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8")), analysis };
+}
+
 const subjects = [];
 const wanted = args.subjects.split(",").map((s) => s.trim()).filter(Boolean);
 const devices = JSON.parse(execFileSync(LAB, ["--list-devices"], { encoding: "utf8" }));
@@ -289,6 +348,7 @@ for (const volume of volumes) {
   for (const s of wanted) {
     if (NATIVE[s]) subjects.push(await nativeSubject(s, volume));
     else if (BROWSERS[s]) subjects.push(await browserSubject(s, volume));
+    else if (s === "meet") subjects.push(await meetSubject(volume));
     else subjects.push({ id: s, name: s, volume, status: "skipped: not supported yet" });
     await new Promise((r) => setTimeout(r, 1000));
   }
@@ -297,7 +357,7 @@ if (volumeChanged) { osa(`set volume output volume ${startVolume}`); volumeChang
 server.close();
 
 // ---------- report ----------
-const description = `Schedule ${seconds.join(" / ")} s (quiet, far end, you, both, quiet). Far end: standup recording on ${args.out || "the default output"}; you: "Daniel" voice on ${args["talker-out"]} at ${Math.round(talkerVolume * 100)}%. System volume started at ${startVolume}${volumes[0] != null ? `, swept ${volumes.join(", ")}` : ""} and was restored.`;
-const result = { startedAt: stamp, description, schedule: seconds, startVolume, volumes, devices, subjects };
+const description = `Schedule ${seconds.join(" / ")} s (quiet, far end, you, both, quiet). Far end: ${path.basename(farWav) === "far.wav" ? "standup recording" : path.basename(farWav)} on ${args.out || "the default output"}; you: "Daniel" voice on ${args["talker-out"]} at ${Math.round(talkerVolume * 100)}%. System volume started at ${startVolume}${volumes[0] != null ? `, swept ${volumes.join(", ")}` : ""} and was restored.`;
+const result = { startedAt: stamp, description, farStimulus: farWav, schedule: seconds, startVolume, volumes, devices, subjects };
 writeReport(RUN, result);
 process.exit(0);

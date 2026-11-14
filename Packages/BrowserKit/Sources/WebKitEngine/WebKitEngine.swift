@@ -430,6 +430,11 @@ private extension Double {
 public enum AudioBench {
     public static let isEnabled: Bool = ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH"] == "1"
         && Bundle.main.bundleIdentifier != "com.orriginal.browsa"
+    /// Seconds between scripted tab switches during a bench call (BROWSA_AUDIO_BENCH_TAB_SWITCH), or nil.
+    public static var tabSwitchSeconds: Double? {
+        guard isEnabled, let s = ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH_TAB_SWITCH"], let v = Double(s), v >= 2 else { return nil }
+        return v
+    }
     /// A page to open at launch (the bench's URL).
     public static var launchURL: URL? {
         guard isEnabled, let s = ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH_URL"], let url = URL(string: s),

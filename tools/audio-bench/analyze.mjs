@@ -457,7 +457,9 @@ export function guestEar(x, stimFar, F, windows, floorDb, opts = {}) {
     // Below the measurement limit, report the loss the limit allows ("at least").
     const atLimit = overallDb != null && limitDb != null && overallDb < limitDb;
     const usedDb = atLimit ? limitDb : overallDb;
-    const overallLoss = usedDb != null && isFinite(usedDb) ? farActive - usedDb : echoN ? farActive - db(echoSum / echoN) : null;
+    // Like with like: the far end's mean power over the same stretch (pauses included) against the echo's.
+    const farSegDb = db(power(stimFar, a - F, z - F));
+    const overallLoss = usedDb != null && isFinite(usedDb) ? farSegDb - usedDb : echoN ? farActive - db(echoSum / echoN) : null;
     res.segments[name] = {
       farSpeechSec: +(farBlocks * framesPerBlock * HOP / S).toFixed(1),
       audibleSec: +(audible * framesPerBlock * HOP / S).toFixed(1),

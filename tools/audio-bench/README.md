@@ -63,3 +63,47 @@ recording by coherence, so start-up offsets don't matter.
   wanders against the talker's own level, 1 s windows), **noise floor sent**.
 - Native: the canceller's delay, drift, resyncs and misses, how much correlated echo it removed, and every
   device input's level and whether it follows the far end, the talker, or neither (spots loopback inputs).
+
+## The guest's ear
+
+The headline columns score echo the way the other person on the call meets it: their own voice coming back.
+Echo loss is the far end's level arriving at Browsa against the far-end-correlated level Browsa sends back;
+with the G.107 default SLR + RLR (8 + 2 dB) that gives a TELR, judged by ITU-T G.131's rule
+`f = TELR − 40·log10((1 + T/10)/(1 + T/150)) + 6·e^(−0.3T²)` (f ≥ 14 acceptable, f ≤ 8 annoying), with T the
+one-way delay (`--one-way-ms`, default 300) plus half of Browsa's own echo path. It is also scored in 200 ms
+blocks of their speech: how much of it would carry audible echo, the worst moment, the first 5 s against the
+rest. Talk-over fits the sent audio to both known voices together, so your voice doesn't hide the echo;
+figures shown as "≥" hit the measurement limit.
+
+The score picks candidates; your ear decides. `node listen.mjs <run folder> <out folder> [subject ids]` makes
+small AAC clips per subject (what comes back while only they talk, the same +30 dB, and talk-over) and a
+`listen.html` laying them out with the scores. These are recordings of your room: they stay in `derived/`,
+never in git.
+
+Far-end stimuli: `--far natural` (the standup voice cut into phrases with pauses and quiet and loud phrases,
+so word onsets after silence get tested) or `--far <file>`, e.g. a recording of your own voice, since people
+are most sensitive to their own. `--prepare-stimuli` makes the files and stops.
+
+## A real Meet call, with a robot guest
+
+`meet` is a real call through Google's servers and Opus, scored from what the guest receives: exactly what
+another participant hears.
+
+1. In the build under test (your Browsa, or Browsa WebKit Spike via `derived/webkit-spike/run.sh`, signed in to
+   Google), start a Meet and copy its link. Leave the speakers at call volume and the mic as usual.
+2. `tools/audio-bench/run.sh --subjects meet --meet-url https://meet.google.com/abc-defg-hij --host "spike patched" --volumes same`
+   (`--volumes same` leaves the system volume alone; `--long 15` for a 15 minute soak).
+3. A guest called "Echo guest" asks to join: admit it. It waits up to 10 minutes (`--wait-min`).
+4. Then stay quiet. The guest talks with the far-end recording (its "mic" is generated in its page; its own
+   sound is muted), the bench plays the stand-in "you" on the MacBook speakers, and the guest records what
+   comes back. It leaves by itself.
+
+The guest's voice must come from the recording. Don't let anyone speak as "the guest" in the same room: the
+host's mic would pick that up directly, and that isn't echo.
+
+To include tab switching mid-call, start the Browsa build with `BROWSA_AUDIO_BENCH=1
+BROWSA_AUDIO_BENCH_TAB_SWITCH=20` (test builds only): every 20 s it shows a blank tab for 2 s and goes back.
+
+`node guest.mjs --selftest --far <wav> --near <wav> --out-dir <dir>` checks the guest silently (no Meet, no
+devices): a local host page sends back the guest's voice 40 dB down and 120 ms late, plus a talker. The
+analysis reads that as 43 dB (far end only) and 41 dB (talk-over): about 1 to 3 dB optimistic through two Opus legs.

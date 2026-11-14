@@ -1,0 +1,7 @@
+{
+  "name": "browsa-audio-bench",
+  "private": true,
+  "type": "module",
+  "description": "Echo, talk-over and level tests for call audio paths. Playwright drives the robot guest.",
+  "dependencies": { "playwright": "1.64.1" }
+}
