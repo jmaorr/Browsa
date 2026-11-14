@@ -96,7 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if CALL_TABS
         // Meet, Zoom and Teams run on Chromium (see Mac/Chromium/CallTabs.swift). Not in the patched
         // WebKit spike (Spike/CallAudio/webkit), where calls have to run on WebKit to test its audio.
-        if Bundle.main.bundleIdentifier != "com.orriginal.browsa.webkitspike" {
+        if Bundle.main.bundleIdentifier != "com.orriginal.browsa.webkitspike" || ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH_CALL_TABS"] == "1" {
             CallTabs.install(in: library)
         }
         #endif

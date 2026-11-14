@@ -269,6 +269,9 @@ final class ChromiumPage: NSObject, EnginePage, BCEFBrowserDelegate {
             return
         }
         let kind: EnginePermission = audio && video ? .cameraAndMicrophone : video ? .camera : .microphone
+        // tools/audio-bench runs unattended: its local page gets the mic without asking (test builds only).
+        if ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH"] == "1", Bundle.main.bundleIdentifier != "com.orriginal.browsa",
+           audio, !video, ["127.0.0.1", "localhost"].contains(host) { decide(true); return }
         Task { decide(await delegate.page(self, requestPermission: kind, host: host)) }
     }
 

@@ -269,6 +269,9 @@ const BROWSERS = {
   chrome: { name: "Chrome (WebRTC processing)", start: chromeStart },
   spike: { name: "Browsa WebKit Spike, patched (WebRTC in WebKit)", start: (url, dir) => spikeStart(url, dir, false) },
   "spike-apple": { name: "Browsa WebKit Spike, Apple processing", start: (url, dir) => spikeStart(url, dir, true) },
+  // The earlier routes, for comparison: system WebKit with Browsa's in-page call audio script, and the Chromium call tab.
+  inpage: { name: "Browsa (system WebKit), in-page call audio script", start: (url, dir) => browsaStart(url, dir, { BROWSA_AUDIO_BENCH_CALL_AUDIO: "browsa" }) },
+  calltab: { name: "Browsa Chromium call tab", start: (url, dir) => browsaStart(url, dir, { BROWSA_AUDIO_BENCH_CALL_TABS: "1", BROWSA_CALL_TEST_HOSTS: "127.0.0.1" }) },
   safari: { name: "Safari (manual, one click)", manual: true, start: (url) => run("open", ["-a", "Safari", url + "&manual=1"], 15000) },
 };
 function chromeStart(url, dir) {
@@ -286,6 +289,16 @@ function spikeStart(url, dir, apple) {
   const out = fs.openSync(path.join(dir, "app.log"), "w");
   const app = spawn(SPIKE, apple ? ["apple"] : [], { stdio: ["ignore", out, out], env: { ...process.env, BROWSA_AUDIO_BENCH: "1", BROWSA_AUDIO_BENCH_URL: url, ...(apple ? {} : { BROWSA_CALL_AUDIO_DUMP: path.join(dir, "unit-dump") }) } });
   if (!apple) fs.mkdirSync(path.join(dir, "unit-dump"), { recursive: true });
+  children.add(app);
+  return { stop: () => new Promise((r) => { if (app.exitCode != null) return r(); app.once("close", () => { children.delete(app); r(); }); app.kill("SIGTERM"); setTimeout(() => app.kill("SIGKILL"), 5000); }) };
+}
+
+// The same test build started directly (system WebKit, no DYLD overrides), for the earlier routes.
+function browsaStart(url, dir, env) {
+  const bin = path.join(DERIVED, "webkit-spike/Browsa WebKit Spike.app/Contents/MacOS/Browsa");
+  if (!fs.existsSync(bin)) throw new Error(`no ${bin}: run Spike/CallAudio/webkit/build-browsa.sh`);
+  const out = fs.openSync(path.join(dir, "app.log"), "w");
+  const app = spawn(bin, [], { stdio: ["ignore", out, out], env: { ...process.env, BROWSA_AUDIO_BENCH: "1", BROWSA_AUDIO_BENCH_URL: url, ...env } });
   children.add(app);
   return { stop: () => new Promise((r) => { if (app.exitCode != null) return r(); app.once("close", () => { children.delete(app); r(); }); app.kill("SIGTERM"); setTimeout(() => app.kill("SIGKILL"), 5000); }) };
 }
