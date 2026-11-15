@@ -28,6 +28,9 @@ struct TabGridOverlay: View {
     @State private var cardsVisible = false
     /// The tab whose picture is flying. Its card hides its own until it lands.
     @State private var heroID: UUID?
+    /// The tab a page is growing back into. The gallery has been closed as far as the tabs button
+    /// is concerned, and this is what's left of it.
+    @State private var closingInto: BrowserTab?
     /// The page's area in window coordinates, which the flying picture fills at full size.
     @State private var pageRect: CGRect = .zero
     /// The overlay's own size, for the cards' shape until the page has been measured.
@@ -56,7 +59,7 @@ struct TabGridOverlay: View {
         // Any plus button: the new-tab sheet is the next thing to animate, so leave without the zoom.
         .onChange(of: browser.isNewTabSheetPresented) { _, presented in if presented && shown { flight.land(); finish() } }
         .onChange(of: browser.isTabSwitcherPresented) { _, wanted in
-            if wanted { open() } else if shown { close(into: browser.currentTab) }
+            if wanted { open() } else if shown, closingInto == nil { close(into: browser.currentTab) }
         }
     }
 
@@ -70,6 +73,14 @@ struct TabGridOverlay: View {
     }
 
     private func open() {
+        // Asked for again while a page was still growing back: let that land at once, then open.
+        if let tab = closingInto {
+            flight.land()
+            instantly {
+                browser.select(tab)
+                finish(resettingButton: false)
+            }
+        }
         guard !shown else { return }
         guard let tab = browser.currentTab, let wv = liveWebView, let window = wv.window,
               let picture = ZoomFlight.snapshot(of: wv) else {
@@ -109,6 +120,10 @@ struct TabGridOverlay: View {
     /// Grows `tab`'s card back to fill the page and leaves the grid. The page switches to `tab`
     /// only once the picture covers it, and the picture stays until the page has drawn.
     private func close(into tab: BrowserTab?) {
+        // The tabs button turns back from the tick as you pick, not when the page lands, so it's
+        // ready to open the gallery again straight away.
+        if let tab { closingInto = tab }
+        if browser.isTabSwitcherPresented { browser.isTabSwitcherPresented = false }
         guard let tab, let card = cardFrames.byTab[tab.id], pageRect != .zero,
               let window = liveWebView?.window ?? flight.window,
               let picture = tab.id == browser.currentTab?.id
@@ -162,16 +177,17 @@ struct TabGridOverlay: View {
         withTransaction(t, change)
     }
 
-    private func finish() {
+    private func finish(resettingButton: Bool = true) {
         var t = Transaction(); t.disablesAnimations = true
         withTransaction(t) {
+            closingInto = nil
             shown = false
             cardsVisible = false
             heroID = nil
             browser.tabGridCoversPage = false
             browser.tabGridLandingTab = nil
         }
-        if browser.isTabSwitcherPresented { browser.isTabSwitcherPresented = false }
+        if resettingButton, browser.isTabSwitcherPresented { browser.isTabSwitcherPresented = false }
     }
 
     private func tab(_ id: UUID) -> BrowserTab? { browser.currentSpace.allTabs.first { $0.id == id } }
