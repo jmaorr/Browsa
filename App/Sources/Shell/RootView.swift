@@ -92,7 +92,10 @@ struct WebContentView: View {
     var body: some View {
         if let tab = browser.currentTab {
             WebViewHost(session: browser.session(for: tab), topObscuredInset: topObscuredInset,
-                        bottomObscuredInset: bottomObscuredInset)
+                        bottomObscuredInset: bottomObscuredInset,
+                        // Fixed footers ride above the bar, and drop down with it when it shrinks.
+                        bottomCoveredInset: tab.isChromeCompact
+                            ? min(bottomObscuredInset, BarMetrics.compactCoveredInset) : bottomObscuredInset)
                 .id(tab.id)
                 // Swipe between tabs on the bottom pill slides the pages too.
                 .transition(Motion.tabPush(forward: browser.lastTabSwipeForward))
