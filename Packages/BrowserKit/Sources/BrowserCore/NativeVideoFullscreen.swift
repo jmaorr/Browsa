@@ -9,9 +9,9 @@ import WebKit
 /// desktop site, blow their player up to fill the page with CSS, which is what Browsa showed.
 /// This script answers `requestFullscreen` on any element by handing the video in it (or the
 /// main video on the page) to the system player, with picture in picture, AirPlay and the system
-/// scrubber, and says fullscreen is available so sites take that path. It runs in every frame,
+/// scrubber, and says fullscreen is available (while the page has a video) so sites take that path. It runs in every frame,
 /// because embedded players (YouTube, Vimeo) live in iframes.
-enum NativeVideoFullscreen {
+@MainActor enum NativeVideoFullscreen {
     static let script = WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page)
 
     private static let source = """
@@ -55,8 +55,10 @@ enum NativeVideoFullscreen {
              { value: enter, writable: true });
       define(Document.prototype, ['exitFullscreen', 'webkitExitFullscreen', 'webkitCancelFullScreen'],
              { value: exit, writable: true });
+      // Only while there's a video to hand over, so games, slides and maps still see no
+      // fullscreen and keep their own fallback.
       define(Document.prototype, ['fullscreenEnabled', 'webkitFullscreenEnabled'],
-             { get: function () { return true; } });
+             { get: function () { return !!document.querySelector('video'); } });
     })();
     """
 }
