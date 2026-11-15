@@ -184,6 +184,29 @@ static void BLog(NSString *format, ...) {
 /// navigates; answering one after that trips a CHECK in CEF, so late answers are dropped.
 static NSMutableSet<NSNumber *> *gOpenPrompts;
 
+/// When Browsa last answered each (browser, origin, permissions) prompt. Meet asks for camera and mic
+/// twice at once; Chromium shows the second prompt after the first is answered, but that answer has
+/// already settled the second prompt's requests, so allowing or denying it again trips a CHECK in
+/// PermissionRequest (its decided callback is gone) and takes the whole app down. A repeat of a prompt
+/// answered moments ago is answered IGNORE instead, the one result Chromium handles for a settled request.
+static NSMutableDictionary<NSString *, NSDate *> *gAnsweredPrompts;
+static const NSTimeInterval kRepeatPromptWindow = 10;
+
+static NSString *PromptKey(int browserID, NSString *origin, uint32_t requested) {
+  return [NSString stringWithFormat:@"%d|%@|0x%x", browserID, origin, requested];
+}
+
+static NSString *PromptTypes(uint32_t requested) {
+  NSMutableArray<NSString *> *names = [NSMutableArray array];
+  if (requested & CEF_PERMISSION_TYPE_MIC_STREAM) [names addObject:@"mic"];
+  if (requested & CEF_PERMISSION_TYPE_CAMERA_STREAM) [names addObject:@"camera"];
+  if (requested & CEF_PERMISSION_TYPE_NOTIFICATIONS) [names addObject:@"notifications"];
+  uint32_t other = requested & ~(uint32_t)(CEF_PERMISSION_TYPE_MIC_STREAM | CEF_PERMISSION_TYPE_CAMERA_STREAM |
+                                           CEF_PERMISSION_TYPE_NOTIFICATIONS);
+  if (other) [names addObject:[NSString stringWithFormat:@"other 0x%x", other]];
+  return names.count ? [names componentsJoinedByString:@"+"] : @"none";
+}
+
 static NSString *NS(const CefString &s) { return [NSString stringWithUTF8String:s.ToString().c_str()] ?: @""; }
 
 /// The client for sign-in pop-up windows: CEF's own window handling, nothing reported to Browsa.
@@ -244,13 +267,27 @@ class BClient : public CefClient,
     });
     return true;
   }
-  bool OnShowPermissionPrompt(CefRefPtr<CefBrowser>, uint64_t promptID, const CefString &origin, uint32_t requested,
+  bool OnShowPermissionPrompt(CefRefPtr<CefBrowser> browser, uint64_t promptID, const CefString &origin, uint32_t requested,
                               CefRefPtr<CefPermissionPromptCallback> callback) override {
-    BLog(@"prompt %llu %@ 0x%x", promptID, NS(origin), requested);
+    NSString *o = NS(origin);
+    NSString *key = PromptKey(browser->GetIdentifier(), o, requested);
+    BLog(@"prompt %llu %@ 0x%x (%@)", promptID, o, requested, PromptTypes(requested));
     if (!gOpenPrompts) gOpenPrompts = [NSMutableSet set];
+    if (!gAnsweredPrompts) gAnsweredPrompts = [NSMutableDictionary dictionary];
     [gOpenPrompts addObject:@(promptID)];
     CefRefPtr<CefPermissionPromptCallback> cb = callback;
-    NSString *o = NS(origin);
+
+    NSDate *answeredAt = gAnsweredPrompts[key];
+    if (answeredAt && -answeredAt.timeIntervalSinceNow < kRepeatPromptWindow) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        if (![gOpenPrompts containsObject:@(promptID)]) { BLog(@"prompt %llu repeat already gone", promptID); return; }
+        [gOpenPrompts removeObject:@(promptID)];
+        BLog(@"prompt %llu repeats one answered %.1fs ago, ignored", promptID, -answeredAt.timeIntervalSinceNow);
+        cb->Continue(CEF_PERMISSION_RESULT_IGNORE);
+      });
+      return true;
+    }
+
     BOOL audio = (requested & CEF_PERMISSION_TYPE_MIC_STREAM) != 0;
     BOOL video = (requested & CEF_PERMISSION_TYPE_CAMERA_STREAM) != 0;
     BOOL notify = (requested & CEF_PERMISSION_TYPE_NOTIFICATIONS) != 0;
@@ -261,6 +298,8 @@ class BClient : public CefClient,
           if (![gOpenPrompts containsObject:@(promptID)]) { BLog(@"prompt %llu already gone, answer %d dropped", promptID, allowed); return; }
           [gOpenPrompts removeObject:@(promptID)];
           BLog(@"prompt %llu answered %d", promptID, allowed);
+          // Recorded before Continue: Chromium can show the repeat prompt from inside it.
+          gAnsweredPrompts[key] = [NSDate date];
           cb->Continue(allowed ? CEF_PERMISSION_RESULT_ACCEPT : CEF_PERMISSION_RESULT_DENY);
         });
       };
