@@ -38,7 +38,7 @@ struct FoldedLayout: View {
                         .hiddenWhileKeyboardIsUp()
                 }
                 .toolbar { gutter }
-                .pageColoredSurroundings(browser.currentTab, galleryIsUp: browser.tabGridCoversPage)
+                .pageColoredSurroundings(browser.tabGridLandingTab ?? browser.currentTab, galleryIsUp: browser.tabGridCoversPage)
                 .toolbarTitleDisplayMode(.inline)
                 .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
                 .duoVerticalBarPrefersOurItems()

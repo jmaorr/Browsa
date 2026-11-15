@@ -24,7 +24,7 @@ struct PhoneLayout: View {
                 .allowsHitTesting(false)
                 .overlay(alignment: .bottom) { bar }
         }
-        .pageColoredSurroundings(browser.currentTab, galleryIsUp: browser.tabGridCoversPage)
+        .pageColoredSurroundings(browser.tabGridLandingTab ?? browser.currentTab, galleryIsUp: browser.tabGridCoversPage)
         .onGeometryChange(for: CGFloat.self) { BarMetrics.topCornerInset($0) } action: { topInset = $0 }
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
     }

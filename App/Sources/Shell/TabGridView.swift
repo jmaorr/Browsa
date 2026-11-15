@@ -126,7 +126,11 @@ struct TabGridOverlay: View {
         let picked = flight.generation
         instantly { heroID = tab.id }
         flight.fly(to: pageRect, cornerRadius: 0) {
-            withAnimation(Motion.spring) { cardsVisible = false; browser.tabGridCoversPage = false }
+            withAnimation(Motion.spring) {
+                cardsVisible = false
+                browser.tabGridLandingTab = tab
+                browser.tabGridCoversPage = false
+            }
         } landed: {
             let switching = tab.id != browser.currentTab?.id
             instantly {
@@ -162,6 +166,7 @@ struct TabGridOverlay: View {
             cardsVisible = false
             heroID = nil
             browser.tabGridCoversPage = false
+            browser.tabGridLandingTab = nil
         }
         if browser.isTabSwitcherPresented { browser.isTabSwitcherPresented = false }
     }
