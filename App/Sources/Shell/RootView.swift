@@ -106,7 +106,12 @@ struct WebContentView: View {
                 .overlay {
                     if tab.isAwaitingFirstPaint, let image = browser.thumbnails[tab.id] {
                         Color.clear
-                            .overlay(alignment: .top) { Image(uiImage: image).resizable().scaledToFill() }
+                            // Runs under the status bar like the page it stands in for, rather than
+                            // being pushed below it.
+                            .overlay(alignment: .top) {
+                                Image(uiImage: image).resizable().scaledToFill()
+                                    .ignoresSafeArea(.container, edges: .vertical)
+                            }
                             .clipped()
                             .allowsHitTesting(false)
                             .transition(.opacity)

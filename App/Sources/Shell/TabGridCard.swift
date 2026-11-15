@@ -1,10 +1,8 @@
 import SwiftUI
 import BrowserCore
 
-let galleryCoordinates = "tabGallery"
-
-/// Where each card's picture is. A plain reference, because it changes on every frame of a scroll
-/// and only the hero's take-off reads it.
+/// Where each card's picture is, in window coordinates (the flying picture's). A plain reference,
+/// because it changes on every frame of a scroll and only a take-off reads it.
 @MainActor final class CardFrames {
     var byTab: [UUID: CGRect] = [:]
 }
@@ -24,6 +22,8 @@ struct TabGridCard: View {
     @State private var dragX: CGFloat = 0
     @State private var isPastCloseLine = false
 
+    static let cornerRadius: CGFloat = 14
+
     /// How far left a slow swipe has to go before letting go closes the tab.
     private let closeLine: CGFloat = 90
 
@@ -33,14 +33,14 @@ struct TabGridCard: View {
                 // The clear shape alone sets the card's size, so the picture can't push it wider.
                 Color.clear
                 .aspectRatio(aspect, contentMode: .fit)
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(galleryCoordinates)) } action: {
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
                     frames.byTab[tab.id] = $0
                 }
                 .overlay {
-                    if !hidden { TabThumbnail(tab: tab, image: browser.thumbnails[tab.id], cornerRadius: 14) }
+                    if !hidden { TabThumbnail(tab: tab, image: browser.thumbnails[tab.id], cornerRadius: Self.cornerRadius) }
                 }
                 .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
                         .strokeBorder(selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.separator),
                                       lineWidth: selected ? 2.5 : 0.5)
                         .opacity(hidden ? 0 : 1)
