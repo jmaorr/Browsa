@@ -37,8 +37,13 @@ struct TabGridOverlay: View {
     var body: some View {
         ZStack {
             if shown {
+                // An opaque backdrop for the whole flight, like Safari. It used to fade with the
+                // zoom, which showed the live page through it: the status bar strip was already
+                // the final page while the picture grew up to meet it, and picking another tab
+                // just looked like a fade, because that tab was already showing behind.
+                // The picture lands exactly over the page, so removing it at the end is seamless.
                 grid
-                    .background(Color(.systemGroupedBackground).opacity(expanded ? 0 : 1), ignoresSafeAreaEdges: .vertical)
+                    .background(Color(.systemGroupedBackground), ignoresSafeAreaEdges: .vertical)
                 if let id = heroID, let tab = tab(id) {
                     let frame = expanded ? pageFrame : (cardFrames.byTab[id] ?? pageFrame)
                     TabThumbnail(tab: tab, image: browser.thumbnails[id], cornerRadius: expanded ? 0 : 14)
