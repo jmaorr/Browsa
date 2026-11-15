@@ -88,7 +88,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if ProcessInfo.processInfo.environment["BROWSA_SNAPSHOT"] != nil || ProcessInfo.processInfo.environment["BROWSA_COLUMNS_CHECK"] != nil
             || ProcessInfo.processInfo.environment["BROWSA_DROP_CHECK"] != nil
             || ProcessInfo.processInfo.environment["BROWSA_AGENT_GATE_CHECK"] != nil
-            || ProcessInfo.processInfo.environment["BROWSA_RADAR_CHECK"] != nil {
+            || ProcessInfo.processInfo.environment["BROWSA_RADAR_CHECK"] != nil
+            // tools/audio-bench: a fresh session, nothing restored or saved. A bench page left in the last session came
+            // back and played alongside the new one (2026-11-16, "double looping").
+            || AudioBench.isEnabled {
             return Library(engine: WebKitEngine(), history: HistoryStore(fileURL: nil), snapshotURL: nil)
         }
         #endif
