@@ -23,10 +23,10 @@ index 809f63e20d..7c7415f941 100644
  		419F6D892D0AEC130078433D /* simulcast_to_svc_converter.h in Headers */ = {isa = PBXBuildFile; fileRef = 419F6D872D0AEC130078433D /* simulcast_to_svc_converter.h */; };
 diff --git a/Source/WebCore/platform/mediastream/cocoa/BrowsaCallAudioInternalUnit.h b/Source/WebCore/platform/mediastream/cocoa/BrowsaCallAudioInternalUnit.h
 new file mode 100644
-index 0000000000..d9c2f85301
+index 0000000000..b573e636d6
 --- /dev/null
 +++ b/Source/WebCore/platform/mediastream/cocoa/BrowsaCallAudioInternalUnit.h
-@@ -0,0 +1,785 @@
+@@ -0,0 +1,800 @@
 +// Browsa call audio inside WebKit.
 +//
 +// WebKit's microphone capture (CoreAudioCaptureUnit, in the GPU process) talks to an "internal unit":
@@ -45,7 +45,11 @@ index 0000000000..d9c2f85301
 +// Tuning without a rebuild (read when a call's microphone starts; WebKit's processes see each variable
 +// as __XPC_<name>, which run.sh sets up):
 +//   BROWSA_CALL_AUDIO_REF_OFFSET_MS    the reference later (+) or earlier (-) than the clocks say, ms (default 0)
-+//   BROWSA_CALL_AUDIO_AGC              0 or 1, WebRTC's adaptive digital gain (default 1)
++//   BROWSA_CALL_AUDIO_WARMUP           0 or 1, hold the far end's leak down while the canceller learns the room at
++//                                      the start of a call (default 1; BrowsaCallGuard.h)
++//   BROWSA_CALL_AUDIO_GATED_GAIN       0 or 1, Browsa's gain that is only fully applied while you talk (default 1;
++//                                      BrowsaCallGuard.h); WebRTC's own gain is then off unless _AGC=1 is set too
++//   BROWSA_CALL_AUDIO_AGC              0 or 1, WebRTC's adaptive digital gain (default: off with gated gain, else 1)
 +//   BROWSA_CALL_AUDIO_AGC_MAX_DB       its gain limit (default 30)
 +//   BROWSA_CALL_AUDIO_AGC_NOISE_DBFS   the noise level it may lift to (default -60)
 +//   BROWSA_CALL_AUDIO_NS               noise suppression 0 low .. 3 very high, or off (default 2)
@@ -79,6 +83,7 @@ index 0000000000..d9c2f85301
 +// The timing half is shared with Spike/CallAudio/core (AudioTimeline.h), plain C++ with raw buffers.
 +WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
 +#include "BrowsaAudioTimeline.h"
++#include "BrowsaCallGuard.h"
 +WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
 +
 +WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
@@ -126,6 +131,8 @@ index 0000000000..d9c2f85301
 +        double gainMaxDb { 30 };
 +        double gainNoiseDbfs { -60 };
 +        int noiseLevel { 2 }; // 0 low .. 3 very high, -1 off
++        bool warmup { true };
++        bool gatedGain { true };
 +    };
 +    static double environmentNumber(const char* name, double fallback, double low, double high)
 +    {
@@ -142,7 +149,9 @@ index 0000000000..d9c2f85301
 +    {
 +        Settings settings;
 +        settings.referenceOffsetMs = environmentNumber("BROWSA_CALL_AUDIO_REF_OFFSET_MS", 0, -100, 100);
-+        settings.gain = environmentNumber("BROWSA_CALL_AUDIO_AGC", 1, 0, 1) >= 0.5;
++        settings.warmup = environmentNumber("BROWSA_CALL_AUDIO_WARMUP", 1, 0, 1) >= 0.5;
++        settings.gatedGain = environmentNumber("BROWSA_CALL_AUDIO_GATED_GAIN", 1, 0, 1) >= 0.5;
++        settings.gain = environmentNumber("BROWSA_CALL_AUDIO_AGC", settings.gatedGain ? 0 : 1, 0, 1) >= 0.5;
 +        // libwebrtc's defaults allow 50 dB of gain and room noise up to -50 dBFS; on an open-speaker call that
 +        // lifts the room and the canceller's leftovers too. Calls need a voice brought up, not a room.
 +        settings.gainMaxDb = environmentNumber("BROWSA_CALL_AUDIO_AGC_MAX_DB", 30, 0, 50);
@@ -364,6 +373,10 @@ index 0000000000..d9c2f85301
 +        config.gain_controller2.adaptive_digital.enabled = m_settings.gain;
 +        config.gain_controller2.adaptive_digital.max_gain_db = static_cast<float>(m_settings.gainMaxDb);
 +        config.gain_controller2.adaptive_digital.max_output_noise_level_dbfs = static_cast<float>(m_settings.gainNoiseDbfs);
++        browsa::CallGuardOptions guardOptions;
++        guardOptions.warmup = m_settings.warmup;
++        guardOptions.gatedGain = m_settings.gatedGain;
++        m_guard = browsa::CallGuard(guardOptions);
 +        m_processing = webrtc::BuiltinAudioProcessingBuilder(config).Build(webrtc::CreateEnvironment());
 +        if (!m_processing) {
 +            uninitialize();
@@ -372,8 +385,8 @@ index 0000000000..d9c2f85301
 +
 +        RELEASE_LOG(WebRTC, "BrowsaCallAudioInternalUnit ready: microphone %.0f Hz x%d (latency %.1f ms), speakers %.0f Hz x%d (latency %.1f ms), WebKit microphone format %.0f Hz",
 +            m_deviceRate, m_deviceChannels, m_inputLatency * 1000, m_speakerFormat.mSampleRate, (int)m_speakerFormat.mChannelsPerFrame, m_outputLatency * 1000, m_micFormat.mSampleRate);
-+        RELEASE_LOG(WebRTC, "BrowsaCallAudioInternalUnit settings: reference offset %.1f ms, gain %d (max %.0f dB, noise %.0f dBFS), noise suppression %d",
-+            m_settings.referenceOffsetMs, (int)m_settings.gain, m_settings.gainMaxDb, m_settings.gainNoiseDbfs, m_settings.noiseLevel);
++        RELEASE_LOG(WebRTC, "BrowsaCallAudioInternalUnit settings: reference offset %.1f ms, gain %d (max %.0f dB, noise %.0f dBFS), noise suppression %d, warm-up %d, gated gain %d",
++            m_settings.referenceOffsetMs, (int)m_settings.gain, m_settings.gainMaxDb, m_settings.gainNoiseDbfs, m_settings.noiseLevel, (int)m_settings.warmup, (int)m_settings.gatedGain);
 +        m_initialized = true;
 +        startDump();
 +        return noErr;
@@ -515,16 +528,16 @@ index 0000000000..d9c2f85301
 +
 +            float rawCopy[frameSize], referenceCopy[frameSize];
 +            const bool dumping = !m_dumpRing[0].empty();
-+            if (dumping) {
-+                memcpy(rawCopy, clean, sizeof(rawCopy));
-+                memcpy(referenceCopy, reference, sizeof(referenceCopy));
-+            }
++            memcpy(rawCopy, clean, sizeof(rawCopy));
++            memcpy(referenceCopy, reference, sizeof(referenceCopy));
 +            const webrtc::StreamConfig stream(48000, 1);
 +            float* referenceChannels[1] = { reference };
 +            float* cleanChannels[1] = { clean };
 +            m_processing->ProcessReverseStream(referenceChannels, stream, stream, referenceChannels);
 +            m_processing->set_stream_delay_ms(static_cast<int>(referenceLead * 1000));
 +            m_processing->ProcessStream(cleanChannels, stream, stream, cleanChannels);
++            if (m_settings.warmup || m_settings.gatedGain)
++                m_guard.process(rawCopy, referenceCopy, clean);
 +            if (m_muted)
 +                memset(clean, 0, sizeof(clean));
 +            if (dumping)
@@ -713,13 +726,14 @@ index 0000000000..d9c2f85301
 +            return;
 +        const uint64_t frames = m_dumpRead.load(std::memory_order_acquire);
 +        fprintf(f, "{\"mode\": \"webkit-unit\", \"dumpVersion\": 2, \"complete\": %s, \"startedAt\": %lld,\n"
-+            " \"settings\": {\"referenceOffsetMs\": %.1f, \"agc\": %s, \"agcMaxDb\": %.1f, \"agcNoiseDbfs\": %.1f, \"ns\": %d},\n"
++            " \"settings\": {\"referenceOffsetMs\": %.1f, \"agc\": %s, \"agcMaxDb\": %.1f, \"agcNoiseDbfs\": %.1f, \"ns\": %d, \"warmup\": %s, \"gatedGain\": %s},\n"
 +            " \"inputRate\": %.0f, \"inputChannels\": %d, \"inputLatencyMs\": %.2f, \"outputLatencyMs\": %.2f,\n"
 +            " \"webkitMicFormat\": %s,\n \"webkitSpeakerFormat\": %s,\n \"holdSamples\": %.1f, \"referenceLeadMs\": %.1f, \"streamDelayHintMs\": %.0f,\n"
 +            " \"speakerCallbacks\": %llu, \"speakerSilentCallbacks\": %llu,\n%s"
 +            " \"droppedFrames\": %llu, \"limitSeconds\": %.0f, \"capturedSeconds\": %.2f}\n",
 +            final ? "true" : "false", (long long)m_dumpStartedAt,
 +            m_settings.referenceOffsetMs, m_settings.gain ? "true" : "false", m_settings.gainMaxDb, m_settings.gainNoiseDbfs, m_settings.noiseLevel,
++            m_settings.warmup ? "true" : "false", m_settings.gatedGain ? "true" : "false",
 +            m_deviceRate, m_deviceChannels, m_inputLatency * 1000, m_outputLatency * 1000, describe(m_micFormat).c_str(), describe(m_speakerFormat).c_str(),
 +            m_holdSamples, m_referenceLead * 1000, referenceLead * 1000,
 +            (unsigned long long)m_speakerCallbacks.load(), (unsigned long long)m_speakerSilentCallbacks.load(), timing,
@@ -764,6 +778,7 @@ index 0000000000..d9c2f85301
 +    std::atomic<uint64_t> m_speakerCallbacks { 0 };
 +    std::atomic<uint64_t> m_speakerSilentCallbacks { 0 };
 +    Settings m_settings;
++    browsa::CallGuard m_guard;
 +    double m_referenceLead { 0.010 };
 +
 +    static constexpr double referenceLead = 0.010;

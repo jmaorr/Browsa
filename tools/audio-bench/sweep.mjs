@@ -32,7 +32,7 @@ export async function sweep(dir, opt = {}) {
   const limit = Math.floor(parseFloat(opt.minutes ?? 10) * 60 * RATE);
   const crop = (x) => (x && x.length > limit ? x.subarray(0, limit) : x);
   const raw = crop(d.raw), ref = crop(d.ref), live = crop(d.sent);
-  const rec = { referenceOffsetMs: 0, agc: true, agcMaxDb: 30, agcNoiseDbfs: -60, ns: 2, ...(d.meta.settings || {}) };
+  const rec = { referenceOffsetMs: 0, agc: true, agcMaxDb: 30, agcNoiseDbfs: -60, ns: 2, warmup: false, gatedGain: false, ...(d.meta.settings || {}) };
   const stamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
   const out = opt.out || (path.resolve(dir).startsWith(BENCH) ? `${path.resolve(dir).replace(/\/$/, "")}-sweep-${stamp}` : path.join(BENCH, `sweep-${stamp}`));
   fs.mkdirSync(out, { recursive: true });
@@ -55,12 +55,13 @@ export async function sweep(dir, opt = {}) {
     const s = { ...rec, ...o, shiftMs: o.shiftMs ?? 0 };
     const file = path.join(work, `${result.variants.length}-${Math.random().toString(36).slice(2, 7)}.wav`);
     const cli = ["--raw", rawPath, "--ref", refPath, "--out", file, "--ref-shift-ms", String(s.shiftMs), "--agc", s.agc ? "1" : "0",
-      "--agc-max-db", String(s.agcMaxDb), "--agc-noise-dbfs", String(s.agcNoiseDbfs), "--ns", s.ns < 0 ? "off" : String(s.ns)];
+      "--agc-max-db", String(s.agcMaxDb), "--agc-noise-dbfs", String(s.agcNoiseDbfs), "--ns", s.ns < 0 ? "off" : String(s.ns),
+      "--warmup", s.warmup ? "1" : "0", "--gated-gain", s.gatedGain ? "1" : "0"];
     await run(REPLAY, cli);
     const x = readWav(file).channels[0];
     const sc = score(x);
     delete sc.blocks;
-    const v = { label, settings: { referenceOffsetMs: rec.referenceOffsetMs + s.shiftMs, agc: s.agc, agcMaxDb: s.agcMaxDb, agcNoiseDbfs: s.agcNoiseDbfs, ns: s.ns }, shiftMs: s.shiftMs, score: sc, file };
+    const v = { label, settings: { referenceOffsetMs: rec.referenceOffsetMs + s.shiftMs, agc: s.agc, agcMaxDb: s.agcMaxDb, agcNoiseDbfs: s.agcNoiseDbfs, ns: s.ns, warmup: s.warmup, gatedGain: s.gatedGain }, shiftMs: s.shiftMs, score: sc, file };
     result.variants.push(v);
     return { v, x };
   };
@@ -100,6 +101,8 @@ export async function sweep(dir, opt = {}) {
       ["gain noise ceiling -70 dBFS", { agc: true, agcNoiseDbfs: -70 }],
       ["noise suppression moderate", { ns: 1 }],
       ["noise suppression very high", { ns: 3 }],
+      ["warm-up + gain only while talking", { warmup: true, gatedGain: true, agc: false }],
+      ["no warm-up, no gated gain (WebRTC gain)", { warmup: false, gatedGain: false, agc: true }],
     ].filter(([, o]) => Object.entries(o).some(([k, v]) => rec[k] !== v));
     await pool(tries, ([label, o]) => variant(`${label}, reference ${shiftMs > 0 ? "+" : ""}${shiftMs} ms`, { shiftMs, ...o }));
   }
@@ -140,10 +143,13 @@ export async function sweep(dir, opt = {}) {
 export function envFor(s) {
   const e = [];
   if (s.referenceOffsetMs) e.push(`BROWSA_CALL_AUDIO_REF_OFFSET_MS=${s.referenceOffsetMs}`);
-  if (!s.agc) e.push("BROWSA_CALL_AUDIO_AGC=0");
+  if (!s.agc && s.gatedGain === false) e.push("BROWSA_CALL_AUDIO_AGC=0");
+  if (s.agc && s.gatedGain) e.push("BROWSA_CALL_AUDIO_AGC=1");
   if (s.agc && s.agcMaxDb !== 30) e.push(`BROWSA_CALL_AUDIO_AGC_MAX_DB=${s.agcMaxDb}`);
   if (s.agc && s.agcNoiseDbfs !== -60) e.push(`BROWSA_CALL_AUDIO_AGC_NOISE_DBFS=${s.agcNoiseDbfs}`);
   if (s.ns !== 2) e.push(`BROWSA_CALL_AUDIO_NS=${s.ns < 0 ? "off" : s.ns}`);
+  if (s.warmup === false) e.push("BROWSA_CALL_AUDIO_WARMUP=0");
+  if (s.gatedGain === false) e.push("BROWSA_CALL_AUDIO_GATED_GAIN=0");
   return e.length ? e.join(" ") : "(defaults)";
 }
 

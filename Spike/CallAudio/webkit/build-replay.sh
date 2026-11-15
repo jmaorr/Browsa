@@ -26,7 +26,7 @@ exports:
 TBD
 xcrun clang++ -std=c++20 -O2 -w \
   -DWEBRTC_POSIX -DWEBRTC_MAC -DWEBRTC_WEBKIT_BUILD -DABSL_ALLOCATOR_NOTHROW -DWEBRTC_APM_DEBUG_DUMP=0 \
-  -I "$HERE/../replay" -I "$FW/usr/local/include" -I "$FW/usr/local/include/webrtc" \
+  -I "$HERE/../replay" -I "$HERE/../core" -I "$FW/usr/local/include" -I "$FW/usr/local/include/webrtc" \
   -I "$SRC" -I "$SRC/webrtc" -I "$SRC/third_party/abseil-cpp" \
   "$HERE/../replay/webkit_main.cc" -L "$STUB" -lwebrtc -Wl,-rpath,"$FW" -o "$OUT/apm-replay-webkit"
 echo "Built $OUT/apm-replay-webkit (libwebrtc from $FW)"

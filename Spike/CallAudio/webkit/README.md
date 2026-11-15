@@ -2,9 +2,11 @@
 
 A patch for WebKit (builds against the commit in `WEBKIT_COMMIT`), small edits plus two headers.
 `webkit.patch` is a real `git diff` from that tree (it includes `BrowsaCallAudioInternalUnit.h`), so
-`git apply` works; `BrowsaAudioTimeline.h` still comes from `../core/AudioTimeline.h`:
+`git apply` works; `BrowsaAudioTimeline.h` and `BrowsaCallGuard.h` still come from `../core/AudioTimeline.h` and
+`../core/CallGuard.h`:
 
-1. Copy `BrowsaCallAudioInternalUnit.h` and `../core/AudioTimeline.h` (as `BrowsaAudioTimeline.h`) into
+1. Copy `BrowsaCallAudioInternalUnit.h`, `../core/AudioTimeline.h` (as `BrowsaAudioTimeline.h`) and
+   `../core/CallGuard.h` (as `BrowsaCallGuard.h`) into
    `Source/WebCore/platform/mediastream/cocoa/`.
 2. Apply the edits described in `webkit.patch` (by hand; the hunks are illustrative, not line exact):
    `CoreAudioCaptureInternalUnit::create` returns the Browsa unit where it would have made Apple's
@@ -30,7 +32,9 @@ WebKit's processes as `__XPC_...`):
 | variable | default | |
 |---|---|---|
 | `BROWSA_CALL_AUDIO_REF_OFFSET_MS` | 0 | reference later (+) or earlier (-) than the clocks say, ±100 ms |
-| `BROWSA_CALL_AUDIO_AGC` | 1 | WebRTC's adaptive digital gain on/off |
+| `BROWSA_CALL_AUDIO_WARMUP` | 1 | join warm-up: far end's leak held 30 dB down until the canceller removes 35 dB (max 2 s) |
+| `BROWSA_CALL_AUDIO_GATED_GAIN` | 1 | Browsa's gain, fully applied only while you talk (12 dB lower otherwise); WebRTC's gain off |
+| `BROWSA_CALL_AUDIO_AGC` | 0 with gated gain, else 1 | WebRTC's adaptive digital gain on/off |
 | `BROWSA_CALL_AUDIO_AGC_MAX_DB` | 30 | its gain limit (libwebrtc's own default is 50) |
 | `BROWSA_CALL_AUDIO_AGC_NOISE_DBFS` | -60 | the noise level it may lift to (libwebrtc's default -50) |
 | `BROWSA_CALL_AUDIO_NS` | 2 | noise suppression 0 low .. 3 very high, or `off` |
@@ -91,3 +95,19 @@ Because the spike is then its own app for permissions, run the camera & mic chec
 run: an unanswered macOS mic prompt would stall it.
 
 Move the meeting launcher onto the current build only once a sound check has confirmed it.
+
+## After the canceller: CallGuard
+
+`core/CallGuard.h` runs after WebRTC's processing, in the unit and in `apm-replay-webkit --warmup 1 --gated-gain 1`
+alike. From the first real call (2026-11-16, MacBook mic and speakers): at join the canceller removed only 20-27 dB
+for about a second, and WebRTC's gain lifted its leftovers about 14 dB, which is what Meet heard. Checked offline
+with `tools/audio-bench/guardcheck.mjs` on that call (first 6 min) against the unit as it ran:
+
+| | join 0-1.5 s | after your speech 16.5-17.5 s | overall G.131 f | send dBFS | room as sent |
+|---|---|---|---|---|---|
+| WebRTC gain (as ran) | 37.6 dB | 14.2 dB | ≥25 | -22.1 | -69.2 |
+| warm-up + gain only while talking | 46.8 dB | ≥26.2 dB | ≥26.4 | -24.6 | -83.2 |
+
+On the 2026-11-14 native recordings against the same WebRTC-gain baseline: G.131 f 35.1 → 41.2 and 13.8 → 19.8, echo
+during the start of talk-over 17.6 → 21.7 dB, send about -24 dBFS, first 300 ms of speech not clipped; gain pumping
+5.3 → 6.2 dB on one, 2.2 → 1.2 dB on the other.
