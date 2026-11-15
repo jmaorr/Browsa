@@ -12,9 +12,10 @@
 //   - Not measurable without a known talker: talk-over (double talk) and gain pumping. Mixed stretches are
 //     counted, not scored.
 // Plain Node, no dependencies.
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { RATE, db, power, activeLevel, coherentPower, findLag, guestEar, readWav } from "./analyze.mjs";
+import { RATE, db, power, activeLevel, coherentPower, findLag, guestEar, readWav, writeWavFloat } from "./analyze.mjs";
 
 export function loadDump(dir) {
   const read = (name) => (fs.existsSync(path.join(dir, name)) ? readWav(path.join(dir, name)) : null);
@@ -157,3 +158,29 @@ export function describe(score) {
   return `G.131 f ${m} (14+ fine, 8- annoying), echo audible in ${score.audiblePct}% of their speech, echo loss ${score.echoLossDb} dB` +
     (score.sendLevelDb != null ? `, your voice sent at ${score.sendLevelDb} dBFS` : "") + ` [far-only ${score.farOnlySec} s, you-only ${score.nearOnlySec} s]`;
 }
+
+// ---------- clips ----------
+export function m4a(x, file) {
+  const wav = file.replace(/\.m4a$/, ".tmp.wav");
+  writeWavFloat(wav, [x], RATE);
+  try { execFileSync("afconvert", ["-f", "m4af", "-d", "aac", "-b", "64000", "-c", "1", wav, file]); } finally { fs.rmSync(wav, { force: true }); }
+}
+// Stretches end to end with 0.3 s of silence between, at most `maxSec`.
+export function joined(x, spans, gain = 1, maxSec = 90) {
+  const gap = Math.floor(0.3 * RATE), parts = [];
+  let total = 0;
+  for (const [a, z] of spans) {
+    const n = Math.min(Math.floor(z) - Math.floor(a), maxSec * RATE - total);
+    if (n <= 0) break;
+    parts.push([Math.floor(a), n]);
+    total += n + gap;
+  }
+  const out = new Float32Array(Math.max(0, total));
+  let p = 0;
+  for (const [a, n] of parts) {
+    for (let i = 0; i < n; i++) out[p + i] = Math.max(-1, Math.min(1, x[a + i] * gain));
+    p += n + gap;
+  }
+  return out;
+}
+

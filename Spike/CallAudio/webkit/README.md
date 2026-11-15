@@ -60,3 +60,15 @@ sounded like. Then, in `tools/audio-bench`:
 - `node sweep.mjs <dump>`: reference offset -40..+40 ms, auto gain off / 20 / 40 dB, noise ceiling, noise
   suppression levels, ranked; prints the best setting as variables for run.sh.
 - `soundcheck.sh <volume>`: a short bench run of the spike with the dump on, then the sweep (plays sound).
+
+## Launchers
+
+`install-launchers.sh` writes two double-click launchers to `~/Applications` (it starts nothing):
+
+- `Browsa WebKit Spike.command`: for meetings. The frozen WebKit build `WebKitBuild/Release-meeting` (an APFS
+  clone of the 3a31ddd unit), default settings, dump on.
+- `Browsa WebKit Spike (tuned).command`: opt-in. The current build `WebKitBuild/Release` with the best settings
+  from the newest sweep of a real unit dump (`sweep.json` with `dumpMode: webkit-unit`). It refuses when there is
+  none, or when that sweep's replay didn't reproduce the live call (replay vs live above -20 dB).
+
+Move the meeting launcher onto the current build only once a sound check has confirmed it.

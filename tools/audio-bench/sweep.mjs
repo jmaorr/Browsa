@@ -11,14 +11,16 @@
 // 3. At the best offset: auto gain off, gain limits 20/40 dB, noise ceiling -50/-70 dBFS, noise suppression 1/3.
 // Offsets are relative to the dump's reference, which already carries the recorded BROWSA_CALL_AUDIO_REF_OFFSET_MS;
 // the printed setting adds the two. Writes <out>/sweep.json and report.txt (default: a sweep-<time> folder next to
-// the dump when that is under derived/audio-bench, else in derived/audio-bench).
+// the dump when that is under derived/audio-bench, else in derived/audio-bench), report.html with the offset curve and
+// clips (live-/best-guest-hears.m4a, +30 dB versions) over the far-only stretches.
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { RATE, db, power, writeWavFloat, readWav } from "./analyze.mjs";
-import { loadDump, echoLag, detectStretches, scoreSent, rank, describe } from "./dumpscore.mjs";
+import { loadDump, echoLag, detectStretches, scoreSent, rank, describe, m4a, joined } from "./dumpscore.mjs";
+import { writeSweepHtml } from "./htmlreport.mjs";
 
 const run = promisify(execFile);
 const REPLAY = process.env.APM_REPLAY_WEBKIT || path.join(os.homedir(), "Developer/Browsa/derived/audio-lab/apm-replay-webkit");
@@ -43,7 +45,7 @@ export async function sweep(dir, opt = {}) {
   const lag = echoLag(raw, ref);
   const st = detectStretches(raw, ref, lag.lag);
   const score = (x) => { const s = scoreSent(x, ref, raw, st, lag.lag); return { ...s, rank: rank(s) }; };
-  const result = { dump: path.resolve(dir), engine: REPLAY, recorded: rec, minutesUsed: +(raw.length / RATE / 60).toFixed(2), echoLagMs: lag.ms, echoLagFound: lag.found,
+  const result = { dump: path.resolve(dir), dumpMode: d.meta.mode || null, engine: REPLAY, recorded: rec, minutesUsed: +(raw.length / RATE / 60).toFixed(2), echoLagMs: lag.ms, echoLagFound: lag.found,
     stretches: { farOnlySec: +(st.far.reduce((s, [a, z]) => s + z - a, 0) / RATE).toFixed(1), counts: st.counts }, variants: [] };
 
   if (live) { result.live = score(live); delete result.live.blocks; }
@@ -118,10 +120,20 @@ export async function sweep(dir, opt = {}) {
     else { fs.rmSync(v.file, { force: true }); v.file = null; }
   }
   fs.rmSync(work, { recursive: true, force: true });
+  // Clips over the far-only stretches: what the guest heard live, and with the best setting.
+  if (st.far.length) {
+    const bestSent = readWav(best.file).channels[0];
+    try {
+      if (live) { m4a(joined(live, st.far), path.join(out, "live-guest-hears.m4a")); m4a(joined(live, st.far, 10 ** 1.5), path.join(out, "live-guest-hears-plus30dB.m4a")); }
+      m4a(joined(bestSent, st.far), path.join(out, "best-guest-hears.m4a"));
+      m4a(joined(bestSent, st.far, 10 ** 1.5), path.join(out, "best-guest-hears-plus30dB.m4a"));
+    } catch (e) { console.error(`clips: ${e.message}`); }
+  }
   result.out = out;
   result.line = summaryLine(result);
   fs.writeFileSync(path.join(out, "sweep.json"), JSON.stringify(result, null, 2));
   fs.writeFileSync(path.join(out, "report.txt"), report(result));
+  writeSweepHtml(result, out);
   return result;
 }
 

@@ -142,3 +142,14 @@ audible echo in 12-25% of the guest's speech and +35 ms is annoying.
 
 `bench.mjs`: `BENCH_UNIT_DUMP=1` sends the spike subject's dump to the GPU process folder (the default, a folder
 in the run, is outside the GPU sandbox).
+
+Both `aftercall.mjs` and `sweep.mjs` also write `report.html` next to their clips (playable in place), with the
+offset curve and every variant's scores.
+
+What sent audio alone can't tell: the 2026-11-14 spike run kept only `sent.wav` (no raw mic or reference), so it
+can't be replayed. Checked whether the shape of its leftover echo could still show a late reference: calibrated
+on native replays with known shifts, AEC3 doesn't leave a clean "first X ms uncancelled" residue (a late reference
+raises leftovers across the response while the main peak stays suppressed), and the spike's leftover shape matched
+every shift from -80 to +60 ms about equally (correlation 0.6 to 0.8, the plain room response 0.67). So that
+recording neither supports nor rules out a late reference; what it does show is about 20 dB more linear echo than
+the native core (-57 against -77 dBFS coherent), concentrated at the main echo path. A unit dump answers it.

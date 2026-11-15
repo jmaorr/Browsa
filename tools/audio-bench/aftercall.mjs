@@ -4,6 +4,7 @@
 // With no folder, takes the newest browsa-call-audio-* the spike's GPU process wrote (its private cache and temp
 // folders, where BROWSA_CALL_AUDIO_DUMP=1 puts them). Copies the dump to
 // ~/Developer/Browsa/derived/audio-bench/call-<time>/ and writes there:
+//   report.html                      scores and clips, playable in place (and the sweep, with --sweep)
 //   report.txt, score.json           the scores (see dumpscore.mjs for which figures a real call supports)
 //   guest-hears.m4a                  what the other side heard of their own voice: sent audio over the far-only stretches
 //   guest-hears-plus30dB.m4a         the same, 30 dB louder, to hear faint leftovers
@@ -14,8 +15,9 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { RATE, writeWavFloat } from "./analyze.mjs";
-import { loadDump, echoLag, detectStretches, scoreSent, rank, describe } from "./dumpscore.mjs";
+import { RATE } from "./analyze.mjs";
+import { loadDump, echoLag, detectStretches, scoreSent, rank, describe, m4a, joined } from "./dumpscore.mjs";
+import { writeCallHtml } from "./htmlreport.mjs";
 
 const BENCH = path.join(os.homedir(), "Developer/Browsa/derived/audio-bench");
 const SPIKE_PROCESS = "com.apple.WebKit.GPU+com.orriginal.browsa.webkitspike";
@@ -35,30 +37,6 @@ export function findDumps() {
     }
   }
   return found.sort((a, b) => b.mtime - a.mtime);
-}
-
-function m4a(x, file) {
-  const wav = file.replace(/\.m4a$/, ".tmp.wav");
-  writeWavFloat(wav, [x], RATE);
-  try { execFileSync("afconvert", ["-f", "m4af", "-d", "aac", "-b", "64000", "-c", "1", wav, file]); } finally { fs.rmSync(wav, { force: true }); }
-}
-// Stretches end to end with 0.3 s of silence between, at most `maxSec`.
-function joined(x, spans, gain = 1, maxSec = 90) {
-  const gap = Math.floor(0.3 * RATE), parts = [];
-  let total = 0;
-  for (const [a, z] of spans) {
-    const n = Math.min(Math.floor(z) - Math.floor(a), maxSec * RATE - total);
-    if (n <= 0) break;
-    parts.push([Math.floor(a), n]);
-    total += n + gap;
-  }
-  const out = new Float32Array(Math.max(0, total));
-  let p = 0;
-  for (const [a, n] of parts) {
-    for (let i = 0; i < n; i++) out[p + i] = Math.max(-1, Math.min(1, x[a + i] * gain));
-    p += n + gap;
-  }
-  return out;
 }
 
 export async function afterCall(src, opt = {}) {
@@ -109,12 +87,16 @@ export async function afterCall(src, opt = {}) {
     "",
     `Clips in ${out}: guest-hears.m4a, guest-hears-plus30dB.m4a, you-sent.m4a`,
   ];
+  let sweepResult = null;
   if (opt.sweep) {
     const { sweep } = await import("./sweep.mjs");
     const r = await sweep(dumpCopy, { minutes: opt.minutes ?? 10, out: path.join(out, "sweep") });
+    sweepResult = r;
     lines.push("", `Sweep (first ${r.minutesUsed} min, ${r.seconds} s): ${r.line}`, `Details: ${path.join(out, "sweep/report.txt")}`);
     if (r.replayVsLiveDb != null) lines.push(`Replay check: recorded settings replayed ${r.replayVsLiveDb} dB from what was sent live${r.replayVsLiveDb > -20 ? " (NOT a faithful replay: treat the sweep with care)" : " (faithful)"}`);
   }
+  writeCallHtml(score, out, sweepResult);
+  lines.push(`Report: ${path.join(out, "report.html")}`);
   fs.writeFileSync(path.join(out, "report.txt"), lines.join("\n") + "\n");
   return { out, lines, score };
 }
