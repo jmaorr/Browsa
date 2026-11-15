@@ -304,21 +304,43 @@ private struct AudioSettings: View {
     @Environment(Library.self) private var browser
     /// Inputs on the Mac's current mic. The input picker is only for audio interfaces with two or more.
     @State private var micChannels = AudioSettings.defaultInputChannels()
+    /// Read at launch, so these only show what the next start will do.
+    @State private var usePatchedWebKit = PatchedWebKit.enabled
+    @State private var callRouting = Preferences.callRouting
 
     var body: some View {
         @Bindable var browser = browser
-        let browsa = browser.callAudio.processing == .browsa
+        let browsa = browser.callAudio.processing == .browsa && !PatchedWebKit.isActive
         Form {
             Section {
-                Picker("Call audio", selection: $browser.callAudio.processing) {
-                    Text("Browsa (recommended)").tag(CallAudioTuning.Processing.browsa)
-                    Text("macOS").tag(CallAudioTuning.Processing.system)
+                LabeledContent("WebKit", value: PatchedWebKit.statusText)
+                Toggle("Use Browsa's WebKit when it's on this Mac", isOn: $usePatchedWebKit)
+                    .onChange(of: usePatchedWebKit) { _, on in PatchedWebKit.enabled = on }
+                Picker("Meet, Zoom and Teams", selection: $callRouting) {
+                    Text("Browsa (WebKit)").tag(CallRouting.webkit)
+                    Text("Chromium tab").tag(CallRouting.chromium)
                 }
+                .onChange(of: callRouting) { _, r in Preferences.callRouting = r }
+            } header: {
+                Text("Calls")
             } footer: {
-                Text(browsa
-                     ? "Browsa removes echo and background noise on calls, like Chrome does. Meet, Zoom and Teams run on Chromium and use its own call audio; this applies to other call sites."
-                     : "macOS voice processing, like Safari. Some audio interfaces let echo through. Meet, Zoom and Teams use Chromium's own call audio either way. Reload a call to switch.")
+                Text(PatchedWebKit.isActive
+                     ? "Browsa's WebKit removes echo and background noise inside WebKit, for every site. Changes here apply the next time Browsa starts."
+                     : "Without Browsa's WebKit, Meet, Zoom and Teams run in Chromium tabs, whatever is picked here. Changes here apply the next time Browsa starts.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+            if !PatchedWebKit.isActive {
+                Section {
+                    Picker("Call audio", selection: $browser.callAudio.processing) {
+                        Text("Browsa (recommended)").tag(CallAudioTuning.Processing.browsa)
+                        Text("macOS").tag(CallAudioTuning.Processing.system)
+                    }
+                } footer: {
+                    Text(browsa
+                         ? "Browsa removes echo and background noise on calls, like Chrome does. Meet, Zoom and Teams run on Chromium and use its own call audio; this applies to other call sites."
+                         : "macOS voice processing, like Safari. Some audio interfaces let echo through. Meet, Zoom and Teams use Chromium's own call audio either way. Reload a call to switch.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             if browsa {
                 Section {

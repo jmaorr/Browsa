@@ -489,6 +489,12 @@ enum Preferences {
         set { d.set(newValue, forKey: "useSafariExtensions") }
     }
 
+    /// Settings › Audio: where Meet, Zoom and Teams run. Read at launch.
+    static var callRouting: CallRouting {
+        get { d.string(forKey: "callRouting").flatMap(CallRouting.init(rawValue:)) ?? .webkit }
+        set { d.set(newValue.rawValue, forKey: "callRouting") }
+    }
+
     /// Settings › Audio: how Browsa processes the mic on calls.
     static var callAudio: CallAudioTuning {
         get {
@@ -497,6 +503,8 @@ enum Preferences {
             if d.data(forKey: "callAudio") == nil, d.object(forKey: "callAudioProcessing") as? Bool == false { t.processing = .system }
             // tools/audio-bench picks the in-page processing per run (test builds only).
             if AudioBench.isEnabled, let v = ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH_CALL_AUDIO"], let p = CallAudioTuning.Processing(rawValue: v) { t.processing = p }
+            // On Browsa's own WebKit the call audio is inside WebKit: the in-page script stays out of the way.
+            if PatchedWebKit.isActive { t.processing = .system }
             return t
         }
         set { d.set(try? JSONEncoder().encode(newValue), forKey: "callAudio") }

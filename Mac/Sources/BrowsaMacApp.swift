@@ -8,6 +8,8 @@ struct BrowsaMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
+        // First of all: start again on Browsa's own WebKit if there is one (doesn't return then).
+        PatchedWebKit.relaunchIfNeeded()
         // Before anything opens a store: bring data over from the old sandbox container, once.
         SandboxMigration.runIfNeeded()
     }
@@ -94,9 +96,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let engine = WebKitEngine()
         let library = Library(engine: engine)
         #if CALL_TABS
-        // Meet, Zoom and Teams run on Chromium (see Mac/Chromium/CallTabs.swift). Not in the patched
-        // WebKit spike (Spike/CallAudio/webkit), where calls have to run on WebKit to test its audio.
-        if Bundle.main.bundleIdentifier != "com.orriginal.browsa.webkitspike" || ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH_CALL_TABS"] == "1" {
+        // Meet, Zoom and Teams run on Chromium (see Mac/Chromium/CallTabs.swift), unless Browsa's own WebKit is
+        // running and Settings › Audio sends calls to it. The WebKit spike (Spike/CallAudio/webkit) always keeps
+        // calls on WebKit, to test its audio.
+        let useCallTabs = Bundle.main.bundleIdentifier == "com.orriginal.browsa.webkitspike"
+            ? ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH_CALL_TABS"] == "1"
+            : CallRouting.usesCallTabs(Preferences.callRouting, patchedWebKitActive: PatchedWebKit.isActive)
+        if useCallTabs {
             CallTabs.install(in: library)
         }
         #endif

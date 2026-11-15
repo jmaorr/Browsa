@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Mac/Browsa.entitlements, plus the two Hardened Runtime exceptions that let this copy run on Browsa's own
+	     WebKit build (Mac/Sources/PatchedWebKit.swift): DYLD_FRAMEWORK_PATH is honoured, and frameworks signed
+	     locally (not by Apple or this team) may load. For a local install on Josh's Mac only
+	     (tools/install-mac.sh --patched-webkit); release builds (tools/release-mac.sh) never use this file. -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<key>com.apple.security.device.camera</key>
+	<true/>
+	<key>com.apple.security.personal-information.location</key>
+	<true/>
+	<key>com.apple.security.cs.allow-dyld-environment-variables</key>
+	<true/>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>
