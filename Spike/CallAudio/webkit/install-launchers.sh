@@ -1,36 +1,66 @@
 #!/bin/sh
-# Writes the double-click launchers for Browsa WebKit Spike into ~/Applications (nothing is started):
-#   Browsa WebKit Spike.command          the meeting launcher: the frozen WebKit build (WebKitBuild/Release-meeting,
-#                                         the 3a31ddd unit), default settings, debug dump on
-#   Browsa WebKit Spike (tuned).command  opt-in: the current build (WebKitBuild/Release) with the best settings
-#                                         from the newest sweep of a real unit dump, if its replay was faithful
-# Both start the spike detached and log to ~/Library/Logs/Browsa WebKit Spike.log. The daily Browsa is never touched.
+# Installs open-spike.sh and the camera/mic check page into ~/Developer/Browsa/derived/webkit-spike, and writes the
+# double-click launchers to ~/Applications (nothing is started):
+#   Browsa WebKit Spike.command                  for meetings: the frozen WebKit build (WebKitBuild/Release-meeting,
+#                                                the 3a31ddd unit), default settings, debug dump on
+#   Browsa WebKit Spike (tuned).command          opt-in: the current build (WebKitBuild/Release) with the best settings
+#                                                from the newest sweep of a real unit dump, if its replay was faithful
+#   Browsa WebKit Spike (camera & mic check).command
+#                                                opens a local page that asks for the camera and mic, so the
+#                                                permissions are granted before a meeting
+# All start the spike through LaunchServices (open-spike.sh), so macOS asks about the camera and mic for the spike
+# itself. The daily Browsa is never touched.
 set -eu
+HERE=$(cd "$(dirname "$0")" && pwd)
+DERIVED="$HOME/Developer/Browsa/derived/webkit-spike"
 DEST=${DEST:-$HOME/Applications}
-mkdir -p "$DEST"
+mkdir -p "$DEST" "$DERIVED/preflight"
+cp "$HERE/open-spike.sh" "$DERIVED/open-spike.sh" && chmod +x "$DERIVED/open-spike.sh"
+cp "$HERE/preflight/index.html" "$DERIVED/preflight/index.html"
 
 cat > "$DEST/Browsa WebKit Spike.command" <<'CMD'
 #!/bin/sh
-# Browsa WebKit Spike for a real call: patched WebKit (WebRTC processing in WebKit's capture unit),
-# no Chromium call tabs, Browsa's in-page call audio script off, unit debug dump on (GPU process temp folder).
-# Starts detached; this window can be closed. Your daily Browsa (~/Applications/Browsa.app) is untouched.
-RUN="$HOME/Developer/Browsa/derived/webkit-spike/run.sh"
-LOG="$HOME/Library/Logs/Browsa WebKit Spike.log"
+# Browsa WebKit Spike for a real call: patched WebKit (WebRTC processing in WebKit's capture unit), no Chromium call
+# tabs, Browsa's in-page call audio script off, unit debug dump on. Started through LaunchServices so macOS asks
+# about the camera and mic for the spike itself. Your daily Browsa (~/Applications/Browsa.app) is untouched.
+OPEN="$HOME/Developer/Browsa/derived/webkit-spike/open-spike.sh"
 if pgrep -f "Browsa WebKit Spike.app/Contents/MacOS/Browsa" >/dev/null; then
   osascript -e 'tell application id "com.orriginal.browsa.webkitspike" to activate'
   echo "Browsa WebKit Spike is already running."
   exit 0
 fi
 unset BROWSA_AUDIO_BENCH BROWSA_AUDIO_BENCH_URL BROWSA_AUDIO_BENCH_CALL_TABS BROWSA_AUDIO_BENCH_CALL_AUDIO BROWSA_CALL_AUDIO
-mkdir -p "$(dirname "$LOG")"
-echo "=== $(date) start" >>"$LOG"
 # Pinned to the WebKit build of 3a31ddd (an APFS clone made before newer WebKit rebuilds); drop this to use WebKitBuild/Release.
 export BROWSA_SPIKE_WEBKIT="$HOME/Developer/BrowsaWebKit/WebKitBuild/Release-meeting"
-BROWSA_CALL_AUDIO_DUMP=1 nohup "$RUN" >>"$LOG" 2>&1 </dev/null &
-# The spike can come up with no window (seen on the first launch of a new WebKit build): a "reopen" makes it
-# open one, and does nothing more when a window is already up. Only sent to the running spike, never to start one.
-( sleep 8; pgrep -f "Browsa WebKit Spike.app/Contents/MacOS/Browsa" >/dev/null && osascript -e 'tell application id "com.orriginal.browsa.webkitspike" to reopen' >/dev/null 2>&1 ) </dev/null >/dev/null 2>&1 &
-echo "Started Browsa WebKit Spike (log: $LOG). You can close this window."
+export BROWSA_CALL_AUDIO_DUMP=1
+echo "=== $(date) start (meeting)" >>"$HOME/Library/Logs/Browsa WebKit Spike.log"
+"$OPEN" >/dev/null && echo "Started Browsa WebKit Spike. You can close this window."
+CMD
+
+cat > "$DEST/Browsa WebKit Spike (camera & mic check).command" <<'CMD'
+#!/bin/sh
+# Opens a local page in Browsa WebKit Spike that asks for the camera and microphone and shows the camera and a mic
+# level (nothing recorded, nothing played). Allow both when Browsa and macOS ask; then meetings won't stall on it.
+DIR="$HOME/Developer/Browsa/derived/webkit-spike/preflight"
+OPEN="$HOME/Developer/Browsa/derived/webkit-spike/open-spike.sh"
+PORT=8791
+URL="http://127.0.0.1:$PORT/index.html"
+# A local web server for 15 minutes (localhost counts as secure, so the page may ask for the camera).
+if ! curl -s -o /dev/null "$URL"; then
+  ( cd "$DIR" && exec python3 -m http.server "$PORT" --bind 127.0.0.1 ) >/dev/null 2>&1 &
+  SERVER=$!
+  ( sleep 900; kill "$SERVER" ) >/dev/null 2>&1 &
+  for _ in 1 2 3 4 5 6 7 8 9 10; do curl -s -o /dev/null "$URL" && break; sleep 0.3; done
+fi
+if pgrep -f "Browsa WebKit Spike.app/Contents/MacOS/Browsa" >/dev/null; then
+  open -a "$HOME/Developer/Browsa/derived/webkit-spike/Browsa WebKit Spike.app" "$URL"
+else
+  unset BROWSA_AUDIO_BENCH BROWSA_AUDIO_BENCH_URL BROWSA_CALL_AUDIO
+  export BROWSA_SPIKE_WEBKIT="$HOME/Developer/BrowsaWebKit/WebKitBuild/Release-meeting"
+  echo "=== $(date) start (camera & mic check)" >>"$HOME/Library/Logs/Browsa WebKit Spike.log"
+  "$OPEN" "$URL" >/dev/null
+fi
+echo "Opened the camera & mic check in Browsa WebKit Spike: allow the camera and microphone when asked."
 CMD
 
 cat > "$DEST/Browsa WebKit Spike (tuned).command" <<'CMD'
@@ -39,8 +69,7 @@ cat > "$DEST/Browsa WebKit Spike (tuned).command" <<'CMD'
 # from the newest sweep of a real unit dump (tools/audio-bench/sweep.mjs, via soundcheck.sh or aftercall.mjs --sweep).
 # Refuses when there is no such sweep, or when its replay didn't reproduce the live call (then the "best" setting
 # isn't trustworthy). Debug dump on. Your daily Browsa is untouched; the plain launcher is the fallback.
-RUN="$HOME/Developer/Browsa/derived/webkit-spike/run.sh"
-LOG="$HOME/Library/Logs/Browsa WebKit Spike.log"
+OPEN="$HOME/Developer/Browsa/derived/webkit-spike/open-spike.sh"
 if pgrep -f "Browsa WebKit Spike.app/Contents/MacOS/Browsa" >/dev/null; then
   echo "Browsa WebKit Spike is already running: quit it first to start it with tuned settings."
   exit 1
@@ -61,18 +90,15 @@ console.log(`${r.bestEnv === "(defaults)" ? "" : r.bestEnv}\t${p}: ${r.line}`);
 SETTINGS=$(printf '%s' "$PICK" | cut -f1)
 WHY=$(printf '%s' "$PICK" | cut -f2-)
 if [ "$SETTINGS" = NONE ]; then echo "$WHY"; echo "Use the plain Browsa WebKit Spike launcher instead."; exit 1; fi
-unset BROWSA_AUDIO_BENCH BROWSA_AUDIO_BENCH_URL BROWSA_AUDIO_BENCH_CALL_TABS BROWSA_AUDIO_BENCH_CALL_AUDIO BROWSA_CALL_AUDIO
+unset BROWSA_AUDIO_BENCH BROWSA_AUDIO_BENCH_URL BROWSA_AUDIO_BENCH_CALL_TABS BROWSA_AUDIO_BENCH_CALL_AUDIO BROWSA_CALL_AUDIO BROWSA_SPIKE_WEBKIT
 for kv in $SETTINGS; do case "$kv" in BROWSA_CALL_AUDIO_*=*) export "$kv";; esac; done
-mkdir -p "$(dirname "$LOG")"
-echo "=== $(date) start (tuned: ${SETTINGS:-defaults}; from $WHY)" >>"$LOG"
-BROWSA_CALL_AUDIO_DUMP=1 nohup "$RUN" >>"$LOG" 2>&1 </dev/null &
-# The spike can come up with no window (seen on the first launch of a new WebKit build): a "reopen" makes it
-# open one, and does nothing more when a window is already up. Only sent to the running spike, never to start one.
-( sleep 8; pgrep -f "Browsa WebKit Spike.app/Contents/MacOS/Browsa" >/dev/null && osascript -e 'tell application id "com.orriginal.browsa.webkitspike" to reopen' >/dev/null 2>&1 ) </dev/null >/dev/null 2>&1 &
+export BROWSA_CALL_AUDIO_DUMP=1
+echo "=== $(date) start (tuned: ${SETTINGS:-defaults}; from $WHY)" >>"$HOME/Library/Logs/Browsa WebKit Spike.log"
+"$OPEN" >/dev/null || exit $?
 echo "Started Browsa WebKit Spike on the current build with: ${SETTINGS:-default settings}"
 echo "From: $WHY"
-echo "Log: $LOG. You can close this window."
+echo "You can close this window."
 CMD
 
-chmod +x "$DEST/Browsa WebKit Spike.command" "$DEST/Browsa WebKit Spike (tuned).command"
-echo "Wrote $DEST/Browsa WebKit Spike.command and $DEST/Browsa WebKit Spike (tuned).command"
+chmod +x "$DEST/Browsa WebKit Spike.command" "$DEST/Browsa WebKit Spike (tuned).command" "$DEST/Browsa WebKit Spike (camera & mic check).command"
+echo "Installed $DERIVED/open-spike.sh and the launchers in $DEST"

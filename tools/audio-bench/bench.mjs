@@ -264,7 +264,6 @@ for (let tries = 0; ; tries++, PORT++) {
   if (tries > 20) throw new Error("no free port for the bench page");
 }
 
-const SPIKE = path.join(DERIVED, "webkit-spike/run.sh");
 const BROWSERS = {
   chrome: { name: "Chrome (WebRTC processing)", start: chromeStart },
   spike: { name: "Browsa WebKit Spike, patched (WebRTC in WebKit)", start: (url, dir) => spikeStart(url, dir, false) },
@@ -284,24 +283,40 @@ function chromeStart(url, dir) {
 
 // Browsa WebKit Spike on the patched WebKit (Spike/CallAudio/webkit/build-browsa.sh), opened on the bench page
 // by its test-only AudioBench hook. Its stderr goes to app.log. (WebKit's own logs need admin to read.)
+// Started the way the meeting launchers start it (open-spike.sh: LaunchServices, so the spike is its own app for
+// camera and mic permissions), not as a child of the bench.
+const OPEN_SPIKE = path.join(DERIVED, "webkit-spike/open-spike.sh");
 function spikeStart(url, dir, apple) {
-  if (!fs.existsSync(SPIKE)) throw new Error(`no ${SPIKE}: run Spike/CallAudio/webkit/build-browsa.sh`);
+  if (!fs.existsSync(OPEN_SPIKE)) throw new Error(`no ${OPEN_SPIKE}: run Spike/CallAudio/webkit/install-launchers.sh`);
   const logPath = path.join(dir, "app.log");
   if (!apple) fs.mkdirSync(path.join(dir, "unit-dump"), { recursive: true });
-  const env = { ...process.env, BROWSA_AUDIO_BENCH: "1", BROWSA_AUDIO_BENCH_URL: url, ...(apple ? {} : { BROWSA_CALL_AUDIO_DUMP: process.env.BENCH_UNIT_DUMP || path.join(dir, "unit-dump") }) };
-  let app = null, stopped = false;
-  const launch = (append) => {
-    const out = fs.openSync(logPath, append ? "a" : "w");
-    app = spawn(SPIKE, apple ? ["apple"] : [], { stdio: ["ignore", out, out], env });
-    children.add(app);
+  const env = { ...process.env, BROWSA_SPIKE_LOG: logPath, BROWSA_AUDIO_BENCH: "1", BROWSA_AUDIO_BENCH_URL: url, ...(apple ? {} : { BROWSA_CALL_AUDIO_DUMP: process.env.BENCH_UNIT_DUMP || path.join(dir, "unit-dump") }) };
+  let pid = null, stopped = false;
+  const note = (m) => { fs.appendFileSync(logPath, `bench: ${m}\n`); console.log(`  (${m})`); };
+  const launch = () => {
+    let out = "";
+    try { out = execFileSync(OPEN_SPIKE, apple ? ["apple"] : [], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }); }
+    catch (e) {
+      out = e.stdout || "";
+      if (e.status === 4) note("the spike started on the system WebKit, not the patched build");
+      else throw new Error(`open-spike.sh failed (${e.status}): ${(e.stderr || "").trim()}`);
+    }
+    pid = parseInt(out.trim().split("\n")[0], 10) || null;
+    if (pid) children.add({ kill: (sig) => { try { process.kill(pid, sig); } catch {} } });
   };
-  const quit = (a) => new Promise((r) => { if (!a || a.exitCode != null) return r(); a.once("close", () => { children.delete(a); r(); }); a.kill("SIGTERM"); setTimeout(() => a.kill("SIGKILL"), 5000); });
-  launch(false);
+  const alive = (p) => { try { process.kill(p, 0); return true; } catch { return false; } };
+  const quit = async () => {
+    const p = pid;
+    if (!p || !alive(p)) return;
+    try { process.kill(p, "SIGTERM"); } catch {}
+    for (let i = 0; i < 50 && alive(p); i++) await new Promise((r) => setTimeout(r, 100));
+    if (alive(p)) try { process.kill(p, "SIGKILL"); } catch {}
+  };
+  launch();
   // The spike can come up with no window (seen on the first launch of a new WebKit build), and then its AudioBench
   // hook never opens the page. A "reopen" Apple event makes SwiftUI open a window; if the page still isn't open
   // after 25 s, start the app once more. Both are noted in app.log and on the console.
   (async () => {
-    const note = (m) => { fs.appendFileSync(logPath, `bench: ${m}\n`); console.log(`  (${m})`); };
     for (let attempt = 0; attempt < 2 && !stopped; attempt++) {
       let nudged = false;
       for (let t = 0; t < 25 && !stopped; t++) {
@@ -316,13 +331,12 @@ function spikeStart(url, dir, apple) {
       }
       if (stopped || attempt === 1) break;
       note("bench page not open after 25 s: restarting the spike once");
-      const old = app;
-      await quit(old);
-      if (!stopped) launch(true);
+      await quit();
+      if (!stopped) launch();
     }
     if (!stopped) note("bench page never opened");
   })();
-  return { stop: () => { stopped = true; return quit(app); } };
+  return { stop: () => { stopped = true; return quit(); } };
 }
 
 // The same test build started directly (system WebKit, no DYLD overrides), for the earlier routes.

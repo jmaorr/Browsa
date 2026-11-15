@@ -63,12 +63,31 @@ sounded like. Then, in `tools/audio-bench`:
 
 ## Launchers
 
-`install-launchers.sh` writes two double-click launchers to `~/Applications` (it starts nothing):
+Start the spike through LaunchServices, never from a shell. `open-spike.sh` does `open -n -a … --env
+DYLD_FRAMEWORK_PATH=…` (plus every `BROWSA_CALL_AUDIO*` as `__XPC_*`), so macOS treats the spike as the app
+using the camera and mic and asks for it by name. Started from a shell (`run.sh`), the shell's app (Terminal,
+the Claude app) is held responsible: on 2026-11-16 that app had mic access but not camera, so Meet got the mic and
+the camera was refused with no prompt. `run.sh` stays for debugging only.
+
+`open-spike.sh` checks the result: it prints the pid and exits 4 with a warning if the running app hasn't got the
+patched `WebKit.framework` mapped (LaunchServices didn't pass `DYLD_FRAMEWORK_PATH` on). The spike isn't hardened
+(no runtime flag, `get-task-allow`), so dyld honours the variable when it arrives. It also sends a "reopen" after
+8 s, in case the app came up without a window (seen once on a new WebKit build).
+
+`install-launchers.sh` copies `open-spike.sh` and the check page into `derived/webkit-spike/` and writes three
+double-click launchers to `~/Applications` (it starts nothing):
 
 - `Browsa WebKit Spike.command`: for meetings. The frozen WebKit build `WebKitBuild/Release-meeting` (an APFS
   clone of the 3a31ddd unit), default settings, dump on.
+- `Browsa WebKit Spike (camera & mic check).command`: run once before a meeting. Serves `preflight/index.html` on
+  127.0.0.1:8791 for 15 minutes and opens it in the spike; the page asks for camera and mic, shows the camera and a
+  mic level, records and plays nothing. Allow both in Browsa and in the macOS prompts.
 - `Browsa WebKit Spike (tuned).command`: opt-in. The current build `WebKitBuild/Release` with the best settings
   from the newest sweep of a real unit dump (`sweep.json` with `dumpMode: webkit-unit`). It refuses when there is
   none, or when that sweep's replay didn't reproduce the live call (replay vs live above -20 dB).
+
+The bench starts its `spike` subjects through `open-spike.sh` too, so the tested launch is the meeting launch.
+Because the spike is then its own app for permissions, run the camera & mic check once before the first bench
+run: an unanswered macOS mic prompt would stall it.
 
 Move the meeting launcher onto the current build only once a sound check has confirmed it.
