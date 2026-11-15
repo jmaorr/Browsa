@@ -59,7 +59,7 @@ export function detectStretches(raw, ref, lag) {
   const act = refActivity(ref);
   const blocks = [];
   for (let a = 0; a + BLOCK <= raw.length; a += STEP) blocks.push({ a, rawDb: db(power(raw, a, a + BLOCK)) });
-  if (!blocks.length) return { far: [], near: [], counts: {}, floorDb: -150 };
+  if (!blocks.length) return { far: [], near: [], quiet: [], counts: {}, rawFloorDb: -150, refLevelDb: -150 };
   for (const b of blocks) {
     let on = 0, n = 0;
     for (let i = Math.floor(b.a / 480); i < Math.floor((b.a + BLOCK) / 480); i++, n++) on += act.frames[i] ? 1 : 0;

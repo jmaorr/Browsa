@@ -583,7 +583,10 @@ private:
             confstr(_CS_DARWIN_USER_CACHE_DIR, cache, sizeof(cache));
             folder = cache;
         }
-        folder += "/browsa-call-audio-" + std::to_string(getpid()) + "-" + std::to_string(time(nullptr));
+        // WebKit can tear a unit down and make a new one within the same second (it did on the first real run):
+        // a per-process counter keeps their folders apart.
+        static std::atomic<unsigned> dumpCount { 0 };
+        folder += "/browsa-call-audio-" + std::to_string(getpid()) + "-" + std::to_string(time(nullptr)) + "-" + std::to_string(++dumpCount);
         if (mkdir(folder.c_str(), 0755)) {
             RELEASE_LOG_ERROR(WebRTC, "BrowsaCallAudioInternalUnit: can't write the dump to %s (errno %d)", folder.c_str(), errno);
             return;

@@ -286,11 +286,43 @@ function chromeStart(url, dir) {
 // by its test-only AudioBench hook. Its stderr goes to app.log. (WebKit's own logs need admin to read.)
 function spikeStart(url, dir, apple) {
   if (!fs.existsSync(SPIKE)) throw new Error(`no ${SPIKE}: run Spike/CallAudio/webkit/build-browsa.sh`);
-  const out = fs.openSync(path.join(dir, "app.log"), "w");
-  const app = spawn(SPIKE, apple ? ["apple"] : [], { stdio: ["ignore", out, out], env: { ...process.env, BROWSA_AUDIO_BENCH: "1", BROWSA_AUDIO_BENCH_URL: url, ...(apple ? {} : { BROWSA_CALL_AUDIO_DUMP: process.env.BENCH_UNIT_DUMP || path.join(dir, "unit-dump") }) } });
+  const logPath = path.join(dir, "app.log");
   if (!apple) fs.mkdirSync(path.join(dir, "unit-dump"), { recursive: true });
-  children.add(app);
-  return { stop: () => new Promise((r) => { if (app.exitCode != null) return r(); app.once("close", () => { children.delete(app); r(); }); app.kill("SIGTERM"); setTimeout(() => app.kill("SIGKILL"), 5000); }) };
+  const env = { ...process.env, BROWSA_AUDIO_BENCH: "1", BROWSA_AUDIO_BENCH_URL: url, ...(apple ? {} : { BROWSA_CALL_AUDIO_DUMP: process.env.BENCH_UNIT_DUMP || path.join(dir, "unit-dump") }) };
+  let app = null, stopped = false;
+  const launch = (append) => {
+    const out = fs.openSync(logPath, append ? "a" : "w");
+    app = spawn(SPIKE, apple ? ["apple"] : [], { stdio: ["ignore", out, out], env });
+    children.add(app);
+  };
+  const quit = (a) => new Promise((r) => { if (!a || a.exitCode != null) return r(); a.once("close", () => { children.delete(a); r(); }); a.kill("SIGTERM"); setTimeout(() => a.kill("SIGKILL"), 5000); });
+  launch(false);
+  // The spike can come up with no window (seen on the first launch of a new WebKit build), and then its AudioBench
+  // hook never opens the page. A "reopen" Apple event makes SwiftUI open a window; if the page still isn't open
+  // after 25 s, start the app once more. Both are noted in app.log and on the console.
+  (async () => {
+    const note = (m) => { fs.appendFileSync(logPath, `bench: ${m}\n`); console.log(`  (${m})`); };
+    for (let attempt = 0; attempt < 2 && !stopped; attempt++) {
+      let nudged = false;
+      for (let t = 0; t < 25 && !stopped; t++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        const log = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
+        if (log.includes("AudioBench: opened")) return;
+        if (!nudged && t >= 4 && log.includes("window false")) {
+          nudged = true;
+          note("spike has no window: asking it to reopen one");
+          try { execFileSync("osascript", ["-e", 'tell application id "com.orriginal.browsa.webkitspike" to reopen']); } catch {}
+        }
+      }
+      if (stopped || attempt === 1) break;
+      note("bench page not open after 25 s: restarting the spike once");
+      const old = app;
+      await quit(old);
+      if (!stopped) launch(true);
+    }
+    if (!stopped) note("bench page never opened");
+  })();
+  return { stop: () => { stopped = true; return quit(app); } };
 }
 
 // The same test build started directly (system WebKit, no DYLD overrides), for the earlier routes.

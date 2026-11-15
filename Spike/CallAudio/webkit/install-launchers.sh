@@ -27,6 +27,9 @@ echo "=== $(date) start" >>"$LOG"
 # Pinned to the WebKit build of 3a31ddd (an APFS clone made before newer WebKit rebuilds); drop this to use WebKitBuild/Release.
 export BROWSA_SPIKE_WEBKIT="$HOME/Developer/BrowsaWebKit/WebKitBuild/Release-meeting"
 BROWSA_CALL_AUDIO_DUMP=1 nohup "$RUN" >>"$LOG" 2>&1 </dev/null &
+# The spike can come up with no window (seen on the first launch of a new WebKit build): a "reopen" makes it
+# open one, and does nothing more when a window is already up. Only sent to the running spike, never to start one.
+( sleep 8; pgrep -f "Browsa WebKit Spike.app/Contents/MacOS/Browsa" >/dev/null && osascript -e 'tell application id "com.orriginal.browsa.webkitspike" to reopen' >/dev/null 2>&1 ) </dev/null >/dev/null 2>&1 &
 echo "Started Browsa WebKit Spike (log: $LOG). You can close this window."
 CMD
 
@@ -63,6 +66,9 @@ for kv in $SETTINGS; do case "$kv" in BROWSA_CALL_AUDIO_*=*) export "$kv";; esac
 mkdir -p "$(dirname "$LOG")"
 echo "=== $(date) start (tuned: ${SETTINGS:-defaults}; from $WHY)" >>"$LOG"
 BROWSA_CALL_AUDIO_DUMP=1 nohup "$RUN" >>"$LOG" 2>&1 </dev/null &
+# The spike can come up with no window (seen on the first launch of a new WebKit build): a "reopen" makes it
+# open one, and does nothing more when a window is already up. Only sent to the running spike, never to start one.
+( sleep 8; pgrep -f "Browsa WebKit Spike.app/Contents/MacOS/Browsa" >/dev/null && osascript -e 'tell application id "com.orriginal.browsa.webkitspike" to reopen' >/dev/null 2>&1 ) </dev/null >/dev/null 2>&1 &
 echo "Started Browsa WebKit Spike on the current build with: ${SETTINGS:-default settings}"
 echo "From: $WHY"
 echo "Log: $LOG. You can close this window."

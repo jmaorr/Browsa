@@ -23,10 +23,10 @@ index 809f63e20d..7c7415f941 100644
  		419F6D892D0AEC130078433D /* simulcast_to_svc_converter.h in Headers */ = {isa = PBXBuildFile; fileRef = 419F6D872D0AEC130078433D /* simulcast_to_svc_converter.h */; };
 diff --git a/Source/WebCore/platform/mediastream/cocoa/BrowsaCallAudioInternalUnit.h b/Source/WebCore/platform/mediastream/cocoa/BrowsaCallAudioInternalUnit.h
 new file mode 100644
-index 0000000000..93cf281854
+index 0000000000..d9c2f85301
 --- /dev/null
 +++ b/Source/WebCore/platform/mediastream/cocoa/BrowsaCallAudioInternalUnit.h
-@@ -0,0 +1,782 @@
+@@ -0,0 +1,785 @@
 +// Browsa call audio inside WebKit.
 +//
 +// WebKit's microphone capture (CoreAudioCaptureUnit, in the GPU process) talks to an "internal unit":
@@ -612,7 +612,10 @@ index 0000000000..93cf281854
 +            confstr(_CS_DARWIN_USER_CACHE_DIR, cache, sizeof(cache));
 +            folder = cache;
 +        }
-+        folder += "/browsa-call-audio-" + std::to_string(getpid()) + "-" + std::to_string(time(nullptr));
++        // WebKit can tear a unit down and make a new one within the same second (it did on the first real run):
++        // a per-process counter keeps their folders apart.
++        static std::atomic<unsigned> dumpCount { 0 };
++        folder += "/browsa-call-audio-" + std::to_string(getpid()) + "-" + std::to_string(time(nullptr)) + "-" + std::to_string(++dumpCount);
 +        if (mkdir(folder.c_str(), 0755)) {
 +            RELEASE_LOG_ERROR(WebRTC, "BrowsaCallAudioInternalUnit: can't write the dump to %s (errno %d)", folder.c_str(), errno);
 +            return;

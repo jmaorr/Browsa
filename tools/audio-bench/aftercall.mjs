@@ -33,7 +33,13 @@ export function findDumps() {
     try { names = fs.readdirSync(r); } catch { continue; }
     for (const n of names) if (n.startsWith("browsa-call-audio-")) {
       const dir = path.join(r, n);
-      try { found.push({ dir, mtime: fs.statSync(path.join(dir, "raw.wav")).mtimeMs }); } catch {}
+      try {
+        let seconds = null;
+        try { seconds = JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf8")).capturedSeconds ?? null; } catch {}
+        // A unit WebKit set up and dropped straight away leaves a dump of a fraction of a second: skip those.
+        if (seconds != null && seconds < 5) continue;
+        found.push({ dir, mtime: fs.statSync(path.join(dir, "raw.wav")).mtimeMs, seconds });
+      } catch {}
     }
   }
   return found.sort((a, b) => b.mtime - a.mtime);
@@ -47,6 +53,7 @@ export async function afterCall(src, opt = {}) {
 
   const d = loadDump(dumpCopy);
   if (!d.sent) throw new Error(`${src}: no sent.wav`);
+  if (d.raw.length < 10 * RATE) throw new Error(`${src}: only ${(d.raw.length / RATE).toFixed(1)} s of audio, too short to score`);
   const lag = echoLag(d.raw, d.ref);
   const st = detectStretches(d.raw, d.ref, lag.lag);
   const s = scoreSent(d.sent, d.ref, d.raw, st, lag.lag);
