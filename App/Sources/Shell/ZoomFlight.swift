@@ -24,6 +24,20 @@ import UIKit
         }
     }
 
+    /// The page's own background in a picture of it: the colour at its left edge, halfway down,
+    /// clear of headers and the status bar.
+    static func edgeColor(of picture: UIImage) -> CGColor? {
+        guard let cg = picture.cgImage, cg.width > 4, cg.height > 4,
+              let strip = cg.cropping(to: CGRect(x: 1, y: cg.height / 2, width: 2, height: 2)) else { return nil }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let space = CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.interpolationQuality = .medium
+        ctx.draw(strip, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return CGColor(red: CGFloat(pixel[0]) / 255, green: CGFloat(pixel[1]) / 255, blue: CGFloat(pixel[2]) / 255, alpha: 1)
+    }
+
     /// Puts `picture` on top of `window` at `frame`, replacing any picture already there.
     func start(_ picture: UIImage, in window: UIWindow, at frame: CGRect, cornerRadius: CGFloat) {
         land()

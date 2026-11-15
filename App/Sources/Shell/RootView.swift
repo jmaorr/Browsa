@@ -129,14 +129,11 @@ extension View {
     /// status items to it so they stay readable whatever the app's own appearance.
     func pageColoredSurroundings(_ tab: BrowserTab?, isEnabled: Bool = true, galleryIsUp: Bool = false) -> some View {
         let color = isEnabled && !galleryIsUp ? tab?.pageBackground : nil
+        // One colour view whose colour changes, rather than one view swapped for another, so the
+        // gallery's grey blends into the page's colour over a zoom instead of cutting.
+        let fill: Color = galleryIsUp ? Color(.systemGroupedBackground) : color.map { Color(cgColor: $0) } ?? .clear
         return self
-            .background {
-                if galleryIsUp {
-                    Color(.systemGroupedBackground).ignoresSafeArea()
-                } else if let color {
-                    Color(cgColor: color).ignoresSafeArea()
-                }
-            }
+            .background { fill.ignoresSafeArea() }
             .toolbarColorScheme(color.map { $0.isLight ? .light : .dark }, for: .navigationBar)
     }
 }

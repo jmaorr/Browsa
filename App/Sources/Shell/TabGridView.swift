@@ -122,6 +122,9 @@ struct TabGridOverlay: View {
             } completion: { finish() }
             return
         }
+        // A tab that hasn't been open since launch doesn't know its page colour yet. Its picture
+        // does, so the colour beside the page can blend to it during the zoom.
+        if tab.pageBackground == nil { tab.pageBackground = ZoomFlight.edgeColor(of: picture) }
         flight.start(picture, in: window, at: card, cornerRadius: TabGridCard.cornerRadius)
         let picked = flight.generation
         instantly { heroID = tab.id }
