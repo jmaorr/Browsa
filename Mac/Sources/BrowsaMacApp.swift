@@ -8,8 +8,7 @@ struct BrowsaMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
-        // First of all: start again on Browsa's own WebKit if there is one (doesn't return then).
-        PatchedWebKit.relaunchIfNeeded()
+        // (Browsa's own WebKit, if any, was taken up before main(): PatchedWebKitStart.c.)
         // Before anything opens a store: bring data over from the old sandbox container, once.
         SandboxMigration.runIfNeeded()
     }
@@ -251,6 +250,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// tabs in the window in use rather than in a new window.
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls { library.openExternal(url) }
+        // Launched to open a link (clicked in another app while Browsa was closed), SwiftUI makes no window of its own,
+        // and only a window can ask it for one: the link waited for a window that never came. A reopen (what clicking
+        // the Dock icon sends) makes SwiftUI open one, which then picks the link up.
+        if library.openWindowAction == nil { Self.askForFirstWindow() }
+    }
+
+    static func askForFirstWindow() {
+        let me = NSAppleEventDescriptor(processIdentifier: ProcessInfo.processInfo.processIdentifier)
+        let reopen = NSAppleEventDescriptor(eventClass: AEEventClass(kCoreEventClass), eventID: AEEventID(kAEReopenApplication),
+                                            targetDescriptor: me, returnID: AEReturnID(kAutoGenerateReturnID),
+                                            transactionID: AETransactionID(kAnyTransactionID))
+        if let desc = reopen.aeDesc { _ = AESendMessage(desc, nil, AESendMode(kAENoReply), kAEDefaultTimeout) }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

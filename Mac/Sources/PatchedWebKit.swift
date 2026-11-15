@@ -49,7 +49,8 @@ enum PatchedWebKit {
         (try? String(contentsOfFile: (isActive ? activeFolder : folder) + "/BROWSA_WEBKIT.txt", encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// First thing at launch. Either doesn't return (Browsa runs again on its WebKit) or leaves things as they are.
+    /// Before main() (PatchedWebKitStart.c). Either doesn't return (Browsa runs again on its WebKit) or leaves
+    /// things as they are.
     static func relaunchIfNeeded() {
         let env = ProcessInfo.processInfo.environment
         let isApp = env["XCTestConfigurationFilePath"] == nil && env["XCODE_RUNNING_FOR_PREVIEWS"] == nil
@@ -118,4 +119,10 @@ enum PatchedWebKit {
         if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(Data(text.utf8)); try? h.close() }
         else { try? text.write(to: url, atomically: true, encoding: .utf8) }
     }
+}
+
+/// Called from PatchedWebKitStart.c's constructor, before main() and before the app checks in with macOS.
+@_cdecl("BrowsaPatchedWebKitRelaunch")
+func browsaPatchedWebKitRelaunch() {
+    PatchedWebKit.relaunchIfNeeded()
 }
