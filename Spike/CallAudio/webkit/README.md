@@ -21,3 +21,42 @@ back to Apple's voice processing in the same build, for A/B tests.
 a Debug BrowsaMac with hardened runtime off (so `DYLD_FRAMEWORK_PATH` applies), Meet, Zoom and Teams on
 WebKit (no Chromium call tabs for that bundle ID) and Browsa's in-page call audio off. It writes
 `~/Developer/Browsa/derived/webkit-spike/run.sh`; `run.sh apple` sets `__XPC_BROWSA_CALL_AUDIO=apple`.
+
+## Tuning without rebuilding WebKit
+
+The unit reads these when a call's microphone starts (run.sh passes every `BROWSA_CALL_AUDIO*` variable on to
+WebKit's processes as `__XPC_...`):
+
+| variable | default | |
+|---|---|---|
+| `BROWSA_CALL_AUDIO_REF_OFFSET_MS` | 0 | reference later (+) or earlier (-) than the clocks say, ±100 ms |
+| `BROWSA_CALL_AUDIO_AGC` | 1 | WebRTC's adaptive digital gain on/off |
+| `BROWSA_CALL_AUDIO_AGC_MAX_DB` | 30 | its gain limit (libwebrtc's own default is 50) |
+| `BROWSA_CALL_AUDIO_AGC_NOISE_DBFS` | -60 | the noise level it may lift to (libwebrtc's default -50) |
+| `BROWSA_CALL_AUDIO_NS` | 2 | noise suppression 0 low .. 3 very high, or `off` |
+| `BROWSA_CALL_AUDIO_DUMP` | off | debug dump, below |
+| `BROWSA_CALL_AUDIO_DUMP_MINUTES` | 30 | dump length cap per call (about 11 MB a minute) |
+
+`BROWSA_SPIKE_WEBKIT=<folder>` makes run.sh use another WebKit build folder.
+
+## Debug dump
+
+`BROWSA_CALL_AUDIO_DUMP=1` writes `raw.wav` (the mic), `ref.wav` (the reference each 10 ms of it was cancelled
+against), `sent.wav` and `meta.json` (settings, formats, latencies) to a `browsa-call-audio-<pid>-<time>` folder
+in the GPU process's private cache folder, `$(getconf DARWIN_USER_CACHE_DIR)com.apple.WebKit.GPU+com.orriginal.browsa.webkitspike/`.
+That and its temp folder are the only places the GPU process sandbox lets it write (`com.apple.WebKit.GPUProcess.sb`:
+`DARWIN_USER_CACHE_DIR`, `DARWIN_USER_TEMP_DIR`), so a folder in `~/Developer` fails. The files are written as the
+call goes (a writer thread every half second, headers kept valid); `meta.json` says `"complete": true` once the
+call's mic stopped cleanly.
+
+## Offline replay and tuning
+
+`build-replay.sh` builds `apm-replay-webkit`: WebKit's own libwebrtc (linked through a text stub, since the
+dylib only allows WebKit's frameworks as clients), configured exactly as the unit configures it. So replaying a
+dump with its recorded settings gives back its `sent.wav`, and other settings show what the call would have
+sounded like. Then, in `tools/audio-bench`:
+
+- `node aftercall.mjs [dump] [--sweep]`: scores the newest dump (or a given one) by the guest's ear, writes clips.
+- `node sweep.mjs <dump>`: reference offset -40..+40 ms, auto gain off / 20 / 40 dB, noise ceiling, noise
+  suppression levels, ranked; prints the best setting as variables for run.sh.
+- `soundcheck.sh <volume>`: a short bench run of the spike with the dump on, then the sweep (plays sound).

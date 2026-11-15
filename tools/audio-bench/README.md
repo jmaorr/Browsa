@@ -110,3 +110,35 @@ BROWSA_AUDIO_BENCH_TAB_SWITCH=20` (test builds only): every 20 s it shows a blan
 `node guest.mjs --selftest --far <wav> --near <wav> --out-dir <dir>` checks the guest silently (no Meet, no
 devices): a local host page sends back the guest's voice 40 dB down and 120 ms late, plus a talker. The
 analysis reads that as 43 dB (far end only) and 41 dB (talk-over): about 1 to 3 dB optimistic through two Opus legs.
+
+## Unit dumps: after a real call, and offline tuning
+
+The patched WebKit unit (Browsa WebKit Spike) can dump a call (`BROWSA_CALL_AUDIO_DUMP=1`, see
+`Spike/CallAudio/webkit/README.md`). Three tools work from a dump, nothing played:
+
+```sh
+node tools/audio-bench/aftercall.mjs [dump folder] [--sweep]   # newest spike dump if none given
+node tools/audio-bench/sweep.mjs <dump folder> [--minutes 10] [--offsets -40:40:5] [--quick]
+tools/audio-bench/soundcheck.sh <volume> [bench options]          # plays sound: bench run of the spike + sweep
+```
+
+`aftercall.mjs` copies the dump to `derived/audio-bench/call-<time>/` and writes `report.txt`, `score.json` and
+clips (`guest-hears.m4a`, `guest-hears-plus30dB.m4a`, `you-sent.m4a`). A real call has no known talker, so
+`dumpscore.mjs` finds the stretches itself from 2 s blocks: **far only** (the far end in `ref.wav` active and the
+mic mostly explained by it, or hearing nothing above the room), **you only** (far end silent, mic 10 dB over the
+room), quiet, and mixed. Meaningful figures: the guest's-ear echo scores (far-only stretches only), your send
+level and how much of your voice was kept (you-only), the room as sent. Not measurable: talk-over and gain
+pumping (use the bench). On the bench schedule the detection finds the far-only and you-only segments to within
+about half a second, and leaves double talk out.
+
+`sweep.mjs` replays the dump through `apm-replay-webkit` (`Spike/CallAudio/webkit/build-replay.sh`: the exact
+processing the unit runs) with the reference offset from -40 to +40 ms in 5 ms steps, then at the best offset
+auto gain off, gain limit 20/40 dB, noise ceiling -50/-70 dBFS and noise suppression 1/3. Rank: G.131 margin
+capped at 20, less 0.25 per % of their speech with audible echo, less 0.5 per dB the send level is more than 6 dB
+from -26 dBFS. Ties within 0.5 go to the fewest changes. It also replays the recorded settings and compares with
+what was sent live (a faithful replay is about -30 dB or lower). Checked on the 2026-11-14 native recordings
+converted to the dump layout (`derived/audio-bench/validate-2026-11-14/`): 0 ms comes out best, +30 ms leaves
+audible echo in 12-25% of the guest's speech and +35 ms is annoying.
+
+`bench.mjs`: `BENCH_UNIT_DUMP=1` sends the spike subject's dump to the GPU process folder (the default, a folder
+in the run, is outside the GPU sandbox).
