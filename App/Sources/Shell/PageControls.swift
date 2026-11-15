@@ -34,8 +34,16 @@ struct HistoryButton: View {
             forward ? browser.goForward() : browser.goBack()
         }
         .disabled(!enabled)
-        .sensoryFeedback(.selection, trigger: tab?.url)
+        // Going back or forward in this tab, not landing on another tab (from the gallery, say).
+        .sensoryFeedback(.selection, trigger: HistoryStep(tab: tab?.id, url: tab?.url)) { old, new in
+            old.tab == new.tab && old.url != new.url
+        }
     }
+}
+
+private struct HistoryStep: Equatable {
+    let tab: UUID?
+    let url: URL?
 }
 
 /// Opens and closes the tab gallery. Hold it for your recent tabs. Holds no count, so it reads the

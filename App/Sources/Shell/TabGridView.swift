@@ -94,6 +94,7 @@ struct TabGridOverlay: View {
         // The picture covers the page straight away, so the gallery can come up behind it.
         flight.start(picture, in: window, at: page, cornerRadius: 0)
         instantly {
+            browser.tabGridHidesAddressBar = true
             pageRect = page
             heroID = tab.id
             shown = true
@@ -153,7 +154,7 @@ struct TabGridOverlay: View {
             let switching = tab.id != browser.currentTab?.id
             instantly {
                 browser.select(tab)
-                finish()
+                finish(keepingAddressBarHidden: true)
             }
             Task { @MainActor in
                 // A tab that wasn't on screen needs a moment to draw. Keep its picture over it
@@ -167,7 +168,11 @@ struct TabGridOverlay: View {
                 }
                 // A frame or so for the page to be on screen under the picture.
                 try? await Task.sleep(for: .milliseconds(switching ? 50 : 16))
+                guard flight.generation == picked else { return }
                 flight.fadeOut(generation: picked)
+                // The address bar comes in as the picture gives way to the page, rather than
+                // appearing the moment the picture goes.
+                withAnimation(Motion.spring) { browser.tabGridHidesAddressBar = false }
             }
         }
     }
@@ -177,7 +182,7 @@ struct TabGridOverlay: View {
         withTransaction(t, change)
     }
 
-    private func finish(resettingButton: Bool = true) {
+    private func finish(resettingButton: Bool = true, keepingAddressBarHidden: Bool = false) {
         var t = Transaction(); t.disablesAnimations = true
         withTransaction(t) {
             closingInto = nil
@@ -186,6 +191,7 @@ struct TabGridOverlay: View {
             heroID = nil
             browser.tabGridCoversPage = false
             browser.tabGridLandingTab = nil
+            if !keepingAddressBarHidden { browser.tabGridHidesAddressBar = false }
         }
         if resettingButton, browser.isTabSwitcherPresented { browser.isTabSwitcherPresented = false }
     }

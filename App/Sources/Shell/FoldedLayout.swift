@@ -32,9 +32,11 @@ struct FoldedLayout: View {
                 // instead of popping in when the gallery goes. Hidden while the grid is up, where
                 // the gallery's own capsule sits.
                 .overlay(alignment: .bottom) {
+                    let hidden = browser.tabGridCoversPage || browser.tabGridHidesAddressBar
                     BottomBar()
-                        .opacity(browser.tabGridCoversPage ? 0 : 1)
-                        .allowsHitTesting(!browser.tabGridCoversPage)
+                        .opacity(hidden ? 0 : 1)
+                        .scaleEffect(hidden ? 0.9 : 1, anchor: .bottom)
+                        .allowsHitTesting(!hidden)
                         .hiddenWhileKeyboardIsUp()
                 }
                 .toolbar { gutter }
@@ -122,7 +124,9 @@ struct BottomBar: View {
         .offset(y: compact ? compactDrop : 0)
         .frame(maxWidth: .infinity)
         .animation(Motion.collapse, value: compact)
-        .sensoryFeedback(.selection, trigger: browser.currentTab?.id)
+        // Only for a swipe along the pill. Picking a tab in the gallery switches tabs too, as its
+        // zoom lands, and a tap then felt odd.
+        .sensoryFeedback(.selection, trigger: browser.currentTab?.id) { _, _ in browser.lastTabSwipeForward != nil }
         .sensoryFeedback(.success, trigger: copies)
     }
 

@@ -57,6 +57,9 @@ struct PhoneLayout: View {
         }
         .frame(maxWidth: BarMetrics.floatingBarMaxWidth)
         .padding(.horizontal, 16)
+        // Comes in with the page as the gallery's zoom lands (the gallery's own controls stay).
+        .opacity(browser.tabGridHidesAddressBar && !galleryIsUp ? 0 : 1)
+        .scaleEffect(browser.tabGridHidesAddressBar && !galleryIsUp ? 0.9 : 1, anchor: .bottom)
         .animation(Motion.collapse, value: compact)
         .hiddenWhileKeyboardIsUp()
     }
