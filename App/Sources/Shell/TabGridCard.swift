@@ -3,11 +3,9 @@ import BrowserCore
 
 let galleryCoordinates = "tabGallery"
 
-/// Where each card's picture is. Observed, so a flying hero follows its card if the grid is still
-/// settling (its first scroll to the current tab, safe areas arriving) instead of landing where the
-/// card was at take-off and snapping. Only the overlay reads it, and only while a hero is flying,
-/// so scrolling the grid doesn't redraw anything.
-@MainActor @Observable final class CardFrames {
+/// Where each card's picture is. A plain reference, because it changes on every frame of a scroll
+/// and only the hero's take-off reads it.
+@MainActor final class CardFrames {
     var byTab: [UUID: CGRect] = [:]
 }
 
@@ -154,6 +152,11 @@ struct TabThumbnail: View {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
+                        // The picture is of the whole page, status bar area included. Full size
+                        // (the gallery's flying picture at either end), the thumbnail touches the
+                        // top of the screen and SwiftUI would push the image below the status
+                        // bar, so it landed lower than the live page and snapped up.
+                        .ignoresSafeArea(.container, edges: .vertical)
                 }
             } else {
                 ZStack {
