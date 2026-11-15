@@ -69,31 +69,41 @@ struct PageActionsRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Button("Forward", systemImage: "chevron.forward") {
+            Button {
                 browser.isNewTabSheetPresented = false
                 browser.goForward()
+            } label: {
+                Label("Forward", systemImage: "chevron.forward").pageActionCell()
             }
             .disabled(!(browser.currentTab?.canGoForward ?? false))
-            .frame(maxWidth: .infinity)
-            ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }
-                .frame(maxWidth: .infinity)
-            Button(browser.isSaved(url) ? "Unsave" : "Save",
-                   systemImage: browser.isSaved(url) ? "bookmark.fill" : "bookmark") {
+            ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up").pageActionCell() }
+            Button {
                 browser.toggleSavedForCurrentTab()
+            } label: {
+                Label(browser.isSaved(url) ? "Unsave" : "Save",
+                      systemImage: browser.isSaved(url) ? "bookmark.fill" : "bookmark").pageActionCell()
             }
-            .frame(maxWidth: .infinity)
-            Button("Find on Page", systemImage: "doc.text.magnifyingglass") {
+            Button {
                 browser.afterClosingNewTabSheet { browser.findInPage() }
+            } label: {
+                Label("Find on Page", systemImage: "doc.text.magnifyingglass").pageActionCell()
             }
-            .frame(maxWidth: .infinity)
-            PageMenu(closesNewTabSheetFirst: true)
-                .frame(maxWidth: .infinity)
+            PageMenu(closesNewTabSheetFirst: true, fillsCell: true)
         }
         .labelStyle(.iconOnly)
         .frame(minHeight: 44)
         .glassEffect(.regular.interactive(), in: .capsule)
         .padding(.horizontal, 16)
         .padding(.bottom, 4)
+    }
+}
+
+extension View {
+    /// A button in the page actions row takes its whole fifth of the row, not just its icon, so
+    /// a tap anywhere in its slot lands. Only the icon was hit-testable before, and the More
+    /// menu in particular needed several tries.
+    func pageActionCell() -> some View {
+        frame(maxWidth: .infinity, minHeight: 44).contentShape(.rect)
     }
 }
 

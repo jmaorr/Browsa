@@ -3,9 +3,11 @@ import BrowserCore
 
 let galleryCoordinates = "tabGallery"
 
-/// Where each card's picture is. A plain reference, because it changes on every frame of a scroll
-/// and only the hero's take-off reads it.
-@MainActor final class CardFrames {
+/// Where each card's picture is. Observed, so a flying hero follows its card if the grid is still
+/// settling (its first scroll to the current tab, safe areas arriving) instead of landing where the
+/// card was at take-off and snapping. Only the overlay reads it, and only while a hero is flying,
+/// so scrolling the grid doesn't redraw anything.
+@MainActor @Observable final class CardFrames {
     var byTab: [UUID: CGRect] = [:]
 }
 
