@@ -17,6 +17,9 @@ final class Browser {
     private var tabSelection: [UUID: UUID] = [:]
     /// The AppKit window, for focusing and for matching key events to this browser.
     @ObservationIgnored weak var nsWindow: NSWindow?
+    /// The window's own traffic lights, hidden while the sidebar shows its copies, and shown in the
+    /// title bar that drops down in full screen.
+    @ObservationIgnored var titleBarButtons: [NSButton] = []
 
     // MARK: Transient UI state
 

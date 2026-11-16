@@ -158,7 +158,12 @@ struct BrowserWindow: View {
         // the title bar's are hidden. In full screen the title bar's also drop down with the menu
         // bar, as in every app. AppKit rebuilds the title bar on the way in and out, so this runs then too.
         let fullScreen = window.styleMask.contains(.fullScreen) || browser.isFullScreen
-        for button in WindowButtonsView.titleBarButtons(of: window) where button.isHidden == fullScreen {
+        // Found while in a window, and kept: full screen moves the same buttons elsewhere.
+        if !window.styleMask.contains(.fullScreen) {
+            let found = WindowButtonsView.titleBarButtons(of: window)
+            if !found.isEmpty { browser.titleBarButtons = found }
+        }
+        for button in browser.titleBarButtons where button.isHidden == fullScreen {
             button.isHidden = !fullScreen
         }
     }

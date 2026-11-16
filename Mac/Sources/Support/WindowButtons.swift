@@ -72,9 +72,10 @@ final class WindowButtonsView: NSView {
         redraw()
     }
 
-    /// The title bar's own close, minimise and zoom buttons. Not `standardWindowButton(_:)`: once
-    /// the sidebar's copies are in the window it can hand those back instead, and hiding them left the
-    /// docked sidebar with no traffic lights after it had been hidden and shown.
+    /// The title bar's own close, minimise and zoom buttons, found in a window that isn't in full
+    /// screen. Not `standardWindowButton(_:)`: once the sidebar's copies are in the window it can hand
+    /// those back instead. Full screen moves these same buttons into AppKit's drop-down title bar,
+    /// so the caller keeps hold of them from before.
     static func titleBarButtons(of window: NSWindow) -> [NSButton] {
         let subroles: [NSAccessibility.Subrole] = [.closeButton, .minimizeButton, .zoomButton]
         var found: [NSButton] = []
@@ -88,24 +89,6 @@ final class WindowButtonsView: NSView {
         // The title bar sits beside the content view, under the window's frame view.
         if let frame = window.contentView?.superview {
             for child in frame.subviews where child !== window.contentView { walk(child) }
-        }
-        // In full screen it's moved to a window of its own.
-        for child in window.childWindows ?? [] { if let v = child.contentView?.superview { walk(v) } }
-        // In full screen the title bar moves into a window of AppKit's own, which isn't a child.
-        if window.styleMask.contains(.fullScreen) {
-            for other in NSApp.windows where other !== window && String(describing: type(of: other)).contains("FullScreen") {
-                if let v = other.contentView?.superview ?? other.contentView { walk(v) }
-            }
-        }
-        // And AppKit's own answer, as long as it isn't one of the sidebar's. In full screen this is
-        // the one that counts: the buttons move to the drop-down title bar's own window, which the
-        // walk above doesn't reach (it can still find the old ones left behind).
-        for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-            guard let button = window.standardWindowButton(kind), !found.contains(button) else { continue }
-            var v: NSView? = button.superview
-            var ours = false
-            while let s = v { if s is WindowButtonsView { ours = true; break }; v = s.superview }
-            if !ours { found.append(button) }
         }
         return found
     }
