@@ -119,7 +119,13 @@ final class WindowButtonsView: NSView {
         redraw()
     }
 
-    @objc func _mouseInGroup(_ button: NSButton) -> Bool { hovering }
+    @objc func _mouseInGroup(_ button: NSButton) -> Bool {
+        #if DEBUG
+        // For checking the symbols draw at all without a real pointer (SpikeBrowsa screenshots).
+        if UserDefaults.standard.bool(forKey: "WindowButtonsForceHover") { return true }
+        #endif
+        return hovering
+    }
 
     private func redraw() { buttons.forEach { $0.needsDisplay = true } }
 }
