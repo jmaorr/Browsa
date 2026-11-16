@@ -22,7 +22,7 @@ struct BrowserCommands: Commands {
             }
         }
 
-        // Browsa › Settings… opens the Settings window (a Window scene, not SwiftUI's Settings scene).
+        // Browsa › Settings… goes through Library, so it can open on a given pane.
         CommandGroup(replacing: .appSettings) {
             Button("Settings…") { library.openSettings() }
                 .keyboardShortcut(",", modifiers: .command)

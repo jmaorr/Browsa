@@ -6,7 +6,7 @@ import BrowserEngine
 import Suggest
 import Extensibility
 
-/// Browsa > Settings (Cmd-,): a sidebar of panes, like System Settings, so each pane has room to grow.
+/// Browsa > Settings (Cmd-,): toolbar tabs in a preferences title bar, like Safari and Mail.
 struct SettingsView: View {
     @AppStorage("settingsTab") private var tab = "general"
 
@@ -27,48 +27,17 @@ struct SettingsView: View {
         Pane(id: "engine", title: "Engine", symbol: "cpu"),
     ]
 
-    /// Which layout this is: the Settings window's sidebar, or the Settings scene's toolbar tabs.
-    /// Preview only: `defaults write <bundle id> settingsLayout tabs` picks the tabs layout.
-    var tabs = false
-
-    static var usesTabs: Bool { UserDefaults.standard.string(forKey: "settingsLayout") == "tabs" }
-
     var body: some View {
-        if tabs { tabsLayout } else { sidebarLayout }
-    }
-
-    /// Toolbar tabs in a preferences title bar, like Safari, Mail and Xcode.
-    private var tabsLayout: some View {
         TabView(selection: $tab) {
             ForEach(Self.panes) { pane in
                 paneView(pane.id)
+                    .modifier(FitsContent())
                     .tabItem { Label(pane.title, systemImage: pane.symbol) }
                     .tag(pane.id)
             }
         }
-        .frame(width: 660, height: 600)
+        .frame(width: 660)
     }
-
-    private var sidebarLayout: some View {
-        NavigationSplitView {
-            List(selection: Binding<String?>(get: { tab }, set: { if let t = $0 { tab = t } })) {
-                ForEach(Self.panes) { pane in
-                    Label(pane.title, systemImage: pane.symbol).tag(Optional(pane.id))
-                }
-            }
-            .listStyle(.sidebar)
-            // Eight rows never need scrolling; a scrolled-away sidebar looked empty.
-            .scrollDisabled(true)
-            .navigationSplitViewColumnWidth(min: 200, ideal: 210, max: 260)
-            .toolbar(removing: .sidebarToggle)
-        } detail: {
-            pane
-                .navigationTitle(Self.panes.first { $0.id == tab }?.title ?? "Settings")
-        }
-        .frame(minWidth: 760, idealWidth: 800, minHeight: 520, idealHeight: 600)
-    }
-
-    private var pane: some View { paneView(tab) }
 
     @ViewBuilder private func paneView(_ id: String) -> some View {
         switch id {
@@ -349,11 +318,22 @@ private struct PrivacySettings: View {
         .formStyle(.grouped)
     }
 
+    private static func title(_ permission: EnginePermission) -> String {
+        switch permission {
+        case .camera: "Camera"
+        case .microphone: "Microphone"
+        case .cameraAndMicrophone: "Camera and microphone"
+        case .location: "Location"
+        case .notifications: "Notifications"
+        case .screen: "Screen sharing"
+        }
+    }
+
     private func summary(_ perms: [String: Bool]) -> String {
         perms.sorted { $0.key < $1.key }.map { k, v in
-            let name = EnginePermission(rawValue: k).map { "\($0)" }
-                ?? (k.hasPrefix("app:") ? "\(k.dropFirst(4)) links" : k)
-            return "\(name): \(v ? "allowed" : "denied")"
+            let name = EnginePermission(rawValue: k).map(Self.title)
+                ?? (k.hasPrefix("app:") ? "Open in \(k.dropFirst(4))" : k)
+            return "\(name): \(v ? "Allowed" : "Denied")"
         }.joined(separator: ", ")
     }
 }
@@ -817,5 +797,22 @@ private struct ShortcutRecorder: View {
         let taken = shortcuts.set(action, to: combo)
         recorded(taken.map { "Taken from \($0.title)" })
         stop()
+    }
+}
+
+/// Sizes a pane's scrolling form to its content, so the Settings window grows and shrinks with
+/// each tab like Safari's does, and only scrolls once a pane is taller than most screens allow.
+private struct FitsContent: ViewModifier {
+    var maxHeight: CGFloat = 640
+    @State private var height: CGFloat?
+
+    func body(content: Content) -> some View {
+        content
+            .onScrollGeometryChange(for: CGFloat.self) { geo in
+                geo.contentSize.height + geo.contentInsets.top + geo.contentInsets.bottom
+            } action: { _, h in
+                height = min(max(h.rounded(.up), 200), maxHeight)
+            }
+            .frame(height: height ?? 420)
     }
 }
