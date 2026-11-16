@@ -194,6 +194,22 @@ final class SpaceRouter {
         add(pattern: pattern, to: space)
     }
 
+    /// A list's site, edited: Browsa's sites are only a starting point, so this works on any of them.
+    func renameSite(_ old: String, to new: String, in set: StarterSet) {
+        let p = Self.clean(new)
+        guard !p.isEmpty, p != old else { return }
+        removeSite(old, from: set)
+        addSite(p, to: set)
+    }
+
+    /// Your own site, edited; it keeps its Space.
+    func renameRule(_ old: String, to new: String) {
+        let p = Self.clean(new)
+        guard !p.isEmpty, p != old else { return }
+        rules.removeAll { $0.pattern == p }
+        if let i = rules.firstIndex(where: { $0.pattern == old }) { rules[i].pattern = p }
+    }
+
     /// Your own site, from its rule into a starter set.
     func moveRule(_ pattern: String, to set: StarterSet) {
         rules.removeAll { $0.pattern == pattern }
@@ -361,7 +377,7 @@ struct SpaceRoutingSettings: View {
                                         Button(set.title, systemImage: set.symbol) { router.moveRule(rule.pattern, to: set) }
                                     }
                                 }
-                            } onRemove: { router.remove(rule.id) }
+                            } onRename: { router.renameRule(rule.pattern, to: $0) } onRemove: { router.remove(rule.id) }
                         }
                         if sets.isEmpty && rules.isEmpty {
                             Text("Nothing opens here yet.").foregroundStyle(.secondary)
@@ -419,7 +435,7 @@ private struct StarterSetRow: View {
                             Button("Always Open in \(space.name)", systemImage: space.symbol) { router.moveSite(site, from: set, toRuleFor: space) }
                         }
                     }
-                } onRemove: { router.removeSite(site, from: set) }
+                } onRename: { router.renameSite(site, to: $0, in: set) } onRemove: { router.removeSite(site, from: set) }
                 // Under the list's own icon, not the disclosure arrow.
                 .padding(.leading, 22)
             }
@@ -462,14 +478,30 @@ private struct StarterSetRow: View {
 private struct SiteRow<MoveItems: View>: View {
     let pattern: String
     @ViewBuilder let moveItems: () -> MoveItems
+    let onRename: (String) -> Void
     let onRemove: () -> Void
     @State private var hovering = false
+    @State private var editing = false
+    @State private var draft = ""
+    @FocusState private var focused: Bool
 
     var body: some View {
         HStack(spacing: 10) {
-            FaviconView(url: URL(string: "https://" + RouteRule.host(of: pattern)) ?? URL(string: "https://example.com")!, size: 16,
-                        letter: pattern)
-            Text(pattern).lineLimit(1).truncationMode(.middle)
+            FaviconView(url: URL(string: "https://" + RouteRule.host(of: editing ? draft : pattern)) ?? URL(string: "https://example.com")!,
+                        size: 16, letter: pattern)
+            if editing {
+                TextField("Site", text: $draft)
+                    .textFieldStyle(.plain)
+                    .focused($focused)
+                    .onSubmit(commit)
+                    .onExitCommand { editing = false }
+                    .onChange(of: focused) { _, on in if !on { commit() } }
+            } else {
+                // Click the address to edit it, like a Finder name.
+                Text(pattern).lineLimit(1).truncationMode(.middle)
+                    .onTapGesture(perform: startEditing)
+                    .help("Click to edit")
+            }
             Spacer()
             HStack(spacing: 4) {
                 Menu {
@@ -486,15 +518,28 @@ private struct SiteRow<MoveItems: View>: View {
                     .foregroundStyle(.secondary)
                     .help("Stop routing \(pattern)")
             }
-            .opacity(hovering ? 1 : 0)
+            .opacity(hovering && !editing ? 1 : 0)
         }
         .contentShape(.rect)
         .onHover { hovering = $0 }
         .contextMenu {
+            Button("Edit Address", action: startEditing)
             Menu("Move") { moveItems() }
             Divider()
             Button("Stop Routing \(pattern)", role: .destructive, action: onRemove)
         }
+    }
+
+    private func startEditing() {
+        draft = pattern
+        editing = true
+        focused = true
+    }
+
+    private func commit() {
+        guard editing else { return }
+        editing = false
+        onRename(draft)
     }
 }
 
