@@ -5,16 +5,12 @@ import AppKit
 ///
 /// They're AppKit's own buttons (`NSWindow.standardWindowButton(_:for:)`), so they look, hover and
 /// act like the real ones, but they live in the sidebar: they slide and fade with it, docked or
-/// peeking, in a window or in full screen. The window's title bar buttons stay hidden for good.
+/// peeking. In full screen the sidebar has none: the title bar's own drop down with the menu bar,
+/// as in every app.
 struct WindowButtons: NSViewRepresentable {
-    /// The window is in full screen, where macOS greys out minimise.
-    var isFullScreen = false
-
     func makeNSView(context: Context) -> WindowButtonsView { WindowButtonsView() }
 
-    func updateNSView(_ view: WindowButtonsView, context: Context) {
-        view.isFullScreen = isFullScreen
-    }
+    func updateNSView(_ view: WindowButtonsView, context: Context) {}
 
     /// The row's width for the buttons: AppKit's spacing, plus the gap after them.
     static let width: CGFloat = 68
@@ -25,10 +21,6 @@ final class WindowButtonsView: NSView {
     private let buttons: [NSButton]
     private var hovering = false
     private var observers: [NSObjectProtocol] = []
-
-    var isFullScreen = false {
-        didSet { if isFullScreen != oldValue { updateEnabled() } }
-    }
 
     init() {
         let style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
@@ -41,19 +33,18 @@ final class WindowButtonsView: NSView {
 
     override var isFlipped: Bool { true }
 
-    /// The three buttons with the spacing the title bar uses on this version of macOS, centred
-    /// vertically, starting where the title bar would put the close button.
+    /// The three buttons with the title bar's spacing (6 pt between them), centred vertically.
+    /// Measured from the buttons themselves: the title bar's own are hidden, so their frames can't
+    /// be trusted.
     override func layout() {
         super.layout()
-        let native = window.map { w in Self.kinds.compactMap { w.standardWindowButton($0)?.frame } } ?? []
-        let step = native.count == 3 ? native[1].minX - native[0].minX : 20
-        // The title bar's close button sits this far in from the window's edge; the sidebar row has
-        // 8 pt of padding of its own.
-        let lead = native.first.map { max(0, $0.minX - 8) } ?? 0
-        for (i, button) in buttons.enumerated() {
-            let size = button.frame.size == .zero ? button.intrinsicContentSize : button.frame.size
-            button.frame = NSRect(x: lead + CGFloat(i) * step, y: ((bounds.height - size.height) / 2).rounded(),
-                                  width: size.width, height: size.height)
+        var x: CGFloat = 0
+        for button in buttons {
+            var size = button.frame.size
+            if size.width < 1 || size.height < 1 { size = button.fittingSize }
+            if size.width < 1 || size.height < 1 { size = NSSize(width: 14, height: 16) }
+            button.frame = NSRect(x: x, y: ((bounds.height - size.height) / 2).rounded(), width: size.width, height: size.height)
+            x += size.width + 6
         }
     }
 
@@ -71,13 +62,8 @@ final class WindowButtonsView: NSView {
                 MainActor.assumeIsolated { self?.redraw() }
             })
         }
-        updateEnabled()
         needsLayout = true
         redraw()
-    }
-
-    private func updateEnabled() {
-        if buttons.count == 3 { buttons[1].isEnabled = !isFullScreen }
     }
 
     // MARK: Hover

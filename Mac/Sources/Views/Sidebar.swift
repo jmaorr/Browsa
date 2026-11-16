@@ -49,9 +49,11 @@ struct Sidebar: View {
     private var topRow: some View {
         HStack(spacing: 2) {
             // The window's buttons are part of the sidebar, so they come and go with it, docked or
-            // floating, in a window or full screen.
-            WindowButtons(isFullScreen: browser.isFullScreen)
-                .frame(width: WindowButtons.width, height: 28)
+            // floating. In full screen they drop down with the menu bar instead, as in every app.
+            if !browser.isFullScreen {
+                WindowButtons()
+                    .frame(width: WindowButtons.width, height: 28)
+            }
             SidebarIconButton(symbol: "sidebar.left", help: Shortcuts.shared.help(browser.isSidebarDocked ? "Hide Sidebar" : "Keep Sidebar Open", .sidebar)) {
                 browser.toggleSidebar()
             }

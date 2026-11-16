@@ -39,8 +39,8 @@ struct BrowserWindow: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
             if let window = note.object as? NSWindow, window === browser.nsWindow { browser.library.markActive(browser) }
         }
-        // AppKit rebuilds the title bar on the way into and out of full screen, showing its traffic
-        // lights again; they're hidden again each time (the sidebar has its own).
+        // Full screen swaps the sidebar's traffic lights for the title bar's, and AppKit rebuilds the
+        // title bar on the way in and out.
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { note in
             fullScreenChanged(note, to: true)
         }
@@ -138,7 +138,8 @@ struct BrowserWindow: View {
     /// A popover from the sidebar (extensions, say) is open. It reaches past the sidebar, and hiding
     /// the sidebar under it would pull away its anchor.
     private var sidebarPopoverOpen: Bool {
-        browser.nsWindow?.childWindows?.contains { $0.isVisible } == true
+        // Only popovers: in full screen the window also has AppKit's drop-down title bar as a child.
+        browser.nsWindow?.childWindows?.contains { $0.isVisible && String(describing: type(of: $0)).contains("Popover") } == true
     }
 
     private func configure(_ window: NSWindow) {
@@ -153,12 +154,13 @@ struct BrowserWindow: View {
         if !window.titlebarAppearsTransparent { window.titlebarAppearsTransparent = true }
         if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
         if window.isMovableByWindowBackground { window.isMovableByWindowBackground = false }
-        // The sidebar draws its own copies of the traffic lights (WindowButtons), which move with it.
-        // The title bar's are hidden for good; AppKit puts them back on entering and leaving full
-        // screen, so this runs then too.
+        // In a window the sidebar draws its own traffic lights (WindowButtons), which move with it,
+        // so the title bar's are hidden. In full screen the title bar's drop down with the menu bar,
+        // as in every app. AppKit rebuilds the title bar on the way in and out, so this runs then too.
+        let fullScreen = window.styleMask.contains(.fullScreen) || browser.isFullScreen
         for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-            guard let button = window.standardWindowButton(kind), !button.isHidden else { continue }
-            button.isHidden = true
+            guard let button = window.standardWindowButton(kind), button.isHidden == fullScreen else { continue }
+            button.isHidden = !fullScreen
         }
     }
 
