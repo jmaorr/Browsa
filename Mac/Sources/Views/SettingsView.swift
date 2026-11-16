@@ -140,6 +140,7 @@ private struct SpacesSettings: View {
                     Button("Add Space") { browser.addSpace() }
                 }
             }
+            SpaceRoutingSettings()
         }
         .formStyle(.grouped)
     }

@@ -1,13 +1,22 @@
-# Space Routing (spike)
+# Space Routing
 
 Sites that always open in a given Space, like Arc's Air Traffic Control and Zen's Space Routing.
 
-- ⌘K on any site › "Always Open github.com in Work" (or "…github.com/acme in <this Space>" for one org).
-- ⌘K › "Open Routing" lists rules by Space, with a field to add one ("figma.com", "github.com/acme").
+- Off by default. Settings › Spaces › "Open sites in their Space" turns it on, and so does adding a site
+  from ⌘K ("Always Open github.com in Work", or "…github.com/acme in <this Space>" for one org).
+- With it on, Browsa's starter sets apply, matched to your Spaces by name: Work tools (Slack, Linear,
+  Jira, Figma, GitHub…) go to a Space called Work, Watching and social (YouTube, Netflix, Reddit…) to
+  Personal. Shopping and travel is off until you pick a Space for it. Settings can point any set at
+  another Space or turn it off.
+- Your own sites beat the starter sets, and a path rule beats a host rule.
 - New tabs (⌘T, ⌘-click, favourites) and links from other apps follow the rules. Links you follow inside a
-  tab never move. Private tabs are never routed. A path rule beats a host rule.
+  tab never move, private tabs never move, and sign-in and checkout pages (accounts.google.com, PayPal,
+  Stripe Checkout…) stay next to the tab that opened them.
+- The first time a site moves, a toast says so with "Keep in <Space>", which takes that site out of
+  routing and moves the tab back. ⌘K › "Stop Routing …" does the same later.
 
-Rules live in UserDefaults (`spaceRoutes`). Code: `Mac/Sources/State/SpaceRouting.swift`, hooks in
-`Browser.newTab` and `Browser.openExternal`.
+State lives in UserDefaults (`spaceRoutingEnabled`, `spaceRoutes`, `spaceRoutingSets`, `spaceRoutingKept`,
+`spaceRoutingAnnounced`). Code: `Mac/Sources/State/SpaceRouting.swift`, hooks in `Browser.newTab` and
+`Browser.openExternal`.
 
 Not yet: route by the app a link came from (Slack → Work), route on redirect, sync rules.
