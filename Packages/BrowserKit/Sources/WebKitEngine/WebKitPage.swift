@@ -196,6 +196,13 @@ public final class WebKitPage: NSObject, EnginePage {
 extension WebKitPage: WKNavigationDelegate {
     public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                         preferences: WKWebpagePreferences) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
+        // Option-click on a web link: offered as a Glance first (before Safari's option-click download).
+        if navigationAction.navigationType == .linkActivated, navigationAction.modifierFlags.contains(.option),
+           !navigationAction.modifierFlags.contains(.command), let url = navigationAction.request.url,
+           url.scheme == "http" || url.scheme == "https", let delegate {
+            let glance = NavigationRequest(url: url, kind: .link, isMainFrame: true, method: "GET", wantsGlance: true)
+            if await delegate.page(self, decide: glance) == .cancel { return (.cancel, preferences) }
+        }
         if navigationAction.shouldPerformDownload { return (.download, preferences) }
         guard let url = navigationAction.request.url else { return (.allow, preferences) }
         let kind: NavigationRequest.Kind = switch navigationAction.navigationType {
@@ -399,9 +406,12 @@ final class DownloadBridge: NSObject, WKDownloadDelegate {
     private var progress: [ObjectIdentifier: NSKeyValueObservation] = [:]
     /// The page each download started from, for its quarantine record.
     private var origins: [ObjectIdentifier: URL] = [:]
+    /// Names asked for up front (an extension's chrome.downloads.download({ filename })).
+    private var requestedNames: [ObjectIdentifier: String] = [:]
 
-    func adopt(_ download: WKDownload, from page: WebKitPage) {
+    func adopt(_ download: WKDownload, from page: WebKitPage, filename: String? = nil) {
         download.delegate = self
+        if let filename, !filename.isEmpty { requestedNames[ObjectIdentifier(download)] = filename }
         let source = download.originalRequest?.url
         origins[ObjectIdentifier(download)] = page.webView.url
         let item = EngineDownload(filename: source?.lastPathComponent ?? "Download", sourceURL: source)
@@ -419,7 +429,10 @@ final class DownloadBridge: NSObject, WKDownloadDelegate {
                   suggestedFilename: String) async -> URL? {
         let dir = engine?.downloadsDirectory ?? URL.downloadsDirectory
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let dest = Self.uniqueDestination(for: suggestedFilename, in: dir)
+        // "folder/name.png" from an extension: just the name; folders inside Downloads aren't made.
+        let asked = requestedNames.removeValue(forKey: ObjectIdentifier(download))
+            .map { ($0 as NSString).lastPathComponent }.flatMap { $0.isEmpty ? nil : $0 }
+        let dest = Self.uniqueDestination(for: asked ?? suggestedFilename, in: dir)
         if let item = items[ObjectIdentifier(download)] {
             item.filename = dest.lastPathComponent
             item.fileURL = dest

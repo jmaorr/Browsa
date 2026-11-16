@@ -13,6 +13,13 @@ final class CommandBarModel {
     private(set) var zero: ZeroState?
     private(set) var results: SuggestResults?
     private(set) var highlighted: Int?
+    /// ⌘K's row of tools, when the arrow keys are in it: which one. nil = not in the row.
+    private(set) var toolHighlighted: Int?
+    /// How many items ⌘K's tool row has (tools plus Get More), set by the view.
+    var toolCount = 0
+    /// What's in the field now, with any inline completion, so the arrows start from the row
+    /// Return would open (the one already shown as selected).
+    var fieldText = ""
 
     var inline: InlineCompletion? { results?.inline }
     var isTyping: Bool { !typed.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -70,7 +77,9 @@ final class CommandBarModel {
         }
         .sorted { $0.score > $1.score }
         .prefix(12)
-        return Array(matched) + [Suggestion(kind: .searchQuery, title: q, subtitle: "Search the web", action: .search(q), score: 0)]
+        // A sum or a !bang leads here too, so Return copies the answer or goes to the site.
+        let special = SuggestEngine.specialRow(for: q).map { [$0] } ?? []
+        return special + Array(matched) + [Suggestion(kind: .searchQuery, title: q, subtitle: "Search the web", action: .search(q), score: 0)]
     }
 
     static func row(for c: BrowserCommand) -> Suggestion {
@@ -84,7 +93,9 @@ final class CommandBarModel {
 
     func textChanged(_ text: String, lastEditWasInsertion: Bool) {
         typed = text
+        fieldText = text
         highlighted = nil
+        toolHighlighted = nil
         task?.cancel()
         guard commandSource == nil else { return }
         guard !text.isEmpty else { results = nil; return }
@@ -98,18 +109,53 @@ final class CommandBarModel {
         }
     }
 
+    /// The row Return would open with nothing picked: shown selected, and where ↓ and ↑ start from.
+    var implicitTarget: Int? {
+        // The field shows the inline completion too, so Return's target includes it.
+        let shown = inline.map { $0.typed == fieldText ? $0.fullText : fieldText } ?? fieldText
+        guard isTyping, let a = submitAction(fieldText: shown) else { return nil }
+        return rows.firstIndex { $0.action == a }
+    }
+
+    /// Whether ⌘K's tool row is showing, so ↓ from the field goes into it first.
+    var hasToolRow: Bool { commandSource != nil && !isTyping && toolCount > 0 }
+
+    /// ↓ and ↑. Order: field, then ⌘K's tool row (if showing), then the list. With nothing picked,
+    /// they start from the row shown as selected, so the first ↓ moves off it rather than onto it.
     func moveHighlight(_ delta: Int) {
         let count = rows.count
-        guard count > 0 else { highlighted = nil; return }
-        switch highlighted {
-        case nil: highlighted = delta > 0 ? 0 : count - 1
+        if toolHighlighted != nil {
+            if delta > 0, count > 0 { toolHighlighted = nil; highlighted = 0 }
+            else if delta < 0 { toolHighlighted = nil; highlighted = nil }
+            return
+        }
+        switch highlighted ?? implicitTarget {
+        case nil:
+            if hasToolRow {
+                if delta > 0 { toolHighlighted = 0 } else if count > 0 { highlighted = count - 1 }
+                return
+            }
+            guard count > 0 else { return }
+            highlighted = delta > 0 ? 0 : count - 1
         case let i?:
             let j = i + delta
-            highlighted = j < 0 ? nil : min(j, count - 1)
+            if j < 0 {
+                highlighted = nil
+                if hasToolRow { toolHighlighted = 0 }
+            } else {
+                highlighted = min(j, count - 1)
+            }
         }
     }
 
-    func highlight(_ i: Int?) { highlighted = i }
+    /// ← and → inside ⌘K's tool row. False when the arrows aren't in it, so the field moves its caret.
+    func moveToolHighlight(_ delta: Int) -> Bool {
+        guard let t = toolHighlighted else { return false }
+        toolHighlighted = max(0, min(toolCount - 1, t + delta))
+        return true
+    }
+
+    func highlight(_ i: Int?) { highlighted = i; if i != nil { toolHighlighted = nil } }
 
     /// What Return does with the field's contents.
     func submitAction(fieldText: String) -> SuggestionAction? {
@@ -192,6 +238,7 @@ struct CommandBar: View {
                         model?.textChanged(text, lastEditWasInsertion: inserted)
                     },
                     onMove: { model?.moveHighlight($0) },
+                    onHorizontal: { model?.moveToolHighlight($0) ?? false },
                     onSubmit: { text in submit(text) },
                     onCancel: { close() })
                     .frame(height: 24)
@@ -207,17 +254,16 @@ struct CommandBar: View {
 
             if mode == .commands, model?.isTyping != true {
                 Divider().opacity(0.6)
-                ToolStrip { close() }
+                ToolStrip(highlighted: model?.toolHighlighted) { close() }
+                    .onAppear { model?.toolCount = browser.library.workbench.panelTools.count + 1 }
             }
 
             if let model, !model.rows.isEmpty {
                 // With nothing picked, the row Return would open shows as selected, like Arc.
                 // The field shows the inline completion too, so Return's target includes it.
-                let shown = model.inline.map { $0.typed == fieldText ? $0.fullText : fieldText } ?? fieldText
-                let target = model.highlighted ?? (model.isTyping ? model.submitAction(fieldText: shown).flatMap { a in
-                    model.rows.firstIndex { $0.action == a }
-                } : nil)
+                let target = model.toolHighlighted != nil ? nil : (model.highlighted ?? model.implicitTarget)
                 Divider().opacity(0.6)
+                ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 2) {
                         if !model.isTyping {
@@ -226,11 +272,15 @@ struct CommandBar: View {
                         ForEach(Array(model.rows.enumerated()), id: \.element.id) { i, row in
                             SuggestionRow(suggestion: row, highlighted: target == i,
                                           inSearch: model.isTyping, symbol: commandSymbol(row), hint: commandHint(row))
+                                .id(i)
                                 .onTapGesture { perform(row.action) }
                                 .onHover { if $0 { model.highlight(i) } }
                         }
                     }
                     .padding(6)
+                }
+                // The arrow keys keep the picked row in view.
+                .onChange(of: model.highlighted) { _, i in if let i { proxy.scrollTo(i) } }
                 }
                 .scrollIndicators(.never)
                 .frame(maxHeight: 420)
@@ -267,6 +317,12 @@ struct CommandBar: View {
     }
 
     private func submit(_ text: String) {
+        if let t = model?.toolHighlighted {
+            close()
+            let tools = browser.library.workbench.panelTools
+            if tools.indices.contains(t) { browser.showPanel(tools[t].id) } else { browser.openLibrary() }
+            return
+        }
         if let action = model?.submitAction(fieldText: text) {
             perform(action)
         } else if text.isEmpty, mode == .newTab {
@@ -351,12 +407,14 @@ private struct SuggestionRow: View {
 /// ⌘K's top row: every panel tool, one click to open it beside the page.
 private struct ToolStrip: View {
     @Environment(Browser.self) private var browser
+    /// The item the arrow keys are on (the last index is Get More).
+    var highlighted: Int?
     let done: () -> Void
 
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
-                ForEach(browser.library.workbench.panelTools) { tool in
+                ForEach(Array(browser.library.workbench.panelTools.enumerated()), id: \.element.id) { i, tool in
                     Button {
                         done()
                         browser.showPanel(tool.id)
@@ -369,10 +427,14 @@ private struct ToolStrip: View {
                             Text(tool.title).font(.caption).lineLimit(1)
                         }
                         .frame(width: 72)
+                        .padding(.vertical, 4)
+                        .background(highlighted == i ? AnyShapeStyle(.primary.opacity(0.08)) : AnyShapeStyle(.clear),
+                                    in: .rect(cornerRadius: 10, style: .continuous))
                         .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
                     .help(tool.summary)
+                    .id(i)
                 }
                 Button {
                     done()
@@ -386,6 +448,9 @@ private struct ToolStrip: View {
                         Text("Get More").font(.caption).foregroundStyle(.secondary)
                     }
                     .frame(width: 72)
+                    .padding(.vertical, 4)
+                    .background(highlighted == browser.library.workbench.panelTools.count ? AnyShapeStyle(.primary.opacity(0.08)) : AnyShapeStyle(.clear),
+                                in: .rect(cornerRadius: 10, style: .continuous))
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
@@ -408,6 +473,8 @@ struct CommandField: NSViewRepresentable {
     let inline: InlineCompletion?
     let onChange: (String, Bool) -> Void
     let onMove: (Int) -> Void
+    /// ← and →: true when handled (⌘K's tool row), false to leave them to the field.
+    var onHorizontal: (Int) -> Bool = { _ in false }
     let onSubmit: (String) -> Void
     let onCancel: () -> Void
 
@@ -474,6 +541,8 @@ struct CommandField: NSViewRepresentable {
             switch selector {
             case #selector(NSResponder.moveDown(_:)): parent?.onMove(1); return true
             case #selector(NSResponder.moveUp(_:)): parent?.onMove(-1); return true
+            case #selector(NSResponder.moveLeft(_:)): return parent?.onHorizontal(-1) ?? false
+            case #selector(NSResponder.moveRight(_:)): return parent?.onHorizontal(1) ?? false
             case #selector(NSResponder.insertNewline(_:)): parent?.onSubmit(textView.string); return true
             case #selector(NSResponder.cancelOperation(_:)): parent?.onCancel(); return true
             case #selector(NSResponder.insertTab(_:)):

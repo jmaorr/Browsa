@@ -22,7 +22,12 @@ struct BrowserCommands: Commands {
             }
         }
 
-        CommandGroup(replacing: .newItem) {
+        // Browsa › Settings… opens the Settings window (a Window scene, not SwiftUI's Settings scene).
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") { library.openSettings() }
+                .keyboardShortcut(",", modifiers: .command)
+        }
+                CommandGroup(replacing: .newItem) {
             Button("New Tab") { newTab(.newTab) }
                 .keyboardShortcut(keys.shortcut(.newTab))
             Button("New Window") { library.openWindow() }
