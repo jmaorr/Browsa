@@ -19,7 +19,7 @@ struct SettingsView: View {
     static let panes: [Pane] = [
         Pane(id: "general", title: "General", symbol: "gearshape"),
         Pane(id: "spaces", title: "Spaces", symbol: "square.stack"),
-        Pane(id: "routing", title: "Space Routing", symbol: "arrow.triangle.branch"),
+        Pane(id: "routing", title: "Routing", symbol: "arrow.triangle.branch"),
         Pane(id: "shortcuts", title: "Shortcuts", symbol: "keyboard"),
         Pane(id: "privacy", title: "Privacy", symbol: "hand.raised"),
         Pane(id: "audio", title: "Audio", symbol: "waveform"),

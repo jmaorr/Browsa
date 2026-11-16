@@ -400,7 +400,7 @@ struct SpaceRoutingSettings: View {
 private struct StarterSetRow: View {
     @Environment(Library.self) private var library
     let set: StarterSet
-    @State private var expanded = ProcessInfo.processInfo.environment["BROWSA_ROUTING_EXPAND"] == "1"
+    @State private var expanded = false
 
     private var router: SpaceRouter { .shared }
     private var spaces: [Space] { library.regularSpaces }
