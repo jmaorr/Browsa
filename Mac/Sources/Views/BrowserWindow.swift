@@ -111,6 +111,11 @@ struct BrowserWindow: View {
                         guard !inside else { return }
                         peekHide = Task { @MainActor in
                             try? await Task.sleep(for: .milliseconds(250))
+                            // Still over it (the event was stale): wait until it really leaves,
+                            // since no second "left" event will come.
+                            while !Task.isCancelled, pointerOverPeekingSidebar {
+                                try? await Task.sleep(for: .milliseconds(100))
+                            }
                             guard !Task.isCancelled else { return }
                             withAnimation(Motion.peek) { browser.isSidebarPeeking = false }
                         }
@@ -119,6 +124,16 @@ struct BrowserWindow: View {
             }
         }
         .frame(maxHeight: .infinity)
+    }
+
+    /// Where the pointer really is, rather than what the last hover event said. In full screen the
+    /// pointer rests against the screen's edge, in the gap beside the floating sidebar, and a stale
+    /// "left" event there used to hide the sidebar, which the edge then opened again: a flicker.
+    private var pointerOverPeekingSidebar: Bool {
+        guard let window = browser.nsWindow, let content = window.contentView else { return false }
+        let p = window.mouseLocationOutsideOfEventStream
+        // The sidebar plus its margin, from the window's left edge, full height.
+        return p.x >= -1 && p.x <= browser.sidebarWidth + 12 && p.y >= 0 && p.y <= content.bounds.height
     }
 
     private func configure(_ window: NSWindow) {
