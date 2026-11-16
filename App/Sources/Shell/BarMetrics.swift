@@ -19,6 +19,9 @@ enum BarMetrics {
     }
     /// Page space under a floating address capsule: the capsule plus the safe area below it.
     static let underCapsuleInset: CGFloat = 90
+    /// What the small capsule covers at the bottom, home indicator included: where fixed page
+    /// footers sit while the bar is collapsed.
+    static let compactCoveredInset: CGFloat = 50
     /// The address capsule between the arrows and the edges of a big screen's bottom bar.
     static let noGutterAddressWidth: CGFloat = 440
     /// The widest a floating bottom bar gets, on anything bigger than a phone in portrait.

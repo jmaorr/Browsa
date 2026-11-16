@@ -45,6 +45,8 @@ struct PromptSheet: View {
             "Sign in to \(host)"
         case .permission(let p, let host):
             "Allow \(host) to \(p.phrase)?"
+        case .openApp(let app, let host):
+            "Allow \(host) to open \(app)?"
         case .agent(let caller, _, let host):
             "Let \(caller) act on \(host)?"
         }
@@ -54,7 +56,7 @@ struct PromptSheet: View {
         switch prompt.kind {
         case .dialog(.alert(_, let m)), .dialog(.confirm(_, let m)), .dialog(.prompt(_, let m, _)): m
         case .dialog(.credentials(_, let realm)): realm.map { "The site says: “\($0)”" }
-        case .permission: "You can change this later in Settings."
+        case .permission, .openApp: "You can change this later in Settings."
         case .agent(_, let action, _):
             "It wants to \(action.lowercased()). It works as you, in the Agent space where you can watch. You can take this back in Settings > Agents, and Stop pauses every agent."
         }
@@ -79,6 +81,7 @@ struct PromptSheet: View {
 
     private var cancelTitle: String {
         if case .permission = prompt.kind { return "Don't Allow" }
+        if case .openApp = prompt.kind { return "Don't Allow" }
         if case .agent = prompt.kind { return "Don't Allow" }
         return "Cancel"
     }
@@ -86,6 +89,7 @@ struct PromptSheet: View {
     private var okTitle: String {
         switch prompt.kind {
         case .permission: "Allow"
+        case .openApp(let app, _): "Open \(app)"
         case .agent: "Allow on This Site"
         case .dialog(.credentials): "Sign In"
         default: "OK"
