@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <vector>
 #include "wav.h"
 #include "CallGuard.h"
 #include <webrtc/api/audio/builtin_audio_processing_builder.h>
@@ -25,6 +26,7 @@
 
 int main(int argc, char** argv) {
   std::string raw, ref, out, trace;
+  std::vector<std::string> guardSets;
   double shiftMs = 0, maxGain = 30, noiseDbfs = -60;
   int delayHint = 10, ns = 2;
   bool agc = true, aec = true, warmup = false, gatedGain = false;
@@ -41,6 +43,7 @@ int main(int argc, char** argv) {
     else if (a == "--warmup") warmup = atoi(next().c_str()) != 0;
     else if (a == "--gated-gain") gatedGain = atoi(next().c_str()) != 0;
     else if (a == "--trace") trace = next();
+    else if (a == "--guard") guardSets.push_back(next());  // name=value, a CallGuardOptions field (tuning)
     else if (a == "--delay-hint-ms") delayHint = atoi(next().c_str());
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
   }
@@ -54,6 +57,19 @@ int main(int argc, char** argv) {
   browsa::CallGuardOptions go;
   go.warmup = warmup;
   go.gatedGain = gatedGain;
+  for (const auto& kv : guardSets) {
+    const auto eq = kv.find('=');
+    if (eq == std::string::npos) { fprintf(stderr, "--guard name=value\n"); return 2; }
+    const std::string k = kv.substr(0, eq); const double v = atof(kv.c_str() + eq + 1);
+    double* f = k == "targetDbfs" ? &go.targetDbfs : k == "maxGainDb" ? &go.maxGainDb : k == "minGainDb" ? &go.minGainDb
+      : k == "initialGainDb" ? &go.initialGainDb : k == "initialLevelDbfs" ? &go.initialLevelDbfs : k == "levelWindowDb" ? &go.levelWindowDb : k == "holdSeconds" ? &go.holdSeconds : k == "farGateDepthDb" ? &go.farGateDepthDb
+      : k == "farReleaseDbPerFrame" ? &go.farReleaseDbPerFrame : k == "pauseGateDepthDb" ? &go.pauseGateDepthDb
+      : k == "pauseReleaseDbPerFrame" ? &go.pauseReleaseDbPerFrame : k == "fastSpeechSeconds" ? &go.fastSpeechSeconds
+      : k == "fastUpDbPerFrame" ? &go.fastUpDbPerFrame : k == "fastDownDbPerFrame" ? &go.fastDownDbPerFrame : k == "slowUpDbPerFrame" ? &go.slowUpDbPerFrame
+      : k == "slowDownDbPerFrame" ? &go.slowDownDbPerFrame : nullptr;
+    if (!f) { fprintf(stderr, "unknown guard option %s\n", k.c_str()); return 2; }
+    *f = v;
+  }
   browsa::CallGuard guard(go);
   const bool guarding = warmup || gatedGain;
   // As BrowsaCallAudioInternalUnit::initialize sets it up.

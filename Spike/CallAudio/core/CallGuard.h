@@ -28,7 +28,16 @@ struct CallGuardOptions {
   bool warmup = true;
   double warmupAttenuationDb = 30, warmupMaxSeconds = 2, warmupConvergedDb = 35;
   bool gatedGain = true;
-  double targetDbfs = -26, maxGainDb = 30, initialGainDb = 12, gateDepthDb = 12, holdSeconds = 0.3;
+  // initialLevelDbfs: where the estimate of your speech level starts (it only takes speech within 10 dB below it
+  // at first, so it starts low enough for a quiet mic); the gain itself starts at initialGainDb.
+  // Tuned offline on the Jabra runs, the native Scarlett runs and the first real call (2026-11-16, tools/audio-bench/
+  // tunecheck.mjs): the gain starts flat and may come down for a loud voice as well as up for a quiet one.
+  double targetDbfs = -26, maxGainDb = 30, minGainDb = -20, initialGainDb = 0, initialLevelDbfs = -26, levelWindowDb = 15, holdSeconds = 0.5;
+  // Not talking: while the far end talks the canceller can leak, so the gain drops to at most -farGateDepthDb, fast;
+  // in plain pauses it drops by pauseGateDepthDb. (A shallow, slow pause drop was tried: it pumped more, not less.)
+  double farGateDepthDb = 12, farReleaseDbPerFrame = 1.0, pauseGateDepthDb = 12, pauseReleaseDbPerFrame = 1.0;
+  // Finding your level: down faster than up. (A fast first few seconds was tried: it overshot on a quiet mic.)
+  double fastSpeechSeconds = 0, fastUpDbPerFrame = 0.03, fastDownDbPerFrame = 0.3, slowUpDbPerFrame = 0.03, slowDownDbPerFrame = 0.06;
 };
 
 struct CallGuardStats {
@@ -45,11 +54,11 @@ class CallGuard {
 
   explicit CallGuard(const CallGuardOptions& o = CallGuardOptions()) : o_(o) { reset(); }
   void reset() {
-    frames_ = 0; refEnv_ = -120; floor_ = -60; coupling_ = -6; level_ = o_.targetDbfs - o_.initialGainDb;
+    frames_ = 0; refEnv_ = -120; floor_ = -60; coupling_ = -6; level_ = o_.initialLevelDbfs;
     gainDb_ = o_.initialGainDb; appliedDb_ = 0; holdFrames_ = 0; removalCount_ = 0; removalIndex_ = 0;
-    converged_ = false; stats_ = CallGuardStats();
+    converged_ = false; speechFrames_ = 0; stats_ = CallGuardStats();
     for (double& r : removal_) r = 0;
-    appliedDb_ = o_.gatedGain ? o_.initialGainDb - o_.gateDepthDb : 0;
+    appliedDb_ = o_.gatedGain ? o_.initialGainDb - o_.pauseGateDepthDb : 0;
   }
   // The last frame's state, for traces (apm-replay-webkit --trace).
   struct Frame { double ref, raw, clean, refEnv, floor, coupling, appliedDb; bool far, near, talking, attenuate; };
@@ -91,10 +100,20 @@ class CallGuard {
     double targetDb = 0;
     if (o_.gatedGain) {
       // Your speech level, from frames where you talk; the gain brings it to the target, slowly (3 dB/s).
-      if (near && c > floor_ + 20 && c > level_ - 10) level_ += 0.01 * (c - level_);  // speech, not its quiet tails
-      const double want = std::clamp(o_.targetDbfs - level_, 0.0, o_.maxGainDb);
-      gainDb_ += std::clamp(want - gainDb_, -0.03, 0.03);
-      targetDb = talking ? gainDb_ : gainDb_ - o_.gateDepthDb;
+      const bool early = speechFrames_ < int64_t(o_.fastSpeechSeconds * 100);
+      // Speech frames within levelWindowDb below the estimate (quieter ones are tails and leftovers); wide enough that
+      // a much quieter mic is still found.
+      if (near && c > floor_ + 20 && c > level_ - o_.levelWindowDb) level_ += (early ? 0.05 : 0.01) * (c - level_);  // speech, not its quiet tails
+      // Up for a quiet mic, down for a loud one (a voice close to the mic came out at -18 dBFS when it could only go up).
+      const double want = std::clamp(o_.targetDbfs - level_, o_.minGainDb, o_.maxGainDb);
+      // Finds your level quickly over the first 3 s of speech, then follows it slowly (3 dB/s up); coming down for a
+      // loud voice is always quicker (6 dB/s) than going up.
+      if (near) speechFrames_++;
+      const double up = early ? o_.fastUpDbPerFrame : o_.slowUpDbPerFrame, down = early ? o_.fastDownDbPerFrame : o_.slowDownDbPerFrame;
+      gainDb_ += std::clamp(want - gainDb_, -down, up);
+      // While the far end talks and you don't, what's left is the canceller's leftovers: never lifted, whatever your
+      // gain (at most -farGateDepthDb). In plain pauses, your gain less pauseGateDepthDb.
+      targetDb = talking ? gainDb_ : far ? std::min(gainDb_, 0.0) - o_.farGateDepthDb : gainDb_ - o_.pauseGateDepthDb;
     }
 
     // Warm-up: hold the far end's leak down until the canceller removes enough.
@@ -111,7 +130,8 @@ class CallGuard {
 
     // Opening is immediate (so your first syllable isn't lost); closing is 1 dB per 10 ms. Ramped across the frame.
     const double from = appliedDb_;
-    appliedDb_ = targetDb > appliedDb_ ? targetDb : std::max(targetDb, appliedDb_ - 1.0);
+    const double release = far && !talking ? o_.farReleaseDbPerFrame : o_.pauseReleaseDbPerFrame;
+    appliedDb_ = targetDb > appliedDb_ ? targetDb : std::max(targetDb, appliedDb_ - release);
     const double g0 = std::pow(10.0, from / 20), g1 = std::pow(10.0, appliedDb_ / 20);
     float peak = 0;
     for (int i = 0; i < frameSize; i++) {
@@ -132,6 +152,7 @@ class CallGuard {
   int64_t frames_ = 0;
   double refEnv_ = -120, floor_ = -90, coupling_ = -6, level_ = -38, gainDb_ = 12, appliedDb_ = 0;
   int holdFrames_ = 0, removalCount_ = 0, removalIndex_ = 0;
+  int64_t speechFrames_ = 0;
   double removal_[kRemoval] = {};
   bool converged_ = false;
   Frame last_ = {};

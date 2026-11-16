@@ -16,6 +16,8 @@ import { loadDump, echoLag, detectStretches, scoreSent } from "./dumpscore.mjs";
 const REPLAY = path.join(os.homedir(), "Developer/Browsa/derived/audio-lab/apm-replay-webkit");
 
 export function guardCheck(dir, opt = {}) {
+  // BROWSA_GUARD="name=value name=value": CallGuard settings to try (apm-replay-webkit --guard).
+  const guardArgs = (process.env.BROWSA_GUARD || "").split(/\s+/).filter(Boolean).flatMap((kv) => ["--guard", kv]);
   const d = loadDump(dir);
   const limit = Math.floor((opt.minutes ?? 10) * 60 * RATE);
   const raw = d.raw.subarray(0, limit), ref = d.ref.subarray(0, limit), live = d.sent ? d.sent.subarray(0, limit) : null;
@@ -30,8 +32,8 @@ export function guardCheck(dir, opt = {}) {
     ...(live ? [["live (as sent)", null]] : []),
     ["replay, WebRTC gain (before CallGuard)", base],
     ["+ warm-up", [...base, "--warmup", "1"]],
-    ["gain only while talking", [...base, "--gated-gain", "1"]],
-    ["warm-up + gain only while talking", [...base, "--warmup", "1", "--gated-gain", "1"]],
+    ["gain only while talking", [...base, "--gated-gain", "1", ...guardArgs]],
+    ["warm-up + gain only while talking", [...base, "--warmup", "1", "--gated-gain", "1", ...guardArgs]],
   ];
   const windows = (opt.windows || "0:2").split(",").map((w) => w.split(":").map(Number));
   const rows = [];

@@ -19,7 +19,7 @@ const LAB = path.join(DERIVED, "audio-lab/Browsa Audio Lab.app/Contents/MacOS/au
 const MAX_VOLUME = 60;
 
 // ---------- arguments ----------
-const args = { subjects: "webrtc,apple,raw", volumes: "50,60", in: "", out: "", "talker-out": "MacBook Pro Speakers", "talker-volume": "0.3", schedule: "4,20,15,20,3" };
+const args = { subjects: "webrtc,apple,raw", volumes: "50,60", in: "", out: "", "talker-out": "MacBook Pro Speakers", "talker-volume": "0.5", schedule: "4,20,15,20,3" };
 for (let i = 2; i < process.argv.length; i++) {
   const a = process.argv[i];
   if (!a.startsWith("--")) continue;
@@ -43,9 +43,9 @@ if (seconds.length !== 5 || seconds.some((s) => !(s >= 0))) throw new Error("--s
 const total = seconds.reduce((a, b) => a + b, 0);
 const volumes = args.volumes && args.volumes !== "same" ? args.volumes.split(",").map(Number) : [null];
 for (const v of volumes) if (v != null && (!(v >= 0) || v > MAX_VOLUME)) throw new Error(`volume ${v}: the bench never goes above ${MAX_VOLUME}`);
-// The stand-in talker only has to sound like someone speaking near the mic: 30% by default, never over 40% (at 100% on
+// The stand-in talker only has to sound like someone speaking near the mic: 50% by default and at most (at 100% on
 // a MacBook's speakers the whole office heard it, 2026-11-16).
-const talkerVolume = args["no-talker"] ? 0 : Math.min(Math.max(parseFloat(args["talker-volume"]), 0), 0.4);
+const talkerVolume = args["no-talker"] ? 0 : Math.min(Math.max(parseFloat(args["talker-volume"]), 0), 0.5);
 
 // ---------- one bench at a time ----------
 fs.mkdirSync(BENCH, { recursive: true });

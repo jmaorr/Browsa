@@ -22,7 +22,7 @@ of far end, quiet; `--long N` for N minutes), nothing on the MacBook speakers: t
 - **Far end**: the call's incoming voice (`tools/echo-test/standup.mp3`) on the call speakers (default output,
   or `--out`).
 - **You**: a stand-in talker, macOS's "Daniel" voice reading `talker.txt`, played from a second speaker
-  (`--talker-out`, default MacBook Pro Speakers, at `--talker-volume`, default 0.3, capped at 0.4). Different
+  (`--talker-out`, default MacBook Pro Speakers, at `--talker-volume`, default 0.5, capped at 0.5). Different
   voice, different speaker, so the analysis can tell the two apart.
 
 ## Subjects
