@@ -72,25 +72,16 @@ final class WindowButtonsView: NSView {
         redraw()
     }
 
-    /// The title bar's own close, minimise and zoom buttons, found in a window that isn't in full
-    /// screen. Not `standardWindowButton(_:)`: once the sidebar's copies are in the window it can hand
-    /// those back instead. Full screen moves these same buttons into AppKit's drop-down title bar,
-    /// so the caller keeps hold of them from before.
+    /// The title bar's own close, minimise and zoom buttons: AppKit's, skipping any that turn out to
+    /// be the sidebar's copies. Read while in a window; full screen moves these same buttons into
+    /// AppKit's drop-down title bar, so the caller keeps hold of them from before.
     static func titleBarButtons(of window: NSWindow) -> [NSButton] {
-        let subroles: [NSAccessibility.Subrole] = [.closeButton, .minimizeButton, .zoomButton]
-        var found: [NSButton] = []
-        func walk(_ view: NSView) {
-            if view is WindowButtonsView { return }
-            if let button = view as? NSButton, let role = button.accessibilitySubrole(), subroles.contains(role) {
-                found.append(button)
-            }
-            view.subviews.forEach(walk)
+        [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { kind in
+            guard let button = window.standardWindowButton(kind) else { return nil }
+            var v: NSView? = button.superview
+            while let s = v { if s is WindowButtonsView { return nil }; v = s.superview }
+            return button
         }
-        // The title bar sits beside the content view, under the window's frame view.
-        if let frame = window.contentView?.superview {
-            for child in frame.subviews where child !== window.contentView { walk(child) }
-        }
-        return found
     }
 
     func setMinimiseEnabled(_ enabled: Bool) {
