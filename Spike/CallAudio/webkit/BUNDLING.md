@@ -198,3 +198,14 @@ into the archive), then the usual Developer ID export. `tools/release-mac.sh --l
 export to disk, so nothing goes to the notary service. `tools/mac-check-release.sh` checks the result. The launcher
 now also sends Intel Macs (and Rosetta) to `Browsa-system` (`BROWSA_BUNDLED_WEBKIT=intel`), since the WebKit builds
 are arm64 only.
+
+Measured on the release path (Browsa 1.1 test build, e10e7ca, not notarised):
+
+| | on disk | zipped |
+|---|---|---|
+| no bundled WebKit (Developer ID export) | 26 MB | 17 MB |
+| WebKit-26 only (Developer ID export) | 186 MB | 80 MB |
+| WebKit-26 + WebKit-27 (archive-signed; export blocked, see the report) | 346 MB | 144 MB |
+
+The Developer ID export keeps the WebContent service's `allow-jit` and signs every executable (launcher,
+`Browsa-system`, `Browsa-webkit-26`, WebKit's services) with Developer ID and Hardened Runtime.
