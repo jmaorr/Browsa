@@ -38,7 +38,7 @@ a shallow or grafted clone counts fewer commits.
 ```markdown
 **New: <Name>**
 <One sentence on what it is and what it does for you.>
-*<Optional: one short note, such as where to turn it off or a limit worth knowing.>*
+*<Optional: where to turn it off or change it, nothing more.>*
 
 **New: <Name>**
 <One sentence.>
@@ -52,6 +52,8 @@ a shallow or grafted clone counts fewer commits.
 
 - Plain and handcrafted. Write the way you'd tell a friend what changed.
 - One clean sentence per new feature. If it needs two, it's two features or it isn't simple enough yet.
+- Sell it, don't explain it. No narrative lines about how something behaves in edge cases ("closing one of
+  several windows…"). The only italic note worth adding is where to switch it off or change it.
 - Name things the way the app does: Settings › Audio, Archive, Today tabs, Space. No code names, PR numbers,
   engine internals or device branding.
 - Say what you get, not how it was built ("calls sound clear without headphones", not "AEC3 in the capture unit").
