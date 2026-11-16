@@ -197,6 +197,8 @@ final class Library {
         guard windowsByAge.contains(where: { $0 === window }) else { return }
         windows.removeAll { $0 === window }
         windowsByAge.removeAll { $0 === window }
+        if let observer = window.closeObserver { NotificationCenter.default.removeObserver(observer) }
+        window.closeObserver = nil
         // Closing one of several windows archives its Today tabs, like Arc. The last window's tabs,
         // and every window's when quitting, stay put for the next window to pick up.
         if !windows.isEmpty, !isTerminating {

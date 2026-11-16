@@ -23,6 +23,8 @@ final class Browser {
     private var tabSelection: [UUID: UUID] = [:]
     /// The AppKit window, for focusing and for matching key events to this browser.
     @ObservationIgnored weak var nsWindow: NSWindow?
+    /// Listens for the window closing (see `BrowserWindow.configure`); removed when it closes.
+    @ObservationIgnored var closeObserver: NSObjectProtocol?
 
     // MARK: Transient UI state
 
