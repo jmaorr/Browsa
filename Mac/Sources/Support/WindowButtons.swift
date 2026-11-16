@@ -40,6 +40,7 @@ final class WindowButtonsView: NSView {
         super.layout()
         var x: CGFloat = 0
         for button in buttons {
+            if button.isHidden { button.isHidden = false }
             var size = button.frame.size
             if size.width < 1 || size.height < 1 { size = button.fittingSize }
             if size.width < 1 || size.height < 1 { size = NSSize(width: 14, height: 16) }
@@ -64,6 +65,28 @@ final class WindowButtonsView: NSView {
         }
         needsLayout = true
         redraw()
+    }
+
+    /// The title bar's own close, minimise and zoom buttons. Not `standardWindowButton(_:)`: once
+    /// the sidebar's copies are in the window it can hand those back instead, and hiding them left the
+    /// docked sidebar with no traffic lights after it had been hidden and shown.
+    static func titleBarButtons(of window: NSWindow) -> [NSButton] {
+        let subroles: [NSAccessibility.Subrole] = [.closeButton, .minimizeButton, .zoomButton]
+        var found: [NSButton] = []
+        func walk(_ view: NSView) {
+            if view is WindowButtonsView { return }
+            if let button = view as? NSButton, let role = button.accessibilitySubrole(), subroles.contains(role) {
+                found.append(button)
+            }
+            view.subviews.forEach(walk)
+        }
+        // The title bar sits beside the content view, under the window's frame view.
+        if let frame = window.contentView?.superview {
+            for child in frame.subviews where child !== window.contentView { walk(child) }
+        }
+        // In full screen it's moved to a window of its own.
+        for child in window.childWindows ?? [] { if let v = child.contentView?.superview { walk(v) } }
+        return found
     }
 
     // MARK: Hover
