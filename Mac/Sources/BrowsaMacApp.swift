@@ -134,6 +134,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let dir = ProcessInfo.processInfo.environment["BROWSA_EXT_COMPAT_CHECK"] {
             Task { @MainActor in await ExtensionCompatCheck(directory: URL(fileURLWithPath: dir), delegate: self).run() }
         }
+        if let pane = ProcessInfo.processInfo.environment["BROWSA_SETTINGS_DBG"] {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(5))
+                self.library.openSettings(pane: pane)
+                try? await Task.sleep(for: .seconds(2))
+                NSLog("DBGS windows %@", NSApp.windows.filter(\.isVisible).map { "\($0.title)#\($0.windowNumber)" }.joined(separator: ","))
+            }
+        }
         if let dir = ProcessInfo.processInfo.environment["BROWSA_PILL_CHECK"] {
             Task { @MainActor in await PillCheck(directory: URL(fileURLWithPath: dir), delegate: self).run() }
         }

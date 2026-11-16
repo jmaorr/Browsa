@@ -19,6 +19,7 @@ struct SettingsView: View {
     static let panes: [Pane] = [
         Pane(id: "general", title: "General", symbol: "gearshape"),
         Pane(id: "spaces", title: "Spaces", symbol: "square.stack"),
+        Pane(id: "routing", title: "Space Routing", symbol: "arrow.triangle.branch"),
         Pane(id: "shortcuts", title: "Shortcuts", symbol: "keyboard"),
         Pane(id: "privacy", title: "Privacy", symbol: "hand.raised"),
         Pane(id: "audio", title: "Audio", symbol: "waveform"),
@@ -31,7 +32,7 @@ struct SettingsView: View {
             List(Self.panes, selection: Binding(get: { Optional(tab) }, set: { if let t = $0 { tab = t } })) { pane in
                 Label(pane.title, systemImage: pane.symbol).tag(pane.id)
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 210, max: 260)
             .toolbar(removing: .sidebarToggle)
         } detail: {
             pane
@@ -43,6 +44,7 @@ struct SettingsView: View {
     @ViewBuilder private var pane: some View {
         switch tab {
         case "spaces": SpacesSettings()
+        case "routing": SpaceRoutingSettings()
         case "shortcuts": ShortcutSettings()
         case "privacy": PrivacySettings()
         case "audio": AudioSettings()
@@ -140,7 +142,6 @@ private struct SpacesSettings: View {
                     Button("Add Space") { browser.addSpace() }
                 }
             }
-            SpaceRoutingSettings()
         }
         .formStyle(.grouped)
     }

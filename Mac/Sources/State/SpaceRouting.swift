@@ -61,6 +61,14 @@ struct StarterSet: Identifiable {
     let patterns: [String]
     let onByDefault: Bool
 
+    var symbol: String {
+        switch id {
+        case "work": "briefcase"
+        case "watching": "play.rectangle"
+        default: "bag"
+        }
+    }
+
     /// A few names, for the Settings row.
     var sample: String {
         let names = patterns.prefix(4).map { RouteRule.host(of: $0).split(separator: ".").first.map(String.init) ?? $0 }
@@ -186,6 +194,14 @@ final class SpaceRouter {
         add(pattern: pattern, to: space)
     }
 
+    /// Your own site, from its rule into a starter set.
+    func moveRule(_ pattern: String, to set: StarterSet) {
+        rules.removeAll { $0.pattern == pattern }
+        addSite(pattern, to: set)
+    }
+
+    func hasEdits(in set: StarterSet) -> Bool { !(removed[set.id] ?? []).isEmpty || !(added[set.id] ?? []).isEmpty }
+
     func restoreDefaults(of set: StarterSet) {
         removed[set.id] = nil
         added[set.id] = nil
@@ -307,179 +323,210 @@ final class SpaceRouter {
     }
 }
 
-// MARK: - Settings › Spaces
+// MARK: - Settings › Space Routing
 
-/// The switch, the starter sets and your own sites. Only the switch shows until it's on.
+/// Its own Settings pane. One switch until it's on; then, Space by Space, what opens there: Browsa's
+/// lists (each one a row that opens to its sites) and your own sites. Everything edits in place.
 struct SpaceRoutingSettings: View {
     @Environment(Library.self) private var library
-    @State private var newPattern = ""
-    @State private var newSpaceID: UUID?
-    /// The starter set whose sites are being edited.
-    @State private var editing: String?
+    @State private var adding = false
 
     private var router: SpaceRouter { .shared }
-
-    private func sample(_ sites: [String]) -> String {
-        let names = sites.prefix(4).map { RouteRule.host(of: $0).split(separator: ".").first.map(String.init) ?? $0 }
-        return names.isEmpty ? "No sites" : names.joined(separator: ", ") + (sites.count > 4 ? " +\(sites.count - 4)" : "")
-    }
+    private var spaces: [Space] { library.regularSpaces }
 
     var body: some View {
         @Bindable var router = SpaceRouter.shared
-        Section {
-            Toggle(isOn: $router.isEnabled) {
-                Text("Open sites in their Space")
-                Text("New Linear tabs open in Work, YouTube in Personal, wherever you are.")
+        Form {
+            Section {
+                Toggle(isOn: $router.isEnabled) {
+                    Text("Open sites in their Space")
+                    Text("New tabs for a site go to its Space, wherever you are. Links you follow inside a tab stay put, and private tabs never move.")
+                }
             }
-        } footer: {
             if router.isEnabled {
-                Text("Only new tabs and links from other apps move. Links you follow inside a tab stay put, and private tabs never move.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        if router.isEnabled {
-            Section("Starter sets") {
-                ForEach(StarterSet.all) { set in
-                    Picker(selection: Binding(
-                        get: { router.space(for: set, in: library.regularSpaces)?.id },
-                        set: { id in router.choose(library.regularSpaces.first { $0.id == id }, for: set) })) {
-                        Text("Off").tag(UUID?.none)
-                        ForEach(library.regularSpaces) { s in Text(s.name).tag(Optional(s.id)) }
-                    } label: {
-                        HStack(spacing: 8) {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(set.title)
-                                Text(sample(router.sites(in: set))).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Button("Edit Sites…") { editing = set.id }
-                                .buttonStyle(.link)
-                                .font(.caption)
+                ForEach(spaces) { space in
+                    let sets = StarterSet.all.filter { router.space(for: $0, in: spaces)?.id == space.id }
+                    let rules = router.rules.filter { $0.spaceID == space.id }
+                    Section {
+                        ForEach(sets) { set in StarterSetRow(set: set) }
+                        ForEach(rules) { rule in
+                            SiteRow(pattern: rule.pattern) {
+                                Section("Open in") {
+                                    ForEach(spaces.filter { $0.id != space.id }) { other in
+                                        Button(other.name, systemImage: other.symbol) { router.add(pattern: rule.pattern, to: other) }
+                                    }
+                                }
+                                Section("Add to a list") {
+                                    ForEach(StarterSet.all) { set in
+                                        Button(set.title, systemImage: set.symbol) { router.moveRule(rule.pattern, to: set) }
+                                    }
+                                }
+                            } onRemove: { router.remove(rule.id) }
+                        }
+                        if sets.isEmpty && rules.isEmpty {
+                            Text("Nothing opens here yet.").foregroundStyle(.secondary)
+                        }
+                    } header: {
+                        Label {
+                            Text(space.name)
+                        } icon: {
+                            Image(systemName: space.symbol).foregroundStyle(SpacePalette.color(for: space))
                         }
                     }
                 }
-            }
-            .sheet(item: Binding(get: { editing.flatMap { id in StarterSet.all.first { $0.id == id } } },
-                                 set: { editing = $0?.id })) { set in
-                StarterSetEditor(set: set)
-            }
-            Section {
-                ForEach(router.rules) { rule in
-                    HStack {
-                        Text(rule.pattern).font(.callout.monospaced()).lineLimit(1)
-                        Spacer()
-                        Text(library.regularSpaces.first { $0.id == rule.spaceID }?.name ?? "").foregroundStyle(.secondary)
-                        Button { router.remove(rule.id) } label: { Image(systemName: "minus.circle") }
-                            .buttonStyle(.borderless)
-                            .help("Stop routing \(rule.pattern)")
+                let unused = StarterSet.all.filter { router.space(for: $0, in: spaces) == nil }
+                if !unused.isEmpty {
+                    Section("Not in use") {
+                        ForEach(unused) { set in StarterSetRow(set: set) }
                     }
                 }
-                addRow
-            } header: {
-                Text("Your sites")
-            } footer: {
-                Text("Or on any site, ⌘K › Always Open … in ….").font(.caption).foregroundStyle(.secondary)
+                Section {
+                    HStack {
+                        Text("Your sites win over Browsa's lists. Sign-in and checkout pages always open next to the tab that asked for them.")
+                            .font(.callout).foregroundStyle(.secondary)
+                        Spacer(minLength: 16)
+                        Button("Add Site…") { adding = true }
+                            .popover(isPresented: $adding, arrowEdge: .bottom) { AddSitePopover() }
+                    }
+                }
             }
         }
-    }
-
-    private var addRow: some View {
-        HStack(spacing: 6) {
-            TextField("github.com/acme", text: $newPattern, prompt: Text("github.com/acme"))
-                .textFieldStyle(.roundedBorder)
-                .labelsHidden()
-                .onSubmit(add)
-            Picker("Space", selection: $newSpaceID) {
-                ForEach(library.regularSpaces) { s in Text(s.name).tag(Optional(s.id)) }
-            }
-            .labelsHidden()
-            .frame(maxWidth: 130)
-            Button("Add", action: add).disabled(newPattern.trimmingCharacters(in: .whitespaces).isEmpty)
-        }
-        .onAppear {
-            router.prune(keeping: library.regularSpaces)
-            newSpaceID = newSpaceID ?? library.regularSpaces.first?.id
-        }
-    }
-
-    private func add() {
-        guard let id = newSpaceID, let space = library.regularSpaces.first(where: { $0.id == id }) else { return }
-        router.add(pattern: newPattern, to: space)
-        newPattern = ""
+        .formStyle(.grouped)
+        .onAppear { router.prune(keeping: spaces) }
     }
 }
 
-/// One starter set's sites: take any out, send one to another set or to a rule of its own, add your own.
-struct StarterSetEditor: View {
+/// One of Browsa's lists: its name, how many sites, which Space it opens in. Opens to its sites.
+private struct StarterSetRow: View {
     @Environment(Library.self) private var library
-    @Environment(\.dismiss) private var dismiss
     let set: StarterSet
-    @State private var newSite = ""
+    @State private var expanded = ProcessInfo.processInfo.environment["BROWSA_ROUTING_EXPAND"] == "1"
 
     private var router: SpaceRouter { .shared }
+    private var spaces: [Space] { library.regularSpaces }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(set.title).font(.headline)
-                Text(router.space(for: set, in: library.regularSpaces).map { "Opens in \($0.name)" } ?? "Off")
-                    .font(.callout).foregroundStyle(.secondary)
-            }
-            .padding(16)
-            List {
-                ForEach(router.sites(in: set), id: \.self) { site in
-                    HStack {
-                        Text(site).font(.callout.monospaced()).lineLimit(1)
-                        Spacer()
-                        Menu {
-                            Section("Another set") {
-                                ForEach(StarterSet.all.filter { $0.id != set.id }) { other in
-                                    Button(other.title) { router.moveSite(site, from: set, to: other) }
-                                }
-                            }
-                            Section("A rule of its own") {
-                                ForEach(library.regularSpaces) { space in
-                                    Button("Always Open in \(space.name)") { router.moveSite(site, from: set, toRuleFor: space) }
-                                }
-                            }
-                        } label: { Text("Move") }
-                        .menuStyle(.borderlessButton)
-                        .fixedSize()
-                        Button { router.removeSite(site, from: set) } label: { Image(systemName: "minus.circle") }
-                            .buttonStyle(.borderless)
-                            .help("Take \(site) out of \(set.title)")
-                    }
-                }
-                let gone = router.removedSites(in: set)
-                if !gone.isEmpty {
-                    Section("Taken out") {
-                        ForEach(gone, id: \.self) { site in
-                            HStack {
-                                Text(site).font(.callout.monospaced()).foregroundStyle(.secondary).lineLimit(1)
-                                Spacer()
-                                Button("Put Back") { router.addSite(site, to: set) }.buttonStyle(.link)
-                            }
+        DisclosureGroup(isExpanded: $expanded) {
+            ForEach(router.sites(in: set), id: \.self) { site in
+                SiteRow(pattern: site) {
+                    Section("Move to a list") {
+                        ForEach(StarterSet.all.filter { $0.id != set.id }) { other in
+                            Button(other.title, systemImage: other.symbol) { router.moveSite(site, from: set, to: other) }
                         }
                     }
+                    Section("Its own rule") {
+                        ForEach(spaces) { space in
+                            Button("Always Open in \(space.name)", systemImage: space.symbol) { router.moveSite(site, from: set, toRuleFor: space) }
+                        }
+                    }
+                } onRemove: { router.removeSite(site, from: set) }
+                // Under the list's own icon, not the disclosure arrow.
+                .padding(.leading, 22)
+            }
+            let gone = router.removedSites(in: set)
+            if !gone.isEmpty || router.hasEdits(in: set) {
+                HStack {
+                    Text(gone.isEmpty ? "Edited" : "\(gone.count) taken out")
+                        .font(.callout).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Restore Browsa's List") { router.restoreDefaults(of: set) }
+                        .buttonStyle(.borderless)
                 }
+                .padding(.leading, 22)
             }
-            .frame(minHeight: 280)
-            Divider()
-            HStack(spacing: 8) {
-                TextField("Add a site", text: $newSite, prompt: Text("figma.com/@acme"))
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit(add)
-                Button("Add", action: add).disabled(newSite.trimmingCharacters(in: .whitespaces).isEmpty)
-                Spacer(minLength: 12)
-                Button("Restore Defaults") { router.restoreDefaults(of: set) }
-                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: set.symbol)
+                    .frame(width: 20)
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(set.title)
+                    Text("\(router.sites(in: set).count) sites").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Picker("Opens in", selection: Binding(
+                    get: { router.space(for: set, in: spaces)?.id },
+                    set: { id in router.choose(spaces.first { $0.id == id }, for: set) })) {
+                    Text("Off").tag(UUID?.none)
+                    Divider()
+                    ForEach(spaces) { s in Label(s.name, systemImage: s.symbol).tag(Optional(s.id)) }
+                }
+                .labelsHidden()
+                .fixedSize()
             }
-            .padding(12)
         }
-        .frame(width: 520, height: 480)
+    }
+}
+
+/// A site: its icon and address, with Move and Remove on hover and in the context menu.
+private struct SiteRow<MoveItems: View>: View {
+    let pattern: String
+    @ViewBuilder let moveItems: () -> MoveItems
+    let onRemove: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            FaviconView(url: URL(string: "https://" + RouteRule.host(of: pattern)) ?? URL(string: "https://example.com")!, size: 16,
+                        letter: pattern)
+            Text(pattern).lineLimit(1).truncationMode(.middle)
+            Spacer()
+            HStack(spacing: 4) {
+                Menu {
+                    moveItems()
+                } label: {
+                    Image(systemName: "arrow.turn.up.right")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Move \(pattern)")
+                Button(action: onRemove) { Image(systemName: "minus.circle.fill") }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .help("Stop routing \(pattern)")
+            }
+            .opacity(hovering ? 1 : 0)
+        }
+        .contentShape(.rect)
+        .onHover { hovering = $0 }
+        .contextMenu {
+            Menu("Move") { moveItems() }
+            Divider()
+            Button("Stop Routing \(pattern)", role: .destructive, action: onRemove)
+        }
+    }
+}
+
+/// A site and the Space it opens in.
+private struct AddSitePopover: View {
+    @Environment(Library.self) private var library
+    @Environment(\.dismiss) private var dismiss
+    @State private var pattern = ""
+    @State private var spaceID: UUID?
+
+    var body: some View {
+        Form {
+            TextField("Site", text: $pattern, prompt: Text("github.com/acme"))
+            Picker("Opens in", selection: $spaceID) {
+                ForEach(library.regularSpaces) { s in Label(s.name, systemImage: s.symbol).tag(Optional(s.id)) }
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Add") { add() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(SpaceRouter.clean(pattern).isEmpty)
+            }
+        }
+        .padding(16)
+        .frame(width: 320)
+        .onAppear { spaceID = spaceID ?? library.activeWindow?.currentSpace.id ?? library.regularSpaces.first?.id }
     }
 
     private func add() {
-        router.addSite(newSite, to: set)
-        newSite = ""
+        guard let id = spaceID, let space = library.regularSpaces.first(where: { $0.id == id }) else { return }
+        SpaceRouter.shared.add(pattern: pattern, to: space)
+        dismiss()
     }
 }
