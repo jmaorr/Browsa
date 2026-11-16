@@ -91,6 +91,12 @@ final class WindowButtonsView: NSView {
         }
         // In full screen it's moved to a window of its own.
         for child in window.childWindows ?? [] { if let v = child.contentView?.superview { walk(v) } }
+        // In full screen the title bar moves into a window of AppKit's own, which isn't a child.
+        if window.styleMask.contains(.fullScreen) {
+            for other in NSApp.windows where other !== window && String(describing: type(of: other)).contains("FullScreen") {
+                if let v = other.contentView?.superview ?? other.contentView { walk(v) }
+            }
+        }
         // And AppKit's own answer, as long as it isn't one of the sidebar's. In full screen this is
         // the one that counts: the buttons move to the drop-down title bar's own window, which the
         // walk above doesn't reach (it can still find the old ones left behind).
