@@ -70,7 +70,9 @@ final class CommandBarModel {
         }
         .sorted { $0.score > $1.score }
         .prefix(12)
-        return Array(matched) + [Suggestion(kind: .searchQuery, title: q, subtitle: "Search the web", action: .search(q), score: 0)]
+        // A sum or a !bang leads here too, so Return copies the answer or goes to the site.
+        let special = SuggestEngine.specialRow(for: q).map { [$0] } ?? []
+        return special + Array(matched) + [Suggestion(kind: .searchQuery, title: q, subtitle: "Search the web", action: .search(q), score: 0)]
     }
 
     static func row(for c: BrowserCommand) -> Suggestion {
