@@ -28,9 +28,14 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(Self.panes, selection: Binding(get: { Optional(tab) }, set: { if let t = $0 { tab = t } })) { pane in
-                Label(pane.title, systemImage: pane.symbol).tag(pane.id)
+            List(selection: Binding<String?>(get: { tab }, set: { if let t = $0 { tab = t } })) {
+                ForEach(Self.panes) { pane in
+                    Label(pane.title, systemImage: pane.symbol).tag(Optional(pane.id))
+                }
             }
+            .listStyle(.sidebar)
+            // Eight rows never need scrolling; a scrolled-away sidebar looked empty.
+            .scrollDisabled(true)
             .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
             .toolbar(removing: .sidebarToggle)
         } detail: {
