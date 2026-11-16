@@ -23,6 +23,9 @@ final class Browser {
     private var tabSelection: [UUID: UUID] = [:]
     /// The AppKit window, for focusing and for matching key events to this browser.
     @ObservationIgnored weak var nsWindow: NSWindow?
+    /// The window's own traffic lights, hidden while the sidebar shows its copies, and shown in the
+    /// title bar that drops down in full screen.
+    @ObservationIgnored var titleBarButtons: [NSButton] = []
     /// Listens for the window closing (see `BrowserWindow.configure`); removed when it closes.
     @ObservationIgnored var closeObserver: NSObjectProtocol?
 
@@ -34,6 +37,9 @@ final class Browser {
     var isSidebarDocked: Bool { didSet { Preferences.sidebarDocked = isSidebarDocked } }
     /// The undocked sidebar is showing over the page.
     var isSidebarPeeking = false
+    /// The window is in macOS full screen, where the traffic lights also drop down with the menu bar
+    /// and minimise is greyed out.
+    var isFullScreen = false
     /// True while the sidebar docks or hides. The page keeps one size meanwhile and resizes once.
     private(set) var isSidebarMoving = false
     var sidebarWidth: CGFloat { didSet { Preferences.sidebarWidth = sidebarWidth } }
