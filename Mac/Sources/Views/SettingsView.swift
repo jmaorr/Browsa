@@ -330,7 +330,14 @@ private struct PrivacySettings: View {
     }
 
     private func summary(_ perms: [String: Bool]) -> String {
-        perms.sorted { $0.key < $1.key }.map { k, v in
+        var perms = perms
+        // A combined camera-and-mic answer covers the single ones saved alongside it.
+        if let both = perms[EnginePermission.cameraAndMicrophone.rawValue] {
+            for single in [EnginePermission.camera, .microphone] where perms[single.rawValue] == both {
+                perms[single.rawValue] = nil
+            }
+        }
+        return perms.sorted { $0.key < $1.key }.map { k, v in
             let name = EnginePermission(rawValue: k).map(Self.title)
                 ?? (k.hasPrefix("app:") ? "Open in \(k.dropFirst(4))" : k)
             return "\(name): \(v ? "Allowed" : "Denied")"
@@ -808,10 +815,11 @@ private struct FitsContent: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onScrollGeometryChange(for: CGFloat.self) { geo in
-                geo.contentSize.height + geo.contentInsets.top + geo.contentInsets.bottom
-            } action: { _, h in
-                height = min(max(h.rounded(.up), 200), maxHeight)
+            // Content height only: the insets change as the window resizes, and counting them
+            // fed each resize back into the next until AppKit gave up and crashed.
+            .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height.rounded(.up) } action: { _, h in
+                let next = min(max(h, 120), maxHeight)
+                if abs(next - (height ?? 0)) > 1 { height = next }
             }
             .frame(height: height ?? 420)
     }

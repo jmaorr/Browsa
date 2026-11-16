@@ -22,11 +22,7 @@ struct BrowserCommands: Commands {
             }
         }
 
-        // Browsa › Settings… goes through Library, so it can open on a given pane.
-        CommandGroup(replacing: .appSettings) {
-            Button("Settings…") { library.openSettings() }
-                .keyboardShortcut(",", modifiers: .command)
-        }
+        // Browsa › Settings… (⌘,) is the Settings scene's own menu item.
                 CommandGroup(replacing: .newItem) {
             Button("New Tab") { newTab(.newTab) }
                 .keyboardShortcut(keys.shortcut(.newTab))
