@@ -648,35 +648,31 @@ private struct ShortcutSettings: View {
     @State private var notes: [ShortcutAction: String] = [:]
 
     var body: some View {
-        VStack(spacing: 0) {
-            // The preset sits on its own above the list, not boxed in a section like a setting.
-            VStack(spacing: 8) {
-                Picker("Preset", selection: Binding(get: { shortcuts.preset }, set: { p in
-                    notes = [:]
-                    shortcuts.usePreset(p)
-                })) {
-                    ForEach(ShortcutPreset.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                // Large is the macOS 26 capsule in Liquid Glass; regular is the older squared control.
-                .controlSize(.large)
-                .fixedSize()
-                Text(shortcuts.preset.summary + " Changing the preset clears the keys you've changed.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 360)
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 12)
-            shortcutList
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var shortcutList: some View {
+        // One scrolling form, so the pane fits the window at any height. The preset sits on its own
+        // at the top, not boxed like a setting.
         Form {
+            Section {
+                VStack(spacing: 8) {
+                    Picker("Preset", selection: Binding(get: { shortcuts.preset }, set: { p in
+                        notes = [:]
+                        shortcuts.usePreset(p)
+                    })) {
+                        ForEach(ShortcutPreset.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    // Large is the macOS 26 capsule in Liquid Glass; regular is the older squared control.
+                    .controlSize(.large)
+                    .fixedSize()
+                    Text(shortcuts.preset.summary + " Changing the preset clears the keys you've changed.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 360)
+                }
+                .frame(maxWidth: .infinity)
+                .listRowBackground(Color.clear)
+            }
             ForEach(ShortcutAction.Group.allCases) { group in
                 Section(group.rawValue) {
                     ForEach(ShortcutAction.allCases.filter { $0.group == group }) { action in
