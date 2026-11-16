@@ -80,6 +80,10 @@ int main(int argc, char* argv[]) {
     else { size_t n = sizeof(os); sysctlbyname("kern.osproductversion", os, &n, NULL, 0); }
     const long major = atol(os);
 
+#if defined(__x86_64__)
+    // The bundled WebKit builds are Apple silicon only: an Intel Mac (or Browsa forced into Rosetta) uses Apple's.
+    if (!strcmp(reason, "used")) reason = "intel";
+#endif
     if (!strcmp(reason, "used")) {
         // One build per macOS major: WebKit-<major>.
         snprintf(path, sizeof(path), "%s/Frameworks/WebKit-%ld/WebKit.framework/Versions/A/WebKit", contents, major);

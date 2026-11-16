@@ -187,3 +187,14 @@ are for development only:
   tree (it defines `BROWSA_CALL_AUDIO_RECORDING 1`). **Build release WebKit from a clean tree without that header**
   (and check: `strings WebCore | grep -c BROWSA_CALL_AUDIO_DUMP` gives 0). The WebKit builds made before 16 Nov 2026
   all contain the dump code, gated only by the variable, so they must not be bundled.
+
+## In the release path (2026-11-16)
+
+The steps above now run from `tools/release-mac.sh`, opt-in with `BROWSA_BUNDLE_WEBKIT="26=<build> 27=<build>"`
+(docs/mac-releases.md): release WebKit builds from `build-release-webkit.sh` (clean tree, no recording header,
+checked), bundled into the archived app by `tools/mac-bundle-webkit.sh` (launcher, `Browsa-system`,
+`Browsa-webkit-<major>` made by adding the load commands to a copy of the app's executable, stripped WebKit, dSYMs
+into the archive), then the usual Developer ID export. `tools/release-mac.sh --local` stops after a Developer ID
+export to disk, so nothing goes to the notary service. `tools/mac-check-release.sh` checks the result. The launcher
+now also sends Intel Macs (and Rosetta) to `Browsa-system` (`BROWSA_BUNDLED_WEBKIT=intel`), since the WebKit builds
+are arm64 only.
