@@ -324,7 +324,7 @@ private struct AudioSettings: View {
             } header: {
                 Text("Calls")
             } footer: {
-                Text("Makes calls in Meet, Zoom, Teams and other sites sound clearer, especially on your Mac's speakers: the people you talk to won't hear their own voice echo back, and your microphone stays at a steady level. Turn it off to use Apple's WebKit audio instead. Changes apply after you quit and reopen Browsa.")
+                Text("Reduces echo and improves noise cancellation. You can turn this off to use Apple's WebKit audio instead of Browsa's Audio Engine.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             #if DEBUG || BROWSA_CALL_RECORDING
