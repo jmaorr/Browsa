@@ -40,6 +40,8 @@ struct BrowsaMacApp: App {
 private struct WindowRoot: View {
     let library: Library
     @State private var browser: Browser?
+    /// The window's key, kept by SwiftUI with the window so it comes back with its own tabs.
+    @SceneStorage("windowKey") private var windowKey = ""
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -55,7 +57,12 @@ private struct WindowRoot: View {
         .frame(minWidth: 640, minHeight: 420)
         .onAppear {
             library.openWindowAction = { [openWindow] in openWindow(id: "browser") }
-            if browser == nil { browser = Browser(library: library) }
+            if browser == nil {
+                let saved = UUID(uuidString: windowKey).flatMap { key in library.windows.contains { $0.windowKey == key } ? nil : key }
+                let key = saved ?? UUID()
+                windowKey = key.uuidString
+                browser = Browser(library: library, windowKey: key)
+            }
         }
         .onDisappear {
             if let browser { library.unregister(browser) }
@@ -205,6 +212,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Cmd-Q in the middle of a meeting would just drop you from it.
         if !isClearingForQuit, !CallTabs.confirmLeaving(CallTabs.tabsInCall(in: library), quitting: true) { return .terminateCancel }
         #endif
+        // From here the app is going: windows that close keep their tabs for next launch.
+        library.isTerminating = true
         guard library.clearDataOnQuit, !isClearingForQuit else { return .terminateNow }
         // Clearing is asynchronous; quit once it's done (or after a few seconds regardless).
         isClearingForQuit = true

@@ -44,11 +44,11 @@ extension Browser {
     func openWelcome(playingIntro: Bool) {
         Preferences.hasSeenWelcome = true
         let space = currentSpace.isPrivate ? regularSpaces[0] : currentSpace
-        if let existing = space.allTabs.first(where: { Welcome.isWelcome($0.url) }) {
+        if let existing = space.allTabs.first(where: { lists($0) && Welcome.isWelcome($0.url) }) {
             select(existing)
         } else {
             // Inserted without a URL so no web page is made for it, then marked as the welcome tab.
-            let tab = library.insertTab(url: nil, in: space)
+            let tab = library.insertTab(url: nil, in: space, for: self)
             tab.url = Welcome.url
             tab.title = "Welcome"
             select(tab)

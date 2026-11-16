@@ -16,6 +16,10 @@ public final class BrowserTab: Identifiable {
     /// Set when the tab was opened from a favourite: it belongs to that favourite's tile and stays
     /// out of the Today list.
     public var favoriteID: UUID?
+    /// The Mac window this Today tab belongs to, so each window keeps its own Today list (like Arc).
+    /// Pinned and favourite tabs ignore it: every window shares those. Nil, or a window that isn't
+    /// open, means any window may take the tab. iOS has one window and ignores it.
+    public var windowKey: UUID?
 
     // Live state mirrored from the web view (not persisted).
     public var estimatedProgress: Double = 0
@@ -250,6 +254,8 @@ public struct TabRecord: Codable, Sendable {
     public var id: UUID, url: URL?, title: String, isPinned: Bool, lastActive: Date, interactionState: Data?
     /// Missing in state saved before favourites owned their tabs.
     public var favoriteID: UUID? = nil
+    /// Missing in state saved before each Mac window had its own Today tabs.
+    public var windowKey: UUID? = nil
 }
 
 public struct SpaceRecord: Codable, Sendable {
@@ -280,12 +286,14 @@ public struct BrowserSnapshot: Codable, Sendable {
 extension BrowserTab {
     public var record: TabRecord {
         TabRecord(id: id, url: url, title: title, isPinned: isPinned, lastActive: lastActive,
-                  interactionState: interactionState, favoriteID: favoriteID)
+                  interactionState: interactionState, favoriteID: favoriteID,
+                  windowKey: isPinned || favoriteID != nil ? nil : windowKey)
     }
     public convenience init(_ r: TabRecord) {
         self.init(id: r.id, url: r.url, title: r.title, isPinned: r.isPinned,
                   lastActive: r.lastActive, interactionState: r.interactionState)
         favoriteID = r.favoriteID
+        windowKey = r.windowKey
     }
 }
 

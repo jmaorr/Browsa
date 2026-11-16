@@ -48,7 +48,7 @@ struct SpaceTabs: View {
         // Dragging with nothing else pinned: a zone to drop on stands in for the Pinned section.
         let pinZone = dragging.lift != nil && !space.isPrivate && !space.pinned.contains { !dragging.isLifted($0.id) }
         let pinned = slots(space.pinned, pinned: true, gapAllowed: !pinZone)
-        let today = slots(space.listedToday, pinned: false)
+        let today = slots(browser.listedToday(in: space), pinned: false)
         // The whole list is the unit that slides: its id is the space, and a transition on the list
         // inside a ScrollView is ignored (it only cross-faded).
         ZStack {
@@ -237,7 +237,7 @@ private struct NewTabRow: View {
     @State private var clearHovering = false
 
     private var canClear: Bool {
-        space.listedToday.contains { $0.id != browser.currentTab?.id }
+        browser.listedToday(in: space).contains { $0.id != browser.currentTab?.id }
     }
 
     var body: some View {
