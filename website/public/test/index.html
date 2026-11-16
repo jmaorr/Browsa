@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Background audio and Picture in Picture test, Browsa</title>
+<meta name="description" content="Check whether your browser keeps playing audio when you leave it, and whether video can float in Picture in Picture. Works in any browser on iPhone and iPad.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f4f1">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121211">
+<meta property="og:title" content="Background audio and Picture in Picture test">
+<meta property="og:description" content="Play something, leave the browser, and see what keeps going.">
+<meta property="og:image" content="https://browsa.app/test/poster.webp">
+<meta property="og:url" content="https://browsa.app/test/">
+<link rel="canonical" href="https://browsa.app/test/">
+<link rel="icon" href="/favicon.png">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/test/test.css">
+<script src="/test/test.js" defer></script>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="/"><img src="/media/orb.webp" alt="" width="26" height="26">Browsa</a>
+  <nav aria-label="Main">
+    <a href="/">iPhone</a>
+    <a href="/mac/">Mac</a>
+    <a href="/download/">Download</a>
+    <a href="https://github.com/jmaorr/Browsa">GitHub</a>
+  </nav>
+</header>
+
+<main class="policy test">
+  <h1>Background audio and Picture in Picture</h1>
+
+  <p class="lead">A test page for any browser on iPhone and iPad. Play something, leave the browser, and see what keeps going.</p>
+
+  <section aria-labelledby="audio-title">
+    <h2 id="audio-title">1. Background audio</h2>
+    <ol>
+      <li>Tap play.</li>
+      <li>Go to the Home Screen, or open another app.</li>
+      <li>Listen: the music should keep playing, with controls in Control Centre and on the Lock Screen.</li>
+      <li>Come back here to see how long it played while you were away.</li>
+    </ol>
+    <audio id="audio" class="player" controls preload="metadata" src="/test/browsa-test-audio.m4a"></audio>
+    <p class="result" id="audio-result" aria-live="polite" hidden></p>
+  </section>
+
+  <section aria-labelledby="pip-title">
+    <h2 id="pip-title">2. Picture in Picture</h2>
+    <ol>
+      <li>Play the video.</li>
+      <li>Tap the Picture in Picture button in the player, or go fullscreen and swipe up to the Home Screen.</li>
+      <li>The video should float over the Home Screen and other apps, with sound. The clock keeps counting while it plays.</li>
+    </ol>
+    <video id="video" class="player" controls playsinline preload="metadata" poster="/test/poster.webp" width="1280" height="720" src="/test/browsa-test-video.mp4"></video>
+  </section>
+
+  <h2>Why some sites stop anyway</h2>
+  <p>Some sites, YouTube among them, pause their own playback when the page is hidden. They do it in every browser, Safari included, so they can't tell you what the browser supports. This page never pauses itself, so what you hear is down to the browser alone.</p>
+
+  <h2>About the media</h2>
+  <p>The music and the video were made for this page. They're free to use for testing.</p>
+</main>
+
+<footer class="foot">
+  <span class="brand"><img src="/media/orb.webp" alt="" width="20" height="20">Browsa</span>
+  <span>Made by <a href="https://orriginal.me">Joshua Orr</a></span>
+  <a href="/privacy/">Privacy</a>
+  <a href="/support/">Support</a>
+  <a href="https://github.com/jmaorr/Browsa">GitHub</a>
+  <a href="mailto:hello@orriginal.me">Contact</a>
+</footer>
+</body>
+</html>

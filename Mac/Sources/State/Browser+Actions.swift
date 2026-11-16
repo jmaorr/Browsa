@@ -72,10 +72,10 @@ extension Browser {
                 out.append(BrowserCommand(id: "move:" + s.id.uuidString, title: "Move Tab to \(s.name)", subtitle: "Space", keywords: ["space"]))
             }
         }
-        if currentSpace.today.count > 1 {
+        if today(in: currentSpace).count > 1 {
             out.append(BrowserCommand(id: "close-others", title: "Close Other Tabs", keywords: ["tabs", "clean"]))
         }
-        if currentSpace.listedToday.contains(where: { $0.id != currentTab?.id }) {
+        if listedToday(in: currentSpace).contains(where: { $0.id != currentTab?.id }) {
             out.append(BrowserCommand(id: "clear-today", title: "Clear Today's Tabs", keywords: ["tabs", "clean", "close all"]))
         }
         if let last = recentlyClosed.last {

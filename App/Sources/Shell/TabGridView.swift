@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 import UniformTypeIdentifiers
 import BrowserCore
 import Suggest
@@ -7,8 +8,10 @@ import Suggest
 /// Unfolded, the sidebar is the tab list and the same vertical-bar slot toggles it instead.
 ///
 /// - It lives in the page's area. The Duo's vertical bar stays put and keeps working around it.
-/// - Opening it shrinks the current page into its card; picking a card grows that page back. Both
-///   are one picture of the page flying between two measured frames, driven by a single spring.
+/// - Opening it shrinks the current page into its card; picking a card grows that page back, like
+///   Safari. The flying picture is a UIKit view on top of the window (`ZoomFlight`), in window
+///   coordinates, so safe areas and the bars can't nudge it, and the page underneath only changes
+///   once it has landed.
 /// - Pinned tabs sit in a row at the top, Today's tabs in a grid below: two columns folded,
 ///   as many as fit unfolded.
 /// - The vertical bar's tabs button becomes a tick that closes it. The capsule at the bottom only
@@ -21,12 +24,18 @@ struct TabGridOverlay: View {
 
     /// Overlay is in the hierarchy.
     @State private var shown = false
-    /// The hero picture fills the page's area (opening start, closing end).
-    @State private var expanded = false
+    /// The cards are showing (they fade in as the page shrinks, out as a page grows back).
+    @State private var cardsVisible = false
     /// The tab whose picture is flying. Its card hides its own until it lands.
     @State private var heroID: UUID?
-    /// The page's area, in the overlay's coordinates.
-    @State private var pageFrame: CGRect = .init(x: 0, y: 0, width: 390, height: 844)
+    /// The tab a page is growing back into. The gallery has been closed as far as the tabs button
+    /// is concerned, and this is what's left of it.
+    @State private var closingInto: BrowserTab?
+    /// The page's area in window coordinates, which the flying picture fills at full size.
+    @State private var pageRect: CGRect = .zero
+    /// The overlay's own size, for the cards' shape until the page has been measured.
+    @State private var overlaySize = CGSize(width: 390, height: 844)
+    @State private var flight = ZoomFlight()
     @State private var cardFrames = CardFrames()
     @State private var isScrolling = false
     /// A tap this soon after a scroll stops was meant for the scroll.
@@ -37,95 +46,165 @@ struct TabGridOverlay: View {
     var body: some View {
         ZStack {
             if shown {
+                // Opaque from the start: the flying picture covers the page when the gallery
+                // opens, and the page only changes under it once it has landed, so nothing of
+                // the live page ever shows through mid-zoom.
                 grid
-                    .background(Color(.systemGroupedBackground).opacity(expanded ? 0 : 1), ignoresSafeAreaEdges: .vertical)
-                if let id = heroID, let tab = tab(id) {
-                    let frame = expanded ? pageFrame : (cardFrames.byTab[id] ?? pageFrame)
-                    TabThumbnail(tab: tab, image: browser.thumbnails[id], cornerRadius: expanded ? 0 : 14)
-                        .frame(width: frame.width, height: frame.height)
-                        .position(x: frame.midX, y: frame.midY)
-                        .allowsHitTesting(false)
-                }
+                    .background(Color(.systemGroupedBackground), ignoresSafeAreaEdges: .vertical)
             }
         }
-        .background {
-            Color.clear
-                .ignoresSafeArea(.container, edges: .vertical)
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(galleryCoordinates)) } action: { pageFrame = $0 }
-        }
-        .coordinateSpace(.named(galleryCoordinates))
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { overlaySize = $0 }
         // Unfolding with the grid up: the sidebar takes over, so just get out of the way.
-        .onDisappear { if shown { finish() } }
+        .onDisappear { flight.land(); if shown { finish() } }
         // Any plus button: the new-tab sheet is the next thing to animate, so leave without the zoom.
-        .onChange(of: browser.isNewTabSheetPresented) { _, presented in if presented && shown { finish() } }
+        .onChange(of: browser.isNewTabSheetPresented) { _, presented in if presented && shown { flight.land(); finish() } }
         .onChange(of: browser.isTabSwitcherPresented) { _, wanted in
-            if wanted { open() } else if shown { close(into: browser.currentTab) }
+            if wanted { open() } else if shown, closingInto == nil { close(into: browser.currentTab) }
         }
     }
 
     // MARK: Open and close
 
+    /// The live web view of the tab on screen, if it's in a window.
+    private var liveWebView: WKWebView? {
+        guard let tab = browser.currentTab else { return nil }
+        let wv = browser.session(for: tab).webView
+        return wv.window == nil ? nil : wv
+    }
+
     private func open() {
-        guard !shown else { return }
-        if let tab = browser.currentTab { browser.captureThumbnail(of: tab) }
-        var t = Transaction(); t.disablesAnimations = true
-        withTransaction(t) {
-            heroID = browser.currentTab?.id
-            shown = true
-            expanded = heroID != nil
+        // Asked for again while a page was still growing back: let that land at once, then open.
+        if let tab = closingInto {
+            flight.land()
+            instantly {
+                browser.select(tab)
+                finish(resettingButton: false)
+            }
         }
-        fly {
-            expanded = false
-            browser.tabGridCoversPage = true
-        } landed: {
-            if !expanded { heroID = nil }
+        guard !shown else { return }
+        guard let tab = browser.currentTab, let wv = liveWebView, let window = wv.window,
+              let picture = ZoomFlight.snapshot(of: wv) else {
+            // Nothing to shrink (no tab yet): just fade the gallery in.
+            instantly { shown = true }
+            withAnimation(Motion.snappy) { cardsVisible = true; browser.tabGridCoversPage = true }
+            return
+        }
+        browser.captureThumbnail(of: tab)
+        let page = wv.convert(wv.bounds, to: nil)
+        // The picture covers the page straight away, so the gallery can come up behind it.
+        flight.start(picture, in: window, at: page, cornerRadius: 0)
+        instantly {
+            browser.tabGridHidesAddressBar = true
+            pageRect = page
+            heroID = tab.id
+            shown = true
+            cardsVisible = false
+        }
+        Task { @MainActor in
+            // Let the grid lay out and scroll to the card first, so it's where the picture lands.
+            try? await Task.sleep(for: .milliseconds(50))
+            guard heroID == tab.id, let card = cardFrames.byTab[tab.id] else {
+                flight.land()
+                instantly { heroID = nil }
+                withAnimation(Motion.snappy) { cardsVisible = true; browser.tabGridCoversPage = true }
+                return
+            }
+            flight.fly(to: card, cornerRadius: TabGridCard.cornerRadius) {
+                withAnimation(Motion.spring) { cardsVisible = true; browser.tabGridCoversPage = true }
+            } landed: {
+                instantly { heroID = nil }
+                flight.land()
+            }
         }
     }
 
-    /// Grows `tab`'s card back to fill the page's area and leaves the grid. With no tab, just fades out.
+    /// Grows `tab`'s card back to fill the page and leaves the grid. The page switches to `tab`
+    /// only once the picture covers it, and the picture stays until the page has drawn.
     private func close(into tab: BrowserTab?) {
-        if let tab {
-            browser.select(tab)
-            var t = Transaction(); t.disablesAnimations = true
-            withTransaction(t) { heroID = tab.id }
-            fly {
-                expanded = true
-                browser.tabGridCoversPage = false
-            } landed: {
-                if expanded { finish() }
-            }
-        } else {
+        // The tabs button turns back from the tick as you pick, not when the page lands, so it's
+        // ready to open the gallery again straight away.
+        if let tab { closingInto = tab }
+        if browser.isTabSwitcherPresented { browser.isTabSwitcherPresented = false }
+        guard let tab, let card = cardFrames.byTab[tab.id], pageRect != .zero,
+              let window = liveWebView?.window ?? flight.window,
+              let picture = tab.id == browser.currentTab?.id
+                ? (liveWebView.flatMap(ZoomFlight.snapshot(of:)) ?? browser.thumbnails[tab.id])
+                : browser.thumbnails[tab.id] else {
+            if let tab { browser.select(tab) }
             withAnimation(Motion.snappy) {
+                cardsVisible = false
                 shown = false
                 browser.tabGridCoversPage = false
             } completion: { finish() }
+            return
+        }
+        // A tab that hasn't been open since launch doesn't know its page colour yet. Its picture
+        // does, so the colour beside the page can blend to it during the zoom.
+        if tab.pageBackground == nil { tab.pageBackground = ZoomFlight.edgeColor(of: picture) }
+        flight.start(picture, in: window, at: card, cornerRadius: TabGridCard.cornerRadius)
+        let picked = flight.generation
+        instantly { heroID = tab.id }
+        flight.fly(to: pageRect, cornerRadius: 0) {
+            withAnimation(Motion.spring) {
+                cardsVisible = false
+                browser.tabGridLandingTab = tab
+                browser.tabGridCoversPage = false
+            }
+        } landed: {
+            let switching = tab.id != browser.currentTab?.id
+            instantly {
+                browser.select(tab)
+                finish(keepingAddressBarHidden: true)
+            }
+            Task { @MainActor in
+                // A tab that wasn't on screen needs a moment to draw. Keep its picture over it
+                // until it has, so there's never a blank page.
+                if switching {
+                    var waited = 0
+                    while waited < 40, tab.isAwaitingFirstPaint || browser.session(for: tab).webView.window == nil {
+                        try? await Task.sleep(for: .milliseconds(25))
+                        waited += 1
+                    }
+                }
+                // A frame or so for the page to be on screen under the picture.
+                try? await Task.sleep(for: .milliseconds(switching ? 50 : 16))
+                guard flight.generation == picked else { return }
+                flight.fadeOut(generation: picked)
+                // The address bar comes in as the picture gives way to the page, rather than
+                // appearing the moment the picture goes.
+                withAnimation(Motion.spring) { browser.tabGridHidesAddressBar = false }
+            }
         }
     }
 
-    /// Gives the hero one frame in its starting place (and the grid its first layout), then flies.
-    private func fly(_ change: @escaping () -> Void, landed: @escaping () -> Void) {
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(30))
-            withAnimation(Motion.spring, change, completion: landed)
-        }
+    private func instantly(_ change: () -> Void) {
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t, change)
     }
 
-    private func finish() {
+    private func finish(resettingButton: Bool = true, keepingAddressBarHidden: Bool = false) {
         var t = Transaction(); t.disablesAnimations = true
         withTransaction(t) {
+            closingInto = nil
             shown = false
-            expanded = false
+            cardsVisible = false
             heroID = nil
             browser.tabGridCoversPage = false
+            browser.tabGridLandingTab = nil
+            if !keepingAddressBarHidden { browser.tabGridHidesAddressBar = false }
         }
-        if browser.isTabSwitcherPresented { browser.isTabSwitcherPresented = false }
+        if resettingButton, browser.isTabSwitcherPresented { browser.isTabSwitcherPresented = false }
     }
 
     private func tab(_ id: UUID) -> BrowserTab? { browser.currentSpace.allTabs.first { $0.id == id } }
 
     // MARK: Grid
 
-    private var aspect: CGFloat { max(0.4, min(2, pageFrame.width / max(pageFrame.height, 1))) }
+    /// Cards have the page's shape, so its picture fits a card exactly.
+    private var aspect: CGFloat {
+        let size = pageRect == .zero ? overlaySize : pageRect.size
+        return max(0.4, min(2, size.width / max(size.height, 1)))
+    }
 
     private var columns: [GridItem] {
         browser.isUnfolded
@@ -169,7 +248,7 @@ struct TabGridOverlay: View {
             .onAppear { if let id = heroID { proxy.scrollTo(id, anchor: .center) } }
         }
         .overlay(alignment: .bottom) { bottomBar }
-        .opacity(expanded ? 0 : 1)   // stays laid out so the hero has a card to fly to
+        .opacity(cardsVisible ? 1 : 0)   // stays laid out so the picture has a card to fly to
         .animation(Motion.snappy, value: space.today.map(\.id))
         .onKeyPress(.escape) { close(into: browser.currentTab); return .handled }
     }

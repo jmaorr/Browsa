@@ -1,0 +1,142 @@
+import SwiftUI
+import AppKit
+
+/// The window's close, minimise and zoom buttons, as part of the sidebar's top row, like Arc.
+///
+/// They're AppKit's own buttons (`NSWindow.standardWindowButton(_:for:)`), so they look, hover and
+/// act like the real ones, but they live in the sidebar: they slide and fade with it, docked or
+/// peeking. In full screen they stay, and the title bar's own drop down with the menu bar too, as in
+/// every app, so they're found either way.
+struct WindowButtons: NSViewRepresentable {
+    /// In full screen macOS greys out minimise.
+    var isFullScreen = false
+
+    func makeNSView(context: Context) -> WindowButtonsView { WindowButtonsView() }
+
+    func updateNSView(_ view: WindowButtonsView, context: Context) {
+        view.setMinimiseEnabled(!isFullScreen)
+    }
+
+    /// The row's width for the buttons: AppKit's spacing, plus the gap after them.
+    static let width: CGFloat = 74
+}
+
+final class WindowButtonsView: NSView {
+    private static let kinds: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+    private let buttons: [NSButton]
+    private var hovering = false
+    private var observers: [NSObjectProtocol] = []
+
+    init() {
+        let style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        buttons = Self.kinds.compactMap { NSWindow.standardWindowButton($0, for: style) }
+        super.init(frame: .zero)
+        buttons.forEach(addSubview)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+
+    /// The three buttons with the title bar's spacing on macOS 26 (14 pt buttons, 9 pt apart, measured
+    /// on 26.7), centred vertically.
+    /// Measured from the buttons themselves: the title bar's own are hidden, so their frames can't
+    /// be trusted.
+    override func layout() {
+        super.layout()
+        var x: CGFloat = 0
+        for button in buttons {
+            if button.isHidden { button.isHidden = false }
+            var size = button.frame.size
+            if size.width < 1 || size.height < 1 { size = button.fittingSize }
+            if size.width < 1 || size.height < 1 { size = NSSize(width: 14, height: 16) }
+            button.frame = NSRect(x: x, y: ((bounds.height - size.height) / 2).rounded(), width: size.width, height: size.height)
+            x += size.width + 9
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
+        // Left with the pointer over it (the sidebar slid away): no exit event comes.
+        hovering = false
+        guard let window else { return }
+        // The buttons go grey when the window isn't key, and back when it is.
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
+                     NSWindow.didBecomeMainNotification, NSWindow.didResignMainNotification] {
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.redraw() }
+            })
+        }
+        needsLayout = true
+        redraw()
+    }
+
+    /// The title bar's own close, minimise and zoom buttons: AppKit's, skipping any that turn out to
+    /// be the sidebar's copies. Read while in a window; full screen moves these same buttons into
+    /// AppKit's drop-down title bar, so the caller keeps hold of them from before.
+    static func titleBarButtons(of window: NSWindow) -> [NSButton] {
+        [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { kind in
+            guard let button = window.standardWindowButton(kind) else { return nil }
+            var v: NSView? = button.superview
+            while let s = v { if s is WindowButtonsView { return nil }; v = s.superview }
+            return button
+        }
+    }
+
+    func setMinimiseEnabled(_ enabled: Bool) {
+        guard buttons.count == 3, buttons[1].isEnabled != enabled else { return }
+        buttons[1].isEnabled = enabled
+    }
+
+    // MARK: Hover
+
+    // Hovering any of the three shows the symbols on all of them, as in the title bar. AppKit's
+    // buttons ask their superview whether the pointer is in their group.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        // The whole view, always: AppKit asks for tracking areas before the first layout, when the
+        // buttons have no frames yet, and a rect made from those left no area at all.
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) { track(event) }
+    override func mouseMoved(with event: NSEvent) { track(event) }
+    override func mouseExited(with event: NSEvent) { setHovering(false) }
+
+    /// In the group while over the three buttons (the view is a little wider than they are).
+    private func track(_ event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        let group = buttons.reduce(NSRect.null) { $0.union($1.frame) }.insetBy(dx: -2, dy: -2)
+        setHovering(!group.isNull && group.contains(p))
+    }
+
+    private func setHovering(_ value: Bool) {
+        guard value != hovering else { return }
+        hovering = value
+        // Since macOS 26 a button keeps its own hover state and only asks `_mouseInGroup:` again when
+        // told the pointer came or went (iTerm2 and other Arc-style browsers do the same).
+        let recheck = Selector(("mouseEnteredOrExited"))
+        for button in buttons where button.responds(to: recheck) { button.perform(recheck) }
+        redraw()
+    }
+
+    /// Clicks between the buttons fall through to the row (dragging the window), not to this view.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let view = super.hitTest(point)
+        return view === self ? nil : view
+    }
+
+    @objc func _mouseInGroup(_ button: NSButton) -> Bool {
+        #if DEBUG
+        // For checking the symbols draw at all without a real pointer (SpikeBrowsa screenshots).
+        if UserDefaults.standard.bool(forKey: "WindowButtonsForceHover") { return true }
+        #endif
+        return hovering
+    }
+
+    private func redraw() { buttons.forEach { $0.needsDisplay = true } }
+}
