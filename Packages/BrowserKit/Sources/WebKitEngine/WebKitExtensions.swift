@@ -235,8 +235,16 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
 
     func performAction(extensionID: String, for page: WebKitPage?, anchor: NSView?) {
         guard let context = contexts[extensionID] else { return }
-        // chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }): the button opens the panel.
-        if ExtensionBridges.opensPanelOnAction(extensionID), host?.showExtensionPanel(extensionID: extensionID) == true { return }
+        // The button opens the side panel when the extension asked for that
+        // (chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })), or when it has a side
+        // panel and no popup: in Chrome those extensions open their panel from the button, but some do it
+        // from script WebKit doesn't run the same way (ChatGPT), so the button did nothing.
+        let manifest = context.webExtension.manifest
+        let hasPanel = (manifest["side_panel"] as? [String: Any])?["default_path"] != nil
+            || (manifest["sidebar_action"] as? [String: Any])?["default_panel"] != nil
+        let hasPopup = context.action(for: page)?.presentsPopup ?? false
+        if ExtensionBridges.opensPanelOnAction(extensionID) || (hasPanel && !hasPopup),
+           host?.showExtensionPanel(extensionID: extensionID) == true { return }
         popupAnchor = anchor
         context.performAction(for: page)
     }
