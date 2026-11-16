@@ -19,7 +19,7 @@ const LAB = path.join(DERIVED, "audio-lab/Browsa Audio Lab.app/Contents/MacOS/au
 const MAX_VOLUME = 60;
 
 // ---------- arguments ----------
-const args = { subjects: "webrtc,apple,raw", volumes: "50,60", in: "", out: "", "talker-out": "MacBook Pro Speakers", "talker-volume": "1", schedule: "4,20,15,20,3" };
+const args = { subjects: "webrtc,apple,raw", volumes: "50,60", in: "", out: "", "talker-out": "MacBook Pro Speakers", "talker-volume": "0.3", schedule: "4,20,15,20,3" };
 for (let i = 2; i < process.argv.length; i++) {
   const a = process.argv[i];
   if (!a.startsWith("--")) continue;
@@ -30,7 +30,10 @@ if (args.help) {
   console.log(fs.readFileSync(path.join(HERE, "README.md"), "utf8"));
   process.exit(0);
 }
-if (args.long) {
+// --no-talker: far end only (no stand-in "you" on the MacBook speakers): quiet, then the far end, then quiet. The
+// figure that matters for echo (far end only) is all there; talk-over and send level need the talker.
+if (args["no-talker"]) args.schedule = `4,${args.long ? Math.round(parseFloat(args.long) * 60) : 80},0,0,3`;
+else if (args.long) {
   const half = Math.round((parseFloat(args.long) * 60) / 2);
   args.schedule = `4,${half},10,${half},3`;
 }
@@ -40,7 +43,9 @@ if (seconds.length !== 5 || seconds.some((s) => !(s >= 0))) throw new Error("--s
 const total = seconds.reduce((a, b) => a + b, 0);
 const volumes = args.volumes && args.volumes !== "same" ? args.volumes.split(",").map(Number) : [null];
 for (const v of volumes) if (v != null && (!(v >= 0) || v > MAX_VOLUME)) throw new Error(`volume ${v}: the bench never goes above ${MAX_VOLUME}`);
-const talkerVolume = Math.min(Math.max(parseFloat(args["talker-volume"]), 0), 1);
+// The stand-in talker only has to sound like someone speaking near the mic: 30% by default, never over 40% (at 100% on
+// a MacBook's speakers the whole office heard it, 2026-11-16).
+const talkerVolume = args["no-talker"] ? 0 : Math.min(Math.max(parseFloat(args["talker-volume"]), 0), 0.4);
 
 // ---------- one bench at a time ----------
 fs.mkdirSync(BENCH, { recursive: true });
@@ -58,9 +63,24 @@ const osa = (s) => execFileSync("osascript", ["-e", s], { encoding: "utf8" }).tr
 const startVolume = parseInt(osa("output volume of (get volume settings)"), 10);
 let volumeChanged = false;
 const children = new Set();
+// Every output device's own volume too, as found: Audio Lab sets the talker's speaker for a run, and a killed run
+// never put it back (the MacBook speakers stayed at 100%, 2026-11-16).
+const DEVVOL = path.join(DERIVED, "audio-lab/devvol");
+try {
+  if (!fs.existsSync(DEVVOL)) execFileSync("xcrun", ["swiftc", "-O", path.join(HERE, "devvol.swift"), "-o", DEVVOL], { stdio: "ignore" });
+} catch {}
+const deviceVolumes = [];
+try {
+  for (const d of JSON.parse(execFileSync(LAB, ["--list-devices"], { encoding: "utf8" }))) {
+    if (!d.outputs) continue;
+    const els = execFileSync(DEVVOL, [d.name], { encoding: "utf8" }).trim().split("\n").filter(Boolean);
+    if (els.length) deviceVolumes.push({ name: d.name, volume: parseFloat(els[0].split(": ")[1]) });
+  }
+} catch {}
 function cleanup() {
   for (const c of children) try { c.kill("SIGTERM"); } catch {}
   if (volumeChanged) try { osa(`set volume output volume ${startVolume}`); volumeChanged = false; } catch {}
+  for (const d of deviceVolumes) try { execFileSync(DEVVOL, [d.name, String(d.volume)], { stdio: "ignore" }); } catch {}
   try { if (fs.readFileSync(LOCK, "utf8") === String(process.pid)) fs.unlinkSync(LOCK); } catch {}
 }
 process.on("exit", cleanup);

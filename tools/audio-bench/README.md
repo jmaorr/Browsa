@@ -16,7 +16,8 @@ subject's WAVs; the newest report is also copied to `…/audio-bench/latest/`.
 ## Scenario
 
 quiet 4 s | far end only 20 s | you only 15 s | both 20 s | quiet 3 s (`--schedule q,f,n,d,q`; `--long 10`
-for a 10 minute far-end/double-talk soak that catches drift and gain creep).
+for a 10 minute far-end/double-talk soak that catches drift and gain creep). `--no-talker`: far end only (quiet, 80 s
+of far end, quiet; `--long N` for N minutes), nothing on the MacBook speakers: the echo figures, without talk-over.
 
 - **Far end**: the call's incoming voice (`tools/echo-test/standup.mp3`) on the call speakers (default output,
   or `--out`).
