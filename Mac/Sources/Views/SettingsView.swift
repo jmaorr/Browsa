@@ -336,7 +336,7 @@ private struct PrivacySettings: View {
 
 /// Settings › Audio. The Browsa Audio Engine is Browsa's own WebKit with call audio built in (echo removal, noise
 /// reduction, a steady mic level), on by default where this Mac can run it (Mac/Sources/PatchedWebKit.swift). Off, or
-/// where it can't run, calls use Apple's WebKit audio, as in Safari. The engine is chosen when Browsa starts.
+/// where it can't run, calls use WebKit's default audio engine (Apple's, as in Safari). The engine is chosen when Browsa starts.
 private struct AudioSettings: View {
     /// What the next launch will do (the running one was decided at launch).
     @State private var engineOn = PatchedWebKit.enabled
@@ -350,16 +350,22 @@ private struct AudioSettings: View {
         Form {
             Section {
                 // Where it can't run, the switch shows off (greyed out) whatever the saved choice is.
-                Toggle("Browsa Audio Engine", isOn: PatchedWebKit.engineAvailable ? $engineOn : .constant(false))
+                Toggle(isOn: PatchedWebKit.engineAvailable ? $engineOn : .constant(false)) {
+                    HStack {
+                        Text("Browsa Audio Engine")
+                        Spacer()
+                        Text("Model Intelligence v1.1")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                     .onChange(of: engineOn) { _, on in PatchedWebKit.enabled = on }
                     .disabled(!PatchedWebKit.engineAvailable)
                 if let note = PatchedWebKit.engineNote(wantsOn: engineOn) {
                     Text(note).foregroundStyle(.secondary)
                 }
-            } header: {
-                Text("Calls")
             } footer: {
-                Text("Reduces echo and improves noise cancellation. You can turn this off to use Apple's WebKit audio instead of Browsa's Audio Engine.")
+                Text("Improves echo and noise cancellation on meetings. Turn it off to use WebKit's default audio engine.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             #if DEBUG || BROWSA_CALL_RECORDING

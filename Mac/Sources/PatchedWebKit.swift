@@ -131,9 +131,9 @@ enum PatchedWebKit {
     static func engineNote(wantsOn: Bool) -> String? {
         if !engineAvailable {
             switch bundledChoice {
-            case "old-os": return "Not available on this version of macOS. Calls use Apple's WebKit audio."
-            case "new-os": return "Not available yet on this version of macOS. Calls use Apple's WebKit audio."
-            default: return "Not available on this Mac. Calls use Apple's WebKit audio."
+            case "old-os": return "Not available on this version of macOS. Calls use WebKit's default audio engine."
+            case "new-os": return "Not available yet on this version of macOS. Calls use WebKit's default audio engine."
+            default: return "Not available on this Mac. Calls use WebKit's default audio engine."
             }
         }
         if wantsOn != isActive { return wantsOn ? "Quit and reopen Browsa to turn it on." : "Quit and reopen Browsa to turn it off." }
