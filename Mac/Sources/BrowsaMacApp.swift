@@ -33,6 +33,8 @@ struct BrowsaMacApp: App {
                 .environment(appDelegate.library)
                 .environment(appDelegate.updates)
         }
+        // The sidebar layout can grow with its panes.
+        .windowResizability(.contentMinSize)
     }
 }
 
