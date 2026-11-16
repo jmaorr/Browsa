@@ -128,7 +128,7 @@ extension Browser {
     }
 
     private static let commandSymbols: [String: String] = [
-        "pin": "pin", "favourite": "star", "close": "xmark", "copy-link": "link", "reload": "arrow.clockwise",
+        "pin": "pin", "favourite": "star", "close": "xmark", "copy-link": "link", "copy-text": "equal.circle", "reload": "arrow.clockwise",
         "find": "text.magnifyingglass", "reader": "doc.plaintext", "tab-window": "macwindow.badge.plus",
         "new-window": "macwindow", "zoom-in": "plus.magnifyingglass", "zoom-out": "minus.magnifyingglass",
         "zoom-reset": "1.magnifyingglass", "blockers": "shield", "share": "square.and.arrow.up",

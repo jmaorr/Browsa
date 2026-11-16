@@ -9,10 +9,26 @@ import Testing
         #expect(Bangs.resolve("!GH")?.url.absoluteString == "https://github.com")
     }
 
+    @Test func otherNamesForTheSameBang() {
+        #expect(Bangs.resolve("!maps cafe near me")?.url.absoluteString == "https://www.google.com/maps/search/cafe%20near%20me")
+        #expect(Bangs.resolve("!youtube lo-fi")?.bang.name == "YouTube")
+        #expect(Bangs.resolve("!wiki black holes")?.bang.name == "Wikipedia")
+        #expect(Bangs.resolve("!Amazon usb c")?.bang.name == "Amazon")
+    }
+
+    @Test func unknownBangsGoThroughDuckDuckGo() {
+        let hit = Bangs.resolve("!wiktionary cat")
+        #expect(hit?.bang.isFallback == true)
+        #expect(hit?.url.absoluteString == "https://duckduckgo.com/?q=!wiktionary%20cat")
+        #expect(Bangs.resolve("!nope")?.url.absoluteString == "https://duckduckgo.com/?q=!nope")
+    }
+
     @Test func notABang() {
         #expect(Bangs.resolve("hello world") == nil)
-        #expect(Bangs.resolve("!nope cats") == nil)
+        #expect(Bangs.resolve("hello world!") == nil)
         #expect(Bangs.resolve("!") == nil)
+        #expect(Bangs.resolve("!! wow") == nil)
+        #expect(Bangs.resolve("!<script> x") == nil)
     }
 
     @Test func queryValuesAreEscaped() {

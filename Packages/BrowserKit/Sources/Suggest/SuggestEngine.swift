@@ -157,18 +157,27 @@ public final class SuggestEngine: Sendable {
             results.local = Array(results.local.prefix(config.localLimit))
             results.defaultAction = special.action
             results.inline = nil
-            // A bang already says where the query goes; don't send it to the default engine too.
-            if special.dedupeKey.hasPrefix("bang:") { results.isComplete = true }
+            // A bang already says where the query goes: no "Search Google for !yt…" row, and
+            // nothing sent to the default engine for suggestions.
+            if special.dedupeKey.hasPrefix("bang:") {
+                results.primary = nil
+                results.isComplete = true
+            }
         }
         return results
     }
 
     /// "!yt cats" → YouTube's results; "12*7" → 84 (Return copies, through the app's
-    /// "copy-text:" command).
-    static func specialRow(for trimmed: String) -> Suggestion? {
+    /// "copy-text:" command). The address bar and ⌘K both lead with it.
+    public static func specialRow(for text: String) -> Suggestion? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
         if let hit = Bangs.resolve(trimmed) {
-            return Suggestion(kind: .searchQuery, title: hit.query.isEmpty ? hit.bang.name : hit.query,
-                              subtitle: hit.query.isEmpty ? "Open \(hit.bang.name) · !\(hit.bang.trigger)" : "Search \(hit.bang.name) · !\(hit.bang.trigger)",
+            let b = hit.bang
+            let subtitle = b.isFallback
+                ? (hit.query.isEmpty ? "Open !\(b.trigger) through DuckDuckGo" : "Search with !\(b.trigger) through DuckDuckGo")
+                : (hit.query.isEmpty ? "Open \(b.name) · !\(b.trigger)" : "Search \(b.name) · !\(b.trigger)")
+            return Suggestion(kind: .searchQuery, title: hit.query.isEmpty ? (b.isFallback ? "!" + b.trigger : b.name) : hit.query,
+                              subtitle: subtitle,
                               action: .open(hit.url), score: 1_000, dedupeKey: "bang:" + hit.url.absoluteString)
         }
         if let answer = Calculator.answer(for: trimmed) {
