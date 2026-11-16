@@ -28,9 +28,21 @@
   // Namespaces WebKit doesn't have. Events never fire; calls either answer the way a browser with
   // nothing to report would, or reject.
   const namespaces = {
+    // Real macOS notifications, through Browsa (ExtensionBridges.swift). Clicks bring Browsa forward;
+    // onClicked/onClosed don't fire yet.
     notifications: () => ({
-      create: resolves(''), update: resolves(false), clear: resolves(false), getAll: resolves({}),
-      getPermissionLevel: resolves('denied'),
+      create: (...args) => {
+        const cb = typeof args[args.length - 1] === 'function' ? args.pop() : null;
+        const id = typeof args[0] === 'string' ? args[0] : `browsa-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const o = (typeof args[0] === 'string' ? args[1] : args[0]) || {};
+        const p = bridge('browsa.notifications', { action: 'create', id, title: o.title || '', message: o.message || o.contextMessage || '' }).then(() => id);
+        if (cb) p.then(cb, () => cb(id));
+        return p;
+      },
+      update: resolves(false),
+      clear: (id, cb) => { const p = bridge('browsa.notifications', { action: 'clear', id }).then(() => true, () => false); if (cb) p.then(cb); return p; },
+      getAll: (cb) => { const p = Promise.resolve({}); if (cb) p.then(cb); return p; },
+      getPermissionLevel: (cb) => { const p = Promise.resolve('granted'); if (cb) p.then(cb); return p; },
       onClicked: event(), onClosed: event(), onButtonClicked: event(), onShowSettings: event(), onPermissionLevelChanged: event(),
     }),
     idle: () => ({
@@ -46,8 +58,26 @@
       const setting = () => ({ get: resolves({ value: false, levelOfControl: 'not_controllable' }), set: resolves(undefined), clear: resolves(undefined), onChange: event() });
       return { services: { passwordSavingEnabled: setting(), autofillAddressEnabled: setting(), autofillCreditCardEnabled: setting(), autofillEnabled: setting() }, network: {}, websites: {} };
     },
+    // Saved to the Downloads folder by Browsa and listed in its Downloads panel. blob: URLs are read
+    // here first, since only this extension can read them.
     downloads: () => ({
-      download: unsupported('downloads.download'), search: resolves([]), open: unsupported('downloads.open'),
+      download: (o = {}, cb) => {
+        const p = (async () => {
+          let url = o.url || '';
+          if (url.startsWith('blob:')) {
+            const buf = await (await fetch(url)).arrayBuffer();
+            if (buf.byteLength > 50 * 1024 * 1024) throw new Error('downloads.download: blobs over 50 MB aren\'t supported in Browsa yet');
+            let bin = '';
+            const bytes = new Uint8Array(buf);
+            for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+            url = 'data:application/octet-stream;base64,' + btoa(bin);
+          }
+          return bridge('browsa.downloads', { action: 'download', url, filename: o.filename || '' });
+        })();
+        if (cb) p.then(cb, () => cb(undefined));
+        return p;
+      },
+      search: resolves([]), open: unsupported('downloads.open'),
       onCreated: event(), onChanged: event(), onErased: event(), onDeterminingFilename: event(),
     }),
     // A hidden extension page Browsa keeps for the extension (ExtensionOffscreen.swift).
@@ -57,7 +87,15 @@
       hasDocument: () => offscreenCall('has').then((url) => !!url),
       Reason: offscreenReasons,
     }),
-    sidePanel: () => ({ setOptions: resolves(undefined), setPanelBehavior: resolves(undefined), open: unsupported('sidePanel.open'), getOptions: resolves({}) }),
+    // The side panel is Browsa's right panel. open() shows it; openPanelOnActionClick makes the toolbar
+    // button open it, as in Chrome.
+    sidePanel: () => ({
+      setOptions: resolves(undefined),
+      getOptions: resolves({}),
+      setPanelBehavior: (b = {}) => bridge('browsa.sidepanel', { action: 'behavior', openPanelOnActionClick: !!b.openPanelOnActionClick }).then(() => undefined),
+      getPanelBehavior: () => bridge('browsa.sidepanel', { action: 'getBehavior' }),
+      open: () => bridge('browsa.sidepanel', { action: 'open' }).then(() => undefined),
+    }),
     identity: () => ({ launchWebAuthFlow: unsupported('identity.launchWebAuthFlow'), getRedirectURL: (p = '') => `https://${chrome.runtime.id}.chromiumapp.org/${p}`, onSignInChanged: event() }),
     contentSettings: () => ({}),
   };
@@ -75,6 +113,7 @@
     commands: ['onCommand'],
   };
   const offscreenCall = (action, url) => chrome.runtime.sendNativeMessage('browsa.offscreen', { action, url });
+  const bridge = (name, body) => chrome.runtime.sendNativeMessage(name, body);
   const offscreenReasons = Object.fromEntries(['TESTING', 'AUDIO_PLAYBACK', 'IFRAME_SCRIPTING', 'DOM_SCRAPING', 'BLOBS', 'DOM_PARSER',
     'USER_MEDIA', 'DISPLAY_MEDIA', 'WEB_RTC', 'CLIPBOARD', 'LOCAL_STORAGE', 'WORKERS', 'BATTERY_STATUS', 'MATCH_MEDIA', 'GEOLOCATION'].map(r => [r, r]));
   // Constants and small helpers Chrome has on namespaces WebKit does provide. Extensions read some of
