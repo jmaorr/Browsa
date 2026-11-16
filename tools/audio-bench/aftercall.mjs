@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // After a real call in Browsa WebKit Spike: judges the call by the guest's ear from the unit's debug dump.
-//   node tools/audio-bench/aftercall.mjs [dump folder] [--sweep] [--minutes 10]
+//   node tools/audio-bench/aftercall.mjs [dump folder] [--sweep] [--minutes 10] [--app com.orriginal.browsa]
 // With no folder, takes the newest browsa-call-audio-* the spike's GPU process wrote (its private cache and temp
 // folders, where BROWSA_CALL_AUDIO_DUMP=1 puts them). Copies the dump to
 // ~/Developer/Browsa/derived/audio-bench/call-<time>/ and writes there:
@@ -20,12 +20,18 @@ import { loadDump, echoLag, detectStretches, scoreSent, rank, describe, m4a, joi
 import { writeCallHtml } from "./htmlreport.mjs";
 
 const BENCH = path.join(os.homedir(), "Developer/Browsa/derived/audio-bench");
-const SPIKE_PROCESS = "com.apple.WebKit.GPU+com.orriginal.browsa.webkitspike";
+// WebKit's GPU process folders for every Browsa: the daily (Settings › Audio › Record calls for tuning), the spike,
+// test copies. `app` (a bundle ID) narrows it to one.
+const GPU_PREFIX = "com.apple.WebKit.GPU+com.orriginal.browsa";
 
-export function findDumps() {
+export function findDumps(app) {
   const roots = [];
   for (const which of ["DARWIN_USER_CACHE_DIR", "DARWIN_USER_TEMP_DIR"]) {
-    try { roots.push(path.join(execFileSync("getconf", [which], { encoding: "utf8" }).trim(), SPIKE_PROCESS)); } catch {}
+    let base;
+    try { base = execFileSync("getconf", [which], { encoding: "utf8" }).trim(); } catch { continue; }
+    let names = [];
+    try { names = fs.readdirSync(base); } catch {}
+    for (const n of names) if (app ? n === `com.apple.WebKit.GPU+${app}` : n.startsWith(GPU_PREFIX)) roots.push(path.join(base, n));
   }
   const found = [];
   for (const r of roots) {
@@ -114,11 +120,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--sweep") opt.sweep = true;
     else if (argv[i] === "--minutes") opt.minutes = argv[++i];
+    else if (argv[i] === "--app") opt.app = argv[++i];
     else src = argv[i];
   }
   if (!src) {
-    const all = findDumps();
-    if (!all.length) { console.error(`No dump found in the spike's GPU process folders (${SPIKE_PROCESS}). Was it started with BROWSA_CALL_AUDIO_DUMP=1?`); process.exit(1); }
+    const all = findDumps(opt.app);
+    if (!all.length) { console.error(`No call recording found${opt.app ? ` for ${opt.app}` : ""}. In Browsa: Settings › Audio › Record calls for tuning (then a call); the spike: BROWSA_CALL_AUDIO_DUMP=1.`); process.exit(1); }
     src = all[0].dir;
     if (all.length > 1) console.log(`Newest of ${all.length} dumps: ${src}`);
   }

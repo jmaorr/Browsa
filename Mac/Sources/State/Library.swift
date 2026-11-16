@@ -308,8 +308,12 @@ final class Library {
 
     private func evictIfNeeded(keeping id: UUID) {
         let onScreen = Set(windows.compactMap { $0.currentTab?.id })
-        // Pages on another engine (call tabs, on Chromium) are never unloaded: that would end a call.
-        let evictable = { (t: UUID) in t != id && !onScreen.contains(t) && self.controllers[t]?.engineID ?? self.engine.info.id == self.engine.info.id }
+        // Pages using the camera or mic (a call) are never unloaded: that would end the call. Nor are pages on another
+        // engine.
+        let evictable = { (t: UUID) in
+            t != id && !onScreen.contains(t) && self.controllers[t]?.engineID ?? self.engine.info.id == self.engine.info.id
+                && self.controllers[t]?.page.state.isCapturingMedia != true
+        }
         while lru.count > capacity, let victim = lru.first(where: evictable) {
             unload(victim)
         }

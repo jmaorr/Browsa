@@ -95,10 +95,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return Library(engine: WebKitEngine(), history: HistoryStore(fileURL: nil), snapshotURL: nil)
         }
         #endif
+        // Before WebKit starts its processes.
+        CallRecordings.applyAtLaunch()
         let engine = WebKitEngine()
         let library = Library(engine: engine)
         // Calls (Meet, Zoom, Teams) run in ordinary WebKit tabs: on Browsa's WebKit where it's present, with its call
-        // audio in the capture unit; elsewhere on Apple's WebKit.
+        // audio in the capture unit; elsewhere on Apple's WebKit. Closing one mid-call asks first.
+        CallGuards.install(in: library)
         return library
     }
     private var keyMonitor: Any?
@@ -259,6 +262,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Cmd-Q in the middle of a meeting would just drop you from it.
+        if !isClearingForQuit, !CallGuards.confirmLeaving(CallGuards.tabsInCall(in: library), quitting: true) { return .terminateCancel }
         guard library.clearDataOnQuit, !isClearingForQuit else { return .terminateNow }
         // Clearing is asynchronous; quit once it's done (or after a few seconds regardless).
         isClearingForQuit = true

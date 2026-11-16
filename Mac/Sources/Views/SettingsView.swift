@@ -306,6 +306,9 @@ private struct AudioSettings: View {
     @State private var micChannels = AudioSettings.defaultInputChannels()
     /// Read at launch, so these only show what the next start will do.
     @State private var usePatchedWebKit = PatchedWebKit.enabled
+    @State private var recordCalls = CallRecordings.enabled
+    @State private var recordingCount = 0
+    @State private var confirmDelete = false
 
     var body: some View {
         @Bindable var browser = browser
@@ -326,6 +329,25 @@ private struct AudioSettings: View {
                      : "On Apple's WebKit, calls use macOS voice processing, like Safari. Applies the next time Browsa starts.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            }
+            if PatchedWebKit.isActive {
+                Section {
+                    Toggle("Record calls for tuning", isOn: $recordCalls)
+                        .onChange(of: recordCalls) { _, on in CallRecordings.enabled = on }
+                    HStack {
+                        Text(recordingCount == 0 ? "No recordings" : "\(recordingCount) recording\(recordingCount == 1 ? "" : "s")")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Show") { CallRecordings.reveal() }
+                        Button("Delete…") { confirmDelete = true }.disabled(recordingCount == 0)
+                    }
+                } footer: {
+                    Text("Saves each call's audio on this Mac: your microphone, what the call played through your speakers (the other people's voices) and what Browsa sent, up to \(CallRecordings.minutesPerCall) minutes per call, the newest \(CallRecordings.keep) calls kept. Used to measure echo and tune Browsa's call audio; nothing is uploaded. Starts with the next launch of Browsa.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .confirmationDialog("Move all call recordings to the Trash?", isPresented: $confirmDelete) {
+                    Button("Move to Trash", role: .destructive) { CallRecordings.deleteAll(); recordingCount = CallRecordings.recordings.count }
+                }
             }
             if !PatchedWebKit.isActive {
                 Section {
@@ -384,7 +406,7 @@ private struct AudioSettings: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { micChannels = Self.defaultInputChannels() }
+        .onAppear { micChannels = Self.defaultInputChannels(); recordingCount = CallRecordings.recordings.count }
     }
 
     /// Input channels on the default input device (the mic calls use unless a site picks another).

@@ -324,6 +324,8 @@ public final class PageState {
     public var isSecure = false
     /// The colour the page wants around it (`<meta name="theme-color">`), if any.
     public var themeColor: CGColor?
+    /// The page has the camera or microphone on right now (a call): closing it, or quitting, ends that.
+    public var isCapturingMedia = false
 
     public init() {}
 }

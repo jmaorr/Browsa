@@ -54,6 +54,14 @@ int main(int argc, char* argv[]) {
     CFPropertyListRef on = CFPreferencesCopyAppValue(CFSTR("patchedWebKit"), bundle);
     if (on && CFGetTypeID(on) == CFBooleanGetTypeID() && !CFBooleanGetValue((CFBooleanRef)on)) reason = "off";
     if (on) CFRelease(on);
+    // Settings › Audio › Record calls for tuning: the capture unit records each call (WebKit's services only get
+    // __XPC_ variables that were there when this process started, so it has to be set here).
+    CFPropertyListRef record = CFPreferencesCopyAppValue(CFSTR("recordCallsForTuning"), bundle);
+    if (record && CFGetTypeID(record) == CFBooleanGetTypeID() && CFBooleanGetValue((CFBooleanRef)record)) {
+        setenv("__XPC_BROWSA_CALL_AUDIO_DUMP", "1", 1);
+        setenv("__XPC_BROWSA_CALL_AUDIO_DUMP_MINUTES", "30", 1);
+    }
+    if (record) CFRelease(record);
     CFRelease(bundle);
     const char* env = getenv("BROWSA_PATCHED_WEBKIT");
     if (env && !strcmp(env, "0")) reason = "off";

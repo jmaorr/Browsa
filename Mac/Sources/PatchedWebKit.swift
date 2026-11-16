@@ -84,7 +84,8 @@ enum PatchedWebKit {
         case .relaunch:
             guard let executable = Bundle.main.executablePath else { reason = .noBuild; return }
             log("WebKit: starting again on \(folder)")
-            let newEnv = PatchedWebKitPolicy.environment(base: env, frameworks: folder)
+            // Settings' call recording rides along (PatchedWebKitPolicy passes every BROWSA_CALL_AUDIO* on to WebKit).
+            let newEnv = PatchedWebKitPolicy.environment(base: env.merging(CallRecordings.environment) { $1 }, frameworks: folder)
             var argv: [UnsafeMutablePointer<CChar>?] = CommandLine.arguments.map { strdup($0) } + [nil]
             var envp: [UnsafeMutablePointer<CChar>?] = newEnv.map { strdup("\($0.key)=\($0.value)") } + [nil]
             execve(executable, &argv, &envp)

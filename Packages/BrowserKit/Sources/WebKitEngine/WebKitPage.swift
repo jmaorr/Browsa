@@ -57,6 +57,12 @@ public final class WebKitPage: NSObject, EnginePage {
             webView.observe(\.hasOnlySecureContent, options: [.new]) { wv, _ in
                 MainActor.assumeIsolated { state.isSecure = wv.hasOnlySecureContent }
             },
+            webView.observe(\.cameraCaptureState, options: [.new]) { wv, _ in
+                MainActor.assumeIsolated { state.isCapturingMedia = wv.cameraCaptureState == .active || wv.microphoneCaptureState == .active }
+            },
+            webView.observe(\.microphoneCaptureState, options: [.new]) { wv, _ in
+                MainActor.assumeIsolated { state.isCapturingMedia = wv.cameraCaptureState == .active || wv.microphoneCaptureState == .active }
+            },
             webView.observe(\.themeColor, options: [.new]) { wv, _ in
                 MainActor.assumeIsolated { state.themeColor = wv.themeColor?.cgColor }
             },
