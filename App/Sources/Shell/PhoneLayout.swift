@@ -24,7 +24,7 @@ struct PhoneLayout: View {
                 .allowsHitTesting(false)
                 .overlay(alignment: .bottom) { bar }
         }
-        .pageColoredSurroundings(browser.currentTab, galleryIsUp: browser.tabGridCoversPage)
+        .pageColoredSurroundings(browser.tabGridLandingTab ?? browser.currentTab, galleryIsUp: browser.tabGridCoversPage)
         .onGeometryChange(for: CGFloat.self) { BarMetrics.topCornerInset($0) } action: { topInset = $0 }
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
     }
@@ -57,6 +57,9 @@ struct PhoneLayout: View {
         }
         .frame(maxWidth: BarMetrics.floatingBarMaxWidth)
         .padding(.horizontal, 16)
+        // Comes in with the page as the gallery's zoom lands (the gallery's own controls stay).
+        .opacity(browser.tabGridHidesAddressBar && !galleryIsUp ? 0 : 1)
+        .scaleEffect(browser.tabGridHidesAddressBar && !galleryIsUp ? 0.9 : 1, anchor: .bottom)
         .animation(Motion.collapse, value: compact)
         .hiddenWhileKeyboardIsUp()
     }
@@ -69,31 +72,41 @@ struct PageActionsRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Button("Forward", systemImage: "chevron.forward") {
+            Button {
                 browser.isNewTabSheetPresented = false
                 browser.goForward()
+            } label: {
+                Label("Forward", systemImage: "chevron.forward").pageActionCell()
             }
             .disabled(!(browser.currentTab?.canGoForward ?? false))
-            .frame(maxWidth: .infinity)
-            ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }
-                .frame(maxWidth: .infinity)
-            Button(browser.isSaved(url) ? "Unsave" : "Save",
-                   systemImage: browser.isSaved(url) ? "bookmark.fill" : "bookmark") {
+            ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up").pageActionCell() }
+            Button {
                 browser.toggleSavedForCurrentTab()
+            } label: {
+                Label(browser.isSaved(url) ? "Unsave" : "Save",
+                      systemImage: browser.isSaved(url) ? "bookmark.fill" : "bookmark").pageActionCell()
             }
-            .frame(maxWidth: .infinity)
-            Button("Find on Page", systemImage: "doc.text.magnifyingglass") {
+            Button {
                 browser.afterClosingNewTabSheet { browser.findInPage() }
+            } label: {
+                Label("Find on Page", systemImage: "doc.text.magnifyingglass").pageActionCell()
             }
-            .frame(maxWidth: .infinity)
-            PageMenu(closesNewTabSheetFirst: true)
-                .frame(maxWidth: .infinity)
+            PageMenu(closesNewTabSheetFirst: true, fillsCell: true)
         }
         .labelStyle(.iconOnly)
         .frame(minHeight: 44)
         .glassEffect(.regular.interactive(), in: .capsule)
         .padding(.horizontal, 16)
         .padding(.bottom, 4)
+    }
+}
+
+extension View {
+    /// A button in the page actions row takes its whole fifth of the row, not just its icon, so
+    /// a tap anywhere in its slot lands. Only the icon was hit-testable before, and the More
+    /// menu in particular needed several tries.
+    func pageActionCell() -> some View {
+        frame(maxWidth: .infinity, minHeight: 44).contentShape(.rect)
     }
 }
 

@@ -90,6 +90,8 @@ extension WebViewPool {
             // Our only user scripts; replace them wholesale when the allowlist changes.
             c.removeAllUserScripts()
             c.removeScriptMessageHandler(forName: CookieBannerHandler.messageName, contentWorld: CookieBannerHandler.world)
+            // Not a blocker, so it stays whatever the blocking settings.
+            c.addUserScript(NativeVideoFullscreen.script)
             guard !scripts.isEmpty else { continue }
             scripts.forEach(c.addUserScript)
             c.add(CookieBannerHandler { [weak browser] in browser?.cookieBannerDeclined(in: $0) }, contentWorld: CookieBannerHandler.world,

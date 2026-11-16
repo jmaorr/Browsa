@@ -258,6 +258,11 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable {
             }
             controller.add(handler, contentWorld: CookieBannerHandler.world, name: CookieBannerHandler.messageName)
         }
+        controller.addUserScript(PageActivity.script)
+        controller.removeScriptMessageHandler(forName: PageActivity.messageName, contentWorld: PageActivity.world)
+        controller.add(PageActivity.Handler { [weak self] webView, report in
+            self?.page(for: webView)?.activityChanged(report)
+        }, contentWorld: PageActivity.world, name: PageActivity.messageName)
         controller.removeScriptMessageHandler(forName: CallAudioHandler.name, contentWorld: .page)
         if callAudioProcessing, let script = Self.callAudioScript {
             controller.addUserScript(script)

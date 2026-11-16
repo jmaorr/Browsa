@@ -206,7 +206,7 @@ final class AgentBridge {
     /// Opens a page in the Agent space. It never switches your window there: the driving pill in
     /// the sidebar offers Watch instead. (`show` is kept for the tool's schema.)
     func openTab(_ url: URL, show: Bool) -> BrowserTab {
-        let tab = library.insertTab(url: url, in: agentSpace, source: .link)
+        let tab = library.insertTab(url: url, in: agentSpace, source: .link, for: watcher)
         follow(tab)
         return tab
     }
@@ -223,6 +223,8 @@ final class AgentBridge {
     /// Watch: shows the agent's current tab (or the Agent space) in the window you're using.
     func watch(in window: Browser) {
         let tab = currentStep?.tabID.flatMap { library.tab(id: $0) } ?? agentSpace.today.first
+        // The agent's tabs move to the window watching them.
+        for t in agentSpace.today where t.favoriteID == nil { t.windowKey = window.windowKey }
         window.selectSpace(agentSpace)
         if let tab { window.select(tab) }
         watcher = window

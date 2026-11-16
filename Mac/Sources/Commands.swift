@@ -153,10 +153,10 @@ struct BrowserCommands: Commands {
             .disabled(!hasPage)
             Button("Close Other Tabs") { if let browser, let tab { browser.closeOtherTabs(than: tab) } }
                 .keyboardShortcut(keys.shortcut(.closeOthers))
-                .disabled((browser?.currentSpace.today.count ?? 0) < 2)
+                .disabled((browser.map { b in b.today(in: b.currentSpace).count } ?? 0) < 2)
             Button("Clear Today's Tabs") { if let browser { withAnimation(Motion.snappy) { browser.clearToday() } } }
                 .keyboardShortcut(keys.shortcut(.clearToday))
-                .disabled(browser?.currentSpace.listedToday.contains { $0.id != tab?.id } != true)
+                .disabled(browser.map { b in b.listedToday(in: b.currentSpace).contains { $0.id != tab?.id } } != true)
             Divider()
             ForEach(1...9, id: \.self) { n in
                 Button(n == 9 ? "Last Tab" : "Tab \(n)") { browser?.selectTab(number: n) }
