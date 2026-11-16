@@ -38,6 +38,13 @@ struct CallGuardOptions {
   double farGateDepthDb = 12, farReleaseDbPerFrame = 1.0, pauseGateDepthDb = 12, pauseReleaseDbPerFrame = 1.0;
   // Finding your level: down faster than up. (A fast first few seconds was tried: it overshot on a quiet mic.)
   double fastSpeechSeconds = 0, fastUpDbPerFrame = 0.03, fastDownDbPerFrame = 0.3, slowUpDbPerFrame = 0.03, slowDownDbPerFrame = 0.06;
+  // You talking while the far end talks: the mic has to be this much louder than the far end's echo alone would
+  // make it, for farConfirmFrames frames in a row (10 ms each), before the gain lifts. The canceller leaks for a
+  // few frames at a time on a real call (2026-11-16, 14 min call: five half-second bursts of echo lifted 15 dB);
+  // those leaks sit 6-9 dB over the echo estimate for 1-3 frames. In pauses, nothing changes. 9 dB and one frame
+  // (tools/audio-bench replays, 2026-11-17): four of the five bursts gone, the fifth 15 dB lower; Josh talking over
+  // the far end (live desk run) cut by over 10 dB in 5% of 250 ms blocks instead of 3%. 12 dB / 3 frames cut 24%.
+  double farNearMarginDb = 9, farConfirmFrames = 1;
 };
 
 struct CallGuardStats {
@@ -56,7 +63,7 @@ class CallGuard {
   void reset() {
     frames_ = 0; refEnv_ = -120; floor_ = -60; coupling_ = -6; level_ = o_.initialLevelDbfs;
     gainDb_ = o_.initialGainDb; appliedDb_ = 0; holdFrames_ = 0; removalCount_ = 0; removalIndex_ = 0;
-    converged_ = false; speechFrames_ = 0; stats_ = CallGuardStats();
+    converged_ = false; speechFrames_ = 0; nearRun_ = 0; stats_ = CallGuardStats();
     for (double& r : removal_) r = 0;
     appliedDb_ = o_.gatedGain ? o_.initialGainDb - o_.pauseGateDepthDb : 0;
   }
@@ -80,7 +87,9 @@ class CallGuard {
     if (c > -100) floor_ = c < floor_ ? std::max(c, -90.0) : floor_ + 0.02;  // digital silence (a stream starting) says nothing about the room
 
     const double echoAtMic = refEnv_ + coupling_;
-    const bool near = c > floor_ + 12 && (!far || m > echoAtMic + 6);
+    const bool nearNow = c > floor_ + 12 && (!far || m > echoAtMic + o_.farNearMarginDb);
+    nearRun_ = nearNow ? nearRun_ + 1 : 0;
+    const bool near = nearNow && (!far || nearRun_ > int(o_.farConfirmFrames) || holdFrames_ > 0);
     if (near) { holdFrames_ = int(o_.holdSeconds * 100); stats_.nearSeconds += 0.01; }
     // The hold bridges your pauses, not the far end coming back: the canceller leaks for a moment right after you
     // stop, exactly when the other side starts again, so that is when the gain must not stay up.
@@ -151,7 +160,7 @@ class CallGuard {
   mutable CallGuardStats stats_;
   int64_t frames_ = 0;
   double refEnv_ = -120, floor_ = -90, coupling_ = -6, level_ = -38, gainDb_ = 12, appliedDb_ = 0;
-  int holdFrames_ = 0, removalCount_ = 0, removalIndex_ = 0;
+  int holdFrames_ = 0, removalCount_ = 0, removalIndex_ = 0, nearRun_ = 0;
   int64_t speechFrames_ = 0;
   double removal_[kRemoval] = {};
   bool converged_ = false;

@@ -95,7 +95,8 @@ int main(int argc, char** argv) {
       : k == "farReleaseDbPerFrame" ? &go.farReleaseDbPerFrame : k == "pauseGateDepthDb" ? &go.pauseGateDepthDb
       : k == "pauseReleaseDbPerFrame" ? &go.pauseReleaseDbPerFrame : k == "fastSpeechSeconds" ? &go.fastSpeechSeconds
       : k == "fastUpDbPerFrame" ? &go.fastUpDbPerFrame : k == "fastDownDbPerFrame" ? &go.fastDownDbPerFrame : k == "slowUpDbPerFrame" ? &go.slowUpDbPerFrame
-      : k == "slowDownDbPerFrame" ? &go.slowDownDbPerFrame : nullptr;
+      : k == "slowDownDbPerFrame" ? &go.slowDownDbPerFrame : k == "farNearMarginDb" ? &go.farNearMarginDb
+      : k == "farConfirmFrames" ? &go.farConfirmFrames : nullptr;
     if (!f) { fprintf(stderr, "unknown guard option %s\n", k.c_str()); return 2; }
     *f = v;
   }
