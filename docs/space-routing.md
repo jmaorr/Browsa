@@ -8,7 +8,7 @@ Sites that always open in a given Space, like Arc's Air Traffic Control and Zen'
   Jira, Figma, GitHub…) go to a Space called Work, Watching and social (YouTube, Netflix, Reddit…) to
   Personal. Shopping and travel is off until you pick a Space for it. Settings can point any set at
   another Space or turn it off.
-- Each starter set's sites can be edited (Settings › Routing: open a list, hover a site): take a site out, move it to
+- Each starter set's sites can be edited (Settings › Routing: open a list; click an address to edit it, hover for Move and Remove): take a site out, move it to
   another set or to a rule of its own, add your own, or restore Browsa's list.
 - Your own sites beat the starter sets, and a path rule beats a host rule.
 - New tabs (⌘T, ⌘-click, favourites) and links from other apps follow the rules. Links you follow inside a
