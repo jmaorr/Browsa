@@ -161,7 +161,7 @@ struct BrowserWindow: View {
         // Found while in a window, and kept: full screen moves the same buttons elsewhere.
         if !window.styleMask.contains(.fullScreen) {
             let found = WindowButtonsView.titleBarButtons(of: window)
-            if !found.isEmpty { browser.titleBarButtons = found }
+            if found.count == 3 { browser.titleBarButtons = found }
         }
         for button in browser.titleBarButtons where button.isHidden == fullScreen {
             button.isHidden = !fullScreen
