@@ -254,3 +254,38 @@ td:last-child, th:last-child { padding-right: 0; }
   .more { grid-template-columns: 1fr; }
   .more > div { grid-template-columns: 1fr; gap: 4px; }
 }
+
+/* GitHub is in the footer too, so a phone's top bar drops it to make room. On the narrowest
+   phones iPhone goes too: the Browsa mark beside it opens the same page. */
+@media (max-width: 520px) {
+  .bar nav .nav-gh { display: none; }
+  .bar nav { gap: 12px; font-size: .875rem; white-space: nowrap; }
+}
+@media (max-width: 400px) { .bar nav a[href="/"] { display: none; } }
+
+/* What's New: built from whats-new/*.md by scripts/build-whats-new.mjs. Date on the left, the
+   clip and its sentence on the right; on a phone they stack. */
+.wn { max-width: 1040px; margin-inline: auto; padding: clamp(32px, 6vw, 72px) var(--gutter) 0; }
+.wn h1 { font-size: clamp(2.375rem, 5vw, 3.5rem); letter-spacing: -.035em; line-height: 1.05; }
+.wn > .lead { max-width: 40ch; color: var(--ink-2); }
+.wn-entry { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: clamp(16px, 4vw, 48px); margin-top: clamp(48px, 6vw, 72px); padding-top: 24px; border-top: 1px solid var(--line); scroll-margin-top: 24px; }
+.wn-meta { display: flex; flex-direction: column; gap: 2px; font-size: .9375rem; color: var(--ink-2); }
+.wn-meta time { color: var(--ink); font-weight: 500; }
+.wn-draft { align-self: start; margin-top: 8px; padding: 2px 8px; border-radius: 6px; font-size: .8125rem; font-weight: 500; background: color-mix(in srgb, #f5a623 22%, transparent); color: var(--ink); }
+.wn-media { position: relative; aspect-ratio: 16 / 10; border-radius: 16px; overflow: hidden; background: #0d0d0c; box-shadow: 0 0 0 1px var(--line), var(--shadow); }
+.wn-media video, .wn-media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.wn-window { background: var(--raised); display: grid; place-items: center; padding: 4%; }
+.wn-window > [data-mw] { width: 100%; }
+.wn-empty { display: grid; place-items: center; background: repeating-linear-gradient(-45deg, transparent 0 10px, var(--line) 10px 11px), var(--raised); box-shadow: 0 0 0 1px var(--line); color: var(--ink-2); font-size: .9375rem; }
+.wn-body h2 { margin-top: 24px; font-size: 1.5rem; letter-spacing: -.022em; line-height: 1.2; }
+.wn-body h2 a { text-decoration: none; }
+.wn-body h2 a:hover { text-decoration: underline; }
+.wn-body > p { margin-top: 8px; max-width: 58ch; color: var(--ink-2); }
+.wn-body > p.wn-note { margin-top: 6px; font-size: .9375rem; }
+.wn-body a:not(h2 a) { color: var(--link); }
+.wn-none { margin-top: 48px; color: var(--ink-2); }
+@media (max-width: 720px) {
+  .wn-entry { grid-template-columns: 1fr; gap: 14px; }
+  .wn-meta { flex-direction: row; flex-wrap: wrap; gap: 4px 12px; }
+  .wn-draft { margin-top: 0; }
+}
