@@ -95,10 +95,16 @@ public struct EngineExtension: Identifiable {
     public let panelURL: URL?
     /// Its settings page (`options_ui` or `options_page`), if it has one.
     public let optionsURL: URL?
+    /// Where its files are served from, for pages named in its manifest (a Browsa plugin's panel).
+    public let baseURL: URL?
+    /// Its manifest.json, as loaded. Browsa plugins carry a `browsa` block in it.
+    public let manifestJSON: Data?
 
     public init(id: String, name: String, version: String, icon: CGImage?, hasAction: Bool, panelURL: URL? = nil,
-                optionsURL: URL? = nil) {
+                optionsURL: URL? = nil, baseURL: URL? = nil, manifestJSON: Data? = nil) {
         self.optionsURL = optionsURL
+        self.baseURL = baseURL
+        self.manifestJSON = manifestJSON
         self.id = id
         self.name = name
         self.version = version
@@ -152,10 +158,29 @@ public protocol EngineExtensionHost: AnyObject {
     func closeExtensionTab(_ page: any EnginePage)
     /// An extension changed its toolbar action (badge, icon, label) for some page.
     func extensionActionsDidChange()
+
+    // Browsa plugins: an extension talking to Browsa itself over native messaging, host "app.browsa".
+
+    /// A one-off `sendNativeMessage("app.browsa", …)`, or a message on a plugin's port.
+    func pluginMessage(_ message: Any, from extensionID: String) async -> PluginReply
+    /// `connectNative("app.browsa")`: Browsa can now send the plugin events with `send`.
+    func pluginPortOpened(extensionID: String, send: @escaping @MainActor (Any) -> Void)
+    func pluginPortClosed(extensionID: String)
 }
 
 public extension EngineExtensionHost {
     func extensionActionsDidChange() {}
+    func pluginMessage(_ message: Any, from extensionID: String) async -> PluginReply { .unhandled }
+    func pluginPortOpened(extensionID: String, send: @escaping @MainActor (Any) -> Void) {}
+    func pluginPortClosed(extensionID: String) {}
+}
+
+/// Browsa's answer to a plugin's message on the "app.browsa" native-messaging host.
+public enum PluginReply {
+    case value(Any?)
+    case failure(String)
+    /// Nobody handles plugins here.
+    case unhandled
 }
 
 /// An extension's toolbar action for one page.

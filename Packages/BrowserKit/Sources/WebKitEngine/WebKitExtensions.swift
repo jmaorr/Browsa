@@ -140,9 +140,10 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         let panelPath = ((manifest["side_panel"] as? [String: Any])?["default_path"] as? String)
             ?? ((manifest["sidebar_action"] as? [String: Any])?["default_panel"] as? String)
         let panelURL = panelPath.map { context.baseURL.appending(path: $0.hasPrefix("/") ? String($0.dropFirst()) : $0) }
+        let manifestJSON = JSONSerialization.isValidJSONObject(manifest) ? try? JSONSerialization.data(withJSONObject: manifest) : nil
         return EngineExtension(id: id, name: ext.displayName ?? id, version: ext.version ?? "",
                                icon: icon, hasAction: context.action(for: nil) != nil, panelURL: panelURL,
-                               optionsURL: context.optionsPageURL)
+                               optionsURL: context.optionsPageURL, baseURL: context.baseURL, manifestJSON: manifestJSON)
     }
 
     #if DEBUG
@@ -222,6 +223,10 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         for c in contexts.values { ExtensionOffscreen.close(for: c); try? controller.unload(c) }
         contexts = [:]
         loaded = []
+        let ids = Array(pluginPorts.keys)
+        pluginPorts.values.forEach { $0.disconnect() }
+        pluginPorts = [:]
+        ids.forEach { host?.pluginPortClosed(extensionID: $0) }
     }
 
     // MARK: Actions
@@ -349,6 +354,17 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             ExtensionOffscreen.writeClipboard(message, for: extensionContext, reply: replyHandler)
             return
         }
+        if applicationIdentifier == Self.pluginHost, let host {
+            let id = extensionContext.uniqueIdentifier
+            Task { @MainActor in
+                switch await host.pluginMessage(message, from: id) {
+                case .value(let v): replyHandler(v, nil)
+                case .failure(let text): replyHandler(nil, Self.pluginError(text))
+                case .unhandled: replyHandler(nil, Self.noNativeMessaging(applicationIdentifier))
+                }
+            }
+            return
+        }
         replyHandler(nil, Self.noNativeMessaging(applicationIdentifier))
     }
 
@@ -360,7 +376,61 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             completionHandler(nil)
             return
         }
+        if port.applicationIdentifier == Self.pluginHost, let host {
+            acceptPluginPort(port, extensionID: extensionContext.uniqueIdentifier, host: host)
+            completionHandler(nil)
+            return
+        }
         completionHandler(Self.noNativeMessaging(port.applicationIdentifier))
+    }
+
+    // MARK: Browsa plugins
+
+    /// The native-messaging name plugins use to reach Browsa itself (`PluginRequest.hostName`).
+    static let pluginHost = "app.browsa"
+    /// One open port per plugin, so Browsa can send it events (a command was run, say).
+    private var pluginPorts: [String: WKWebExtension.MessagePort] = [:]
+
+    /// Messages on the port carry an optional `requestId`; the answer comes back with the same id as
+    /// `{ requestId, result }` or `{ requestId, error }`. Browsa's own events have `event` instead.
+    private func acceptPluginPort(_ port: WKWebExtension.MessagePort, extensionID: String, host: any EngineExtensionHost) {
+        pluginPorts[extensionID]?.disconnect()
+        pluginPorts[extensionID] = port
+        port.messageHandler = { [weak self] message, _ in
+            MainActor.assumeIsolated { self?.pluginPortReceived(message, extensionID: extensionID) }
+        }
+        port.disconnectHandler = { [weak self] _ in
+            MainActor.assumeIsolated { self?.pluginPortDisconnected(extensionID: extensionID) }
+        }
+        host.pluginPortOpened(extensionID: extensionID) { [weak self] event in
+            self?.pluginPorts[extensionID]?.sendMessage(event) { _ in }
+        }
+    }
+
+    private func pluginPortReceived(_ message: Any?, extensionID: String) {
+        guard let host else { return }
+        let requestID = (message as? [String: Any])?["requestId"]
+        let body = message ?? NSNull()
+        Task { @MainActor [weak self] in
+            let reply = await host.pluginMessage(body, from: extensionID)
+            guard let requestID, let port = self?.pluginPorts[extensionID] else { return }
+            var answer: [String: Any] = ["requestId": requestID]
+            switch reply {
+            case .value(let v): answer["result"] = v ?? NSNull()
+            case .failure(let text): answer["error"] = text
+            case .unhandled: answer["error"] = "Browsa doesn't handle plugin messages here."
+            }
+            port.sendMessage(answer) { _ in }
+        }
+    }
+
+    private func pluginPortDisconnected(extensionID: String) {
+        guard pluginPorts.removeValue(forKey: extensionID) != nil else { return }
+        host?.pluginPortClosed(extensionID: extensionID)
+    }
+
+    private static func pluginError(_ text: String) -> NSError {
+        NSError(domain: "Browsa.Plugins", code: 2, userInfo: [NSLocalizedDescriptionKey: text])
     }
 
     private static func noNativeMessaging(_ name: String?) -> NSError {

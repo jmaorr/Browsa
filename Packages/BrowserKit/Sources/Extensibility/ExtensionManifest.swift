@@ -108,6 +108,12 @@ public struct BrowsaBlock: Sendable, Equatable {
         public let id: String
         public let title: String
         public let keywords: [String]
+
+        public init(id: String, title: String, keywords: [String] = []) {
+            self.id = id
+            self.title = title
+            self.keywords = keywords
+        }
     }
 
     public struct AgentToolDeclaration: Sendable, Equatable {
@@ -172,6 +178,12 @@ public struct PluginRequest: Sendable, Equatable {
         case agentToolResult = "agentTool.result"
         /// `{ url? }`: the notes on a page, so a plugin can show or act on them.
         case listNotes = "notes.list"
+        /// `{}`: the tab in front: `{ url, title, space }`.
+        case currentPage = "page.current"
+        /// `{}`: Browsa's version and the plugin API it speaks: `{ app, version, api, methods }`.
+        case info = "browsa.info"
+        /// `{ id? }`: shows the plugin's panel (or another tool's) in the right panel.
+        case showPanel = "panel.show"
     }
 
     public let method: Method

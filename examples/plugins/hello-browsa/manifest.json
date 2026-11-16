@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Hello Browsa",
+  "version": "0.1.0",
+  "description": "A tiny Browsa plugin: a panel, a sidebar card and ⌘K commands, talking to Browsa over app.browsa.",
+  "permissions": ["nativeMessaging", "scripting", "activeTab", "tabs", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "browsa": {
+    "panel": { "page": "panel.html", "title": "Hello", "icon": "hand.wave" },
+    "sidebar": { "page": "sidebar.html", "title": "Hello" },
+    "commands": [
+      { "id": "reading-time", "title": "Reading Time for This Page", "keywords": ["words", "minutes"] },
+      { "id": "say-hi", "title": "Say Hi from Hello Browsa" }
+    ]
+  }
+}
