@@ -39,9 +39,8 @@ struct BrowserWindow: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
             if let window = note.object as? NSWindow, window === browser.nsWindow { browser.library.markActive(browser) }
         }
-        // Full screen moves the traffic lights out of the sidebar and into the title bar that drops
-        // down with the menu bar. AppKit rebuilds that title bar on the way in and out, so the
-        // buttons are set up again each time.
+        // AppKit rebuilds the title bar on the way into and out of full screen, showing its traffic
+        // lights again; they're hidden again each time (the sidebar has its own).
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { note in
             fullScreenChanged(note, to: true)
         }
@@ -154,13 +153,12 @@ struct BrowserWindow: View {
         if !window.titlebarAppearsTransparent { window.titlebarAppearsTransparent = true }
         if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
         if window.isMovableByWindowBackground { window.isMovableByWindowBackground = false }
-        // The traffic lights live in the sidebar, so they go when it does. In full screen they're in
-        // the title bar that drops down with the menu bar, so they stay, whatever the sidebar does.
-        let fullScreen = window.styleMask.contains(.fullScreen) || browser.isFullScreen
-        let showLights = browser.isSidebarDocked || fullScreen
+        // The sidebar draws its own copies of the traffic lights (WindowButtons), which move with it.
+        // The title bar's are hidden for good; AppKit puts them back on entering and leaving full
+        // screen, so this runs then too.
         for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-            guard let button = window.standardWindowButton(kind), button.isHidden == showLights else { continue }
-            button.isHidden = !showLights
+            guard let button = window.standardWindowButton(kind), !button.isHidden else { continue }
+            button.isHidden = true
         }
     }
 
