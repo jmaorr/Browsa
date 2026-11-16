@@ -172,3 +172,18 @@ version check is the only guard, and a real test of the 27 build needs a Mac on 
 
 Two majors: 628 MB unstripped; stripped about 350 MB on disk and ~136 MB zipped (each major adds a 155 MB / ~57 MB
 WebKit and a 16 MB executable), which is the point where downloading the matching WebKit on first run pays off.
+
+## Call recordings stay out of release builds
+
+"Record calls for tuning" (Settings › Audio, Development) and the WebKit dump behind it (`BROWSA_CALL_AUDIO_DUMP`)
+are for development only:
+
+- App: `CallRecordings.swift`, its Settings section and the launch hook compile only under `DEBUG` or the
+  `BROWSA_CALL_RECORDING` condition (`tools/install-mac.sh --patched-webkit` sets it for the local daily). Without
+  it, the relaunch strips every `BROWSA_CALL_AUDIO_DUMP*` / `__XPC_BROWSA_CALL_AUDIO_DUMP*` variable.
+- Launcher (`launcher/main.c`): reads the recording preference only when built with `-DBROWSA_CALL_RECORDING`;
+  otherwise it unsets the same variables before WebKit starts.
+- WebKit: `BrowsaCallAudioInternalUnit.h` reads the dump variable only when `BrowsaCallAudioRecording.h` is in the
+  tree (it defines `BROWSA_CALL_AUDIO_RECORDING 1`). **Build release WebKit from a clean tree without that header**
+  (and check: `strings WebCore | grep -c BROWSA_CALL_AUDIO_DUMP` gives 0). The WebKit builds made before 16 Nov 2026
+  all contain the dump code, gated only by the variable, so they must not be bundled.

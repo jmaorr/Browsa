@@ -1,3 +1,4 @@
+#if DEBUG || BROWSA_CALL_RECORDING
 import AppKit
 
 /// Settings › Audio › "Record calls for tuning": Browsa's WebKit writes each call's audio (the microphone, what the
@@ -57,3 +58,4 @@ enum CallRecordings {
         (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
     }
 }
+#endif

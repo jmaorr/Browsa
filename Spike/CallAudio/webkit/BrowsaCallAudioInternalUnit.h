@@ -24,7 +24,7 @@
 //   BROWSA_CALL_AUDIO_AGC_MAX_DB       its gain limit (default 30)
 //   BROWSA_CALL_AUDIO_AGC_NOISE_DBFS   the noise level it may lift to (default -60)
 //   BROWSA_CALL_AUDIO_NS               noise suppression 0 low .. 3 very high, or off (default 2)
-//   BROWSA_CALL_AUDIO_DUMP             debug dump (below); BROWSA_CALL_AUDIO_DUMP_MINUTES caps it (default 30)
+//   BROWSA_CALL_AUDIO_DUMP             debug dump (below; development builds only); BROWSA_CALL_AUDIO_DUMP_MINUTES caps it (default 30)
 #pragma once
 
 #if ENABLE(MEDIA_STREAM) && PLATFORM(MAC) && USE(LIBWEBRTC)
@@ -55,6 +55,15 @@
 WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
 #include "BrowsaAudioTimeline.h"
 #include "BrowsaCallGuard.h"
+// Call recording (the debug dump below) exists only in development WebKit builds: they have BrowsaCallAudioRecording.h
+// next to this file (copied in from Spike/CallAudio/webkit). Built without it, as for release, the unit can't record,
+// whatever the environment says.
+#if __has_include("BrowsaCallAudioRecording.h")
+#include "BrowsaCallAudioRecording.h"
+#endif
+#ifndef BROWSA_CALL_AUDIO_RECORDING
+#define BROWSA_CALL_AUDIO_RECORDING 0
+#endif
 WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
 
 WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
@@ -572,8 +581,12 @@ private:
 
     static const char* dumpSetting()
     {
+#if BROWSA_CALL_AUDIO_RECORDING
         const char* value = getenv("BROWSA_CALL_AUDIO_DUMP");
         return value && *value && strcmp(value, "0") ? value : nullptr;
+#else
+        return nullptr;  // a WebKit built for release can't record
+#endif
     }
     static void writeWavHeader(FILE* f, uint64_t frames)
     {

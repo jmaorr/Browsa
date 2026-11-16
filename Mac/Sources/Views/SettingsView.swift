@@ -299,38 +299,36 @@ private struct PrivacySettings: View {
     }
 }
 
-/// Which web engine Browsa is running on, and what it can do.
-/// Settings › Audio: how Browsa handles the mic on calls (Meet, Zoom, Teams and the like).
+/// Settings › Audio. The Browsa Audio Engine is Browsa's own WebKit with call audio built in (echo removal, noise
+/// reduction, a steady mic level), on by default where this Mac can run it (Mac/Sources/PatchedWebKit.swift). Off, or
+/// where it can't run, calls use Apple's WebKit audio, as in Safari. The engine is chosen when Browsa starts.
 private struct AudioSettings: View {
-    @Environment(Library.self) private var browser
-    /// Inputs on the Mac's current mic. The input picker is only for audio interfaces with two or more.
-    @State private var micChannels = AudioSettings.defaultInputChannels()
-    /// Read at launch, so these only show what the next start will do.
-    @State private var usePatchedWebKit = PatchedWebKit.enabled
+    /// What the next launch will do (the running one was decided at launch).
+    @State private var engineOn = PatchedWebKit.enabled
+    #if DEBUG || BROWSA_CALL_RECORDING
     @State private var recordCalls = CallRecordings.enabled
     @State private var recordingCount = 0
     @State private var confirmDelete = false
+    #endif
 
     var body: some View {
-        @Bindable var browser = browser
-        let browsa = browser.callAudio.processing == .browsa && !PatchedWebKit.isActive
         Form {
-            // Only where Browsa's WebKit is on this Mac (a local build); everyone else has system WebKit and call tabs,
-            // and these switches would do nothing.
-            if PatchedWebKit.isActive || PatchedWebKit.buildPresent || PatchedWebKit.bundledChoice != nil {
             Section {
-                LabeledContent("WebKit", value: PatchedWebKit.statusText)
-                Toggle("Use Browsa's WebKit when it's on this Mac", isOn: $usePatchedWebKit)
-                    .onChange(of: usePatchedWebKit) { _, on in PatchedWebKit.enabled = on }
+                // Where it can't run, the switch shows off (greyed out) whatever the saved choice is.
+                Toggle("Browsa Audio Engine", isOn: PatchedWebKit.engineAvailable ? $engineOn : .constant(false))
+                    .onChange(of: engineOn) { _, on in PatchedWebKit.enabled = on }
+                    .disabled(!PatchedWebKit.engineAvailable)
+                if let note = PatchedWebKit.engineNote(wantsOn: engineOn) {
+                    Text(note).foregroundStyle(.secondary)
+                }
             } header: {
                 Text("Calls")
             } footer: {
-                Text(PatchedWebKit.isActive
-                     ? "Browsa's WebKit removes echo and background noise inside WebKit, for every call site. Applies the next time Browsa starts."
-                     : "On Apple's WebKit, calls use macOS voice processing, like Safari. Applies the next time Browsa starts.")
+                Text("Makes calls in Meet, Zoom, Teams and other sites sound clearer, especially on your Mac's speakers: the people you talk to won't hear their own voice echo back, and your microphone stays at a steady level. Turn it off to use Apple's WebKit audio instead. Changes apply after you quit and reopen Browsa.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            }
+            #if DEBUG || BROWSA_CALL_RECORDING
+            // Development and the local daily build only: compiled out of release builds.
             if PatchedWebKit.isActive {
                 Section {
                     Toggle("Record calls for tuning", isOn: $recordCalls)
@@ -342,92 +340,26 @@ private struct AudioSettings: View {
                         Button("Show") { CallRecordings.reveal() }
                         Button("Delete…") { confirmDelete = true }.disabled(recordingCount == 0)
                     }
+                } header: {
+                    Text("Development")
                 } footer: {
-                    Text("Saves each call's audio on this Mac: your microphone, what the call played through your speakers (the other people's voices) and what Browsa sent, up to \(CallRecordings.minutesPerCall) minutes per call, the newest \(CallRecordings.keep) calls kept. Used to measure echo and tune Browsa's call audio; nothing is uploaded. Starts with the next launch of Browsa.")
+                    Text("Saves each call's audio on this Mac: your microphone, what the call played through your speakers and what Browsa sent, up to \(CallRecordings.minutesPerCall) minutes per call, the newest \(CallRecordings.keep) calls kept. For measuring echo and tuning; nothing is uploaded. Starts with the next launch of Browsa.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .confirmationDialog("Move all call recordings to the Trash?", isPresented: $confirmDelete) {
                     Button("Move to Trash", role: .destructive) { CallRecordings.deleteAll(); recordingCount = CallRecordings.recordings.count }
                 }
             }
-            if !PatchedWebKit.isActive {
-                Section {
-                    Picker("Call audio", selection: $browser.callAudio.processing) {
-                        Text("Browsa in-page (experimental)").tag(CallAudioTuning.Processing.browsa)
-                        Text("macOS (recommended)").tag(CallAudioTuning.Processing.system)
-                    }
-                } footer: {
-                    Text(browsa
-                         ? "Browsa's in-page call audio: it removes echo and background noise inside the page, on Apple's WebKit. Experimental. Reload a call to switch."
-                         : "macOS voice processing, like Safari. Some audio interfaces let echo through. Reload a call to switch.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            if browsa {
-                Section {
-                    if micChannels >= 2 || browser.callAudio.inputs != .mix {
-                        Picker("Microphone", selection: $browser.callAudio.inputs) {
-                            Text("Both inputs").tag(CallAudioTuning.Inputs.mix)
-                            Text("Input 1").tag(CallAudioTuning.Inputs.first)
-                            Text("Input 2").tag(CallAudioTuning.Inputs.second)
-                        }
-                    }
-                    Picker("Background noise reduction", selection: Binding(
-                        get: { max(0, min(browser.callAudio.noiseSuppression, 2)) },
-                        set: { browser.callAudio.noiseSuppression = $0 })) {
-                        Text("Low").tag(0)
-                        Text("Medium").tag(1)
-                        Text("High").tag(2)
-                    }
-                    Toggle("Automatic mic volume", isOn: $browser.callAudio.autoGain)
-                }
-                Section {
-                    TimelineView(.periodic(from: .now, by: 0.5)) { context in
-                        if let s = browser.callAudioStats, context.date.timeIntervalSince(s.at) < 3 {
-                            HStack {
-                                Text(s.hasReference ? "On a call · echo cancelling" : "On a call")
-                                Spacer()
-                                Gauge(value: max(0, min(1, (s.micDb + 60) / 60))) { EmptyView() }
-                                    .gaugeStyle(.accessoryLinearCapacity)
-                                    .frame(width: 120)
-                                    .accessibilityLabel("Mic level")
-                            }
-                        } else {
-                            Text("Not on a call").foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-            Section {
-                HStack {
-                    Spacer()
-                    Button("Restore Defaults") { browser.callAudio = CallAudioTuning() }
-                        .disabled(browser.callAudio == CallAudioTuning())
-                }
-            }
+            #endif
         }
         .formStyle(.grouped)
-        .onAppear { micChannels = Self.defaultInputChannels(); recordingCount = CallRecordings.recordings.count }
-    }
-
-    /// Input channels on the default input device (the mic calls use unless a site picks another).
-    static func defaultInputChannels() -> Int {
-        var device = AudioDeviceID(0)
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice,
-                                                 mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device) == noErr else { return 1 }
-        address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreamConfiguration,
-                                             mScope: kAudioDevicePropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
-        guard AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr, size > 0 else { return 1 }
-        let raw = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
-        defer { raw.deallocate() }
-        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, raw) == noErr else { return 1 }
-        let list = UnsafeMutableAudioBufferListPointer(raw.assumingMemoryBound(to: AudioBufferList.self))
-        return list.reduce(0) { $0 + Int($1.mNumberChannels) }
+        #if DEBUG || BROWSA_CALL_RECORDING
+        .onAppear { recordingCount = CallRecordings.recordings.count }
+        #endif
     }
 }
 
+/// Which web engine Browsa is running on, and what it can do.
 private struct EngineSettings: View {
     @Environment(Library.self) private var browser
 

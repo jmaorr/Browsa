@@ -103,7 +103,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         #endif
         // Before WebKit starts its processes.
+        #if DEBUG || BROWSA_CALL_RECORDING
         CallRecordings.applyAtLaunch()
+        #endif
         let engine = WebKitEngine()
         let library = Library(engine: engine)
         // Calls (Meet, Zoom, Teams) run in ordinary WebKit tabs: on Browsa's WebKit where it's present, with its call
