@@ -40,7 +40,13 @@ struct PageArea: View {
                 .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
         }
         .overlay(alignment: .top) {
-            if let tab = browser.currentTab { ProgressLine(tab: tab) }
+            // Clipped to the card, so the line follows its rounded top corners.
+            if let tab = browser.currentTab {
+                ProgressLine(tab: tab)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .clipShape(.rect(cornerRadius: PageCard.radius, style: .continuous))
+                    .allowsHitTesting(false)
+            }
         }
         .overlay(alignment: .top) { AgentPageOverlay() }
         .overlay(alignment: .top) {
