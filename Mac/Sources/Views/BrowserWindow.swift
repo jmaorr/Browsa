@@ -100,6 +100,11 @@ struct BrowserWindow: View {
             browser.nsWindow = window
             // Each window keeps its own place; SwiftUI restores the frames.
             window.tabbingMode = .disallowed
+            // Closing the window is what archives its tabs. SwiftUI's onDisappear can come late or
+            // not at all, so listen to AppKit directly.
+            NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak browser] _ in
+                MainActor.assumeIsolated { if let browser { browser.library.unregister(browser) } }
+            }
             let other = browser.library.windows.first { $0 !== browser }?.nsWindow
             WindowSizing.attach(window, isNew: browser.isNewWindow, like: other)
         }

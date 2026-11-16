@@ -4,6 +4,9 @@ import BrowserCore
 import BrowserEngine
 import Suggest
 import Extensibility
+import os
+
+private let windowLog = Logger(subsystem: "com.orriginal.browsa", category: "windows")
 
 /// Everything the windows share: spaces, tabs, favourites, settings, live pages and downloads.
 /// Each window is a `Browser` looking into it with its own space and tab.
@@ -190,11 +193,15 @@ final class Library {
     }
 
     func unregister(_ window: Browser) {
+        // AppKit's close and SwiftUI's onDisappear both land here; the first one counts.
+        guard windowsByAge.contains(where: { $0 === window }) else { return }
         windows.removeAll { $0 === window }
         windowsByAge.removeAll { $0 === window }
         // Closing one of several windows archives its Today tabs, like Arc. The last window's tabs,
         // and every window's when quitting, stay put for the next window to pick up.
-        if !windows.isEmpty, !isTerminating { archiveTabs(of: window) }
+        let archives = !windows.isEmpty && !isTerminating
+        windowLog.info("Window \(window.windowKey, privacy: .public) closed; open: \(self.windows.count), terminating: \(self.isTerminating), archiving: \(archives)")
+        if archives { archiveTabs(of: window) }
         scheduleSave()
     }
 
@@ -215,6 +222,7 @@ final class Library {
     private func archiveTabs(of window: Browser) {
         for space in spaces {
             let leaving = space.today.filter { $0.favoriteID == nil && $0.windowKey == window.windowKey }
+            windowLog.info("Space \(space.name, privacy: .public): \(leaving.count) of \(space.today.count) Today tabs belong to the closed window; tab windows: \(space.today.map { $0.windowKey.map { String($0.uuidString.prefix(8)) } ?? "none" }.joined(separator: ","), privacy: .public)")
             guard !leaving.isEmpty else { continue }
             for tab in leaving where tab.isPrivate { close(tab) }
             let kept = leaving.filter { !$0.isPrivate }
