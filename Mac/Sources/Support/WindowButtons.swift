@@ -18,7 +18,7 @@ struct WindowButtons: NSViewRepresentable {
     }
 
     /// The row's width for the buttons: AppKit's spacing, plus the gap after them.
-    static let width: CGFloat = 68
+    static let width: CGFloat = 74
 }
 
 final class WindowButtonsView: NSView {
@@ -38,7 +38,8 @@ final class WindowButtonsView: NSView {
 
     override var isFlipped: Bool { true }
 
-    /// The three buttons with the title bar's spacing (6 pt between them), centred vertically.
+    /// The three buttons with the title bar's spacing on macOS 26 (14 pt buttons, 9 pt apart, measured
+    /// on 26.7), centred vertically.
     /// Measured from the buttons themselves: the title bar's own are hidden, so their frames can't
     /// be trusted.
     override func layout() {
@@ -50,7 +51,7 @@ final class WindowButtonsView: NSView {
             if size.width < 1 || size.height < 1 { size = button.fittingSize }
             if size.width < 1 || size.height < 1 { size = NSSize(width: 14, height: 16) }
             button.frame = NSRect(x: x, y: ((bounds.height - size.height) / 2).rounded(), width: size.width, height: size.height)
-            x += size.width + 6
+            x += size.width + 9
         }
     }
 
