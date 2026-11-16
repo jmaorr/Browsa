@@ -312,6 +312,9 @@ private struct AudioSettings: View {
         @Bindable var browser = browser
         let browsa = browser.callAudio.processing == .browsa && !PatchedWebKit.isActive
         Form {
+            // Only where Browsa's WebKit is on this Mac (a local build); everyone else has system WebKit and call tabs,
+            // and these switches would do nothing.
+            if PatchedWebKit.isActive || PatchedWebKit.buildPresent {
             Section {
                 LabeledContent("WebKit", value: PatchedWebKit.statusText)
                 Toggle("Use Browsa's WebKit when it's on this Mac", isOn: $usePatchedWebKit)
@@ -328,6 +331,7 @@ private struct AudioSettings: View {
                      ? "Browsa's WebKit removes echo and background noise inside WebKit, for every site. Changes here apply the next time Browsa starts."
                      : "Without Browsa's WebKit, Meet, Zoom and Teams run in Chromium tabs, whatever is picked here. Changes here apply the next time Browsa starts.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
             }
             if !PatchedWebKit.isActive {
                 Section {
