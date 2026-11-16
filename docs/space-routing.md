@@ -8,6 +8,8 @@ Sites that always open in a given Space, like Arc's Air Traffic Control and Zen'
   Jira, Figma, GitHub…) go to a Space called Work, Watching and social (YouTube, Netflix, Reddit…) to
   Personal. Shopping and travel is off until you pick a Space for it. Settings can point any set at
   another Space or turn it off.
+- Each starter set's sites can be edited (Settings › Spaces › Edit Sites…): take a site out, move it to
+  another set or to a rule of its own, add your own, or restore Browsa's list.
 - Your own sites beat the starter sets, and a path rule beats a host rule.
 - New tabs (⌘T, ⌘-click, favourites) and links from other apps follow the rules. Links you follow inside a
   tab never move, private tabs never move, and sign-in and checkout pages (accounts.google.com, PayPal,
@@ -15,7 +17,7 @@ Sites that always open in a given Space, like Arc's Air Traffic Control and Zen'
 - The first time a site moves, a toast says so with "Keep in <Space>", which takes that site out of
   routing and moves the tab back. ⌘K › "Stop Routing …" does the same later.
 
-State lives in UserDefaults (`spaceRoutingEnabled`, `spaceRoutes`, `spaceRoutingSets`, `spaceRoutingKept`,
+State lives in UserDefaults (`spaceRoutingEnabled`, `spaceRoutes`, `spaceRoutingSets`, `spaceRoutingRemoved`, `spaceRoutingAdded`,
 `spaceRoutingAnnounced`). Code: `Mac/Sources/State/SpaceRouting.swift`, hooks in `Browser.newTab` and
 `Browser.openExternal`.
 
