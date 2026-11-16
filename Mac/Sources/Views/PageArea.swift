@@ -65,7 +65,15 @@ struct PageArea: View {
         }
         .overlay(alignment: .bottom) {
             if let toast = browser.toast {
-                Text(toast)
+                HStack(spacing: 12) {
+                    Text(toast)
+                    ForEach(browser.toastActions) { action in
+                        Button(action.title) { browser.runToastAction(action) }
+                            .buttonStyle(.plain)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Color.accentColor)
+                    }
+                }
                     .font(.callout)
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(PanelFill(), in: .capsule)
