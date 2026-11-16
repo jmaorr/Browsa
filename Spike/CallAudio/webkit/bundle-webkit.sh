@@ -7,6 +7,10 @@
 # Contents/Frameworks dyld uses the system's, so removing the bundled WebKit falls back by itself).
 #
 #   bundle-webkit.sh <app> <webkit build folder> [signing identity] [--no-inspector]
+#   BUNDLE_MAJOR=26 bundle-webkit.sh ...   puts it in Contents/Frameworks/WebKit-26 (one build per macOS major; the app's
+#                                          Browsa-webkit-26 executable is linked with -dyld_env ...=@executable_path/../Frameworks/WebKit-26),
+#                                          its label in Resources/BROWSA_WEBKIT-26.txt and, with BUNDLE_MINIMUM_OS=26.0,
+#                                          Resources/WebKit-26.minimum
 #
 # WebKit's XPC services (GPU, Networking, WebContent) become real copies in WebKit.framework/Versions/A/XPCServices;
 # their own LC_DYLD_ENVIRONMENT is rewritten for that place (set-dyld-env.py). Headers, modules and test frameworks
@@ -15,7 +19,8 @@ set -euo pipefail
 here="${0:A:h}"
 app="${1:?app}"; fw="${2:?webkit build folder}"; identity="${3:-Apple Development}"
 inspector=1; [[ "${4:-}" == --no-inspector ]] && inspector=0
-dest="$app/Contents/Frameworks"
+major="${BUNDLE_MAJOR:-}"
+dest="$app/Contents/Frameworks${major:+/WebKit-$major}"
 mkdir -p "$dest"
 
 frameworks=(JavaScriptCore WebCore WebGPU WebKit WebKitLegacy _WebKit_SwiftUI)
@@ -31,7 +36,8 @@ for f in libwebrtc.dylib libANGLE-shared.dylib; do cp -c "$fw/$f" "$dest/$f"; do
 # Only code goes in Frameworks. ANGLE's shaders are compiled into libANGLE and the media quirk scripts into WebCore,
 # so the loose .metallib / .js files in the build folder aren't needed. The build's label goes with the resources.
 rm -f "$dest"/{ANGLEMetalLib.metallib,CNNCaptionQuirk.js,YouTubeCaptionQuirk.js,minidom.js,BROWSA_WEBKIT.txt}
-[[ -e "$fw/BROWSA_WEBKIT.txt" ]] && cp "$fw/BROWSA_WEBKIT.txt" "$app/Contents/Resources/BROWSA_WEBKIT.txt"
+[[ -e "$fw/BROWSA_WEBKIT.txt" ]] && cp "$fw/BROWSA_WEBKIT.txt" "$app/Contents/Resources/BROWSA_WEBKIT${major:+-$major}.txt"
+[[ -n "$major" && -n "${BUNDLE_MINIMUM_OS:-}" ]] && echo "$BUNDLE_MINIMUM_OS" > "$app/Contents/Resources/WebKit-$major.minimum"
 
 # Real XPC services inside WebKit.framework (the build has symlinks to the top-level ones).
 xpcdir="$dest/WebKit.framework/Versions/A/XPCServices"

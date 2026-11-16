@@ -868,3 +868,73 @@ index 7144ddbe86..31708fe4ed 100644
          callback();
          return;
      }
+diff --git a/Source/WebKit/UIProcess/PhoneNumberPossession/Cocoa/MockPhoneNumberPossessionManager.swift b/Source/WebKit/UIProcess/PhoneNumberPossession/Cocoa/MockPhoneNumberPossessionManager.swift
+index 09ae024d02..836ec43214 100644
+--- a/Source/WebKit/UIProcess/PhoneNumberPossession/Cocoa/MockPhoneNumberPossessionManager.swift
++++ b/Source/WebKit/UIProcess/PhoneNumberPossession/Cocoa/MockPhoneNumberPossessionManager.swift
+@@ -87,7 +87,7 @@ final class MockPhoneNumberPossessionManager: PhoneNumberPossessionManaging {
+         #endif
+ 
+         let clientData = ClientData(
+-            challenge: challenge.base64EncodedString(options: [.base64URLAlphabet, .omitPaddingCharacter]),
++            challenge: challenge.browsaBase64URLNoPadding(),
+             requestContext: "web browser",
+             rpId: request.pointee.relyingPartyIdentifier.description
+         )
+@@ -96,10 +96,10 @@ final class MockPhoneNumberPossessionManager: PhoneNumberPossessionManaging {
+ 
+         // A real one is encrypted.
+         let result = EncryptedResult(
+-            pnpi: Data(repeating: 0x01, count: 32).base64EncodedString(options: [.base64URLAlphabet, .omitPaddingCharacter]),
+-            zkProof: Data(repeating: 0x02, count: 64).base64EncodedString(options: [.base64URLAlphabet, .omitPaddingCharacter]),
++            pnpi: Data(repeating: 0x01, count: 32).browsaBase64URLNoPadding(),
++            zkProof: Data(repeating: 0x02, count: 64).browsaBase64URLNoPadding(),
+             msisdn: phoneNumberRequested
+-                ? Data(repeating: 0x07, count: 16).base64EncodedString(options: [.base64URLAlphabet, .omitPaddingCharacter]) : nil
++                ? Data(repeating: 0x07, count: 16).browsaBase64URLNoPadding() : nil
+         )
+ 
+         let encoder = JSONEncoder()
+@@ -164,3 +164,11 @@ private func data(_ bytes: Span<UInt8>) -> Data {
+ #endif
+ 
+ #endif // ENABLE_PHONE_NUMBER_POSSESSION
++
++// Browsa: the base64url options are macOS 26.4+, and Browsa's WebKit builds for 26.0 (Spike/CallAudio/webkit).
++private extension Data {
++    func browsaBase64URLNoPadding() -> String {
++        base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
++            .replacingOccurrences(of: "=", with: "")
++    }
++}
+diff --git a/Source/WebKit/WebKitSwift/CredentialUpdaterShim.swift b/Source/WebKit/WebKitSwift/CredentialUpdaterShim.swift
+index 9a8f624aca..ac0d8c576e 100644
+--- a/Source/WebKit/WebKitSwift/CredentialUpdaterShim.swift
++++ b/Source/WebKit/WebKitSwift/CredentialUpdaterShim.swift
+@@ -32,6 +32,8 @@ import Foundation
+ extension CredentialUpdaterShim {
+     @concurrent
+     class func signalUnknownCredential(withRelyingPartyIdentifier relyingPartyIdentifier: String, credentialID: Data) async throws {
++        // Browsa: macOS 26.2+ API; Browsa's WebKit builds for 26.0, where passkey signals are skipped.
++        guard #available(macOS 26.2, *) else { return }
+         try await ASCredentialDataManager()
+             .reportUnknownPublicKeyCredential(relyingPartyIdentifier: relyingPartyIdentifier, credentialID: credentialID)
+     }
+@@ -42,6 +44,8 @@ extension CredentialUpdaterShim {
+         userHandle: Data,
+         acceptedCredentialIDs: [Data]
+     ) async throws {
++        // Browsa: macOS 26.2+ API; Browsa's WebKit builds for 26.0, where passkey signals are skipped.
++        guard #available(macOS 26.2, *) else { return }
+         try await ASCredentialDataManager()
+             .reportAllAcceptedPublicKeyCredentials(
+                 relyingPartyIdentifier: relyingPartyIdentifier,
+@@ -56,6 +60,8 @@ extension CredentialUpdaterShim {
+         userHandle: Data,
+         newName: String
+     ) async throws {
++        // Browsa: macOS 26.2+ API; Browsa's WebKit builds for 26.0, where passkey signals are skipped.
++        guard #available(macOS 26.2, *) else { return }
+         try await ASCredentialDataManager()
+             .reportPublicKeyCredentialUpdate(relyingPartyIdentifier: relyingPartyIdentifier, userHandle: userHandle, newName: newName)
+     }

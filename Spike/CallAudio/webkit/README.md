@@ -1,6 +1,7 @@
 # Spike C: Browsa's call audio inside WebKit
 
-A patch for WebKit (builds against the commit in `WEBKIT_COMMIT`), small edits plus two headers.
+A patch for WebKit (builds against the commit in `WEBKIT_COMMIT`), small edits plus two headers, and two
+availability guards so it also builds for macOS 26.0 (see BUNDLING.md).
 `webkit.patch` is a real `git diff` from that tree (it includes `BrowsaCallAudioInternalUnit.h`), so
 `git apply` works; `BrowsaAudioTimeline.h` and `BrowsaCallGuard.h` still come from `../core/AudioTimeline.h` and
 `../core/CallGuard.h`:

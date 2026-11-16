@@ -46,8 +46,21 @@ enum PatchedWebKit {
 
     /// What the build says about itself (`BROWSA_WEBKIT.txt` in the folder: branch, commit, date), if anything.
     static var buildInfo: String? {
-        (try? String(contentsOfFile: (isActive ? activeFolder : folder) + "/BROWSA_WEBKIT.txt", encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let folder = isActive ? activeFolder : folder
+        // Bundled in the app (Contents/Frameworks[/WebKit-<major>]): its label is with the app's resources.
+        let candidates = bundledChoice == nil ? [folder + "/BROWSA_WEBKIT.txt"] : [
+            Bundle.main.resourcePath.map { $0 + "/BROWSA_WEBKIT-" + URL(fileURLWithPath: folder).lastPathComponent.replacingOccurrences(of: "WebKit-", with: "") + ".txt" },
+            Bundle.main.resourcePath.map { $0 + "/BROWSA_WEBKIT.txt" },
+        ].compactMap { $0 }
+        for path in candidates {
+            if let text = try? String(contentsOfFile: path, encoding: .utf8) { return text.trimmingCharacters(in: .whitespacesAndNewlines) }
+        }
+        return nil
     }
+
+    /// What the app's launcher chose, when Browsa ships its WebKit inside the app (Spike/CallAudio/webkit/launcher):
+    /// used, old-os, new-os, off or missing. Nil for builds without the launcher.
+    static let bundledChoice: String? = ProcessInfo.processInfo.environment["BROWSA_BUNDLED_WEBKIT"]
 
     /// Before main() (PatchedWebKitStart.c). Either doesn't return (Browsa runs again on its WebKit) or leaves
     /// things as they are.
@@ -101,6 +114,14 @@ enum PatchedWebKit {
 
     /// Settings › Audio.
     static var statusText: String {
+        if !isActive, let choice = bundledChoice {
+            switch choice {
+            case "old-os": return "Apple's WebKit (Browsa's needs a newer macOS)"
+            case "new-os": return "Apple's WebKit (no Browsa WebKit for this macOS yet)"
+            case "off": return "Apple's WebKit (Browsa's WebKit is switched off)"
+            default: return "Apple's WebKit"
+            }
+        }
         switch reason {
         case .active: return "Browsa's WebKit" + (buildInfo.map { " (\($0))" } ?? "")
         case .disabled: return "System WebKit (Browsa's WebKit is switched off)"

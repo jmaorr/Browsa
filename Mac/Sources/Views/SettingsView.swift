@@ -313,7 +313,7 @@ private struct AudioSettings: View {
         Form {
             // Only where Browsa's WebKit is on this Mac (a local build); everyone else has system WebKit and call tabs,
             // and these switches would do nothing.
-            if PatchedWebKit.isActive || PatchedWebKit.buildPresent {
+            if PatchedWebKit.isActive || PatchedWebKit.buildPresent || PatchedWebKit.bundledChoice != nil {
             Section {
                 LabeledContent("WebKit", value: PatchedWebKit.statusText)
                 Toggle("Use Browsa's WebKit when it's on this Mac", isOn: $usePatchedWebKit)

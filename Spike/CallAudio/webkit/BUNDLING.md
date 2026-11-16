@@ -55,9 +55,10 @@ deployed layout (`DEPLOYMENT_LOCATION = YES`, where `WK_PATH_FROM_SERVICE_EXECUT
 | Mac | WebKit | Call audio |
 |---|---|---|
 | macOS 26.7 or later 26.x, Apple silicon | Browsa's, bundled | Browsa's (WebRTC processing in the capture unit, join warm-up, gain only while you talk) |
-| macOS 26.0-26.6 | Apple's | macOS voice processing, like Safari (unless WebKit can be built for 26.0: being tried) |
+| macOS 26.0-26.6 | Browsa's, bundled (the 26.x build targets 26.0) | Browsa's |
 | Intel | Apple's | macOS voice processing |
-| a newer major macOS (27) before a build for it | Apple's | macOS voice processing |
+| macOS 27.x | Browsa's once a 27 build ships (built here with Xcode 27.2's SDK; untested until a Mac on 27 runs it) | Browsa's, else macOS voice processing |
+| a newer major before a build for it, or older than 26 | Apple's | macOS voice processing |
 
 The in-page call audio script is off by default everywhere (an experimental option on Apple's WebKit).
 
@@ -138,3 +139,24 @@ x86_64 build. An Intel Mac (or a long run under Rosetta) is needed to test it.
 - Bundling and signing as in `bundle-webkit.sh`, then the existing archive → Developer ID export → notarise → Sparkle
   steps. Sparkle deltas keep updates small when only Browsa changes.
 - The bench (tools/audio-bench) run against each new WebKit before release.
+
+## One build per macOS major (2026-11-16)
+
+Trunk WebKit at-desk builds target the host's macOS (26.7 here). Built with `MACOSX_DEPLOYMENT_TARGET=26.0
+WK_MACOSX_DEPLOYMENT_TARGET=26.0` (separate output folder, `WEBKIT_OUTPUTDIR=WebKitBuild-26.0`), everything compiles
+for 26.0 except two Swift files that use newer point-release APIs; both now have guards in `webkit.patch`:
+`MockPhoneNumberPossessionManager.swift` (base64url options, macOS 26.4: replaced by an equivalent) and
+`CredentialUpdaterShim.swift` (passkey signal APIs, macOS 26.2: skipped below it). All frameworks, libwebrtc, ANGLE
+and the three services then say `minos 26.0`. Swift checks availability at compile time; Objective-C/C++ uses of
+newer APIs that aren't guarded would only show up at run time, so a run on a real 26.0 Mac (or a 26.0 VM on this
+Mac) is still needed. A macOS 27 build is the same with 27.0, with this Mac's Xcode 27.2 SDK; a Mac on 27 must test it
+(a VM can't run a newer macOS than its host).
+
+App layout: each major's WebKit in `Contents/Frameworks/WebKit-<major>` with an executable `Browsa-webkit-<major>`
+linked to it (`-dyld_env DYLD_FRAMEWORK_PATH=@executable_path/../Frameworks/WebKit-<major>`), its minimum in
+`Resources/WebKit-<major>.minimum`, its label in `Resources/BROWSA_WEBKIT-<major>.txt`; the launcher picks by the
+running major (`BUNDLE_MAJOR=26 BUNDLE_MINIMUM_OS=26.0 bundle-webkit.sh ...` assembles one). Checked on "Browsa Bundled
+(per-major)" with the 26.0 build: real 26.7.2 and simulated 26.0 → the 26 build (helpers inside the app); simulated
+25.6 → old-os, simulated 27.0 (no 27 build yet) → new-os, both Apple's WebKit. Each major adds one WebKit
+(155 MB stripped, ~57 MB zipped) and one executable (16 MB); with one major the app is 181 MB / 73 MB zipped. With
+several, downloading the matching WebKit on first run keeps the app small.

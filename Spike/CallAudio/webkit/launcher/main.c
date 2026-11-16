@@ -1,15 +1,19 @@
 // Browsa's main executable when Browsa ships with its own WebKit inside the app (Spike/CallAudio/webkit/BUNDLING.md).
-// It decides, before anything else loads, which of two real executables to run in this same process:
-//   Contents/MacOS/Browsa-webkit   linked with LC_DYLD_ENVIRONMENT -> Contents/Frameworks (the bundled WebKit)
-//   Contents/MacOS/Browsa-system   the same app without it (Apple's WebKit)
+// It decides, before anything else loads, which real executable to run in this same process:
+//   Contents/MacOS/Browsa-webkit-<major>  linked with LC_DYLD_ENVIRONMENT -> Contents/Frameworks/WebKit-<major>, the
+//                                         WebKit built for that macOS major (one per supported major: 26, 27, ...)
+//   Contents/MacOS/Browsa-webkit          the single-build layout: -> Contents/Frameworks
+//   Contents/MacOS/Browsa-system          the same app without it (Apple's WebKit)
 // Both are signed normally with the app's identity and entitlements, so neither needs a Hardened Runtime exception,
 // and exec keeps the process (camera and mic stay Browsa's; the launch's Apple events reach the new image, since
 // nothing here checks in with macOS).
 //
-// The bundled WebKit is used when it's there, Settings hasn't switched it off (defaults key patchedWebKit), and the
-// running macOS is within the range in Contents/Resources/BrowsaWebKitOS.txt ("<minimum version> <highest major>",
-// e.g. "26.7 26"): it's built against one macOS and its private frameworks. BROWSA_OS_VERSION_OVERRIDE pretends to be
-// another macOS (tests). The choice goes to the app as BROWSA_BUNDLED_WEBKIT=<used|old-os|new-os|off|missing>.
+// A bundled WebKit is used when Settings hasn't switched it off (defaults key patchedWebKit) and there is one for the
+// running macOS major: Contents/Frameworks/WebKit-<major> with Browsa-webkit-<major> (its minimum version, if not
+// <major>.0, in Contents/Resources/WebKit-<major>.minimum), or the single-build layout described by
+// Contents/Resources/BrowsaWebKitOS.txt ("<minimum version> <highest major>", e.g. "26.0 26"). Each is built against
+// one macOS major and its private frameworks. BROWSA_OS_VERSION_OVERRIDE pretends to be another macOS (tests). The
+// choice goes to the app as BROWSA_BUNDLED_WEBKIT=<used|old-os|new-os|off|missing>.
 #include <CoreFoundation/CoreFoundation.h>
 #include <libgen.h>
 #include <limits.h>
@@ -41,37 +45,64 @@ int main(int argc, char* argv[]) {
     snprintf(contents, sizeof(contents), "%s/..", macos);
 
     const char* reason = "used";
-    snprintf(path, sizeof(path), "%s/Frameworks/WebKit.framework/Versions/A/WebKit", contents);
+    char chosen[PATH_MAX] = "Browsa-webkit";
     struct stat st;
-    if (stat(path, &st)) reason = "missing";
+
+    CFStringRef bundle = CFStringCreateWithCString(NULL, "com.orriginal.browsa", kCFStringEncodingUTF8);
+    CFBundleRef main = CFBundleGetMainBundle();
+    if (main && CFBundleGetIdentifier(main)) { CFRelease(bundle); bundle = (CFStringRef)CFRetain(CFBundleGetIdentifier(main)); }
+    CFPropertyListRef on = CFPreferencesCopyAppValue(CFSTR("patchedWebKit"), bundle);
+    if (on && CFGetTypeID(on) == CFBooleanGetTypeID() && !CFBooleanGetValue((CFBooleanRef)on)) reason = "off";
+    if (on) CFRelease(on);
+    CFRelease(bundle);
+    const char* env = getenv("BROWSA_PATCHED_WEBKIT");
+    if (env && !strcmp(env, "0")) reason = "off";
+
+    char os[64] = "";
+    const char* override = getenv("BROWSA_OS_VERSION_OVERRIDE");
+    if (override) strlcpy(os, override, sizeof(os));
+    else { size_t n = sizeof(os); sysctlbyname("kern.osproductversion", os, &n, NULL, 0); }
+    const long major = atol(os);
 
     if (!strcmp(reason, "used")) {
-        CFStringRef bundle = CFStringCreateWithCString(NULL, "com.orriginal.browsa", kCFStringEncodingUTF8);
-        CFBundleRef main = CFBundleGetMainBundle();
-        if (main && CFBundleGetIdentifier(main)) { CFRelease(bundle); bundle = (CFStringRef)CFRetain(CFBundleGetIdentifier(main)); }
-        CFPropertyListRef on = CFPreferencesCopyAppValue(CFSTR("patchedWebKit"), bundle);
-        if (on && CFGetTypeID(on) == CFBooleanGetTypeID() && !CFBooleanGetValue((CFBooleanRef)on)) reason = "off";
-        if (on) CFRelease(on);
-        CFRelease(bundle);
-        const char* env = getenv("BROWSA_PATCHED_WEBKIT");
-        if (env && !strcmp(env, "0")) reason = "off";
-    }
-
-    if (!strcmp(reason, "used")) {
-        char os[64] = "", minimum[64] = "0", top[16] = "999";
-        const char* override = getenv("BROWSA_OS_VERSION_OVERRIDE");
-        if (override) strlcpy(os, override, sizeof(os));
-        else { size_t n = sizeof(os); sysctlbyname("kern.osproductversion", os, &n, NULL, 0); }
-        snprintf(path, sizeof(path), "%s/Resources/BrowsaWebKitOS.txt", contents);
-        FILE* f = fopen(path, "r");
-        if (f) { if (fscanf(f, "%63s %15s", minimum, top) < 1) strlcpy(minimum, "999", sizeof(minimum)); fclose(f); }
-        else strlcpy(minimum, "999", sizeof(minimum));  // no range given: don't guess
-        if (version_cmp(os, minimum) < 0) reason = "old-os";
-        else if (atol(os) > atol(top)) reason = "new-os";
+        // One build per macOS major: WebKit-<major>.
+        snprintf(path, sizeof(path), "%s/Frameworks/WebKit-%ld/WebKit.framework/Versions/A/WebKit", contents, major);
+        if (!stat(path, &st)) {
+            char minimum[64];
+            snprintf(minimum, sizeof(minimum), "%ld.0", major);
+            snprintf(path, sizeof(path), "%s/Resources/WebKit-%ld.minimum", contents, major);
+            FILE* f = fopen(path, "r");
+            if (f) { if (fscanf(f, "%63s", minimum) != 1) snprintf(minimum, sizeof(minimum), "%ld.0", major); fclose(f); }
+            if (version_cmp(os, minimum) < 0) reason = "old-os";
+            snprintf(chosen, sizeof(chosen), "Browsa-webkit-%ld", major);
+        } else {
+            // The single-build layout.
+            snprintf(path, sizeof(path), "%s/Frameworks/WebKit.framework/Versions/A/WebKit", contents);
+            if (stat(path, &st)) {
+                // No build for this major: newer than any we have, or older.
+                reason = "missing";
+                for (long m = major + 1; m < major + 10; m++) {
+                    snprintf(path, sizeof(path), "%s/Frameworks/WebKit-%ld", contents, m);
+                    if (!stat(path, &st)) { reason = "old-os"; break; }
+                }
+                for (long m = major - 1; m > major - 10 && !strcmp(reason, "missing"); m--) {
+                    snprintf(path, sizeof(path), "%s/Frameworks/WebKit-%ld", contents, m);
+                    if (!stat(path, &st)) reason = "new-os";
+                }
+            } else {
+                char minimum[64] = "0", top[16] = "999";
+                snprintf(path, sizeof(path), "%s/Resources/BrowsaWebKitOS.txt", contents);
+                FILE* f = fopen(path, "r");
+                if (f) { if (fscanf(f, "%63s %15s", minimum, top) < 1) strlcpy(minimum, "999", sizeof(minimum)); fclose(f); }
+                else strlcpy(minimum, "999", sizeof(minimum));  // no range given: don't guess
+                if (version_cmp(os, minimum) < 0) reason = "old-os";
+                else if (major > atol(top)) reason = "new-os";
+            }
+        }
     }
 
     setenv("BROWSA_BUNDLED_WEBKIT", reason, 1);
-    snprintf(path, sizeof(path), "%s/%s", macos, strcmp(reason, "used") ? "Browsa-system" : "Browsa-webkit");
+    snprintf(path, sizeof(path), "%s/%s", macos, strcmp(reason, "used") ? "Browsa-system" : chosen);
     execv(path, argv);
     // The chosen one is missing: try the other before giving up.
     snprintf(path, sizeof(path), "%s/Browsa-system", macos);
