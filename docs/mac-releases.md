@@ -44,8 +44,9 @@ The script builds a clean export of the ref, then:
 6. Runs Sparkle's `generate_appcast`, which signs the zip with the EdDSA key, makes delta updates
    from the previous zips, and rewrites `appcast.xml`.
 
-It publishes nothing. Release notes go in `docs/release-notes/mac/<version>.md`, if you want
-them; Sparkle shows them in its update window.
+It publishes nothing. Release notes go in `docs/release-notes/mac/<version>.md`; Sparkle shows them in
+its update window. Write them before you run the script: [docs/release-notes/mac/README.md](release-notes/mac/README.md)
+has the template, the tone, and `tools/mac-changelog.sh` to list what changed since the last release.
 
 Keep the old zips in the releases folder. `generate_appcast` reads them all to build the appcast's
 history and the delta updates.

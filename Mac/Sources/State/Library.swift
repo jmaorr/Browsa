@@ -65,6 +65,8 @@ final class Library {
     /// Coding agents over MCP. Made after everything else, since it reaches back into the library.
     @ObservationIgnored private(set) var agents: AgentBridge!
     var downloads: [EngineDownload] = []
+    /// Permission answers given in private tabs, by host. Kept in memory and dropped with the private space.
+    @ObservationIgnored var privatePermissions: [String: [String: Bool]] = [:]
     var filterStatus = FilterStatus()
     /// Tabs closed this session, newest last, for Shift-Cmd-T. Never private tabs.
     private(set) var recentlyClosed: [BrowserTab] = []
@@ -140,6 +142,7 @@ final class Library {
         reloadExtensions()
         agents = AgentBridge(library: self)
         BuiltInTools.register(in: workbench)
+        SpaceRouter.register(in: workbench, library: self)
         NotesUI.installPageMenu(library: self)
         #if !SPIKE
         // SpikeBrowsa sets mock servers instead. Radar only looks at this Mac's ports while it's on
@@ -260,6 +263,15 @@ final class Library {
 
     /// Opens a window through SwiftUI. Set by the first window that appears.
     @ObservationIgnored var openWindowAction: (() -> Void)?
+    /// Opens (or brings forward) the Settings window. Set by the first browser window.
+    @ObservationIgnored var openSettingsAction: (() -> Void)?
+
+    /// Opens Settings, on a given pane ("spaces", "agents"…) if asked.
+    func openSettings(pane: String? = nil) {
+        if let pane { UserDefaults.standard.set(pane, forKey: "settingsTab") }
+        openSettingsAction?()
+        NSApp.activate()
+    }
     @ObservationIgnored private var windowRequests: [WindowRequest] = []
 
     /// Opens a new window, showing `request` (or a new-tab command bar).
@@ -574,6 +586,7 @@ final class Library {
         }
         for w in windows where w.selectedSpaceID == space.id { w.leaveSpace() }
         spaces.removeAll { $0.id == space.id }
+        privatePermissions = [:]
         engine.resetEphemeralProfile()
         scheduleSave()
     }
@@ -739,6 +752,14 @@ extension Library: EngineExtensionHost {
                                     isFocused: w === focused, isPrivate: space.isPrivate,
                                     frame: w.nsWindow?.frame ?? .zero)
         }
+    }
+
+    /// chrome.sidePanel.open, or a toolbar click on an extension that asked for its panel instead.
+    func showExtensionPanel(extensionID: String) -> Bool {
+        let id = "ext:" + extensionID
+        guard workbench.tool(id) != nil, let window = activeWindow else { return false }
+        window.showPanel(id)
+        return true
     }
 
     func focusExtensionWindow(_ id: UUID) {
