@@ -50,6 +50,28 @@ deployed layout (`DEPLOYMENT_LOCATION = YES`, where `WK_PATH_FROM_SERVICE_EXECUT
 
 (CEF, for Chromium call tabs, is another 326 MB unzipped today.)
 
+## Support matrix (Chromium call tabs removed, 1954f68)
+
+| Mac | WebKit | Call audio |
+|---|---|---|
+| macOS 26.7 or later 26.x, Apple silicon | Browsa's, bundled | Browsa's (WebRTC processing in the capture unit, join warm-up, gain only while you talk) |
+| macOS 26.0-26.6 | Apple's | macOS voice processing, like Safari (unless WebKit can be built for 26.0: being tried) |
+| Intel | Apple's | macOS voice processing |
+| a newer major macOS (27) before a build for it | Apple's | macOS voice processing |
+
+The in-page call audio script is off by default everywhere (an experimental option on Apple's WebKit).
+
+## Sizes (zipped = what a download would be)
+
+| | on disk | zipped |
+|---|---|---|
+| public 1.0 (before call tabs) | | 16 MB |
+| today's app with Chromium, no bundled WebKit | 361 MB | 156 MB |
+| with Chromium + bundled WebKit (unstripped) | 661 MB | 234 MB |
+| no Chromium, no bundled WebKit | 30 MB | 15 MB |
+| no Chromium + bundled WebKit (unstripped) | 328 MB | 93 MB |
+| **no Chromium + bundled WebKit, stripped (release estimate)** | **181 MB** | **73 MB** |
+
 ## Older (and newer) macOS: a launcher that picks, with no exception
 
 `LC_DYLD_ENVIRONMENT` can't depend on the OS, so the app gets a tiny main executable (`launcher/main.c`, 51 KB,
