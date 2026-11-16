@@ -199,9 +199,10 @@ final class Library {
         windowsByAge.removeAll { $0 === window }
         // Closing one of several windows archives its Today tabs, like Arc. The last window's tabs,
         // and every window's when quitting, stay put for the next window to pick up.
-        let archives = !windows.isEmpty && !isTerminating
-        windowLog.info("Window \(window.windowKey, privacy: .public) closed; open: \(self.windows.count), terminating: \(self.isTerminating), archiving: \(archives)")
-        if archives { archiveTabs(of: window) }
+        if !windows.isEmpty, !isTerminating {
+            let count = archiveTabs(of: window)
+            windowLog.debug("Closed a window: \(count) tabs to the archive")
+        }
         scheduleSave()
     }
 
@@ -219,10 +220,11 @@ final class Library {
     }
 
     /// A closed window's Today tabs go to the archive (private ones just close).
-    private func archiveTabs(of window: Browser) {
+    @discardableResult
+    private func archiveTabs(of window: Browser) -> Int {
+        var count = 0
         for space in spaces {
             let leaving = space.today.filter { $0.favoriteID == nil && $0.windowKey == window.windowKey }
-            windowLog.info("Space \(space.name, privacy: .public): \(leaving.count) of \(space.today.count) Today tabs belong to the closed window; tab windows: \(space.today.map { $0.windowKey.map { String($0.uuidString.prefix(8)) } ?? "none" }.joined(separator: ","), privacy: .public)")
             guard !leaving.isEmpty else { continue }
             for tab in leaving where tab.isPrivate { close(tab) }
             let kept = leaving.filter { !$0.isPrivate }
@@ -233,8 +235,10 @@ final class Library {
                 tab.windowKey = nil
             }
             archive.insert(contentsOf: kept.filter { $0.url != nil }, at: 0)
+            count += kept.count
         }
         archive = Array(archive.prefix(500))
+        return count
     }
 
     /// The window someone's using, for things that arrive from outside (links, downloads).
