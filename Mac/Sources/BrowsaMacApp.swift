@@ -61,7 +61,7 @@ private struct WindowRoot: View {
                 let saved = UUID(uuidString: windowKey).flatMap { key in library.windows.contains { $0.windowKey == key } ? nil : key }
                 let key = saved ?? UUID()
                 windowKey = key.uuidString
-                browser = Browser(library: library, windowKey: key)
+                browser = Browser(library: library, windowKey: key, isNewWindow: saved == nil)
             }
         }
         .onDisappear {

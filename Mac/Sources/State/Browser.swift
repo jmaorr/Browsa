@@ -15,6 +15,9 @@ final class Browser {
     /// Names the window across launches (SwiftUI restores it with the window), so each window
     /// gets its own Today tabs back. Saved on those tabs as `BrowserTab.windowKey`.
     let windowKey: UUID
+    /// Opened just now rather than restored from the last launch, so it takes its size from the
+    /// window in use (see `WindowSizing`).
+    let isNewWindow: Bool
     var selectedSpaceID: UUID
     /// The tab this window shows in each space it has visited. Two windows never show the same tab.
     private var tabSelection: [UUID: UUID] = [:]
@@ -62,9 +65,10 @@ final class Browser {
     @ObservationIgnored private var spaceBeforePrivate: UUID?
     @ObservationIgnored var lastCookieToastURL: URL?
 
-    init(library: Library, windowKey: UUID = UUID()) {
+    init(library: Library, windowKey: UUID = UUID(), isNewWindow: Bool = true) {
         self.library = library
         self.windowKey = windowKey
+        self.isNewWindow = isNewWindow
         isSidebarDocked = Preferences.sidebarDocked
         sidebarWidth = Preferences.sidebarWidth
         panelWidth = Preferences.panelWidth
