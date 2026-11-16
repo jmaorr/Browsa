@@ -26,6 +26,9 @@ final class Browser {
     var isSidebarDocked: Bool { didSet { Preferences.sidebarDocked = isSidebarDocked } }
     /// The undocked sidebar is showing over the page.
     var isSidebarPeeking = false
+    /// The window is in macOS full screen. Its traffic lights then live in the title bar that drops
+    /// down with the menu bar, not in the sidebar.
+    var isFullScreen = false
     /// True while the sidebar docks or hides. The page keeps one size meanwhile and resizes once.
     private(set) var isSidebarMoving = false
     var sidebarWidth: CGFloat { didSet { Preferences.sidebarWidth = sidebarWidth } }

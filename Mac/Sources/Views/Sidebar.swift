@@ -48,8 +48,9 @@ struct Sidebar: View {
     /// the right edge, like Arc.
     private var topRow: some View {
         HStack(spacing: 2) {
-            // The traffic lights sit here when docked. Floating, they're hidden.
-            Spacer().frame(width: isFloating ? 0 : 76)
+            // The traffic lights sit here when docked. Floating, they're hidden; in full screen they
+            // drop down with the menu bar instead, so the row starts at the edge.
+            Spacer().frame(width: isFloating || browser.isFullScreen ? 0 : 76)
             SidebarIconButton(symbol: "sidebar.left", help: Shortcuts.shared.help(browser.isSidebarDocked ? "Hide Sidebar" : "Keep Sidebar Open", .sidebar)) {
                 browser.toggleSidebar()
             }

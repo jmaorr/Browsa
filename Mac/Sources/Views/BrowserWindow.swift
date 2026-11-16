@@ -6,6 +6,10 @@ import BrowserCore
 struct BrowserWindow: View {
     @Environment(Browser.self) private var browser
     @Environment(\.colorScheme) private var colorScheme
+    /// Hides the peeking sidebar a moment after the pointer leaves it. Cancelled if the pointer comes
+    /// back first, so a brief exit (a tooltip, a menu, the full-screen menu bar dropping over it)
+    /// doesn't snap the sidebar away and back.
+    @State private var peekHide: Task<Void, Never>?
 
     var body: some View {
         @Bindable var browser = browser
@@ -34,6 +38,21 @@ struct BrowserWindow: View {
         .background(WindowAccessor { window in configure(window) })
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
             if let window = note.object as? NSWindow, window === browser.nsWindow { browser.library.markActive(browser) }
+        }
+        // Full screen moves the traffic lights out of the sidebar and into the title bar that drops
+        // down with the menu bar. AppKit rebuilds that title bar on the way in and out, so the
+        // buttons are set up again each time.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { note in
+            fullScreenChanged(note, to: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { note in
+            fullScreenChanged(note, to: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { note in
+            fullScreenChanged(note, to: false)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { note in
+            fullScreenChanged(note, to: false)
         }
         .sheet(item: Binding(
             get: { browser.activePrompt },
@@ -68,7 +87,11 @@ struct BrowserWindow: View {
             Color.clear
                 .frame(width: 10)
                 .contentShape(.rect)
-                .onHover { if $0 { withAnimation(Motion.peek) { browser.isSidebarPeeking = true } } }
+                .onHover { inside in
+                    guard inside else { return }
+                    peekHide?.cancel()
+                    if !browser.isSidebarPeeking { withAnimation(Motion.peek) { browser.isSidebarPeeking = true } }
+                }
             if browser.isSidebarPeeking {
                 Sidebar(isFloating: true)
                     .frame(width: browser.sidebarWidth)
@@ -82,10 +105,13 @@ struct BrowserWindow: View {
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.primary.opacity(0.08)))
                     .shadow(color: .black.opacity(0.2), radius: 16, x: 4)
                     .padding(6)
+                    .contentShape(.rect)
                     .onHover { inside in
+                        peekHide?.cancel()
                         guard !inside else { return }
-                        Task { @MainActor in
+                        peekHide = Task { @MainActor in
                             try? await Task.sleep(for: .milliseconds(250))
+                            guard !Task.isCancelled else { return }
                             withAnimation(Motion.peek) { browser.isSidebarPeeking = false }
                         }
                     }
@@ -102,14 +128,27 @@ struct BrowserWindow: View {
             window.tabbingMode = .disallowed
             WindowSizing.attach(window)
         }
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.isMovableByWindowBackground = false
-        // The traffic lights live in the sidebar, so they go when it does.
-        let showLights = browser.isSidebarDocked
+        // Only what changed: this runs on every update of the window's view, and resetting title bar
+        // properties makes AppKit lay the title bar out again (in full screen, a visible flicker).
+        if !window.titlebarAppearsTransparent { window.titlebarAppearsTransparent = true }
+        if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
+        if window.isMovableByWindowBackground { window.isMovableByWindowBackground = false }
+        // The traffic lights live in the sidebar, so they go when it does. In full screen they're in
+        // the title bar that drops down with the menu bar, so they stay, whatever the sidebar does.
+        let fullScreen = window.styleMask.contains(.fullScreen) || browser.isFullScreen
+        let showLights = browser.isSidebarDocked || fullScreen
         for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-            window.standardWindowButton(kind)?.isHidden = !showLights
+            guard let button = window.standardWindowButton(kind), button.isHidden == showLights else { continue }
+            button.isHidden = !showLights
         }
+    }
+
+    private func fullScreenChanged(_ note: Notification, to fullScreen: Bool) {
+        guard let window = note.object as? NSWindow, window === browser.nsWindow else { return }
+        if browser.isFullScreen != fullScreen { browser.isFullScreen = fullScreen }
+        configure(window)
+        // AppKit finishes moving the title bar after the notification; check the buttons once more.
+        DispatchQueue.main.async { configure(window) }
     }
 }
 
