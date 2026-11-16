@@ -651,6 +651,11 @@ struct FavoriteTile: View {
             .background { if isLifted { SunkenSlot(cornerRadius: 12, active: dragging.target?.isFavourite == true) } }
             .contentShape(.rect)
             .onTapGesture { browser.open(favorite) }
+            // A tap gesture alone gives VoiceOver nothing to press.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(favorite.displayName)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { browser.open(favorite) }
             .onHover { hovering = $0 }
             .help(favorite.displayName)
             .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .named(SidebarDragging.coordinateSpace))
