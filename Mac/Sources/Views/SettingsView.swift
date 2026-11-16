@@ -6,22 +6,52 @@ import BrowserEngine
 import Suggest
 import Extensibility
 
-/// Browsa > Settings (Cmd-,).
+/// Browsa > Settings (Cmd-,): a sidebar of panes, like System Settings, so each pane has room to grow.
 struct SettingsView: View {
     @AppStorage("settingsTab") private var tab = "general"
 
+    struct Pane: Identifiable {
+        let id: String
+        let title: String
+        let symbol: String
+    }
+
+    static let panes: [Pane] = [
+        Pane(id: "general", title: "General", symbol: "gearshape"),
+        Pane(id: "spaces", title: "Spaces", symbol: "square.stack"),
+        Pane(id: "routing", title: "Routing", symbol: "arrow.triangle.branch"),
+        Pane(id: "shortcuts", title: "Shortcuts", symbol: "keyboard"),
+        Pane(id: "privacy", title: "Privacy", symbol: "hand.raised"),
+        Pane(id: "audio", title: "Audio", symbol: "waveform"),
+        Pane(id: "agents", title: "Agents", symbol: AgentIdentity.symbol),
+        Pane(id: "engine", title: "Engine", symbol: "cpu"),
+    ]
+
     var body: some View {
-        TabView(selection: $tab) {
-            GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }.tag("general")
-            SpacesSettings().tabItem { Label("Spaces", systemImage: "square.stack") }.tag("spaces")
-            ShortcutSettings().tabItem { Label("Shortcuts", systemImage: "keyboard") }.tag("shortcuts")
-            PrivacySettings().tabItem { Label("Privacy", systemImage: "hand.raised") }.tag("privacy")
-            AudioSettings().tabItem { Label("Audio", systemImage: "waveform") }.tag("audio")
-            AgentSettings().tabItem { Label("Agents", systemImage: AgentIdentity.symbol) }.tag("agents")
-            EngineSettings().tabItem { Label("Engine", systemImage: "cpu") }.tag("engine")
+        NavigationSplitView {
+            List(Self.panes, selection: Binding(get: { Optional(tab) }, set: { if let t = $0 { tab = t } })) { pane in
+                Label(pane.title, systemImage: pane.symbol).tag(pane.id)
+            }
+            .navigationSplitViewColumnWidth(min: 200, ideal: 210, max: 260)
+            .toolbar(removing: .sidebarToggle)
+        } detail: {
+            pane
+                .navigationTitle(Self.panes.first { $0.id == tab }?.title ?? "Settings")
         }
-        .frame(width: 520)
-        .scenePadding()
+        .frame(minWidth: 760, idealWidth: 800, minHeight: 520, idealHeight: 600)
+    }
+
+    @ViewBuilder private var pane: some View {
+        switch tab {
+        case "spaces": SpacesSettings()
+        case "routing": SpaceRoutingSettings()
+        case "shortcuts": ShortcutSettings()
+        case "privacy": PrivacySettings()
+        case "audio": AudioSettings()
+        case "agents": AgentSettings()
+        case "engine": EngineSettings()
+        default: GeneralSettings()
+        }
     }
 }
 
@@ -644,7 +674,7 @@ private struct ShortcutSettings: View {
             .padding(.top, 12)
             shortcutList
         }
-        .frame(height: 560)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var shortcutList: some View {

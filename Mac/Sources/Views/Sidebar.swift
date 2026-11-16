@@ -86,7 +86,7 @@ struct Sidebar: View {
                 Divider()
                 Button("Archived Tabs…", systemImage: "archivebox") { browser.isArchivePresented = true }
                 Button("Library", systemImage: "square.grid.2x2") { browser.openLibrary() }
-                SettingsLink { Label("Settings…", systemImage: "gearshape") }
+                Button("Settings…", systemImage: "gearshape") { browser.library.openSettings() }
             } label: {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 13, weight: .medium))
@@ -718,7 +718,7 @@ struct SpaceSwitcher: View {
                             withAnimation(Motion.spring) { browser.closePrivateSpace() }
                         }
                     } else {
-                        SettingsLink { Label("Edit Spaces…", systemImage: "pencil") }
+                        Button("Edit Spaces…", systemImage: "pencil") { browser.library.openSettings(pane: "spaces") }
                         if browser.regularSpaces.count > 1 {
                             Button("Delete \(s.name)", systemImage: "trash", role: .destructive) {
                                 withAnimation(Motion.spring) { browser.deleteSpace(s) }
