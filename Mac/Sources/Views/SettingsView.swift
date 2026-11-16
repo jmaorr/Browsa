@@ -6,22 +6,57 @@ import BrowserEngine
 import Suggest
 import Extensibility
 
-/// Browsa > Settings (Cmd-,).
+/// Browsa > Settings (Cmd-,): a sidebar of panes, like System Settings, so each pane has room to grow.
 struct SettingsView: View {
     @AppStorage("settingsTab") private var tab = "general"
 
+    struct Pane: Identifiable {
+        let id: String
+        let title: String
+        let symbol: String
+    }
+
+    static let panes: [Pane] = [
+        Pane(id: "general", title: "General", symbol: "gearshape"),
+        Pane(id: "spaces", title: "Spaces", symbol: "square.stack"),
+        Pane(id: "routing", title: "Routing", symbol: "arrow.triangle.branch"),
+        Pane(id: "shortcuts", title: "Shortcuts", symbol: "keyboard"),
+        Pane(id: "privacy", title: "Privacy", symbol: "hand.raised"),
+        Pane(id: "audio", title: "Audio", symbol: "waveform"),
+        Pane(id: "agents", title: "Agents", symbol: AgentIdentity.symbol),
+        Pane(id: "engine", title: "Engine", symbol: "cpu"),
+    ]
+
     var body: some View {
-        TabView(selection: $tab) {
-            GeneralSettings().tabItem { Label("General", systemImage: "gearshape") }.tag("general")
-            SpacesSettings().tabItem { Label("Spaces", systemImage: "square.stack") }.tag("spaces")
-            ShortcutSettings().tabItem { Label("Shortcuts", systemImage: "keyboard") }.tag("shortcuts")
-            PrivacySettings().tabItem { Label("Privacy", systemImage: "hand.raised") }.tag("privacy")
-            AudioSettings().tabItem { Label("Audio", systemImage: "waveform") }.tag("audio")
-            AgentSettings().tabItem { Label("Agents", systemImage: AgentIdentity.symbol) }.tag("agents")
-            EngineSettings().tabItem { Label("Engine", systemImage: "cpu") }.tag("engine")
+        NavigationSplitView {
+            List(selection: Binding<String?>(get: { tab }, set: { if let t = $0 { tab = t } })) {
+                ForEach(Self.panes) { pane in
+                    Label(pane.title, systemImage: pane.symbol).tag(Optional(pane.id))
+                }
+            }
+            .listStyle(.sidebar)
+            // Eight rows never need scrolling; a scrolled-away sidebar looked empty.
+            .scrollDisabled(true)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 210, max: 260)
+            .toolbar(removing: .sidebarToggle)
+        } detail: {
+            pane
+                .navigationTitle(Self.panes.first { $0.id == tab }?.title ?? "Settings")
         }
-        .frame(width: 520)
-        .scenePadding()
+        .frame(minWidth: 760, idealWidth: 800, minHeight: 520, idealHeight: 600)
+    }
+
+    @ViewBuilder private var pane: some View {
+        switch tab {
+        case "spaces": SpacesSettings()
+        case "routing": SpaceRoutingSettings()
+        case "shortcuts": ShortcutSettings()
+        case "privacy": PrivacySettings()
+        case "audio": AudioSettings()
+        case "agents": AgentSettings()
+        case "engine": EngineSettings()
+        default: GeneralSettings()
+        }
     }
 }
 
@@ -620,35 +655,31 @@ private struct ShortcutSettings: View {
     @State private var notes: [ShortcutAction: String] = [:]
 
     var body: some View {
-        VStack(spacing: 0) {
-            // The preset sits on its own above the list, not boxed in a section like a setting.
-            VStack(spacing: 8) {
-                Picker("Preset", selection: Binding(get: { shortcuts.preset }, set: { p in
-                    notes = [:]
-                    shortcuts.usePreset(p)
-                })) {
-                    ForEach(ShortcutPreset.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                // Large is the macOS 26 capsule in Liquid Glass; regular is the older squared control.
-                .controlSize(.large)
-                .fixedSize()
-                Text(shortcuts.preset.summary + " Changing the preset clears the keys you've changed.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 360)
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 12)
-            shortcutList
-        }
-        .frame(height: 560)
-    }
-
-    private var shortcutList: some View {
+        // One scrolling form, so the pane fits the window at any height. The preset sits on its own
+        // at the top, not boxed like a setting.
         Form {
+            Section {
+                VStack(spacing: 8) {
+                    Picker("Preset", selection: Binding(get: { shortcuts.preset }, set: { p in
+                        notes = [:]
+                        shortcuts.usePreset(p)
+                    })) {
+                        ForEach(ShortcutPreset.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    // Large is the macOS 26 capsule in Liquid Glass; regular is the older squared control.
+                    .controlSize(.large)
+                    .fixedSize()
+                    Text(shortcuts.preset.summary + " Changing the preset clears the keys you've changed.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 360)
+                }
+                .frame(maxWidth: .infinity)
+                .listRowBackground(Color.clear)
+            }
             ForEach(ShortcutAction.Group.allCases) { group in
                 Section(group.rawValue) {
                     ForEach(ShortcutAction.allCases.filter { $0.group == group }) { action in

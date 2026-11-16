@@ -48,6 +48,8 @@ final class Browser {
     /// Bumped to put the cursor in the find field.
     var findFocusRequest: UUID?
     var toast: String?
+    /// Buttons on the toast, e.g. "Keep in Personal" after Space Routing moved a tab.
+    var toastActions: [ToastAction] = []
     var activePrompt: Prompt?
     /// Reader, when it's showing over the current tab.
     var reader: ReaderSession?
@@ -316,15 +318,41 @@ final class Browser {
     @discardableResult
     func newTab(url: URL?, in space: Space? = nil, isPrivate: Bool = false,
                 source: Frecency.VisitSource = .typed, select shouldSelect: Bool = true) -> BrowserTab {
-        let tab = library.insertTab(url: url, in: space ?? currentSpace, isPrivate: isPrivate, source: source, for: self)
+        // Space Routing: a site with a rule opens in its Space, unless a Space was asked for or the tab is private.
+        var target = space ?? currentSpace
+        var routed: SpaceRouter.Match?
+        if space == nil, !isPrivate, !currentSpace.isPrivate, let match = SpaceRouter.shared.match(for: url, in: regularSpaces),
+           match.space.id != currentSpace.id {
+            target = match.space
+            routed = match
+        }
+        let from = currentSpace
+        let tab = library.insertTab(url: url, in: target, isPrivate: isPrivate, source: source, for: self)
         if shouldSelect { select(tab) }
+        if let routed { announceRoute(routed, tab: tab, from: from, quiet: shouldSelect) }
         return tab
+    }
+
+    /// Says where a routed tab went. The first time a site moves, with a way to keep it where you were.
+    private func announceRoute(_ match: SpaceRouter.Match, tab: BrowserTab, from: Space, quiet: Bool) {
+        let first = SpaceRouter.shared.shouldAnnounce(match.pattern)
+        guard first || !quiet else { return }
+        guard first else { showToast("Opened in \(match.space.name)"); return }
+        showToast("Opened \(match.pattern) in \(match.space.name)", actions: [
+            ToastAction(title: "Keep in \(from.name)") { [weak self] in
+                guard let self else { return }
+                SpaceRouter.shared.stop(match)
+                self.move(tab, to: from)
+                self.select(tab)
+            },
+        ])
     }
 
     /// A link from another app (when Browsa is the default browser).
     func openExternal(_ url: URL) {
         commandBar = nil
-        let target = regularSpaces.first { $0.id == settings.externalLinksSpaceID }
+        let target = SpaceRouter.shared.space(for: url, in: library)
+            ?? regularSpaces.first { $0.id == settings.externalLinksSpaceID }
             ?? (currentSpace.isPrivate ? regularSpaces[0] : currentSpace)
         newTab(url: url, in: target, source: .link)
     }
@@ -406,14 +434,24 @@ final class Browser {
 
     // MARK: Toast
 
-    func showToast(_ text: String) {
+    func showToast(_ text: String, actions: [ToastAction] = []) {
         toastTask?.cancel()
         toast = text
+        toastActions = actions
         toastTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.8))
+            // Long enough to reach a button when there is one.
+            try? await Task.sleep(for: .seconds(actions.isEmpty ? 1.8 : 6))
             guard !Task.isCancelled else { return }
             self?.toast = nil
+            self?.toastActions = []
         }
+    }
+
+    func runToastAction(_ action: ToastAction) {
+        toastTask?.cancel()
+        toast = nil
+        toastActions = []
+        action.run()
     }
 
     // MARK: Blocking
@@ -615,4 +653,11 @@ extension Preferences {
         get { UserDefaults.standard.string(forKey: "lastPanelTool") ?? "notes" }
         set { UserDefaults.standard.set(newValue, forKey: "lastPanelTool") }
     }
+}
+
+/// A button on a toast.
+struct ToastAction: Identifiable {
+    let id = UUID()
+    let title: String
+    let run: @MainActor () -> Void
 }
