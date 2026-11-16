@@ -116,7 +116,17 @@ final class WindowButtonsView: NSView {
     private func setHovering(_ value: Bool) {
         guard value != hovering else { return }
         hovering = value
+        // Since macOS 26 a button keeps its own hover state and only asks `_mouseInGroup:` again when
+        // told the pointer came or went (iTerm2 and other Arc-style browsers do the same).
+        let recheck = Selector(("mouseEnteredOrExited"))
+        for button in buttons where button.responds(to: recheck) { button.perform(recheck) }
         redraw()
+    }
+
+    /// Clicks between the buttons fall through to the row (dragging the window), not to this view.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let view = super.hitTest(point)
+        return view === self ? nil : view
     }
 
     @objc func _mouseInGroup(_ button: NSButton) -> Bool {
