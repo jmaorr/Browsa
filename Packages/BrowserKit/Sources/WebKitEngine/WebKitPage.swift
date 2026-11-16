@@ -126,12 +126,33 @@ public final class WebKitPage: NSObject, EnginePage {
         config.backwards = backwards
         config.caseSensitive = false
         config.wraps = true
-        return (try? await webView.find(text, configuration: config).matchFound) ?? false
+        let found = (try? await webView.find(text, configuration: config).matchFound) ?? false
+        // WebKit marks the match only as a selection, which goes grey while the find field has
+        // focus, so it looked like nothing was found. Paint it with a CSS custom highlight too.
+        _ = try? await webView.evaluateJavaScript(found ? Self.highlightMatch : Self.clearHighlight,
+                                                  contentWorld: .defaultClient)
+        return found
     }
 
     public func clearFind() {
-        webView.evaluateJavaScript("window.getSelection().removeAllRanges()")
+        webView.evaluateJavaScript("window.getSelection().removeAllRanges();" + Self.clearHighlight,
+                                   in: nil, in: .defaultClient)
     }
+
+    private static let highlightMatch = """
+        (() => {
+          const sel = getSelection();
+          if (!sel.rangeCount || !window.CSS || !CSS.highlights) return;
+          if (!document.__browsaFindSheet) {
+            const sheet = new CSSStyleSheet();
+            sheet.replaceSync('::highlight(browsa-find) { background-color: #ffd60a; color: #000; }');
+            document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+            document.__browsaFindSheet = sheet;
+          }
+          CSS.highlights.set('browsa-find', new Highlight(sel.getRangeAt(0).cloneRange()));
+        })();
+        """
+    private static let clearHighlight = "if (window.CSS && CSS.highlights) CSS.highlights.delete('browsa-find');"
 
     public func sessionState() -> Data? { webView.interactionState as? Data }
 
