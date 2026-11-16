@@ -64,10 +64,10 @@ struct BrowserCommands: Commands {
                 .disabled(!hasPage)
             Button("Find Next") { browser?.findNext() }
                 .keyboardShortcut(keys.shortcut(.findNext))
-                .disabled(browser?.find == nil)
+                .disabled(!hasPage)
             Button("Find Previous") { browser?.findNext(backwards: true) }
                 .keyboardShortcut(keys.shortcut(.findPrevious))
-                .disabled(browser?.find == nil)
+                .disabled(!hasPage)
         }
 
         CommandGroup(replacing: .sidebar) {

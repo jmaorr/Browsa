@@ -143,16 +143,26 @@ public final class WebKitPage: NSObject, EnginePage {
         (() => {
           const sel = getSelection();
           if (!sel.rangeCount || !window.CSS || !CSS.highlights) return;
-          if (!document.__browsaFindSheet) {
-            const sheet = new CSSStyleSheet();
-            sheet.replaceSync('::highlight(browsa-find) { background-color: #ffd60a; color: #000; }');
+          let sheet = document.__browsaFindSheet;
+          if (!sheet) {
+            sheet = new CSSStyleSheet();
             document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
             document.__browsaFindSheet = sheet;
+          }
+          // The match is the page's selection, which paints over a highlight, so colour that too
+          // while find is open. Separate rules, so one selector a build doesn't know can't drop all.
+          const mark = 'background-color: #ffd60a !important; color: #000 !important;';
+          sheet.replaceSync('');
+          for (const sel of ['::highlight(browsa-find)', '::selection', '::selection:window-inactive']) {
+            try { sheet.insertRule(sel + ' { ' + mark + ' }', sheet.cssRules.length); } catch (e) {}
           }
           CSS.highlights.set('browsa-find', new Highlight(sel.getRangeAt(0).cloneRange()));
         })();
         """
-    private static let clearHighlight = "if (window.CSS && CSS.highlights) CSS.highlights.delete('browsa-find');"
+    private static let clearHighlight = """
+        if (window.CSS && CSS.highlights) CSS.highlights.delete('browsa-find');
+        if (document.__browsaFindSheet) document.__browsaFindSheet.replaceSync('');
+        """
 
     public func sessionState() -> Data? { webView.interactionState as? Data }
 
