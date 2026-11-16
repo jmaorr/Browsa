@@ -111,9 +111,9 @@ struct BrowserWindow: View {
                         guard !inside else { return }
                         peekHide = Task { @MainActor in
                             try? await Task.sleep(for: .milliseconds(250))
-                            // Still over it (the event was stale): wait until it really leaves,
-                            // since no second "left" event will come.
-                            while !Task.isCancelled, pointerOverPeekingSidebar {
+                            // Still over it (the event was stale), or one of its popovers is open: wait
+                            // until it really leaves, since no second "left" event will come.
+                            while !Task.isCancelled, pointerOverPeekingSidebar || sidebarPopoverOpen {
                                 try? await Task.sleep(for: .milliseconds(100))
                             }
                             guard !Task.isCancelled else { return }
@@ -134,6 +134,12 @@ struct BrowserWindow: View {
         let p = window.mouseLocationOutsideOfEventStream
         // The sidebar plus its margin, from the window's left edge, full height.
         return p.x >= -1 && p.x <= browser.sidebarWidth + 12 && p.y >= 0 && p.y <= content.bounds.height
+    }
+
+    /// A popover from the sidebar (extensions, say) is open. It reaches past the sidebar, and hiding
+    /// the sidebar under it would pull away its anchor.
+    private var sidebarPopoverOpen: Bool {
+        browser.nsWindow?.childWindows?.contains { $0.isVisible } == true
     }
 
     private func configure(_ window: NSWindow) {
