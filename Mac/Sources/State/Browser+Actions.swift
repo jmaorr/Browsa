@@ -326,7 +326,11 @@ extension Browser {
         guard !text.isEmpty, let page = currentController?.page else { return }
         Task { @MainActor in
             let found = await page.find(text, backwards: backwards)
-            if find?.text == text { find?.found = found }
+            let matches = found ? await page.findMatches(text) : nil
+            if find?.text == text {
+                find?.found = found
+                find?.matches = matches
+            }
         }
     }
 
