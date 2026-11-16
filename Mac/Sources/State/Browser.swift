@@ -489,12 +489,6 @@ enum Preferences {
         set { d.set(newValue, forKey: "useSafariExtensions") }
     }
 
-    /// Settings › Audio: where Meet, Zoom and Teams run. Read at launch.
-    static var callRouting: CallRouting {
-        get { d.string(forKey: "callRouting").flatMap(CallRouting.init(rawValue:)) ?? .webkit }
-        set { d.set(newValue.rawValue, forKey: "callRouting") }
-    }
-
     /// Settings › Audio: how Browsa processes the mic on calls.
     static var callAudio: CallAudioTuning {
         get {

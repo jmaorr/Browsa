@@ -268,9 +268,9 @@ const BROWSERS = {
   chrome: { name: "Chrome (WebRTC processing)", start: chromeStart },
   spike: { name: "Browsa WebKit Spike, patched (WebRTC in WebKit)", start: (url, dir) => spikeStart(url, dir, false) },
   "spike-apple": { name: "Browsa WebKit Spike, Apple processing", start: (url, dir) => spikeStart(url, dir, true) },
-  // The earlier routes, for comparison: system WebKit with Browsa's in-page call audio script, and the Chromium call tab.
+  // The earlier route, for comparison: system WebKit with Browsa's in-page call audio script. (The Chromium call tab
+  // subject went with call tabs; it's in git history.)
   inpage: { name: "Browsa (system WebKit), in-page call audio script", start: (url, dir) => browsaStart(url, dir, { BROWSA_AUDIO_BENCH_CALL_AUDIO: "browsa" }) },
-  calltab: { name: "Browsa Chromium call tab", start: (url, dir) => browsaStart(url, dir, { BROWSA_AUDIO_BENCH_CALL_TABS: "1", BROWSA_CALL_TEST_HOSTS: "127.0.0.1" }) },
   safari: { name: "Safari (manual, one click)", manual: true, start: (url) => run("open", ["-a", "Safari", url + "&manual=1"], 15000) },
 };
 function chromeStart(url, dir) {

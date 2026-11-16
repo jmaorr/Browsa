@@ -34,7 +34,6 @@ for a 10 minute far-end/double-talk soak that catches drift and gain creep).
 | `chrome` | Google Chrome, throwaway profile, the bench page (below) |
 | `spike`, `spike-apple` | Browsa WebKit Spike on the patched WebKit (`Spike/CallAudio/webkit`), and the same build with Apple's processing |
 | `inpage` | the earlier route: the same test build on system WebKit with Browsa's in-page call audio script |
-| `calltab` | Browsa's Chromium call tab (CEF), with the bench page routed to it as a test host |
 | `meet` | a real Meet call scored by a robot guest (below) |
 | `safari` | manual: needs one click (`--manual`) |
 

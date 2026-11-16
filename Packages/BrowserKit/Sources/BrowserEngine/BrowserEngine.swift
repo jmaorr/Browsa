@@ -484,7 +484,9 @@ public struct CallAudioTuning: Codable, Equatable, Sendable {
     public enum Inputs: String, Codable, Sendable { case mix, first, second }
 
     /// Browsa's own processing (WebRTC's, as in Chrome), or the system's voice processing.
-    public var processing: Processing = .browsa
+    // Apple's processing unless chosen: calls get Browsa's processing from Browsa's own WebKit where it runs; the
+    // in-page script is the opt-in for Apple's WebKit (older macOS, Intel).
+    public var processing: Processing = .system
     public var inputs: Inputs = .mix
     /// -1 off, 0 low, 1 moderate, 2 high, 3 very high.
     public var noiseSuppression: Int = 2

@@ -48,11 +48,4 @@ import Foundation
         #expect(!PatchedWebKitPolicy.isActive(loaded: "/wk/Release-meeting/WebKit.framework", frameworks: "/wk/Release"))
         #expect(!PatchedWebKitPolicy.isActive(loaded: "/System/Library/Frameworks/WebKit.framework", frameworks: "/wk/Release"))
     }
-
-    @Test func callsGoToChromiumUnlessBrowsasWebKitRuns() {
-        #expect(!CallRouting.usesCallTabs(.webkit, patchedWebKitActive: true))
-        #expect(CallRouting.usesCallTabs(.webkit, patchedWebKitActive: false))
-        #expect(CallRouting.usesCallTabs(.chromium, patchedWebKitActive: true))
-        #expect(CallRouting.usesCallTabs(.chromium, patchedWebKitActive: false))
-    }
 }

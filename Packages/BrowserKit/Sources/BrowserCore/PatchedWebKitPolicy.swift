@@ -60,17 +60,3 @@ public enum PatchedWebKitPolicy {
         return path.hasPrefix(folder.hasSuffix("/") ? folder : folder + "/")
     }
 }
-
-/// Where Meet, Zoom and Teams run.
-public enum CallRouting: String, Codable, CaseIterable, Sendable {
-    /// In ordinary tabs, on Browsa's WebKit (its call audio is in WebKit itself).
-    case webkit
-    /// In Chromium call tabs (CEF), with Chromium's call audio.
-    case chromium
-
-    /// Chromium call tabs are used unless WebKit was chosen and Browsa's WebKit is the one running: the system
-    /// WebKit's call audio lets echo through on some setups, so it never gets calls by default.
-    public static func usesCallTabs(_ routing: CallRouting, patchedWebKitActive: Bool) -> Bool {
-        !(routing == .webkit && patchedWebKitActive)
-    }
-}

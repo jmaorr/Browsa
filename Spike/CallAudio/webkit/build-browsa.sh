@@ -1,16 +1,14 @@
 #!/bin/sh
 # Builds "Browsa WebKit Spike" (com.orriginal.browsa.webkitspike): a Debug BrowsaMac that runs calls on
-# WebKit (no Chromium call tabs for this bundle ID) with Browsa's in-page call audio script off, so the
+# WebKit with Browsa's in-page call audio script off, so the
 # patched WebKit's capture unit is the only processing. Hardened runtime is off so DYLD_FRAMEWORK_PATH
 # reaches the app. Also writes run.sh, which starts it against a WebKit build.
 #   Spike/CallAudio/webkit/build-browsa.sh
 # Env: OUT (default ~/Developer/Browsa/derived/webkit-spike), WEBKIT (default ~/Developer/BrowsaWebKit),
-#      CEF_ROOT (CEF is still embedded by the build phase; default .cef/cef in this checkout).
 set -eu
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 OUT=${OUT:-$HOME/Developer/Browsa/derived/webkit-spike}
 WEBKIT=${WEBKIT:-$HOME/Developer/BrowsaWebKit}
-CEF_ROOT=${CEF_ROOT:-$ROOT/.cef/cef}
 BUNDLE=com.orriginal.browsa.webkitspike
 
 cd "$ROOT"
@@ -18,7 +16,7 @@ xcodegen generate --quiet
 xcodebuild -project Browsa.xcodeproj -scheme BrowsaMac -configuration Debug \
   -derivedDataPath "$OUT/DerivedData" \
   PRODUCT_BUNDLE_IDENTIFIER=$BUNDLE BROWSA_APP_NAME="Browsa WebKit Spike" \
-  ENABLE_HARDENED_RUNTIME=NO CEF_ROOT="$CEF_ROOT" \
+  ENABLE_HARDENED_RUNTIME=NO \
   build | grep -E "error:|warning: .*Browsa|BUILD (SUCCEEDED|FAILED)" || true
 
 APP="$OUT/DerivedData/Build/Products/Debug/Browsa.app"

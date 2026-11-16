@@ -97,17 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
         let engine = WebKitEngine()
         let library = Library(engine: engine)
-        #if CALL_TABS
-        // Meet, Zoom and Teams run on Chromium (see Mac/Chromium/CallTabs.swift), unless Browsa's own WebKit is
-        // running and Settings › Audio sends calls to it. The WebKit spike (Spike/CallAudio/webkit) always keeps
-        // calls on WebKit, to test its audio.
-        let useCallTabs = Bundle.main.bundleIdentifier == "com.orriginal.browsa.webkitspike"
-            ? ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH_CALL_TABS"] == "1"
-            : CallRouting.usesCallTabs(Preferences.callRouting, patchedWebKitActive: PatchedWebKit.isActive)
-        if useCallTabs {
-            CallTabs.install(in: library)
-        }
-        #endif
+        // Calls (Meet, Zoom, Teams) run in ordinary WebKit tabs: on Browsa's WebKit where it's present, with its call
+        // audio in the capture unit; elsewhere on Apple's WebKit.
         return library
     }
     private var keyMonitor: Any?
@@ -268,10 +259,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        #if CALL_TABS
-        // Cmd-Q in the middle of a meeting would just drop you from it.
-        if !isClearingForQuit, !CallTabs.confirmLeaving(CallTabs.tabsInCall(in: library), quitting: true) { return .terminateCancel }
-        #endif
         guard library.clearDataOnQuit, !isClearingForQuit else { return .terminateNow }
         // Clearing is asynchronous; quit once it's done (or after a few seconds regardless).
         isClearingForQuit = true
@@ -299,9 +286,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         library.saveNow()
         library.margin.saveNow()
         library.agents.stop()
-        #if CALL_TABS
-        if ChromiumEngine.shared.isRunning { BCEFRuntime.shutdown() }
-        #endif
     }
 
     func applicationDidResignActive(_ notification: Notification) {
