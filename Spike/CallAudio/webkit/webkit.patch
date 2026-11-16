@@ -21,12 +21,71 @@ index 809f63e20d..7c7415f941 100644
  		419F6D852D0AEBBF0078433D /* builtin_audio_processing_builder.cc in Sources */ = {isa = PBXBuildFile; fileRef = 419F6D832D0AEBBF0078433D /* builtin_audio_processing_builder.cc */; };
  		419F6D882D0AEC130078433D /* simulcast_to_svc_converter.cc in Sources */ = {isa = PBXBuildFile; fileRef = 419F6D862D0AEC130078433D /* simulcast_to_svc_converter.cc */; };
  		419F6D892D0AEC130078433D /* simulcast_to_svc_converter.h in Headers */ = {isa = PBXBuildFile; fileRef = 419F6D872D0AEC130078433D /* simulcast_to_svc_converter.h */; };
+diff --git a/Source/WebCore/platform/mediastream/cocoa/AudioMediaStreamTrackRendererInternalUnit.cpp b/Source/WebCore/platform/mediastream/cocoa/AudioMediaStreamTrackRendererInternalUnit.cpp
+index 7110e0b26e..660fbb9df6 100644
+--- a/Source/WebCore/platform/mediastream/cocoa/AudioMediaStreamTrackRendererInternalUnit.cpp
++++ b/Source/WebCore/platform/mediastream/cocoa/AudioMediaStreamTrackRendererInternalUnit.cpp
+@@ -43,6 +43,10 @@
+ #include <wtf/Scope.h>
+ #include <wtf/TZoneMallocInlines.h>
+ 
++#if PLATFORM(MAC)
++#include "BrowsaSideSpeakers.h"
++#endif
++
+ #include <pal/cf/AudioToolboxSoftLink.h>
+ #include <pal/cf/CoreMediaSoftLink.h>
+ 
+@@ -58,6 +62,10 @@ public:
+         return unit;
+     }
+ 
++#if PLATFORM(MAC)
++    ~LocalAudioMediaStreamTrackRendererInternalUnit() { browsa::SideSpeakers::shared().release(this); }
++#endif
++
+     void ref() const final { RefCounted::ref(); }
+     void deref() const final { RefCounted::deref(); }
+ 
+@@ -147,6 +155,11 @@ void LocalAudioMediaStreamTrackRendererInternalUnit::start()
+         return;
+     }
+     m_isStarted = true;
++#if PLATFORM(MAC)
++    // Browsa: what plays here, outside Browsa's call audio engine, goes to its echo canceller too.
++    if (m_outputDescription && !browsa::SideSpeakers::shared().claim(this, m_deviceID, m_outputDescription->sampleRate()))
++        RELEASE_LOG(WebRTC, "AudioMediaStreamTrackRendererInternalUnit: another renderer already feeds Browsa's echo reference");
++#endif
+     RELEASE_LOG(WebRTC, "AudioMediaStreamTrackRendererInternalUnit is started");
+ }
+ 
+@@ -160,6 +173,9 @@ void LocalAudioMediaStreamTrackRendererInternalUnit::stop()
+         PAL::AudioOutputUnitStop(m_remoteIOUnit);
+         m_isStarted = false;
+     }
++#if PLATFORM(MAC)
++    browsa::SideSpeakers::shared().release(this);
++#endif
+ 
+     PAL::AudioComponentInstanceDispose(m_remoteIOUnit);
+     m_remoteIOUnit = nullptr;
+@@ -303,6 +319,10 @@ OSStatus LocalAudioMediaStreamTrackRendererInternalUnit::render(AudioUnitRenderA
+     auto result = client->render(sampleCount, *ioData, sampleTime, timeStamp->mHostTime, *actionFlags);
+     // FIXME: We should probably introduce a limiter to limit the amount of clipping.
+     clipAudioBufferList(*ioData, m_outputDescription->format());
++#if PLATFORM(MAC)
++    if (auto& side = browsa::SideSpeakers::shared(); side.owns(this))
++        side.write(*ioData, m_outputDescription->streamDescription(), *timeStamp, sampleCount, *actionFlags & kAudioUnitRenderAction_OutputIsSilence);
++#endif
+     return result;
+ }
+ 
 diff --git a/Source/WebCore/platform/mediastream/cocoa/BrowsaCallAudioInternalUnit.h b/Source/WebCore/platform/mediastream/cocoa/BrowsaCallAudioInternalUnit.h
 new file mode 100644
-index 0000000000..b573e636d6
+index 0000000000..4d824a8db2
 --- /dev/null
 +++ b/Source/WebCore/platform/mediastream/cocoa/BrowsaCallAudioInternalUnit.h
-@@ -0,0 +1,800 @@
+@@ -0,0 +1,838 @@
 +// Browsa call audio inside WebKit.
 +//
 +// WebKit's microphone capture (CoreAudioCaptureUnit, in the GPU process) talks to an "internal unit":
@@ -53,7 +112,7 @@ index 0000000000..b573e636d6
 +//   BROWSA_CALL_AUDIO_AGC_MAX_DB       its gain limit (default 30)
 +//   BROWSA_CALL_AUDIO_AGC_NOISE_DBFS   the noise level it may lift to (default -60)
 +//   BROWSA_CALL_AUDIO_NS               noise suppression 0 low .. 3 very high, or off (default 2)
-+//   BROWSA_CALL_AUDIO_DUMP             debug dump (below); BROWSA_CALL_AUDIO_DUMP_MINUTES caps it (default 30)
++//   BROWSA_CALL_AUDIO_DUMP             debug dump (below; development builds only); BROWSA_CALL_AUDIO_DUMP_MINUTES caps it (default 30)
 +#pragma once
 +
 +#if ENABLE(MEDIA_STREAM) && PLATFORM(MAC) && USE(LIBWEBRTC)
@@ -84,6 +143,16 @@ index 0000000000..b573e636d6
 +WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
 +#include "BrowsaAudioTimeline.h"
 +#include "BrowsaCallGuard.h"
++#include "BrowsaSideSpeakers.h"
++// Call recording (the debug dump below) exists only in development WebKit builds: they have BrowsaCallAudioRecording.h
++// next to this file (copied in from Spike/CallAudio/webkit). Built without it, as for release, the unit can't record,
++// whatever the environment says.
++#if __has_include("BrowsaCallAudioRecording.h")
++#include "BrowsaCallAudioRecording.h"
++#endif
++#ifndef BROWSA_CALL_AUDIO_RECORDING
++#define BROWSA_CALL_AUDIO_RECORDING 0
++#endif
 +WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
 +
 +WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
@@ -351,6 +420,8 @@ index 0000000000..b573e636d6
 +        m_micStep = m_deviceRate / processingRate;
 +        m_micPosition = 2;
 +        m_micIndex = m_speakerIndex = 0;
++        m_sideReader = { };
++        m_sideFrames = 0;
 +        m_deliverStep = processingRate / m_micFormat.mSampleRate;
 +        m_deliverPosition = 2;
 +        m_deliveredFrames = 0;
@@ -388,6 +459,7 @@ index 0000000000..b573e636d6
 +        RELEASE_LOG(WebRTC, "BrowsaCallAudioInternalUnit settings: reference offset %.1f ms, gain %d (max %.0f dB, noise %.0f dBFS), noise suppression %d, warm-up %d, gated gain %d",
 +            m_settings.referenceOffsetMs, (int)m_settings.gain, m_settings.gainMaxDb, m_settings.gainNoiseDbfs, m_settings.noiseLevel, (int)m_settings.warmup, (int)m_settings.gatedGain);
 +        m_initialized = true;
++        browsa::SideSpeakers::shared().setListening(true);
 +        startDump();
 +        return noErr;
 +    }
@@ -395,6 +467,7 @@ index 0000000000..b573e636d6
 +    OSStatus uninitialize() final
 +    {
 +        stop();
++        browsa::SideSpeakers::shared().setListening(false);
 +        finishDump();
 +        for (AudioUnit* unit : { &m_inUnit, &m_outUnit }) {
 +            if (!*unit)
@@ -525,6 +598,7 @@ index 0000000000..b573e636d6
 +                m_referenceReader.read(m_speakerRing, reference, frameSize, m_speakerClock.indexAt(start + m_referenceLead), m_speakerClock.indexAt(end + m_referenceLead), 0.005 * m_speakerFormat.mSampleRate);
 +            else
 +                memset(reference, 0, sizeof(reference));
++            addSideSpeakers(reference, start, end);
 +
 +            float rawCopy[frameSize], referenceCopy[frameSize];
 +            const bool dumping = !m_dumpRing[0].empty();
@@ -565,6 +639,21 @@ index 0000000000..b573e636d6
 +        return noErr;
 +    }
 +
++    // Call audio WebKit plays itself on a speaker the page chose (BrowsaSideSpeakers.h): added to the
++    // reference, lined up the same way. Silence when nothing plays there.
++    void addSideSpeakers(float* reference, double start, double end)
++    {
++        auto& side = browsa::SideSpeakers::shared();
++        if (!side.playedAround(start))
++            return;
++        float extra[frameSize];
++        const auto& clock = side.clock();
++        m_sideReader.read(side.ring(), extra, frameSize, clock.indexAt(start + m_referenceLead), clock.indexAt(end + m_referenceLead), 0.005 * clock.rate());
++        for (int i = 0; i < frameSize; ++i)
++            reference[i] += extra[i];
++        m_sideFrames++;
++    }
++
 +    // WebKit's microphone callback pulls the samples it was just told about.
 +    OSStatus render(AudioUnitRenderActionFlags*, const AudioTimeStamp*, UInt32, UInt32 frames, AudioBufferList* list) final
 +    {
@@ -601,8 +690,12 @@ index 0000000000..b573e636d6
 +
 +    static const char* dumpSetting()
 +    {
++#if BROWSA_CALL_AUDIO_RECORDING
 +        const char* value = getenv("BROWSA_CALL_AUDIO_DUMP");
 +        return value && *value && strcmp(value, "0") ? value : nullptr;
++#else
++        return nullptr;  // a WebKit built for release can't record
++#endif
 +    }
 +    static void writeWavHeader(FILE* f, uint64_t frames)
 +    {
@@ -717,8 +810,10 @@ index 0000000000..b573e636d6
 +        // The reader and clock figures belong to the audio threads; they are only read once those have stopped.
 +        char timing[400] = "";
 +        if (final) {
-+            snprintf(timing, sizeof(timing), " \"referenceResyncs\": %d, \"referenceMisses\": %d, \"speakerClockRate\": %.3f, \"micClockRate\": %.3f,\n",
-+                m_referenceReader.resyncs, m_referenceReader.misses, m_speakerClock.rate(), m_micClock.rate());
++            snprintf(timing, sizeof(timing), " \"referenceResyncs\": %d, \"referenceMisses\": %d, \"speakerClockRate\": %.3f, \"micClockRate\": %.3f,\n"
++                " \"sideSpeakerFrames\": %llu, \"sideSpeakerResyncs\": %d, \"sideSpeakerMisses\": %d,\n",
++                m_referenceReader.resyncs, m_referenceReader.misses, m_speakerClock.rate(), m_micClock.rate(),
++                (unsigned long long)m_sideFrames, m_sideReader.resyncs, m_sideReader.misses);
 +        }
 +        const std::string path = m_dumpFolder + "/meta.json", temporary = path + ".tmp";
 +        FILE* f = fopen(temporary.c_str(), "w");
@@ -803,6 +898,8 @@ index 0000000000..b573e636d6
 +    browsa::SampleRing m_micRing;
 +    browsa::SampleRing m_cleanRing;
 +    browsa::SteeredReader m_referenceReader;
++    browsa::SteeredReader m_sideReader;
++    uint64_t m_sideFrames { 0 };
 +    std::vector<std::vector<float>> m_deviceBuffers;
 +    std::vector<float> m_speakerMono;
 +    int m_deviceChannels { 1 };
@@ -827,6 +924,170 @@ index 0000000000..b573e636d6
 +WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
 +
 +#endif // ENABLE(MEDIA_STREAM) && PLATFORM(MAC) && USE(LIBWEBRTC)
+diff --git a/Source/WebCore/platform/mediastream/cocoa/BrowsaSideSpeakers.h b/Source/WebCore/platform/mediastream/cocoa/BrowsaSideSpeakers.h
+new file mode 100644
+index 0000000000..f06df46fc1
+--- /dev/null
++++ b/Source/WebCore/platform/mediastream/cocoa/BrowsaSideSpeakers.h
+@@ -0,0 +1,158 @@
++/*
++ * Browsa call audio: call audio WebKit plays on a speaker the engine doesn't drive.
++ *
++ * The engine (BrowsaCallAudioInternalUnit.h) plays the call on the Mac's default output and uses exactly
++ * what it played as the echo canceller's reference. When a page picks another speaker (setSinkId, e.g.
++ * Meet's speaker menu), WebKit plays the call itself on that device
++ * (AudioMediaStreamTrackRendererInternalUnit.cpp), outside the engine, and without this the canceller
++ * would never hear it. That renderer copies what it plays here, stamped with the host time it meets the
++ * air, and the engine adds it to the reference at the moments each microphone frame covers. Host time
++ * reconciles the two device clocks, as it does for the engine's own speakers (BrowsaAudioTimeline.h).
++ *
++ * Only while the engine runs (listening), and one renderer at a time (the first to claim it; WebKit uses
++ * one renderer per output device, and a call plays on one).
++ */
++#pragma once
++
++#if PLATFORM(MAC)
++
++#include <AudioToolbox/AudioToolbox.h>
++#include <CoreAudio/CoreAudio.h>
++#include <algorithm>
++#include <atomic>
++#include <mach/mach_time.h>
++
++// Plain C++ on raw audio buffers, like the rest of Browsa's call audio.
++WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
++
++#include "BrowsaAudioTimeline.h"
++
++namespace browsa {
++
++class SideSpeakers {
++public:
++    static SideSpeakers& shared()
++    {
++        static SideSpeakers& instance = *new SideSpeakers; // never destroyed: audio threads may outlive exit
++        return instance;
++    }
++
++    // ---------- the engine ----------
++    void setListening(bool on) { m_listening.store(on, std::memory_order_release); }
++    bool listening() const { return m_listening.load(std::memory_order_acquire); }
++    const SampleRing& ring() const { return m_ring; }
++    const ClockModel& clock() const { return m_clock; }
++    // Whether anything played on a side speaker around `time` (host seconds): the newest sample written
++    // meets the air no more than a second before it.
++    bool playedAround(double time) const
++    {
++        if (!m_clock.valid())
++            return false;
++        return m_clock.timeOf(static_cast<double>(m_ring.written())) > time - 1.0;
++    }
++
++    // ---------- WebKit's renderer for a chosen speaker ----------
++    // Main thread, when it starts playing. False when another renderer already has it.
++    bool claim(const void* owner, AudioDeviceID device, double sampleRate)
++    {
++        const void* expected = nullptr;
++        if (!m_owner.compare_exchange_strong(expected, owner))
++            return expected == owner;
++        m_latency = outputLatency(device);
++        m_clock.reset(sampleRate);
++        return true;
++    }
++    // Main thread, once its audio unit has stopped (no render callback still running).
++    void release(const void* owner)
++    {
++        const void* expected = owner;
++        m_owner.compare_exchange_strong(expected, nullptr);
++    }
++    bool owns(const void* owner) const { return listening() && m_owner.load(std::memory_order_acquire) == owner; }
++
++    // The render thread: what it just handed its device, `frames` samples, the first stamped `stamp`.
++    // Float32 only (WebKit's renderer format on the Mac); anything else is left out.
++    void write(const AudioBufferList& list, const AudioStreamBasicDescription& format, const AudioTimeStamp& stamp, UInt32 frames, bool silent)
++    {
++        if (!(format.mFormatFlags & kAudioFormatFlagIsFloat) || format.mBitsPerChannel != 32 || !list.mNumberBuffers)
++            return;
++        const bool interleaved = !(format.mFormatFlags & kAudioFormatFlagIsNonInterleaved);
++        const UInt32 channels = std::max<UInt32>(1, format.mChannelsPerFrame);
++        const double air = hostSeconds((stamp.mFlags & kAudioTimeStampHostTimeValid) ? stamp.mHostTime : mach_absolute_time()) + m_latency;
++        m_clock.update(static_cast<double>(m_ring.written()), air);
++        float mono[chunk];
++        for (UInt32 done = 0; done < frames; ) {
++            const UInt32 n = std::min<UInt32>(chunk, frames - done);
++            if (silent)
++                std::fill(mono, mono + n, 0.f);
++            else if (interleaved) {
++                const float* samples = static_cast<const float*>(list.mBuffers[0].mData);
++                if (!samples || list.mBuffers[0].mDataByteSize < (done + n) * channels * sizeof(float))
++                    return;
++                for (UInt32 i = 0; i < n; ++i) {
++                    float sum = 0;
++                    for (UInt32 c = 0; c < channels; ++c)
++                        sum += samples[(done + i) * channels + c];
++                    mono[i] = sum / channels;
++                }
++            } else {
++                std::fill(mono, mono + n, 0.f);
++                for (UInt32 b = 0; b < list.mNumberBuffers; ++b) {
++                    const float* samples = static_cast<const float*>(list.mBuffers[b].mData);
++                    if (!samples || list.mBuffers[b].mDataByteSize < (done + n) * sizeof(float))
++                        return;
++                    for (UInt32 i = 0; i < n; ++i)
++                        mono[i] += samples[done + i] / list.mNumberBuffers;
++                }
++            }
++            m_ring.write(mono, n);
++            done += n;
++        }
++    }
++
++    // Seconds between a device's output timestamp and the air (0: the default output).
++    static double outputLatency(AudioDeviceID device)
++    {
++        if (!device && !property(kAudioObjectSystemObject, kAudioHardwarePropertyDefaultOutputDevice, kAudioObjectPropertyScopeGlobal, &device))
++            return 0;
++        const auto scope = kAudioObjectPropertyScopeOutput;
++        UInt32 latency = 0, safety = 0, stream = 0;
++        Float64 rate = 48000;
++        property(device, kAudioDevicePropertyLatency, scope, &latency);
++        property(device, kAudioDevicePropertySafetyOffset, scope, &safety);
++        property(device, kAudioDevicePropertyNominalSampleRate, kAudioObjectPropertyScopeGlobal, &rate);
++        AudioObjectPropertyAddress address = { kAudioDevicePropertyStreams, scope, kAudioObjectPropertyElementMain };
++        AudioStreamID streams[16];
++        UInt32 size = sizeof(streams);
++        if (AudioObjectGetPropertyData(device, &address, 0, nullptr, &size, streams) == noErr && size >= sizeof(AudioStreamID))
++            property(streams[0], kAudioStreamPropertyLatency, kAudioObjectPropertyScopeGlobal, &stream);
++        return (latency + safety + stream) / (rate > 0 ? rate : 48000);
++    }
++
++private:
++    static constexpr UInt32 chunk = 1024;
++
++    template<typename T> static bool property(AudioObjectID object, AudioObjectPropertySelector selector, AudioObjectPropertyScope scope, T* out)
++    {
++        AudioObjectPropertyAddress address = { selector, scope, kAudioObjectPropertyElementMain };
++        UInt32 size = sizeof(T);
++        return AudioObjectGetPropertyData(object, &address, 0, nullptr, &size, out) == noErr;
++    }
++    static double hostSeconds(uint64_t hostTime)
++    {
++        static mach_timebase_info_data_t timebase = [] { mach_timebase_info_data_t t; mach_timebase_info(&t); return t; }();
++        return static_cast<double>(hostTime) * timebase.numer / timebase.denom * 1e-9;
++    }
++
++    std::atomic<bool> m_listening { false };
++    std::atomic<const void*> m_owner { nullptr };
++    double m_latency { 0 };
++    ClockModel m_clock;
++    SampleRing m_ring;
++};
++
++} // namespace browsa
++
++WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
++
++#endif // PLATFORM(MAC)
 diff --git a/Source/WebCore/platform/mediastream/cocoa/CoreAudioCaptureUnit.cpp b/Source/WebCore/platform/mediastream/cocoa/CoreAudioCaptureUnit.cpp
 index 7144ddbe86..31708fe4ed 100644
 --- a/Source/WebCore/platform/mediastream/cocoa/CoreAudioCaptureUnit.cpp

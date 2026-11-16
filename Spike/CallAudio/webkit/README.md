@@ -2,18 +2,20 @@
 
 A patch for WebKit (builds against the commit in `WEBKIT_COMMIT`), small edits plus two headers, and two
 availability guards so it also builds for macOS 26.0 (see BUNDLING.md).
-`webkit.patch` is a real `git diff` from that tree (it includes `BrowsaCallAudioInternalUnit.h`), so
+`webkit.patch` is a real `git diff` from that tree (it includes `BrowsaCallAudioInternalUnit.h` and
+`BrowsaSideSpeakers.h`), so
 `git apply` works; `BrowsaAudioTimeline.h` and `BrowsaCallGuard.h` still come from `../core/AudioTimeline.h` and
 `../core/CallGuard.h`:
 
-1. Copy `BrowsaCallAudioInternalUnit.h`, `../core/AudioTimeline.h` (as `BrowsaAudioTimeline.h`) and
+1. Copy `BrowsaCallAudioInternalUnit.h`, `BrowsaSideSpeakers.h`, `../core/AudioTimeline.h` (as `BrowsaAudioTimeline.h`) and
    `../core/CallGuard.h` (as `BrowsaCallGuard.h`) into
    `Source/WebCore/platform/mediastream/cocoa/`.
 2. Apply the edits described in `webkit.patch` (by hand; the hunks are illustrative, not line exact):
    `CoreAudioCaptureInternalUnit::create` returns the Browsa unit where it would have made Apple's
    voice processing unit, prewarming is skipped, and libwebrtc exports its audio processing builder
    (two symbols in `libwebrtc.exp`, and `builtin_audio_processing_builder.h` marked Public in
-   `libwebrtc.xcodeproj` so WebCore can include it).
+   `libwebrtc.xcodeproj` so WebCore can include it). WebKit's own renderer for a speaker the page chose
+   (`AudioMediaStreamTrackRendererInternalUnit.cpp`) copies what it plays to `BrowsaSideSpeakers.h`.
 3. Build with `Tools/Scripts/build-webkit --release`, then run a Browsa build against it with
    `DYLD_FRAMEWORK_PATH` and `__XPC_DYLD_FRAMEWORK_PATH` pointing at `WebKitBuild/Release`.
 
@@ -112,3 +114,25 @@ with `tools/audio-bench/guardcheck.mjs` on that call (first 6 min) against the u
 On the 2026-11-14 native recordings against the same WebRTC-gain baseline: G.131 f 35.1 → 41.2 and 13.8 → 19.8, echo
 during the start of talk-over 17.6 → 21.7 dB, send about -24 dBFS, first 300 ms of speech not clipped; gain pumping
 5.3 → 6.2 dB on one, 2.2 → 1.2 dB on the other.
+
+## A speaker the page chose (setSinkId)
+
+The engine plays the call on the Mac's default output. When a page picks another speaker (Meet's speaker
+menu, `setSinkId`), WebKit plays the call itself on that device, outside the engine, and the echo canceller
+used to get no reference for it. Now that renderer copies what it plays, stamped with the host time it meets
+the air (its device's latency added), into `BrowsaSideSpeakers.h`; the engine adds it to the reference at the
+moments each microphone frame covers, with the same clock model and steered reader as its own speakers. The
+playback path is untouched: the page's speaker still plays exactly as before. One renderer feeds it at a time
+(the first to start), only while the engine runs; it drops out a second after that speaker goes quiet. Dumps
+record it in `meta.json` (`sideSpeakerFrames`, `sideSpeakerResyncs`, `sideSpeakerMisses`) and in `ref.wav`.
+
+Offline check, nothing played (from this folder):
+
+    clang++ -std=c++20 -O2 -I. -I<folder with ../core/AudioTimeline.h as BrowsaAudioTimeline.h> \
+      tests/side-speakers-test.cpp -framework CoreAudio -framework AudioToolbox -o side && ./side <out folder>
+
+It drives the side speaker on its own clock (up to 200 ppm off, timestamp jitter, 480 to 1024-sample buffers,
+stereo) against a microphone on another, and checks the reference the engine would read. With a folder it also
+writes a simulated room echo (`raw.wav`) and references (`ref.wav` as built, `ideal.wav`, `none.wav`) for
+`apm-replay-webkit`. 16 Nov 2026: echo loss 20-59 s, 75.1 dB with the built reference, 75.3 dB exact, 0.4 dB with
+none (the gap before this change).

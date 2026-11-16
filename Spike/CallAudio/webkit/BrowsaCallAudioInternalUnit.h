@@ -55,6 +55,7 @@
 WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
 #include "BrowsaAudioTimeline.h"
 #include "BrowsaCallGuard.h"
+#include "BrowsaSideSpeakers.h"
 // Call recording (the debug dump below) exists only in development WebKit builds: they have BrowsaCallAudioRecording.h
 // next to this file (copied in from Spike/CallAudio/webkit). Built without it, as for release, the unit can't record,
 // whatever the environment says.
@@ -331,6 +332,8 @@ private:
         m_micStep = m_deviceRate / processingRate;
         m_micPosition = 2;
         m_micIndex = m_speakerIndex = 0;
+        m_sideReader = { };
+        m_sideFrames = 0;
         m_deliverStep = processingRate / m_micFormat.mSampleRate;
         m_deliverPosition = 2;
         m_deliveredFrames = 0;
@@ -368,6 +371,7 @@ private:
         RELEASE_LOG(WebRTC, "BrowsaCallAudioInternalUnit settings: reference offset %.1f ms, gain %d (max %.0f dB, noise %.0f dBFS), noise suppression %d, warm-up %d, gated gain %d",
             m_settings.referenceOffsetMs, (int)m_settings.gain, m_settings.gainMaxDb, m_settings.gainNoiseDbfs, m_settings.noiseLevel, (int)m_settings.warmup, (int)m_settings.gatedGain);
         m_initialized = true;
+        browsa::SideSpeakers::shared().setListening(true);
         startDump();
         return noErr;
     }
@@ -375,6 +379,7 @@ private:
     OSStatus uninitialize() final
     {
         stop();
+        browsa::SideSpeakers::shared().setListening(false);
         finishDump();
         for (AudioUnit* unit : { &m_inUnit, &m_outUnit }) {
             if (!*unit)
@@ -505,6 +510,7 @@ private:
                 m_referenceReader.read(m_speakerRing, reference, frameSize, m_speakerClock.indexAt(start + m_referenceLead), m_speakerClock.indexAt(end + m_referenceLead), 0.005 * m_speakerFormat.mSampleRate);
             else
                 memset(reference, 0, sizeof(reference));
+            addSideSpeakers(reference, start, end);
 
             float rawCopy[frameSize], referenceCopy[frameSize];
             const bool dumping = !m_dumpRing[0].empty();
@@ -543,6 +549,21 @@ private:
             }
         }
         return noErr;
+    }
+
+    // Call audio WebKit plays itself on a speaker the page chose (BrowsaSideSpeakers.h): added to the
+    // reference, lined up the same way. Silence when nothing plays there.
+    void addSideSpeakers(float* reference, double start, double end)
+    {
+        auto& side = browsa::SideSpeakers::shared();
+        if (!side.playedAround(start))
+            return;
+        float extra[frameSize];
+        const auto& clock = side.clock();
+        m_sideReader.read(side.ring(), extra, frameSize, clock.indexAt(start + m_referenceLead), clock.indexAt(end + m_referenceLead), 0.005 * clock.rate());
+        for (int i = 0; i < frameSize; ++i)
+            reference[i] += extra[i];
+        m_sideFrames++;
     }
 
     // WebKit's microphone callback pulls the samples it was just told about.
@@ -701,8 +722,10 @@ private:
         // The reader and clock figures belong to the audio threads; they are only read once those have stopped.
         char timing[400] = "";
         if (final) {
-            snprintf(timing, sizeof(timing), " \"referenceResyncs\": %d, \"referenceMisses\": %d, \"speakerClockRate\": %.3f, \"micClockRate\": %.3f,\n",
-                m_referenceReader.resyncs, m_referenceReader.misses, m_speakerClock.rate(), m_micClock.rate());
+            snprintf(timing, sizeof(timing), " \"referenceResyncs\": %d, \"referenceMisses\": %d, \"speakerClockRate\": %.3f, \"micClockRate\": %.3f,\n"
+                " \"sideSpeakerFrames\": %llu, \"sideSpeakerResyncs\": %d, \"sideSpeakerMisses\": %d,\n",
+                m_referenceReader.resyncs, m_referenceReader.misses, m_speakerClock.rate(), m_micClock.rate(),
+                (unsigned long long)m_sideFrames, m_sideReader.resyncs, m_sideReader.misses);
         }
         const std::string path = m_dumpFolder + "/meta.json", temporary = path + ".tmp";
         FILE* f = fopen(temporary.c_str(), "w");
@@ -787,6 +810,8 @@ private:
     browsa::SampleRing m_micRing;
     browsa::SampleRing m_cleanRing;
     browsa::SteeredReader m_referenceReader;
+    browsa::SteeredReader m_sideReader;
+    uint64_t m_sideFrames { 0 };
     std::vector<std::vector<float>> m_deviceBuffers;
     std::vector<float> m_speakerMono;
     int m_deviceChannels { 1 };
