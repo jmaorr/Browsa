@@ -16,11 +16,17 @@ public struct WebViewHost: UIViewRepresentable {
     /// under it, but its last line can still scroll clear. Kept fixed while the bar collapses, so
     /// the page never reflows mid-scroll.
     let bottomObscuredInset: CGFloat
+    /// What the bottom chrome covers right now, which pages pin their fixed footers above (a
+    /// podcast player's controls, say). Follows the bar as it collapses, as in Safari. Defaults
+    /// to `bottomObscuredInset`.
+    let bottomCoveredInset: CGFloat?
 
-    public init(session: TabSession, topObscuredInset: CGFloat = 0, bottomObscuredInset: CGFloat = 0) {
+    public init(session: TabSession, topObscuredInset: CGFloat = 0, bottomObscuredInset: CGFloat = 0,
+                bottomCoveredInset: CGFloat? = nil) {
         self.session = session
         self.topObscuredInset = topObscuredInset
         self.bottomObscuredInset = bottomObscuredInset
+        self.bottomCoveredInset = bottomCoveredInset
     }
 
     public func makeUIView(context: Context) -> ContainerView {
@@ -35,6 +41,7 @@ public struct WebViewHost: UIViewRepresentable {
         session.recoverIfNeeded()
         uiView.topInset = topObscuredInset
         uiView.bottomInset = bottomObscuredInset
+        uiView.coveredBottomInset = bottomCoveredInset ?? bottomObscuredInset
         uiView.applyInsets()
     }
 
@@ -48,6 +55,7 @@ public struct WebViewHost: UIViewRepresentable {
         fileprivate(set) weak var webView: WKWebView?
         fileprivate var topInset: CGFloat = 0
         fileprivate var bottomInset: CGFloat = 0
+        fileprivate var coveredBottomInset: CGFloat = 0
 
         private func claim(_ webView: WKWebView) {
             guard webView.superview !== self else { return }
@@ -85,6 +93,10 @@ public struct WebViewHost: UIViewRepresentable {
             // Tells WebKit the bar covers this strip, so fixed and sticky page headers sit below it.
             if #available(iOS 26, *), webView.obscuredContentInsets.top != topInset {
                 webView.obscuredContentInsets.top = topInset
+            }
+            // And the bar at the bottom, so fixed footers sit above it instead of behind it.
+            if #available(iOS 26, *), webView.obscuredContentInsets.bottom != coveredBottomInset {
+                webView.obscuredContentInsets.bottom = coveredBottomInset
             }
             let sv = webView.scrollView
             if sv.contentInset.top != topInset {

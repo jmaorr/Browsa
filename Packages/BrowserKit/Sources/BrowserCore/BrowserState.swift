@@ -73,6 +73,11 @@ public final class BrowserState {
     public private(set) var lastSpaceSwitch: SpaceSwitch?
     /// The tab gallery is over the page, so the page's colour shouldn't surround it.
     public var tabGridCoversPage = false
+    /// The tab a gallery zoom is growing into, before it becomes the current tab. Its colour
+    /// surrounds the page during the zoom, so the colour beside the page doesn't change on landing.
+    public var tabGridLandingTab: BrowserTab?
+    /// The gallery's zoom picture is over the page, so the address bar waits to come in with the page.
+    public var tabGridHidesAddressBar = false
 
     public let history: HistoryStore
     @ObservationIgnored let pool = WebViewPool()

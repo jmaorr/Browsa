@@ -1,0 +1,10 @@
+/* /test/: the background audio and Picture in Picture test page. */
+.test section + section { margin-top: 8px; }
+.test ol { margin: 12px 0 0; padding-left: 1.4em; }
+.test ol li + li { margin-top: 6px; }
+.test .player { display: block; width: 100%; margin-top: 20px; }
+.test video.player { height: auto; aspect-ratio: 16 / 9; border-radius: 14px; background: #1d1c1a; }
+.test .result {
+  margin-top: 14px; padding: 14px 16px; border-radius: 12px;
+  background: var(--raised); border: 1px solid var(--line); line-height: 1.4;
+}
