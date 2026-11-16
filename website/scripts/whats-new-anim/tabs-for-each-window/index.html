@@ -1,0 +1,54 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><script src="../kit/kit.js"></script>
+<style>
+  .win { top:290px; width:660px; height:560px; }
+  .win.a { left:110px; } .win.b { left:830px; }
+  .side { width:330px; }
+  .page { left:342px; padding:26px 24px; box-sizing:border-box; }
+  .page .bar { margin-bottom:14px; } .page .hero { height:150px; border-radius:10px; background:#efeeeb; margin-bottom:18px; }
+  .shared .in { background: rgb(88 86 214 / calc(var(--g, 0) * .14)); }
+  .favs span { box-shadow: inset 0 0 0 calc(var(--g, 0) * 2px) rgb(88 86 214 / .5); }
+  .wname { position:absolute; top:258px; font-size:17px; font-weight:600; color:var(--ink2); }
+  .cap { position:absolute; left:0; right:0; top:890px; text-align:center; font-size:24px; font-weight:500; }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="label">Each window keeps its own tabs</div>
+  <div class="sub">Pinned tabs and favourites stay shared between them.</div>
+  <div class="wname" style="left:120px">Window 1</div><div class="wname" style="left:840px">Window 2</div>
+  <div class="win a"><div class="side" id="sa"></div><div class="page"><div class="hero"></div><div class="bar" style="width:80%"></div><div class="bar" style="width:92%"></div><div class="bar" style="width:64%"></div></div></div>
+  <div class="win b"><div class="side" id="sb"></div><div class="page"><div class="hero"></div><div class="bar" style="width:76%"></div><div class="bar" style="width:88%"></div><div class="bar" style="width:58%"></div></div></div>
+  <div class="cap" id="cap"></div>
+</div>
+<script>
+const side = (today, sel) => `
+  <div class="lights"><i></i><i></i><i></i></div>
+  <div class="favs">${["mail.google.com","calendar.google.com","github.com","notion.so"].map(f => `<span><img src="${fav(f)}"></span>`).join("")}</div>
+  <div class="sect">Pinned</div>
+  <div class="pinned">${row(fav("figma.com"), "Browsa site · Figma", "shared new-pin")}${row(fav("linear.app"), "Inbox · Linear", "shared")}${row(fav("stripe.com"), "Payments · Stripe", "shared")}</div>
+  <div class="sect">Today</div>
+  <div class="today">${today}</div>`;
+document.getElementById("sa").innerHTML = side(row(fav("spotify.com"), "Focus playlist · Spotify", "new-a") + row(fav("airbnb.com"), "Cabin in Lofoten · Airbnb", "sel") + row(fav("nytimes.com"), "The New York Times"));
+document.getElementById("sb").innerHTML = side(row(fav("wikipedia.org"), "Fresnel lens · Wikipedia", "new-b") + row(fav("theverge.com"), "The Verge", "sel") + row(fav("pitchfork.com"), "Pitchfork"));
+const all = (s) => [...document.querySelectorAll(s)];
+const CAPS = [[0.7, 2.8, "A new tab stays in the window you opened it in"], [3.0, 5.0, "Each window has its own Today tabs"], [5.2, 9.0, "Pin a tab and it’s in every window"]];
+window.TOTAL = 9.4;
+window.render = (t) => {
+  const grow = (el, f) => { el.style.height = 44 * f + "px"; el.firstChild.style.opacity = f; el.firstChild.style.transform = `translateY(${(1 - f) * -6}px)`; };
+  const a = eo(ph(t, 0.9, 0.45)), b = eo(ph(t, 3.1, 0.45)), p = eo(ph(t, 5.4, 0.45));
+  all(".new-a").forEach((el) => grow(el, a));
+  all(".new-b").forEach((el) => grow(el, b));
+  all(".new-pin").forEach((el) => grow(el, p));
+  const flash = (t0) => Math.sin(Math.PI * ph(t, t0, 1.1));
+  all(".new-a .in").forEach((el) => (el.style.background = `rgb(255 255 255 / ${0.85 * flash(0.9)})`));
+  all(".new-b .in").forEach((el) => (el.style.background = `rgb(255 255 255 / ${0.85 * flash(3.1)})`));
+  // Shared things light up together in both windows.
+  const g = Math.sin(Math.PI * ph(t, 5.5, 2.4));
+  document.getElementById("stage").style.setProperty("--g", g.toFixed(3));
+  const cap = document.getElementById("cap");
+  const c = CAPS.find(([s, e]) => t >= s && t < e);
+  cap.textContent = c ? c[2] : "";
+  cap.style.opacity = c ? Math.min(eo(ph(t, c[0], 0.35)), 1 - ph(t, c[1] - 0.3, 0.3)) : 0;
+  document.getElementById("stage").style.opacity = loopFade(t, TOTAL);
+};
+render(0);
+</script></body></html>
