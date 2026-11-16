@@ -92,7 +92,8 @@ final class TabController: EnginePageDelegate {
             next = Self.zoomSteps.last { $0 < current - 0.001 } ?? Self.zoomSteps.first!
         }
         page.zoom = next
-        if let host = tab.url?.host() { Preferences.setZoom(next, for: host) }
+        // Private tabs zoom for now only: the saved per-site zoom would record the host.
+        if !tab.isPrivate, let host = tab.url?.host() { Preferences.setZoom(next, for: host) }
         window?.showToast(direction == 0 ? "Actual Size" : "Zoom \(Int((next * 100).rounded()))%")
     }
 
@@ -212,13 +213,21 @@ final class TabController: EnginePageDelegate {
         guard let library else { return false }
         // Screen sharing is asked every time, like other browsers do.
         let remembers = permission != .screen
+        if remembers, tab.isPrivate, let answered = library.privatePermissions[host]?[permission.rawValue] { return answered }
         if remembers, let saved = library.settings.sitePermissions[host]?[permission.rawValue] { return saved }
         guard let window else { return false }
         let answer = await window.ask(.permission(permission, host: host), from: tab)
         // Cancelled because the tab went away: don't remember a "no" the user never gave.
         guard answer != .cancel || window.currentTab?.id == tab.id else { return false }
         let granted = answer == .ok
-        if remembers { library.settings.sitePermissions[host, default: [:]][permission.rawValue] = granted }
+        // A private tab's answer lasts until the private space closes, and isn't saved.
+        if remembers {
+            if tab.isPrivate {
+                library.privatePermissions[host, default: [:]][permission.rawValue] = granted
+            } else {
+                library.settings.sitePermissions[host, default: [:]][permission.rawValue] = granted
+            }
+        }
         return granted
     }
 
