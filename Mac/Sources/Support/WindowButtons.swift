@@ -96,14 +96,28 @@ final class WindowButtonsView: NSView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
-        let group = buttons.reduce(NSRect.null) { $0.union($1.frame) }
-        guard !group.isNull else { return }
-        addTrackingArea(NSTrackingArea(rect: group, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+        // The whole view, always: AppKit asks for tracking areas before the first layout, when the
+        // buttons have no frames yet, and a rect made from those left no area at all.
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
                                        owner: self, userInfo: nil))
     }
 
-    override func mouseEntered(with event: NSEvent) { hovering = true; redraw() }
-    override func mouseExited(with event: NSEvent) { hovering = false; redraw() }
+    override func mouseEntered(with event: NSEvent) { track(event) }
+    override func mouseMoved(with event: NSEvent) { track(event) }
+    override func mouseExited(with event: NSEvent) { setHovering(false) }
+
+    /// In the group while over the three buttons (the view is a little wider than they are).
+    private func track(_ event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        let group = buttons.reduce(NSRect.null) { $0.union($1.frame) }.insetBy(dx: -2, dy: -2)
+        setHovering(!group.isNull && group.contains(p))
+    }
+
+    private func setHovering(_ value: Bool) {
+        guard value != hovering else { return }
+        hovering = value
+        redraw()
+    }
 
     @objc func _mouseInGroup(_ button: NSButton) -> Bool { hovering }
 

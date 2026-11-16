@@ -64,9 +64,12 @@ struct Sidebar: View {
                 SidebarIconButton(symbol: "arrow.clockwise", help: Shortcuts.shared.help("Reload", .reload), enabled: browser.currentTab?.url != nil) { browser.reload() }
             }
         }
-        .padding(.horizontal, 8)
-        .frame(height: isFloating ? 36 : 28)
-        .padding(.top, isFloating ? 0 : 1)
+        // A little more room from the window's top and side edges than a title bar gives, like
+        // other Mac apps with a sidebar. Floating, the card's 6 pt inset makes up part of it, so the
+        // buttons sit in the same place docked or floating.
+        .padding(.horizontal, isFloating ? 6 : 12)
+        .frame(height: 28)
+        .padding(.top, isFloating ? 1 : 7)
         .contentShape(.rect)
         .gesture(WindowDragGesture())
     }
