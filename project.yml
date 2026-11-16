@@ -151,6 +151,9 @@ targets:
         ENABLE_HARDENED_RUNTIME: true
         COMBINE_HIDPI_IMAGES: true
         ENABLE_USER_SCRIPT_SANDBOXING: false
+        # Room in the executable's header for the load commands that point a copy of it at a bundled WebKit
+        # (tools/mac-bundle-webkit.sh, LC_DYLD_ENVIRONMENT).
+        OTHER_LDFLAGS: $(inherited) -Wl,-headerpad,0x4000
       configs:
         # Xcode runs and test builds get their own ID, so their data lives in a separate container
         # and never touches (or overwrites) the daily-driver app's.

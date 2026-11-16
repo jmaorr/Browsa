@@ -11,6 +11,8 @@
 #                                          Browsa-webkit-26 executable is linked with -dyld_env ...=@executable_path/../Frameworks/WebKit-26),
 #                                          its label in Resources/BROWSA_WEBKIT-26.txt and, with BUNDLE_MINIMUM_OS=26.0,
 #                                          Resources/WebKit-26.minimum
+#   BUNDLE_STRIP=1          strips local symbols from every bundled binary (release: keep the build's dSYMs instead)
+#   BUNDLE_SKIP_APP_SIGN=1  leaves the app itself unsigned (tools/mac-bundle-webkit.sh signs it once at the end)
 #
 # WebKit's XPC services (GPU, Networking, WebContent) become real copies in WebKit.framework/Versions/A/XPCServices;
 # their own LC_DYLD_ENVIRONMENT is rewritten for that place (set-dyld-env.py). Headers, modules and test frameworks
@@ -32,6 +34,8 @@ for f in $frameworks; do
   rm -rf "$dest/$f.framework/Headers" "$dest/$f.framework/PrivateHeaders" "$dest/$f.framework/Modules" \
          "$dest/$f.framework/Versions/A/Headers" "$dest/$f.framework/Versions/A/PrivateHeaders" "$dest/$f.framework/Versions/A/Modules"
 done
+# JavaScriptCore's jsc shell is a developer tool, not part of the engine.
+rm -rf "$dest/JavaScriptCore.framework/Versions/A/Helpers" "$dest/JavaScriptCore.framework/Helpers"
 for f in libwebrtc.dylib libANGLE-shared.dylib; do cp -c "$fw/$f" "$dest/$f"; done
 # Only code goes in Frameworks. ANGLE's shaders are compiled into libANGLE and the media quirk scripts into WebCore,
 # so the loose .metallib / .js files in the build folder aren't needed. The build's label goes with the resources.
@@ -51,6 +55,21 @@ done
 rm -f "$dest/WebKit.framework/XPCServices"
 ln -s Versions/Current/XPCServices "$dest/WebKit.framework/XPCServices"
 
+# Xcode's export refuses a bundle whose Info.plist names no platform (WebKitLegacy's says [""]).
+for plist in "$dest"/*.framework/Versions/A/Resources/Info.plist "$xpcdir"/*.xpc/Contents/Info.plist; do
+  platforms=$(plutil -extract CFBundleSupportedPlatforms json -o - "$plist" 2>/dev/null || echo none)
+  if [[ "$platforms" != *MacOSX* && "$platforms" != *macosx* ]]; then
+    plutil -replace CFBundleSupportedPlatforms -json '["MacOSX"]' "$plist"
+    plutil -replace DTPlatformName -string macosx "$plist"
+  fi
+done
+
+if [[ "${BUNDLE_STRIP:-}" == 1 ]]; then
+  for f in $frameworks; do strip -x "$dest/$f.framework/Versions/A/$f"; done
+  for f in libwebrtc.dylib libANGLE-shared.dylib; do strip -x "$dest/$f"; done
+  for s in GPU Networking WebContent; do strip -x "$xpcdir/com.apple.WebKit.$s.xpc/Contents/MacOS/"*; done
+fi
+
 # Signing, inside out. Helpers keep only what they need: WebContent JITs.
 ts=(--timestamp); [[ "$identity" == "Apple Development"* || "$identity" == "-" ]] && ts=(--timestamp=none)
 sign() { codesign --force --options runtime $ts --sign "$identity" "$@"; }
@@ -63,6 +82,7 @@ for s in GPU Networking; do sign "$xpcdir/com.apple.WebKit.$s.xpc"; done
 sign --entitlements "$ents/webcontent.plist" "$xpcdir/com.apple.WebKit.WebContent.xpc"
 for f in libwebrtc.dylib libANGLE-shared.dylib; do [[ -e "$dest/$f" ]] && sign "$dest/$f"; done
 for f in $frameworks; do sign "$dest/$f.framework"; done
+if [[ "${BUNDLE_SKIP_APP_SIGN:-}" == 1 ]]; then rm -rf "$ents"; du -sh "$dest" | sed 's/^/size /'; exit 0; fi
 # The app last, with the entitlements it was built with.
 appents="$ents/app.plist"
 codesign -d --entitlements - --xml "$app" > "$appents" 2>/dev/null

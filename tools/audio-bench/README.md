@@ -153,3 +153,17 @@ raises leftovers across the response while the main peak stays suppressed), and 
 every shift from -80 to +60 ms about equally (correlation 0.6 to 0.8, the plain room response 0.67). So that
 recording neither supports nor rules out a late reference; what it does show is about 20 dB more linear echo than
 the native core (-57 against -77 dBFS coherent), concentrated at the main echo path. A unit dump answers it.
+
+## Clock drift (spike runs)
+
+The `spike` subject records the unit's own dump (raw mic, reference, sent, clock figures) in WebKit's GPU process
+cache folder, the one place its sandbox lets it write, and the bench copies it into the subject's `unit-dump/`
+afterwards. `drift.mjs` (run by the bench, or `node tools/audio-bench/drift.mjs <dump folder>`) then reports, in the
+report's notes and `drift.json`:
+
+- the clocks: the speakers' and the microphone's real rate against their nominal one (ppm) and the gap between them
+  (10 ppm is 0.6 ms a minute);
+- the echo path, reference to microphone, in 10 s windows: it should hold still however the clocks drift (the unit
+  reads the reference in host time); a slope is drift the canceller has to chase.
+
+For drift over a call's length without the stand-in talker: `--no-talker --long 10` (10 minutes of far end only).

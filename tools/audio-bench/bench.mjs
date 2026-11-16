@@ -9,6 +9,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { RATE, analyze, boundaries, readWav, scheduled, writeWavFloat } from "./analyze.mjs";
 import { renderReport } from "./report.mjs";
+import { findDumps } from "./aftercall.mjs";
+import { driftReport, driftText } from "./drift.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "../..");
@@ -309,8 +311,10 @@ const OPEN_SPIKE = path.join(DERIVED, "webkit-spike/open-spike.sh");
 function spikeStart(url, dir, apple) {
   if (!fs.existsSync(OPEN_SPIKE)) throw new Error(`no ${OPEN_SPIKE}: run Spike/CallAudio/webkit/install-launchers.sh`);
   const logPath = path.join(dir, "app.log");
-  if (!apple) fs.mkdirSync(path.join(dir, "unit-dump"), { recursive: true });
-  const env = { ...process.env, BROWSA_SPIKE_LOG: logPath, BROWSA_AUDIO_BENCH: "1", BROWSA_AUDIO_BENCH_URL: url, ...(apple ? {} : { BROWSA_CALL_AUDIO_DUMP: process.env.BENCH_UNIT_DUMP || path.join(dir, "unit-dump") }) };
+  // The unit's dump (raw mic, reference, sent, clock figures) goes where WebKit's GPU process may write: its own
+  // cache folder ("1"; a folder of the bench's is outside its sandbox and stays empty). collect() copies it here.
+  const startedAt = Date.now();
+  const env = { ...process.env, BROWSA_SPIKE_LOG: logPath, BROWSA_AUDIO_BENCH: "1", BROWSA_AUDIO_BENCH_URL: url, ...(apple ? {} : { BROWSA_CALL_AUDIO_DUMP: process.env.BENCH_UNIT_DUMP || "1" }) };
   let pid = null, stopped = false;
   const note = (m) => { fs.appendFileSync(logPath, `bench: ${m}\n`); console.log(`  (${m})`); };
   const launch = () => {
@@ -356,7 +360,21 @@ function spikeStart(url, dir, apple) {
     }
     if (!stopped) note("bench page never opened");
   })();
-  return { stop: () => { stopped = true; return quit(); } };
+  const collect = () => {
+    if (apple) return null;
+    const found = findDumps("com.orriginal.browsa.webkitspike").filter((d) => d.mtime >= startedAt);
+    if (!found.length) { note("no unit dump found in the spike's GPU cache folder"); return null; }
+    // The longest of this run's (WebKit can set a unit up and drop it straight away).
+    const src = found.sort((a, b) => (b.seconds ?? 0) - (a.seconds ?? 0))[0].dir, dest = path.join(dir, "unit-dump");
+    fs.mkdirSync(dest, { recursive: true });
+    for (const f of ["raw.wav", "ref.wav", "sent.wav", "meta.json"]) if (fs.existsSync(path.join(src, f))) fs.copyFileSync(path.join(src, f), path.join(dest, f));
+    try {
+      const drift = driftReport(dest);
+      fs.writeFileSync(path.join(dir, "drift.json"), JSON.stringify(drift, null, 2));
+      return { dump: dest, drift, text: driftText(drift) };
+    } catch (e) { note(`drift: ${e.message}`); return { dump: dest }; }
+  };
+  return { stop: () => { stopped = true; return quit(); }, collect };
 }
 
 // The same test build started directly (system WebKit, no DYLD overrides), for the earlier routes.
@@ -391,7 +409,9 @@ async function browserSubject(key, volume, extra = {}) {
   fs.writeFileSync(path.join(dir, "meta.json"), JSON.stringify(meta, null, 2));
   const analysis = analyzeDir(dir, "browser");
   console.log(`echo ${analysis.echoAboveQuietDb?.toFixed(1)} dB above quiet, send ${analysis.sendLevelDb?.toFixed(1)} dBFS, talk-over ${analysis.talkOverKeptDb?.toFixed(1)} dB`);
-  return { id, name, volume, kind: "browser", status: "ok", dir, meta, analysis };
+  const unit = app?.collect ? app.collect() : null;
+  if (unit?.text) console.log(unit.text.replace(/^/gm, "  "));
+  return { id, name, volume, kind: "browser", status: "ok", dir, meta, analysis, ...(unit ? { unitDump: unit.dump, drift: unit.drift, notes: unit.text } : {}) };
 }
 
 // The robot guest (guest.mjs) on a real Meet that the build under test is already in. It waits to be admitted;

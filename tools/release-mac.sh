@@ -2,14 +2,23 @@
 # Builds a Browsa for Mac release: Developer ID signed, notarised, stapled, zipped, and added to a
 # Sparkle appcast. Publishes nothing; it prints what to upload. See docs/mac-releases.md.
 #
-#   tools/release-mac.sh <version> [git-ref]     # e.g. tools/release-mac.sh 1.0.1 origin/main
+#   tools/release-mac.sh <version> [git-ref]           # e.g. tools/release-mac.sh 1.0.1 origin/main
+#   tools/release-mac.sh --local <version> [git-ref]   # local only: archive, bundle, Developer ID export to disk,
+#                                                      # checks and sizes. Nothing goes to the notary service, and
+#                                                      # no zip, DMG or appcast lands in the releases folder.
+#
+# Browsa's own WebKit (call audio, Spike/CallAudio/webkit/BUNDLING.md) goes inside the app only when asked:
+#   BROWSA_BUNDLE_WEBKIT="26=<webkit build folder> 27=<webkit build folder>" tools/release-mac.sh ...
+# with release WebKit builds from Spike/CallAudio/webkit/build-release-webkit.sh. Without it, the app is as before.
 #
 # Signing and notarisation go through the Xcode account (team UAU4449Y7J) with a cloud-managed
 # Developer ID certificate, so no certificate, app-specific password or notarytool profile is needed.
 # The Sparkle EdDSA private key is read from the login keychain (made once with generate_keys).
 set -euo pipefail
 
-version="${1:?usage: tools/release-mac.sh <version> [git-ref]}"
+local_only=0
+[[ "${1:-}" == --local ]] && { local_only=1; shift; }
+version="${1:?usage: tools/release-mac.sh [--local] <version> [git-ref]}"
 ref="${2:-origin/main}"
 repo="${0:A:h:h}"
 team="UAU4449Y7J"
@@ -20,12 +29,14 @@ bundle_id="com.orriginal.browsa"
 releases="${BROWSA_RELEASES_DIR:-$HOME/Developer/Browsa/releases/mac}"
 download_prefix="https://browsa.app/mac/releases/"
 work="$HOME/Library/Caches/com.orriginal.browsa.release"
+(( local_only )) && work="$work-local"
+bundle_webkit=(${=BROWSA_BUNDLE_WEBKIT:-})
 src="$work/src"
 derived="$work/DerivedData"
 archive="$work/Browsa.xcarchive"
 
 [[ "$version" =~ '^[0-9]+(\.[0-9]+){1,2}$' ]] || { echo "version should look like 1.2 or 1.2.3" >&2; exit 1; }
-[[ -e "$releases/Browsa-$version.zip" ]] && { echo "$releases/Browsa-$version.zip already exists" >&2; exit 1; }
+(( local_only )) || [[ ! -e "$releases/Browsa-$version.zip" ]] || { echo "$releases/Browsa-$version.zip already exists" >&2; exit 1; }
 
 echo "==> Fetching $ref"
 if [[ "$ref" == origin/* ]]; then
@@ -40,7 +51,8 @@ commit=$(git -C "$repo" rev-parse --short "$ref^{commit}")
 build=$(git -C "$repo" rev-list --count "$commit")
 
 echo "==> Exporting $ref ($commit) as $version ($build)"
-rm -rf "$src" "$archive" "$work/upload" "$work/notarized" && mkdir -p "$src" "$releases"
+rm -rf "$src" "$archive" "$work/upload" "$work/notarized" "$work/export" && mkdir -p "$src"
+(( local_only )) || mkdir -p "$releases"
 git -C "$repo" archive "$commit" | tar -x -C "$src"
 
 echo "==> Archiving"
@@ -56,6 +68,43 @@ plist="$archive/Products/Applications/Browsa.app/Contents/Info.plist"
 [[ "$(defaults read "$plist" CFBundleIdentifier)" == "$bundle_id" ]] || { echo "wrong bundle ID" >&2; exit 1; }
 [[ "$(defaults read "$plist" BrowsaUpdates)" == "YES" ]] || { echo "updates aren't switched on" >&2; exit 1; }
 
+if (( ${#bundle_webkit} )); then
+  echo "==> Bundling Browsa's WebKit (${bundle_webkit[*]})"
+  archived_app="$archive/Products/Applications/Browsa.app"
+  # Sign like the archive did (its identity); the Developer ID export re-signs everything afterwards.
+  identity=$(codesign -dvv "$archived_app" 2>&1 | sed -n 's/^Authority=//p' | head -1)
+  [[ -n "$identity" ]] || { echo "can't tell how the archive was signed" >&2; exit 1; }
+  "$src/tools/mac-bundle-webkit.sh" "$archived_app" "$identity" "${bundle_webkit[@]}"
+  # WebKit's dSYMs with the app's, for crash reports.
+  mkdir -p "$archive/dSYMs" && cp -cR "$archive/Products/Applications/dSYMs/"* "$archive/dSYMs/" && rm -rf "$archive/Products/Applications/dSYMs"
+fi
+
+if (( local_only )); then
+  echo "==> Signing with Developer ID, to disk only (nothing goes to the notary service)"
+  export_options="$work/ExportOptions.plist"
+  cat > "$export_options" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>method</key><string>developer-id</string>
+  <key>teamID</key><string>$team</string>
+  <key>signingStyle</key><string>automatic</string>
+  <key>destination</key><string>export</string>
+</dict></plist>
+PLIST
+  xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$export_options" \
+    -exportPath "$work/export" -allowProvisioningUpdates > "$work/export.log" 2>&1 \
+    || { tail -20 "$work/export.log" >&2; echo "export failed (log: $work/export.log)" >&2; exit 1; }
+  app="$work/export/Browsa.app"
+  "$src/tools/mac-check-release.sh" "$app"
+  zip="$work/Browsa-$version.zip"
+  rm -f "$zip" && ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
+  echo
+  echo "==> Local build of Browsa $version ($build, $commit), not notarised: $app"
+  echo "    on disk $(du -sh "$app" | cut -f1), zipped $(du -h "$zip" | cut -f1) ($zip)"
+  exit 0
+fi
+
 echo "==> Signing with Developer ID and sending to Apple's notary service"
 export_options="$work/ExportOptions.plist"
 cat > "$export_options" <<EOF
@@ -68,8 +117,16 @@ cat > "$export_options" <<EOF
   <key>destination</key><string>upload</string>
 </dict></plist>
 EOF
+# Stop here if the upload didn't go through: xcodebuild has printed "EXPORT FAILED" after a timeout without the
+# script noticing, which then waited half an hour for a notarisation that was never requested.
+export_status=0
 xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$export_options" \
-  -exportPath "$work/upload" -allowProvisioningUpdates -quiet 2>&1 | { grep -v 'Progress [0-9]*%' || true; }
+  -exportPath "$work/upload" -allowProvisioningUpdates > "$work/upload.log" 2>&1 || export_status=$?
+{ grep -v 'Progress [0-9]*%' "$work/upload.log" || true; } | tail -20
+if (( export_status != 0 )) || grep -q "EXPORT FAILED" "$work/upload.log" || ! grep -q "EXPORT SUCCEEDED" "$work/upload.log"; then
+  echo "The upload to Apple's notary service failed (exit $export_status, log: $work/upload.log). Stopping." >&2
+  exit 1
+fi
 
 echo "==> Waiting for notarisation (usually a few minutes)"
 for attempt in {1..60}; do
@@ -82,6 +139,7 @@ done
 app="$work/notarized/Browsa.app"
 xcrun stapler validate -q "$app"
 spctl --assess --type execute "$app" || { echo "Gatekeeper rejected the notarised app" >&2; exit 1; }
+"$src/tools/mac-check-release.sh" "$app"
 
 echo "==> Zipping"
 zip="$releases/Browsa-$version.zip"

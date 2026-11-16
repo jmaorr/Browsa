@@ -4,7 +4,7 @@
 // given CallGuard settings, puts the result in place of that subject's sent audio in a copy of the run, and
 // re-analyses it (known far end and talker: guest's ear, talk-over, send level, gain pumping). Nothing played.
 //   node tunecheck.mjs <bench run folder> <subject id> <folder with raw.wav + ref.wav> [--scale dB]
-//                      [--guard name=value ...] [--plain]   (--plain: WebRTC's gain, no CallGuard)
+//                      [--guard name=value ...] [--plain] [--bare]   (--plain: WebRTC's gain, no CallGuard; --bare: no gain at all)
 // --scale changes the mic level before replay (a hotter or quieter mic than the one recorded).
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { RATE, readWav, writeWavFloat } from "./analyze.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPLAY = path.join(os.homedir(), "Developer/Browsa/derived/audio-lab/apm-replay-webkit");
+const REPLAY = process.env.BROWSA_REPLAY || path.join(os.homedir(), "Developer/Browsa/derived/audio-lab/apm-replay-webkit");
 
 export function tuneCheck(runDir, subjectId, srcDir, opt = {}) {
   const results = JSON.parse(fs.readFileSync(path.join(runDir, "results.json"), "utf8"));
@@ -33,7 +33,8 @@ export function tuneCheck(runDir, subjectId, srcDir, opt = {}) {
     const scaled = raw.map((v) => Math.max(-1, Math.min(1, v * g)));
     writeWavFloat(path.join(dir, "raw.wav"), [scaled], RATE);
     const args = ["--raw", path.join(dir, "raw.wav"), "--ref", path.join(srcDir, "ref.wav"), "--out", path.join(dir, "sent.wav")];
-    if (opt.plain) args.push("--agc", "1");
+    if (opt.bare) args.push("--agc", "0", "--warmup", "0", "--gated-gain", "0");
+    else if (opt.plain) args.push("--agc", "1");
     else { args.push("--agc", "0", "--warmup", "1", "--gated-gain", "1"); for (const kv of opt.guard || []) args.push("--guard", kv); }
     const stats = JSON.parse(execFileSync(REPLAY, args, { encoding: "utf8" }));
     if (sub.kind !== "native") fs.rmSync(path.join(dir, "raw.wav"));  // browser subjects are analysed from sent.wav only
@@ -52,6 +53,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (argv[i] === "--scale") opt.scale = parseFloat(argv[++i]);
     else if (argv[i] === "--guard") opt.guard.push(argv[++i]);
     else if (argv[i] === "--plain") opt.plain = true;
+    else if (argv[i] === "--bare") opt.bare = true;
     else pos.push(argv[i]);
   }
   console.log(JSON.stringify(tuneCheck(pos[0], pos[1], pos[2], opt)));

@@ -582,8 +582,9 @@ enum Preferences {
             if d.data(forKey: "callAudio") == nil, d.object(forKey: "callAudioProcessing") as? Bool == false { t.processing = .system }
             // tools/audio-bench picks the in-page processing per run (test builds only).
             if AudioBench.isEnabled, let v = ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH_CALL_AUDIO"], let p = CallAudioTuning.Processing(rawValue: v) { t.processing = p }
-            // On Browsa's own WebKit the call audio is inside WebKit: the in-page script stays out of the way.
-            if PatchedWebKit.isActive { t.processing = .system }
+            // The in-page script is retired from Settings: calls get the Browsa Audio Engine (inside WebKit) or Apple's
+            // processing. Only the test bench can still pick it.
+            if !(AudioBench.isEnabled && ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH_CALL_AUDIO"] != nil) { t.processing = .system }
             return t
         }
         set { d.set(try? JSONEncoder().encode(newValue), forKey: "callAudio") }

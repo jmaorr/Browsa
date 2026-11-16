@@ -46,7 +46,8 @@ echo "==> Building Browsa (Release)"
 cd "$src"
 xcodegen generate --quiet
 extra=()
-(( patched_webkit )) && extra=(CODE_SIGN_ENTITLEMENTS=Mac/BrowsaLocalWebKit.entitlements)
+# The local daily also gets the development-only call recording switch (Settings › Audio), never in releases.
+(( patched_webkit )) && extra=(CODE_SIGN_ENTITLEMENTS=Mac/BrowsaLocalWebKit.entitlements 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) BROWSA_CALL_RECORDING')
 # A fresh product each time: an incremental build keeps whatever an earlier build embedded (Chromium, after call
 # tabs were removed).
 rm -rf "$work/DerivedData/Build/Products/Release/Browsa.app"

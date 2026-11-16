@@ -13,7 +13,7 @@ import path from "node:path";
 import { RATE, db, power, coherentPower, readWav, writeWavFloat } from "./analyze.mjs";
 import { loadDump, echoLag, detectStretches, scoreSent } from "./dumpscore.mjs";
 
-const REPLAY = path.join(os.homedir(), "Developer/Browsa/derived/audio-lab/apm-replay-webkit");
+const REPLAY = process.env.BROWSA_REPLAY || path.join(os.homedir(), "Developer/Browsa/derived/audio-lab/apm-replay-webkit");
 
 export function guardCheck(dir, opt = {}) {
   // BROWSA_GUARD="name=value name=value": CallGuard settings to try (apm-replay-webkit --guard).

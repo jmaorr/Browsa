@@ -118,6 +118,20 @@ struct SnapshotTour {
         browser.toggleSidebar()
         await pause(1)
 
+        // Settings › Audio, light and dark, in a window of its own (SwiftUI's Settings scene can't be opened from here).
+        UserDefaults.standard.set("audio", forKey: "settingsTab")
+        let settings = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 460), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        settings.title = "Audio"
+        settings.contentView = NSHostingView(rootView: SettingsView().environment(delegate.library).environment(delegate.updates))
+        settings.center()
+        settings.makeKeyAndOrderFront(nil)
+        await pause(2)
+        save("13-settings-audio-light", in: settings)
+        NSApp.appearance = NSAppearance(named: .darkAqua)
+        await pause(1)
+        save("14-settings-audio-dark", in: settings)
+        settings.close()
+
         browser.saveNow()
         NSApp.terminate(nil)
     }

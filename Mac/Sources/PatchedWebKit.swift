@@ -85,7 +85,13 @@ enum PatchedWebKit {
             guard let executable = Bundle.main.executablePath else { reason = .noBuild; return }
             log("WebKit: starting again on \(folder)")
             // Settings' call recording rides along (PatchedWebKitPolicy passes every BROWSA_CALL_AUDIO* on to WebKit).
-            let newEnv = PatchedWebKitPolicy.environment(base: env.merging(CallRecordings.environment) { $1 }, frameworks: folder)
+            #if DEBUG || BROWSA_CALL_RECORDING
+            let base = env.merging(CallRecordings.environment) { $1 }
+            #else
+            // Release builds never pass a recording request on to WebKit, whatever the environment held.
+            let base = env.filter { !$0.key.hasPrefix("BROWSA_CALL_AUDIO_DUMP") && !$0.key.hasPrefix("__XPC_BROWSA_CALL_AUDIO_DUMP") }
+            #endif
+            let newEnv = PatchedWebKitPolicy.environment(base: base, frameworks: folder)
             var argv: [UnsafeMutablePointer<CChar>?] = CommandLine.arguments.map { strdup($0) } + [nil]
             var envp: [UnsafeMutablePointer<CChar>?] = newEnv.map { strdup("\($0.key)=\($0.value)") } + [nil]
             execve(executable, &argv, &envp)
@@ -113,7 +119,28 @@ enum PatchedWebKit {
             && entitlements["com.apple.security.cs.disable-library-validation"] as? Bool == true
     }
 
-    /// Settings › Audio.
+    /// Settings › Audio: whether the Browsa Audio Engine can run on this Mac at all (its WebKit is bundled for this
+    /// macOS, or a local build is present), so its switch means something.
+    static var engineAvailable: Bool {
+        if isActive { return true }
+        if let choice = bundledChoice { return choice == "used" || choice == "off" }
+        return buildPresent && signatureAllowsOutsideWebKit()
+    }
+
+    /// Settings › Audio: a line under the switch when something needs saying, in plain words.
+    static func engineNote(wantsOn: Bool) -> String? {
+        if !engineAvailable {
+            switch bundledChoice {
+            case "old-os": return "Not available on this version of macOS. Calls use WebKit's default audio engine."
+            case "new-os": return "Not available yet on this version of macOS. Calls use WebKit's default audio engine."
+            default: return "Not available on this Mac. Calls use WebKit's default audio engine."
+            }
+        }
+        if wantsOn != isActive { return wantsOn ? "Quit and reopen Browsa to turn it on." : "Quit and reopen Browsa to turn it off." }
+        return nil
+    }
+
+    /// Diagnostics (log); Settings uses engineNote.
     static var statusText: String {
         if !isActive, let choice = bundledChoice {
             switch choice {

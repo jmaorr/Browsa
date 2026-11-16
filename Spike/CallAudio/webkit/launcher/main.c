@@ -54,14 +54,22 @@ int main(int argc, char* argv[]) {
     CFPropertyListRef on = CFPreferencesCopyAppValue(CFSTR("patchedWebKit"), bundle);
     if (on && CFGetTypeID(on) == CFBooleanGetTypeID() && !CFBooleanGetValue((CFBooleanRef)on)) reason = "off";
     if (on) CFRelease(on);
-    // Settings › Audio › Record calls for tuning: the capture unit records each call (WebKit's services only get
-    // __XPC_ variables that were there when this process started, so it has to be set here).
+#ifdef BROWSA_CALL_RECORDING
+    // Development builds: Settings › Audio › Record calls for tuning makes the capture unit record each call (WebKit's
+    // services only get __XPC_ variables that were there when this process started, so it has to be set here).
     CFPropertyListRef record = CFPreferencesCopyAppValue(CFSTR("recordCallsForTuning"), bundle);
     if (record && CFGetTypeID(record) == CFBooleanGetTypeID() && CFBooleanGetValue((CFBooleanRef)record)) {
         setenv("__XPC_BROWSA_CALL_AUDIO_DUMP", "1", 1);
         setenv("__XPC_BROWSA_CALL_AUDIO_DUMP_MINUTES", "30", 1);
     }
     if (record) CFRelease(record);
+#else
+    // Release builds: no recording, whatever the environment held when Browsa was opened.
+    unsetenv("BROWSA_CALL_AUDIO_DUMP");
+    unsetenv("BROWSA_CALL_AUDIO_DUMP_MINUTES");
+    unsetenv("__XPC_BROWSA_CALL_AUDIO_DUMP");
+    unsetenv("__XPC_BROWSA_CALL_AUDIO_DUMP_MINUTES");
+#endif
     CFRelease(bundle);
     const char* env = getenv("BROWSA_PATCHED_WEBKIT");
     if (env && !strcmp(env, "0")) reason = "off";
@@ -72,6 +80,10 @@ int main(int argc, char* argv[]) {
     else { size_t n = sizeof(os); sysctlbyname("kern.osproductversion", os, &n, NULL, 0); }
     const long major = atol(os);
 
+#if defined(__x86_64__)
+    // The bundled WebKit builds are Apple silicon only: an Intel Mac (or Browsa forced into Rosetta) uses Apple's.
+    if (!strcmp(reason, "used")) reason = "intel";
+#endif
     if (!strcmp(reason, "used")) {
         // One build per macOS major: WebKit-<major>.
         snprintf(path, sizeof(path), "%s/Frameworks/WebKit-%ld/WebKit.framework/Versions/A/WebKit", contents, major);
