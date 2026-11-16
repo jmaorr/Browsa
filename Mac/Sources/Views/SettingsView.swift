@@ -440,7 +440,7 @@ private struct EngineSettings: View {
         let info = browser.engine.info
         Form {
             Section {
-                LabeledContent("Web engine", value: "\(info.name) \(info.version)")
+                LabeledContent("Web engine", value: "\(info.name) (\(info.version))")
             }
             if info.capabilities.contains(.webExtensions) {
                 Section {
