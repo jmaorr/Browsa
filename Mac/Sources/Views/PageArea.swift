@@ -288,7 +288,8 @@ private struct FindBar: View {
                 // Closing tears the field down, which can write once more; without the guard that
                 // write ran findNext, which reopened the bar it had just closed.
                 set: { guard browser.find != nil else { return }
-                       browser.find?.text = $0; browser.find?.found = nil; browser.findNext() }))
+                       browser.find?.text = $0; browser.find?.found = nil; browser.find?.matches = nil
+                       browser.findNext() }))
                 .textFieldStyle(.plain)
                 .frame(width: 180)
                 .focused($focused)
@@ -296,6 +297,11 @@ private struct FindBar: View {
                 .onKeyPress(.escape) { browser.closeFind(); return .handled }
             if browser.find?.found == false {
                 Text("Not found").font(.caption).foregroundStyle(.secondary)
+            } else if let m = browser.find?.matches, m.total > 0 {
+                let total = m.capped ? "\(m.total)+" : "\(m.total)"
+                Text(m.current > 0 ? "\(m.current) of \(total)" : "\(total) found")
+                    .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                    .fixedSize()
             }
             Button { browser.findNext(backwards: true) } label: { FindButtonLabel(symbol: "chevron.up") }
                 .buttonStyle(.plain).help(Shortcuts.shared.help("Previous", .findPrevious))

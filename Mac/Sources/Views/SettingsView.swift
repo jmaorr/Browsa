@@ -24,7 +24,7 @@ struct SettingsView: View {
         Pane(id: "privacy", title: "Privacy", symbol: "hand.raised"),
         Pane(id: "audio", title: "Audio", symbol: "waveform"),
         Pane(id: "agents", title: "Agents", symbol: AgentIdentity.symbol),
-        Pane(id: "engine", title: "Engine", symbol: "cpu"),
+        Pane(id: "engine", title: "Advanced", symbol: "gearshape.2"),
     ]
 
     var body: some View {
@@ -411,59 +411,31 @@ private struct AudioSettings: View {
     }
 }
 
-/// Which web engine Browsa is running on, and what it can do.
+/// Settings › Advanced: which engine is running, and the switches only some people want.
 private struct EngineSettings: View {
     @Environment(Library.self) private var browser
-
-    private let features: [(EngineCapabilities, String)] = [
-        (.contentBlocking, "Ad and tracker blocking"),
-        (.isolatedScripts, "Cookie banner declining"),
-        (.sessionRestore, "Tabs restore with their history"),
-        (.pageZoom, "Page zoom"),
-        (.findInPage, "Find on page"),
-        (.developerTools, "Web Inspector (right-click > Inspect Element)"),
-        (.passkeys, "Passkeys and security keys"),
-        (.webExtensions, "Safari web extensions"),
-        (.chromeExtensions, "Chrome extensions"),
-    ]
 
     var body: some View {
         let info = browser.engine.info
         Form {
             Section {
-                LabeledContent("Engine", value: info.name)
-                LabeledContent("Version", value: info.version)
-            }
-            Section("Supports") {
-                ForEach(features, id: \.1) { cap, title in
-                    let on = info.capabilities.contains(cap)
-                    Label {
-                        Text(title).foregroundStyle(on ? .primary : .secondary)
-                    } icon: {
-                        Image(systemName: on ? "checkmark.circle.fill" : "minus.circle")
-                            .foregroundStyle(on ? .green : .secondary)
-                    }
-                }
+                LabeledContent("Web engine", value: "\(info.name) (\(info.version))")
             }
             if info.capabilities.contains(.webExtensions) {
                 Section {
-                    Toggle("Safari extensions from apps (experimental)", isOn: Bindable(browser).useSafariExtensions)
+                    Toggle("Safari extensions from apps", isOn: Bindable(browser).useSafariExtensions)
                 } footer: {
-                    Text("Runs the Safari extensions that apps on this Mac include. Most need to talk to their app, which doesn't work in Browsa, so add the Chrome Web Store version from the Library instead. If both are added, Browsa uses the Chrome one.")
+                    Text("Experimental. Most Safari extensions need their app, which doesn't work in Browsa, so add the Chrome Web Store version from the Library instead.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
             if info.capabilities.contains(.developerTools) {
                 Section {
-                    Toggle("Show Inspect Element in the page menu", isOn: Bindable(browser).developerTools)
+                    Toggle("Show Inspect Element", isOn: Bindable(browser).developerTools)
                 } footer: {
-                    Text("Opens the Web Inspector from a right-click on any page, or with View › Web Inspector.")
+                    Text("Adds Inspect Element to the right-click menu on pages, for web developers.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-            }
-            Section {
-                Text("Browsa talks to its engine through a small protocol, so another engine, such as Chromium with Chrome extension support, can be added beside WebKit. See docs/engines.md in the repository.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
