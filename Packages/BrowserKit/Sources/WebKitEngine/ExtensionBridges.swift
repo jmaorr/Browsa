@@ -107,8 +107,9 @@ enum ExtensionBridges {
         }
         nextDownloadID += 1
         let downloadID = nextDownloadID
+        let filename = body["filename"] as? String
         page.webView.startDownload(using: URLRequest(url: url)) { download in
-            engine.downloads.adopt(download, from: page)
+            engine.downloads.adopt(download, from: page, filename: filename)
         }
         reply(downloadID, nil)
     }

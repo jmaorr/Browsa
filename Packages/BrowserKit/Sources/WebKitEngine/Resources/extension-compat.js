@@ -136,6 +136,12 @@
     for (const [name, make] of Object.entries(namespaces)) {
       if (root[name] === undefined) {
         try { root[name] = keep(make()); missing.push(name); } catch (e) {}
+      } else if (name === 'sidePanel') {
+        // WebKit has its own chrome.sidePanel, which Browsa can't show: route its calls to Browsa's panel.
+        const ours = keep(make());
+        try { Object.defineProperty(root, name, { value: ours, configurable: true, writable: true }); }
+        catch (e) { try { Object.assign(root[name], ours); } catch (e2) {} }
+        missing.push('sidePanel (replaced)');
       }
     }
     for (const [ns, names] of Object.entries(events)) {
@@ -166,6 +172,33 @@
         missing.push('storage.managed');
       } catch (e) {}
     }
+  }
+  // Permissions Browsa provides itself (above) aren't ones WebKit knows: asking about them throws
+  // ("'downloads' is not a valid permission"), which stopped FireShot saving. Answer yes for them,
+  // and pass the rest to WebKit.
+  const bridged = ['downloads', 'notifications', 'sidePanel'];
+  for (const root of roots) {
+    const perms = root.permissions;
+    if (!perms) continue;
+    for (const fn of ['contains', 'request']) {
+      const original = typeof perms[fn] === 'function' ? perms[fn].bind(perms) : null;
+      if (!original) continue;
+      const wrapped = (p = {}, cb) => {
+        const asked = Array.isArray(p.permissions) ? p.permissions : [];
+        const rest = asked.filter((x) => !bridged.includes(x));
+        const origins = Array.isArray(p.origins) ? p.origins : [];
+        let result;
+        if (!rest.length && !origins.length) result = Promise.resolve(true);
+        else {
+          try { result = Promise.resolve(original({ ...p, permissions: rest })); } catch (e) { result = Promise.reject(e); }
+        }
+        if (cb) { result.then((v) => cb(!!v), () => cb(false)); return undefined; }
+        return result;
+      };
+      try { Object.defineProperty(perms, fn, { value: wrapped, configurable: true, writable: true }); }
+      catch (e) { try { perms[fn] = wrapped; } catch (e2) {} }
+    }
+    try { keep(perms); } catch (e) {}
   }
   globalThis.__browsaCompatMissing = missing;
 

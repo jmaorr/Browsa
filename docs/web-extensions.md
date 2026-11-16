@@ -134,10 +134,13 @@ Three stand-ins now do the real thing, through native messages answered in-proce
 - **`chrome.sidePanel.open()`** shows the extension's page in the right panel, and
   **`setPanelBehavior({ openPanelOnActionClick: true })`** makes its toolbar button open the panel instead
   of firing `action.onClicked`, as in Chrome (remembered per extension). Many AI-sidebar and notes
-  extensions rely on this.
+  extensions rely on this. An extension with a side panel and no popup also opens its panel from the
+  button. WebKit has a `chrome.sidePanel` of its own that Browsa can't show, so the compat script replaces it.
 - **`chrome.downloads.download({ url, filename })`** downloads through the tab in front with WebKit's own
   download machinery (cookies, progress, the Downloads panel). `blob:` URLs are read by the compat script
-  and sent as `data:` (up to 50 MB). `filename` isn't honoured yet; the server's name is used.
+  and sent as `data:` (up to 50 MB). `filename` is honoured (its last part; no subfolders).
+- **`chrome.permissions.contains/request`** answer yes for the permissions Browsa bridges (`downloads`,
+  `notifications`, `sidePanel`). WebKit throws on them as unknown, which stopped FireShot saving.
 
 ## Not supported
 
