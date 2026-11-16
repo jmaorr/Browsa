@@ -100,7 +100,13 @@ struct BrowserWindow: View {
             browser.nsWindow = window
             // Each window keeps its own place; SwiftUI restores the frames.
             window.tabbingMode = .disallowed
-            WindowSizing.attach(window)
+            // Closing the window is what archives its tabs. SwiftUI's onDisappear can come late or
+            // not at all, so listen to AppKit directly.
+            browser.closeObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak browser] _ in
+                MainActor.assumeIsolated { if let browser { browser.library.unregister(browser) } }
+            }
+            let other = browser.library.windows.first { $0 !== browser }?.nsWindow
+            WindowSizing.attach(window, isNew: browser.isNewWindow, like: other)
         }
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
@@ -113,25 +119,32 @@ struct BrowserWindow: View {
     }
 }
 
-/// Browser windows open filling the screen's free space. SwiftUI restores the last frame, which on
-/// first runs is its small default, so until the person sizes a window themselves, each new window
-/// is set to the screen's visible area. After they resize one, their size is left alone.
+/// A new window (⌘N) takes the size of the window you were using, nudged down and right like a
+/// cascade, or fills the screen's free space when no other window is open. Restored windows fill
+/// the screen until the person sizes a window themselves; after that, SwiftUI's saved frames stand.
 @MainActor
 enum WindowSizing {
     private static let key = "windowSizedByPerson"
     private static var observing = false
 
-    static func attach(_ window: NSWindow) {
+    static func attach(_ window: NSWindow, isNew: Bool, like other: NSWindow?) {
         if !observing {
             observing = true
             NotificationCenter.default.addObserver(forName: NSWindow.didEndLiveResizeNotification, object: nil, queue: .main) { _ in
                 UserDefaults.standard.set(true, forKey: key)
             }
         }
-        guard !UserDefaults.standard.bool(forKey: key) else { return }
-        // After SwiftUI has put back the saved frame.
+        guard isNew || !UserDefaults.standard.bool(forKey: key) else { return }
+        // After SwiftUI has put back the saved frame (or placed the new window).
         Task { @MainActor in
-            guard let screen = window.screen ?? NSScreen.main, !window.styleMask.contains(.fullScreen) else { return }
+            guard !window.styleMask.contains(.fullScreen) else { return }
+            if isNew, let other, other !== window, !other.styleMask.contains(.fullScreen), let screen = other.screen {
+                var frame = other.frame.offsetBy(dx: 24, dy: -24)
+                if !screen.visibleFrame.contains(frame) { frame = other.frame }
+                window.setFrame(frame, display: true, animate: false)
+                return
+            }
+            guard let screen = other?.screen ?? window.screen ?? NSScreen.main else { return }
             window.setFrame(screen.visibleFrame, display: true, animate: false)
         }
     }

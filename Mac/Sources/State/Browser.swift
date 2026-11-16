@@ -12,11 +12,19 @@ final class Browser {
     let library: Library
     /// Stable for the window's life, for extensions.
     let id = UUID()
+    /// Names the window across launches (SwiftUI restores it with the window), so each window
+    /// gets its own Today tabs back. Saved on those tabs as `BrowserTab.windowKey`.
+    let windowKey: UUID
+    /// Opened just now rather than restored from the last launch, so it takes its size from the
+    /// window in use (see `WindowSizing`).
+    let isNewWindow: Bool
     var selectedSpaceID: UUID
     /// The tab this window shows in each space it has visited. Two windows never show the same tab.
     private var tabSelection: [UUID: UUID] = [:]
     /// The AppKit window, for focusing and for matching key events to this browser.
     @ObservationIgnored weak var nsWindow: NSWindow?
+    /// Listens for the window closing (see `BrowserWindow.configure`); removed when it closes.
+    @ObservationIgnored var closeObserver: NSObjectProtocol?
 
     // MARK: Transient UI state
 
@@ -59,8 +67,10 @@ final class Browser {
     @ObservationIgnored private var spaceBeforePrivate: UUID?
     @ObservationIgnored var lastCookieToastURL: URL?
 
-    init(library: Library) {
+    init(library: Library, windowKey: UUID = UUID(), isNewWindow: Bool = true) {
         self.library = library
+        self.windowKey = windowKey
+        self.isNewWindow = isNewWindow
         isSidebarDocked = Preferences.sidebarDocked
         sidebarWidth = Preferences.sidebarWidth
         panelWidth = Preferences.panelWidth
@@ -75,6 +85,7 @@ final class Browser {
         case .tab(let tab):
             if let space = library.space(containing: tab) {
                 library.window(showing: tab)?.moveOff(tab, in: space)
+                if !tab.isPinned, tab.favoriteID == nil { tab.windowKey = windowKey }
                 select(tab)
             }
         case .url(let url):
@@ -140,8 +151,20 @@ final class Browser {
     var currentTab: BrowserTab? {
         let space = currentSpace
         guard let id = tabSelection[space.id] else { return nil }
-        return space.allTabs.first { $0.id == id }
+        return space.allTabs.first { $0.id == id && lists($0) }
     }
+
+    /// Whether this window's sidebar lists a tab: pinned and favourite tabs in every window,
+    /// Today tabs only in the window they belong to (see `Library.owner(of:)`).
+    func lists(_ tab: BrowserTab) -> Bool {
+        tab.isPinned || tab.favoriteID != nil || library.owner(of: tab) === self
+    }
+
+    /// This window's Today tabs in a space, without the ones favourite tiles hold.
+    func listedToday(in space: Space) -> [BrowserTab] { space.listedToday.filter(lists) }
+
+    /// This window's Today tabs in a space, favourite tabs included.
+    func today(in space: Space) -> [BrowserTab] { space.today.filter(lists) }
 
     var currentController: TabController? { currentTab.map(controller(for:)) }
 
@@ -154,7 +177,15 @@ final class Browser {
             other.nsWindow?.makeKeyAndOrderFront(nil)
             return
         }
+        // Another window's Today tab opens over there.
+        if library.isOwnedElsewhere(tab, than: self), let owner = library.owner(of: tab), owner !== self {
+            owner.select(tab)
+            owner.nsWindow?.makeKeyAndOrderFront(nil)
+            return
+        }
         guard let space = space(containing: tab) else { return }
+        // A Today tab no open window owns becomes this window's.
+        if !tab.isPinned, tab.favoriteID == nil, tab.windowKey != windowKey { tab.windowKey = windowKey }
         if space.id != selectedSpaceID { selectSpace(space, resolving: false) }
         setSelection(tab, in: space)
         tab.lastActive = .now
@@ -183,7 +214,13 @@ final class Browser {
 
     /// First visit to a space in this window: show the tab the space last had, unless another window has it.
     private func resolveSelection(in space: Space) {
-        guard tabSelection[space.id] == nil, let tab = space.selectedTab, library.window(showing: tab) == nil else { return }
+        guard tabSelection[space.id] == nil else { return }
+        // The space's last tab if it's this window's, else this window's most recent one there.
+        let mine = { (t: BrowserTab) in t.isPinned || t.favoriteID != nil || t.windowKey == self.windowKey }
+        let candidates = [space.selectedTab].compactMap { $0 }.filter(mine)
+            + today(in: space).filter { $0.windowKey == windowKey }.sorted { $0.lastActive > $1.lastActive }
+            + [space.selectedTab].compactMap { $0 }.filter(lists)
+        guard let tab = candidates.first(where: { library.window(showing: $0) == nil }) else { return }
         tabSelection[space.id] = tab.id
     }
 
@@ -199,15 +236,16 @@ final class Browser {
     func moveOff(_ tab: BrowserTab, in space: Space) {
         guard tabSelection[space.id] == tab.id else { return }
         if selectedSpaceID == space.id { find = nil; reader = nil }
-        guard !tab.isPinned, let i = space.today.firstIndex(where: { $0.id == tab.id }) else {
+        let list = today(in: space)
+        guard !tab.isPinned, let i = list.firstIndex(where: { $0.id == tab.id }) else {
             // Leaving a pinned tab only unloads it, like Arc.
             setSelection(nil, in: space)
             return
         }
         let elsewhere = Set(library.windows.filter { $0 !== self }.compactMap { $0.currentTab?.id })
         let free = { (t: BrowserTab) in !elsewhere.contains(t.id) && t.id != tab.id }
-        let next = space.today[(i + 1)...].first(where: free)
-            ?? space.today[..<i].reversed().first(where: free)
+        let next = list[(i + 1)...].first(where: free)
+            ?? list[..<i].reversed().first(where: free)
             ?? space.pinned.last(where: free)
         setSelection(next, in: space)
     }
@@ -216,7 +254,7 @@ final class Browser {
     func tabLeft(_ tab: BrowserTab, space: Space) {
         guard tabSelection[space.id] == tab.id else { return }
         let elsewhere = Set(library.windows.filter { $0 !== self }.compactMap { $0.currentTab?.id })
-        setSelection(space.allTabs.first { !elsewhere.contains($0.id) }, in: space)
+        setSelection(space.allTabs.first { !elsewhere.contains($0.id) && lists($0) }, in: space)
     }
 
     /// The space this window shows was deleted or closed.
@@ -233,7 +271,7 @@ final class Browser {
     }
 
     /// Pinned then today: the order the sidebar shows and Cmd-1…9 count.
-    var orderedTabs: [BrowserTab] { currentSpace.pinned + currentSpace.today }
+    var orderedTabs: [BrowserTab] { currentSpace.pinned + today(in: currentSpace) }
 
     func selectTab(number n: Int) {
         let tabs = orderedTabs
@@ -272,7 +310,7 @@ final class Browser {
     @discardableResult
     func newTab(url: URL?, in space: Space? = nil, isPrivate: Bool = false,
                 source: Frecency.VisitSource = .typed, select shouldSelect: Bool = true) -> BrowserTab {
-        let tab = library.insertTab(url: url, in: space ?? currentSpace, isPrivate: isPrivate, source: source)
+        let tab = library.insertTab(url: url, in: space ?? currentSpace, isPrivate: isPrivate, source: source, for: self)
         if shouldSelect { select(tab) }
         return tab
     }
@@ -293,7 +331,7 @@ final class Browser {
             return
         }
         let key = URLNormalizer.key(for: favorite.url)
-        if let existing = currentSpace.allTabs.first(where: { $0.url.map(URLNormalizer.key(for:)) == key }) {
+        if let existing = currentSpace.allTabs.first(where: { lists($0) && $0.url.map(URLNormalizer.key(for:)) == key }) {
             select(existing)
         } else {
             let tab = newTab(url: favorite.url, source: .bookmark)
@@ -312,18 +350,19 @@ final class Browser {
     func close(_ tab: BrowserTab) { library.close(tab) }
 
     func closeOtherTabs(than keep: BrowserTab) {
-        for t in currentSpace.listedToday where t.id != keep.id { close(t) }
+        for t in listedToday(in: currentSpace) where t.id != keep.id { close(t) }
     }
 
     /// Clears Today in the current space, like Arc's "Clear" button.
     func clearToday() {
-        for t in currentSpace.listedToday where t.id != currentTab?.id { close(t) }
+        for t in listedToday(in: currentSpace) where t.id != currentTab?.id { close(t) }
     }
 
     func reopenClosedTab() {
         guard let tab = library.popRecentlyClosed() else { return }
         tab.lastActive = .now
         let target = currentSpace.isPrivate ? regularSpaces[0] : currentSpace
+        tab.windowKey = windowKey
         target.today.insert(tab, at: 0)
         select(tab)
     }
@@ -337,7 +376,7 @@ final class Browser {
     // MARK: Archive
 
     func restoreFromArchive(_ tab: BrowserTab) {
-        library.takeFromArchive(tab, into: currentSpace.isPrivate ? regularSpaces[0] : currentSpace)
+        library.takeFromArchive(tab, into: currentSpace.isPrivate ? regularSpaces[0] : currentSpace, for: self)
         select(tab)
     }
 
