@@ -154,9 +154,9 @@ struct BrowserWindow: View {
         if !window.titlebarAppearsTransparent { window.titlebarAppearsTransparent = true }
         if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
         if window.isMovableByWindowBackground { window.isMovableByWindowBackground = false }
-        // In a window the sidebar draws its own traffic lights (WindowButtons), which move with it,
-        // so the title bar's are hidden. In full screen the title bar's drop down with the menu bar,
-        // as in every app. AppKit rebuilds the title bar on the way in and out, so this runs then too.
+        // The sidebar draws its own traffic lights (WindowButtons), which move with it, so in a window
+        // the title bar's are hidden. In full screen the title bar's also drop down with the menu
+        // bar, as in every app. AppKit rebuilds the title bar on the way in and out, so this runs then too.
         let fullScreen = window.styleMask.contains(.fullScreen) || browser.isFullScreen
         for button in WindowButtonsView.titleBarButtons(of: window) where button.isHidden == fullScreen {
             button.isHidden = !fullScreen

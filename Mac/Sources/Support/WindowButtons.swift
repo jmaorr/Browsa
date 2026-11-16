@@ -5,12 +5,17 @@ import AppKit
 ///
 /// They're AppKit's own buttons (`NSWindow.standardWindowButton(_:for:)`), so they look, hover and
 /// act like the real ones, but they live in the sidebar: they slide and fade with it, docked or
-/// peeking. In full screen the sidebar has none: the title bar's own drop down with the menu bar,
-/// as in every app.
+/// peeking. In full screen they stay, and the title bar's own drop down with the menu bar too, as in
+/// every app, so they're found either way.
 struct WindowButtons: NSViewRepresentable {
+    /// In full screen macOS greys out minimise.
+    var isFullScreen = false
+
     func makeNSView(context: Context) -> WindowButtonsView { WindowButtonsView() }
 
-    func updateNSView(_ view: WindowButtonsView, context: Context) {}
+    func updateNSView(_ view: WindowButtonsView, context: Context) {
+        view.setMinimiseEnabled(!isFullScreen)
+    }
 
     /// The row's width for the buttons: AppKit's spacing, plus the gap after them.
     static let width: CGFloat = 68
@@ -94,6 +99,11 @@ final class WindowButtonsView: NSView {
             while let s = v { if s is WindowButtonsView { return nil }; v = s.superview }
             return button
         }
+    }
+
+    func setMinimiseEnabled(_ enabled: Bool) {
+        guard buttons.count == 3, buttons[1].isEnabled != enabled else { return }
+        buttons[1].isEnabled = enabled
     }
 
     // MARK: Hover
