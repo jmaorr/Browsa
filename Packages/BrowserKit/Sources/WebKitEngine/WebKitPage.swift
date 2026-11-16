@@ -395,9 +395,12 @@ final class DownloadBridge: NSObject, WKDownloadDelegate {
     private var progress: [ObjectIdentifier: NSKeyValueObservation] = [:]
     /// The page each download started from, for its quarantine record.
     private var origins: [ObjectIdentifier: URL] = [:]
+    /// Names asked for up front (an extension's chrome.downloads.download({ filename })).
+    private var requestedNames: [ObjectIdentifier: String] = [:]
 
-    func adopt(_ download: WKDownload, from page: WebKitPage) {
+    func adopt(_ download: WKDownload, from page: WebKitPage, filename: String? = nil) {
         download.delegate = self
+        if let filename, !filename.isEmpty { requestedNames[ObjectIdentifier(download)] = filename }
         let source = download.originalRequest?.url
         origins[ObjectIdentifier(download)] = page.webView.url
         let item = EngineDownload(filename: source?.lastPathComponent ?? "Download", sourceURL: source)
@@ -415,7 +418,10 @@ final class DownloadBridge: NSObject, WKDownloadDelegate {
                   suggestedFilename: String) async -> URL? {
         let dir = engine?.downloadsDirectory ?? URL.downloadsDirectory
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let dest = Self.uniqueDestination(for: suggestedFilename, in: dir)
+        // "folder/name.png" from an extension: just the name; folders inside Downloads aren't made.
+        let asked = requestedNames.removeValue(forKey: ObjectIdentifier(download))
+            .map { ($0 as NSString).lastPathComponent }.flatMap { $0.isEmpty ? nil : $0 }
+        let dest = Self.uniqueDestination(for: asked ?? suggestedFilename, in: dir)
         if let item = items[ObjectIdentifier(download)] {
             item.filename = dest.lastPathComponent
             item.fileURL = dest
