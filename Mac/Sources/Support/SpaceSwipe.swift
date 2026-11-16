@@ -36,14 +36,21 @@ struct SpaceSwipeArea: NSViewRepresentable {
         }
 
         /// Returns true when the event was used for a space switch.
+        ///
+        /// One space per gesture: `fired` holds from the switch until the fingers next touch down.
+        /// It used to reset when the fingers lifted, and the momentum events that follow a flick
+        /// (no phase of their own) then added up to another switch, and another.
         private func handle(_ event: NSEvent) -> Bool {
             guard event.window === window, event.hasPreciseScrollingDeltas else { return false }
+            // The glide after the fingers lift: never a new switch. Swallowed if this gesture switched,
+            // so the list doesn't scroll sideways with it.
+            if !event.momentumPhase.isEmpty { return fired }
             let p = convert(event.locationInWindow, from: nil)
             guard bounds.contains(p) else { return false }
             if event.phase == .began { dx = 0; dy = 0; fired = false }
             dx += event.scrollingDeltaX
             dy += event.scrollingDeltaY
-            if event.phase == .ended || event.phase == .cancelled { dx = 0; dy = 0; fired = false; return false }
+            if event.phase == .ended || event.phase == .cancelled { dx = 0; dy = 0; return false }
             guard !fired, abs(dx) > 50, abs(dx) > abs(dy) * 2 else { return abs(dx) > abs(dy) * 2 && abs(dx) > 8 }
             fired = true
             // Fingers moving left bring in the space to the right.
