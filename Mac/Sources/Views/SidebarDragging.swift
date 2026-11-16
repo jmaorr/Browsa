@@ -8,6 +8,14 @@ import Suggest
 /// where it will land, and on release it settles into that gap. Everything stays inside the sidebar.
 @Observable @MainActor
 final class SidebarDragging {
+    /// The window whose sidebar this is, for its own Today tabs. Set as a drag starts.
+    @ObservationIgnored private weak var browser: Browser?
+
+    /// The Today rows this window's sidebar shows.
+    private func listedToday(in space: Space) -> [BrowserTab] {
+        browser?.listedToday(in: space) ?? space.listedToday
+    }
+
     /// Where a dragged tab would land: a slot among the other tabs of a section, or among the
     /// favourites, where it becomes the favourite's own tab.
     enum Target: Equatable {
@@ -117,6 +125,7 @@ final class SidebarDragging {
 
     func changed(_ tab: BrowserTab, from start: CGPoint, to point: CGPoint, in space: Space, browser: Browser) {
         guard !settling else { return }
+        self.browser = browser
         if lift == nil {
             guard let frame = rowFrames[tab.id] else { return }
             favouriteOrder = browser.sortedFavorites.map(\.id)
@@ -161,6 +170,7 @@ final class SidebarDragging {
     /// tab, pinned or not, and stop being a favourite.
     func changed(_ fav: Favorite, from start: CGPoint, to point: CGPoint, in space: Space, browser: Browser) {
         guard !settling else { return }
+        self.browser = browser
         if lift == nil {
             guard let frame = tileFrames[fav.id] else { return }
             let order = browser.sortedFavorites.map(\.id)
@@ -223,9 +233,9 @@ final class SidebarDragging {
             }
             // Down into the list: its own tab if it has one here, otherwise a new one, and it's no
             // longer a favourite.
-            let others = target.isPinned ? space.pinned : space.listedToday
+            let others = target.isPinned ? space.pinned : listedToday(in: space)
             let before = target.index < others.count ? others[target.index] : nil
-            let tab = space.today.first { $0.favoriteID == fav.id }
+            let tab = space.today.first { $0.favoriteID == fav.id && browser.lists($0) }
                 ?? browser.newTab(url: fav.url, in: space, source: .bookmark, select: false)
             browser.removeFavorite(fav)
             browser.move(tab, before: before, pinned: target.isPinned)
@@ -244,7 +254,7 @@ final class SidebarDragging {
         }
         guard !space.isPrivate else { return nil }
         let pinned = location.y < newTabFrame.midY
-        let others = pinned ? space.pinned : space.listedToday
+        let others = pinned ? space.pinned : listedToday(in: space)
         let index = others.filter { (rowFrames[$0.id]?.midY ?? .infinity) < location.y }.count
         return pinned ? .pinned(index) : .today(index)
     }
@@ -301,7 +311,7 @@ final class SidebarDragging {
             withTransaction(quiet) { makeFavourite(tab, at: i, browser: browser) }
             return
         }
-        let others = (target.isPinned ? space.pinned : space.listedToday).filter { $0.id != tab.id }
+        let others = (target.isPinned ? space.pinned : listedToday(in: space)).filter { $0.id != tab.id }
         let before = target.index < others.count ? others[target.index] : nil
         withTransaction(quiet) { browser.move(tab, before: before, pinned: target.isPinned) }
     }
@@ -330,7 +340,7 @@ final class SidebarDragging {
 
     private func slot(of tab: BrowserTab, in space: Space) -> Target {
         if let i = space.pinned.firstIndex(where: { $0.id == tab.id }) { return .pinned(i) }
-        return .today(space.listedToday.firstIndex { $0.id == tab.id } ?? 0)
+        return .today(listedToday(in: space).firstIndex { $0.id == tab.id } ?? 0)
     }
 
     /// Above the middle of New Tab is Pinned, below it is Today. Within a section, the slot is the
@@ -351,7 +361,7 @@ final class SidebarDragging {
             return .favourite(before.count)
         }
         let pinned = location.y < newTabFrame.midY && !space.isPrivate && !tab.isPrivate
-        let others = (pinned ? space.pinned : space.listedToday).filter { $0.id != tab.id }
+        let others = (pinned ? space.pinned : listedToday(in: space)).filter { $0.id != tab.id }
         let index = others.filter { (rowFrames[$0.id]?.midY ?? .infinity) < location.y }.count
         return pinned ? .pinned(index) : .today(index)
     }

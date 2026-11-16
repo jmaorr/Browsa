@@ -324,6 +324,15 @@ public final class PageState {
     public var isSecure = false
     /// The colour the page wants around it (`<meta name="theme-color">`), if any.
     public var themeColor: CGColor?
+    /// The camera or microphone is on (muted counts: the call is still going).
+    public var isCapturing = false
+    /// Audio or video is playing with sound.
+    public var isPlayingAudio = false
+    /// Someone typed into a field on the page and it still holds text.
+    public var hasUnsavedInput = false
+
+    /// Unloading the page now would cut off a call, the music or a draft.
+    public var isBusy: Bool { isCapturing || isPlayingAudio || hasUnsavedInput }
 
     public init() {}
 }

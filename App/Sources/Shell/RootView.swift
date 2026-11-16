@@ -92,7 +92,10 @@ struct WebContentView: View {
     var body: some View {
         if let tab = browser.currentTab {
             WebViewHost(session: browser.session(for: tab), topObscuredInset: topObscuredInset,
-                        bottomObscuredInset: bottomObscuredInset)
+                        bottomObscuredInset: bottomObscuredInset,
+                        // Fixed footers ride above the bar, and drop down with it when it shrinks.
+                        bottomCoveredInset: tab.isChromeCompact
+                            ? min(bottomObscuredInset, BarMetrics.compactCoveredInset) : bottomObscuredInset)
                 .id(tab.id)
                 // Swipe between tabs on the bottom pill slides the pages too.
                 .transition(Motion.tabPush(forward: browser.lastTabSwipeForward))
@@ -106,7 +109,12 @@ struct WebContentView: View {
                 .overlay {
                     if tab.isAwaitingFirstPaint, let image = browser.thumbnails[tab.id] {
                         Color.clear
-                            .overlay(alignment: .top) { Image(uiImage: image).resizable().scaledToFill() }
+                            // Runs under the status bar like the page it stands in for, rather than
+                            // being pushed below it.
+                            .overlay(alignment: .top) {
+                                Image(uiImage: image).resizable().scaledToFill()
+                                    .ignoresSafeArea(.container, edges: .vertical)
+                            }
                             .clipped()
                             .allowsHitTesting(false)
                             .transition(.opacity)
@@ -124,14 +132,11 @@ extension View {
     /// status items to it so they stay readable whatever the app's own appearance.
     func pageColoredSurroundings(_ tab: BrowserTab?, isEnabled: Bool = true, galleryIsUp: Bool = false) -> some View {
         let color = isEnabled && !galleryIsUp ? tab?.pageBackground : nil
+        // One colour view whose colour changes, rather than one view swapped for another, so the
+        // gallery's grey blends into the page's colour over a zoom instead of cutting.
+        let fill: Color = galleryIsUp ? Color(.systemGroupedBackground) : color.map { Color(cgColor: $0) } ?? .clear
         return self
-            .background {
-                if galleryIsUp {
-                    Color(.systemGroupedBackground).ignoresSafeArea()
-                } else if let color {
-                    Color(cgColor: color).ignoresSafeArea()
-                }
-            }
+            .background { fill.ignoresSafeArea() }
             .toolbarColorScheme(color.map { $0.isLight ? .light : .dark }, for: .navigationBar)
     }
 }

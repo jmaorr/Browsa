@@ -69,4 +69,20 @@ import Testing
         let back = try JSONDecoder().decode(BrowserSnapshot.self, from: JSONEncoder().encode(snap))
         #expect(back.saved == [site])
     }
+    @Test func tabsFromBeforeWindowKeysStillLoad() throws {
+        let old = #"{"id":"6F1C2D4E-0000-4000-8000-000000000001","title":"A","isPinned":false,"lastActive":0}"#
+        let record = try JSONDecoder().decode(TabRecord.self, from: Data(old.utf8))
+        #expect(record.windowKey == nil)
+    }
+
+    @MainActor @Test func todayTabsKeepTheirWindowAndSharedTabsDont() throws {
+        let window = UUID()
+        let today = BrowserTab(url: URL(string: "https://example.com")!)
+        today.windowKey = window
+        let pinned = BrowserTab(url: URL(string: "https://example.org")!, isPinned: true)
+        pinned.windowKey = window
+        let decode = { (t: BrowserTab) in try JSONDecoder().decode(TabRecord.self, from: JSONEncoder().encode(t.record)) }
+        #expect(BrowserTab(try decode(today)).windowKey == window)
+        #expect(try decode(pinned).windowKey == nil)
+    }
 }

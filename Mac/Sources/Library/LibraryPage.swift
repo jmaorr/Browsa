@@ -25,11 +25,11 @@ extension Browser {
         libraryTarget = target
         libraryRequest += 1
         let space = currentSpace.isPrivate ? regularSpaces[0] : currentSpace
-        if let existing = space.allTabs.first(where: { LibraryPage.isLibrary($0.url) }) {
+        if let existing = space.allTabs.first(where: { lists($0) && LibraryPage.isLibrary($0.url) }) {
             select(existing)
         } else {
             // Like the welcome tab: no web page is made for it.
-            let tab = library.insertTab(url: nil, in: space)
+            let tab = library.insertTab(url: nil, in: space, for: self)
             tab.url = LibraryPage.url
             tab.title = "Library"
             select(tab)

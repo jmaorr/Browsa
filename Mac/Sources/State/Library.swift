@@ -4,6 +4,9 @@ import BrowserCore
 import BrowserEngine
 import Suggest
 import Extensibility
+import os
+
+private let windowLog = Logger(subsystem: "com.orriginal.browsa", category: "windows")
 
 /// Everything the windows share: spaces, tabs, favourites, settings, live pages and downloads.
 /// Each window is a `Browser` looking into it with its own space and tab.
@@ -67,6 +70,10 @@ final class Library {
     private(set) var recentlyClosed: [BrowserTab] = []
     /// The open windows, most recently active first.
     private(set) var windows: [Browser] = []
+    /// Open windows, oldest first. The oldest one lists Today tabs that no open window owns.
+    private(set) var windowsByAge: [Browser] = []
+    /// Set once quitting is under way, so the windows going away keep their tabs for next time.
+    @ObservationIgnored var isTerminating = false
 
     let engine: any BrowserEngine
     /// Which engine a tab's page uses for a URL: `engine` (WebKit) unless something else is set up.
@@ -182,12 +189,58 @@ final class Library {
     func register(_ window: Browser) {
         windows.removeAll { $0 === window }
         windows.insert(window, at: 0)
+        if !windowsByAge.contains(where: { $0 === window }) { windowsByAge.append(window) }
     }
 
     func unregister(_ window: Browser) {
+        // AppKit's close and SwiftUI's onDisappear both land here; the first one counts.
+        guard windowsByAge.contains(where: { $0 === window }) else { return }
         windows.removeAll { $0 === window }
-        // Its tabs stay in their spaces; only the window's view of them goes.
+        windowsByAge.removeAll { $0 === window }
+        if let observer = window.closeObserver { NotificationCenter.default.removeObserver(observer) }
+        window.closeObserver = nil
+        // Closing one of several windows archives its Today tabs, like Arc. The last window's tabs,
+        // and every window's when quitting, stay put for the next window to pick up.
+        if !windows.isEmpty, !isTerminating {
+            let count = archiveTabs(of: window)
+            windowLog.debug("Closed a window: \(count) tabs to the archive")
+        }
         scheduleSave()
+    }
+
+    /// The window that lists a Today tab: the one it belongs to, or the oldest window when that
+    /// one isn't open (or the tab predates per-window tabs). Pinned and favourite tabs show in every window.
+    func owner(of tab: BrowserTab) -> Browser? {
+        if let key = tab.windowKey, let w = windowsByAge.first(where: { $0.windowKey == key }) { return w }
+        return windowsByAge.first
+    }
+
+    /// Whether a tab belongs to another window that's open right now.
+    func isOwnedElsewhere(_ tab: BrowserTab, than window: Browser) -> Bool {
+        guard !tab.isPinned, tab.favoriteID == nil, let key = tab.windowKey, key != window.windowKey else { return false }
+        return windowsByAge.contains { $0.windowKey == key }
+    }
+
+    /// A closed window's Today tabs go to the archive (private ones just close).
+    @discardableResult
+    private func archiveTabs(of window: Browser) -> Int {
+        var count = 0
+        for space in spaces {
+            let leaving = space.today.filter { $0.favoriteID == nil && $0.windowKey == window.windowKey }
+            guard !leaving.isEmpty else { continue }
+            for tab in leaving where tab.isPrivate { close(tab) }
+            let kept = leaving.filter { !$0.isPrivate }
+            space.today.removeAll { t in kept.contains { $0.id == t.id } }
+            if let id = space.selectedTabID, kept.contains(where: { $0.id == id }) { space.selectedTabID = nil }
+            for tab in kept {
+                unload(tab.id)
+                tab.windowKey = nil
+            }
+            archive.insert(contentsOf: kept.filter { $0.url != nil }, at: 0)
+            count += kept.count
+        }
+        archive = Array(archive.prefix(500))
+        return count
     }
 
     /// The window someone's using, for things that arrive from outside (links, downloads).
@@ -306,10 +359,18 @@ final class Library {
         lru.append(id)
     }
 
+    /// Unloads the least recently used pages past `capacity`. Never one on screen, and never one
+    /// that's busy: a call, music or a half-written message would be lost, so those stay loaded
+    /// even if that means more than `capacity` live pages for a while.
     private func evictIfNeeded(keeping id: UUID) {
         let onScreen = Set(windows.compactMap { $0.currentTab?.id })
-        // Pages on another engine (call tabs, on Chromium) are never unloaded: that would end a call.
-        let evictable = { (t: UUID) in t != id && !onScreen.contains(t) && self.controllers[t]?.engineID ?? self.engine.info.id == self.engine.info.id }
+        // Never unloaded: pages on another engine (call tabs, on Chromium), which would end a call,
+        // and busy pages (a call, playing audio, a half-written message).
+        let evictable = { (t: UUID) in
+            t != id && !onScreen.contains(t)
+                && self.controllers[t]?.page.state.isBusy != true
+                && self.controllers[t]?.engineID ?? self.engine.info.id == self.engine.info.id
+        }
         while lru.count > capacity, let victim = lru.first(where: evictable) {
             unload(victim)
         }
@@ -330,10 +391,11 @@ final class Library {
     /// A new today tab at the top of a space. Opening into Private makes the Private space.
     @discardableResult
     func insertTab(url: URL?, in space: Space, isPrivate: Bool = false, source: Frecency.VisitSource = .typed,
-                   at index: Int = 0) -> BrowserTab {
+                   at index: Int = 0, for window: Browser? = nil) -> BrowserTab {
         let wantsPrivate = isPrivate || space.isPrivate
         let target = wantsPrivate ? openPrivateSpace() : space
         let tab = BrowserTab(url: nil, isPrivate: wantsPrivate)
+        tab.windowKey = (window ?? activeWindow)?.windowKey
         target.today.insert(tab, at: min(index, target.today.count))
         if let url { controller(for: tab).load(url, source: source) }
         scheduleSave()
@@ -344,8 +406,9 @@ final class Library {
     func openInNewTab(_ url: URL, from opener: BrowserTab, foreground: Bool) {
         let space = space(containing: opener) ?? regularSpaces[0]
         let after = space.today.firstIndex { $0.id == opener.id }.map { $0 + 1 } ?? 0
-        let tab = insertTab(url: url, in: space, isPrivate: opener.isPrivate, source: .link, at: after)
         let window = window(showing: opener)
+        let tab = insertTab(url: url, in: space, isPrivate: opener.isPrivate, source: .link, at: after,
+                            for: window ?? owner(of: opener))
         if foreground { window?.select(tab) } else { window?.showToast("Opened in background") }
     }
 
@@ -354,10 +417,12 @@ final class Library {
         let space = space(containing: opener) ?? regularSpaces[0]
         let tab = BrowserTab(url: url, isPrivate: opener.isPrivate)
         let after = space.today.firstIndex { $0.id == opener.id }.map { $0 + 1 } ?? 0
+        let window = window(showing: opener) ?? activeWindow
+        tab.windowKey = window?.windowKey
         space.today.insert(tab, at: after)
         let c = TabController(tab: tab, library: self) { _ in page }
         adopt(c)
-        (window(showing: opener) ?? activeWindow)?.select(tab)
+        window?.select(tab)
         scheduleSave()
         return c
     }
@@ -395,6 +460,7 @@ final class Library {
         if tab.isPinned {
             space.pinned.removeAll { $0.id == tab.id }
             space.today.insert(tab, at: 0)
+            tab.windowKey = (window(showing: tab) ?? activeWindow)?.windowKey
         } else {
             space.today.removeAll { $0.id == tab.id }
             space.pinned.append(tab)
@@ -417,6 +483,8 @@ final class Library {
         } else {
             let i = target.flatMap { t in to.today.firstIndex { $0.id == t.id } } ?? to.today.endIndex
             to.today.insert(tab, at: i)
+            // Dropped in Today: it joins the window it was dropped in.
+            tab.windowKey = activeWindow?.windowKey ?? target?.windowKey
         }
         if from.id != to.id { for w in windows { w.tabLeft(tab, space: from) } }
         scheduleSave()
@@ -428,6 +496,7 @@ final class Library {
         from.pinned.removeAll { $0.id == tab.id }
         from.today.removeAll { $0.id == tab.id }
         if from.selectedTabID == tab.id { from.selectedTabID = nil }
+        if tab.isPinned { tab.windowKey = activeWindow?.windowKey }
         tab.isPinned = false
         space.today.insert(tab, at: 0)
         scheduleSave()
@@ -528,9 +597,10 @@ final class Library {
         scheduleSave()
     }
 
-    func takeFromArchive(_ tab: BrowserTab, into space: Space) {
+    func takeFromArchive(_ tab: BrowserTab, into space: Space, for window: Browser? = nil) {
         archive.removeAll { $0.id == tab.id }
         tab.lastActive = .now
+        tab.windowKey = (window ?? activeWindow)?.windowKey
         space.today.insert(tab, at: 0)
         scheduleSave()
     }
@@ -664,7 +734,7 @@ extension Library: EngineExtensionHost {
         return ordered.map { w in
             let space = w.currentSpace
             return EngineWindowInfo(id: w.id,
-                                    pages: space.allTabs.compactMap { existingController(for: $0)?.page },
+                                    pages: space.allTabs.filter(w.lists).compactMap { existingController(for: $0)?.page },
                                     activePage: w.currentTab.flatMap { existingController(for: $0)?.page },
                                     isFocused: w === focused, isPrivate: space.isPrivate,
                                     frame: w.nsWindow?.frame ?? .zero)
@@ -679,6 +749,7 @@ extension Library: EngineExtensionHost {
         guard let window = windows.first(where: { $0.id == windowID }) ?? activeWindow else { return nil }
         // The page is made with its URL, so an extension page gets the web view setup it needs.
         let tab = BrowserTab(url: url, isPrivate: window.currentSpace.isPrivate)
+        tab.windowKey = window.windowKey
         window.currentSpace.today.insert(tab, at: 0)
         let page = controller(for: tab).page
         if active { window.select(tab) }

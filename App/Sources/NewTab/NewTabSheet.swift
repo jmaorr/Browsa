@@ -1,5 +1,4 @@
 import SwiftUI
-import GameController
 import BrowserCore
 import Suggest
 
@@ -101,8 +100,8 @@ struct NewTabSheet: View {
                 .opacity(morphed ? 1 : 0)
                 .scaleEffect(morphed || Motion.reduced ? 1 : 0.6)
             AddressField(initialText: initialText, inline: model.inline,
-                         // Here for the page's controls, you may not want to type at all.
-                         focusesOnAppear: !(showsPageActions && morphFrom != nil) || GCKeyboard.coalesced != nil,
+                         // Always with the keyboard and the whole address selected, so you can type
+                         // straight over it. The page's controls stay in reach above the keyboard.
                          placeholder: "Search, address or command",
                          showsClearButton: morphFrom == nil || edited,
                          onTextChange: { text, inserted in
