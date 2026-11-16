@@ -13,6 +13,11 @@
 // Defaults are the unit's defaults (AGC on, 30 dB, -60 dBFS, noise suppression high, delay hint 10 ms).
 // --ref-shift-ms moves the reference later (+) or earlier (-) against the mic, the same sense as the unit's
 // BROWSA_CALL_AUDIO_REF_OFFSET_MS. Built by Spike/CallAudio/webkit/build-replay.sh.
+//
+// BROWSA_AEC3_TRIALS (environment): WebRTC field trials for the echo canceller, in WebRTC's own format
+// ("WebRTC-Aec3SuppressorNearendLfMaskTransparentOverride/0.4/WebRTC-Aec3...Override/50/"), applied the way AEC3
+// applies them (echo_canceller3.cc, AdjustConfig): a way to try its settings without exporting its config from
+// WebKit's libwebrtc.
 #include <cmath>
 #include <cstdlib>
 #include <memory>
@@ -23,6 +28,30 @@
 #include <webrtc/api/audio/builtin_audio_processing_builder.h>
 #include <webrtc/api/environment/environment_factory.h>
 #include <webrtc/api/audio/audio_processing.h>
+#include <webrtc/api/field_trials_view.h>
+#include <map>
+
+// FieldTrialsView's default CreateCopy (inline, never called here) refers to this, which libwebrtc doesn't export.
+namespace webrtc::webrtc_checks_impl { void UnreachableCodeReached(const char*, int) { abort(); } }
+
+// Field trials from a "Key/Value/Key/Value/" string.
+class Trials final : public webrtc::FieldTrialsView {
+ public:
+  explicit Trials(const char* text) {
+    std::vector<std::string> parts;
+    std::string cur;
+    for (const char* c = text ? text : ""; *c; ++c) { if (*c == '/') { parts.push_back(cur); cur.clear(); } else cur += *c; }
+    if (!cur.empty()) parts.push_back(cur);
+    for (size_t i = 0; i + 1 < parts.size(); i += 2) values_[parts[i]] = parts[i + 1];
+  }
+  std::string Lookup(absl::string_view key) const override {
+    auto it = values_.find(std::string(key));
+    return it == values_.end() ? std::string() : it->second;
+  }
+  size_t size() const { return values_.size(); }
+ private:
+  std::map<std::string, std::string> values_;
+};
 
 int main(int argc, char** argv) {
   std::string raw, ref, out, trace;
@@ -85,7 +114,9 @@ int main(int argc, char** argv) {
   config.gain_controller2.adaptive_digital.enabled = agc;
   config.gain_controller2.adaptive_digital.max_gain_db = float(maxGain);
   config.gain_controller2.adaptive_digital.max_output_noise_level_dbfs = float(noiseDbfs);
-  auto apm = webrtc::BuiltinAudioProcessingBuilder(config).Build(webrtc::CreateEnvironment());
+  static Trials trials(getenv("BROWSA_AEC3_TRIALS"));
+  if (trials.size()) fprintf(stderr, "AEC3 field trials: %zu\n", trials.size());
+  auto apm = webrtc::BuiltinAudioProcessingBuilder(config).Build(trials.size() ? webrtc::CreateEnvironment(&trials) : webrtc::CreateEnvironment());
   if (!apm) { fprintf(stderr, "no audio processing\n"); return 1; }
 
   FILE* tr = trace.empty() ? nullptr : fopen(trace.c_str(), "w");

@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { RATE, readWav, writeWavFloat } from "./analyze.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPLAY = path.join(os.homedir(), "Developer/Browsa/derived/audio-lab/apm-replay-webkit");
+const REPLAY = process.env.BROWSA_REPLAY || path.join(os.homedir(), "Developer/Browsa/derived/audio-lab/apm-replay-webkit");
 
 export function tuneCheck(runDir, subjectId, srcDir, opt = {}) {
   const results = JSON.parse(fs.readFileSync(path.join(runDir, "results.json"), "utf8"));
