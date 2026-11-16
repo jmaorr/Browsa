@@ -99,7 +99,7 @@ struct PageArea: View {
 
 /// The page card's shape and its distance from the window edge.
 enum PageCard {
-    static let radius: CGFloat = 9
+    static let radius: CGFloat = 10
     static let inset: CGFloat = 6
 }
 
@@ -285,7 +285,10 @@ private struct FindBar: View {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
             TextField("Find on page", text: Binding(
                 get: { browser.find?.text ?? "" },
-                set: { browser.find?.text = $0; browser.find?.found = nil; browser.findNext() }))
+                // Closing tears the field down, which can write once more; without the guard that
+                // write ran findNext, which reopened the bar it had just closed.
+                set: { guard browser.find != nil else { return }
+                       browser.find?.text = $0; browser.find?.found = nil; browser.findNext() }))
                 .textFieldStyle(.plain)
                 .frame(width: 180)
                 .focused($focused)
@@ -294,11 +297,11 @@ private struct FindBar: View {
             if browser.find?.found == false {
                 Text("Not found").font(.caption).foregroundStyle(.secondary)
             }
-            Button { browser.findNext(backwards: true) } label: { Image(systemName: "chevron.up") }
+            Button { browser.findNext(backwards: true) } label: { FindButtonLabel(symbol: "chevron.up") }
                 .buttonStyle(.plain).help(Shortcuts.shared.help("Previous", .findPrevious))
-            Button { browser.findNext() } label: { Image(systemName: "chevron.down") }
+            Button { browser.findNext() } label: { FindButtonLabel(symbol: "chevron.down") }
                 .buttonStyle(.plain).help(Shortcuts.shared.help("Next", .findNext))
-            Button { browser.closeFind() } label: { Image(systemName: "xmark") }
+            Button { browser.closeFind() } label: { FindButtonLabel(symbol: "xmark") }
                 .buttonStyle(.plain).help("Done (Esc)")
         }
         .foregroundStyle(.secondary)
@@ -312,6 +315,16 @@ private struct FindBar: View {
     }
 }
 
+/// A find bar button that answers clicks across its whole square, not just the glyph.
+private struct FindButtonLabel: View {
+    let symbol: String
+
+    var body: some View {
+        Image(systemName: symbol)
+            .frame(width: 22, height: 22)
+            .contentShape(.rect)
+    }
+}
 
 /// On a Chrome Web Store or Firefox Add-ons page, which only offer to install into their own browser:
 /// a glass bar naming the extension, whether it's been checked in Browsa, and Add to Browsa. After

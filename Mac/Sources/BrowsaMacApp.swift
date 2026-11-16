@@ -29,17 +29,12 @@ struct BrowsaMacApp: App {
         .handlesExternalEvents(matching: [])
         .commands { BrowserCommands(library: appDelegate.library, updates: appDelegate.updates) }
 
-        // A normal window with a full-height sidebar, like System Settings. SwiftUI's Settings scene
-        // keeps a preferences-style title bar, so the sidebar can't run up behind the traffic lights.
-        Window("Settings", id: "settings") {
+        // Safari-style toolbar tabs in a preferences title bar.
+        Settings {
             SettingsView()
                 .environment(appDelegate.library)
                 .environment(appDelegate.updates)
         }
-        .windowToolbarStyle(.unified)
-        .windowResizability(.contentMinSize)
-        .defaultSize(width: 820, height: 620)
-        .defaultPosition(.center)
     }
 }
 
@@ -50,6 +45,7 @@ private struct WindowRoot: View {
     /// The window's key, kept by SwiftUI with the window so it comes back with its own tabs.
     @SceneStorage("windowKey") private var windowKey = ""
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         Group {
@@ -64,7 +60,7 @@ private struct WindowRoot: View {
         .frame(minWidth: 640, minHeight: 420)
         .onAppear {
             library.openWindowAction = { [openWindow] in openWindow(id: "browser") }
-            library.openSettingsAction = { [openWindow] in openWindow(id: "settings") }
+            library.openSettingsAction = { [openSettings] in openSettings() }
             if browser == nil {
                 let saved = UUID(uuidString: windowKey).flatMap { key in library.windows.contains { $0.windowKey == key } ? nil : key }
                 let key = saved ?? UUID()

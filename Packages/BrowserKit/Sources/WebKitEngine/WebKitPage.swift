@@ -132,12 +132,43 @@ public final class WebKitPage: NSObject, EnginePage {
         config.backwards = backwards
         config.caseSensitive = false
         config.wraps = true
-        return (try? await webView.find(text, configuration: config).matchFound) ?? false
+        let found = (try? await webView.find(text, configuration: config).matchFound) ?? false
+        // WebKit marks the match only as a selection, which goes grey while the find field has
+        // focus, so it looked like nothing was found. Paint it with a CSS custom highlight too.
+        _ = try? await webView.evaluateJavaScript(found ? Self.highlightMatch : Self.clearHighlight,
+                                                  contentWorld: .defaultClient)
+        return found
     }
 
     public func clearFind() {
-        webView.evaluateJavaScript("window.getSelection().removeAllRanges()")
+        webView.evaluateJavaScript("window.getSelection().removeAllRanges();" + Self.clearHighlight,
+                                   in: nil, in: .defaultClient)
     }
+
+    private static let highlightMatch = """
+        (() => {
+          const sel = getSelection();
+          if (!sel.rangeCount || !window.CSS || !CSS.highlights) return;
+          let sheet = document.__browsaFindSheet;
+          if (!sheet) {
+            sheet = new CSSStyleSheet();
+            document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+            document.__browsaFindSheet = sheet;
+          }
+          // The match is the page's selection, which paints over a highlight, so colour that too
+          // while find is open. Separate rules, so one selector a build doesn't know can't drop all.
+          const mark = 'background-color: #ffd60a !important; color: #000 !important;';
+          sheet.replaceSync('');
+          for (const sel of ['::highlight(browsa-find)', '::selection', '::selection:window-inactive']) {
+            try { sheet.insertRule(sel + ' { ' + mark + ' }', sheet.cssRules.length); } catch (e) {}
+          }
+          CSS.highlights.set('browsa-find', new Highlight(sel.getRangeAt(0).cloneRange()));
+        })();
+        """
+    private static let clearHighlight = """
+        if (window.CSS && CSS.highlights) CSS.highlights.delete('browsa-find');
+        if (document.__browsaFindSheet) document.__browsaFindSheet.replaceSync('');
+        """
 
     public func sessionState() -> Data? { webView.interactionState as? Data }
 
