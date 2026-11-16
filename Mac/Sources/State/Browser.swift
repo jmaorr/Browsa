@@ -50,6 +50,8 @@ final class Browser {
     var toast: String?
     /// Buttons on the toast, e.g. "Keep in Personal" after Space Routing moved a tab.
     var toastActions: [ToastAction] = []
+    /// A link opened for a quick look over the page (Option-click), not yet a tab.
+    var glance: GlanceSession?
     var activePrompt: Prompt?
     /// Reader, when it's showing over the current tab.
     var reader: ReaderSession?
