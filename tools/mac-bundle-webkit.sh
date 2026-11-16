@@ -41,7 +41,7 @@ for spec in "$@"; do
   major="${spec%%=*}"; fw="${${spec#*=}:A}"
   [[ "$major" =~ '^[0-9]+$' && -d "$fw/WebKit.framework" ]] || { echo "bad WebKit build: $spec" >&2; exit 1; }
   grep -q "^release $major.0 " "$fw/BROWSA_WEBKIT.txt" 2>/dev/null || { echo "$fw isn't a release build for macOS $major (Spike/CallAudio/webkit/build-release-webkit.sh)" >&2; exit 1; }
-  (( $(strings "$fw/WebCore.framework/Versions/A/WebCore" | grep -c BROWSA_CALL_AUDIO_DUMP || true) == 0 )) || { echo "$fw has the call dump compiled in" >&2; exit 1; }
+  (( $(strings -a "$fw/WebCore.framework/Versions/A/WebCore" | grep -c BROWSA_CALL_AUDIO_DUMP || true) == 0 )) || { echo "$fw has the call dump compiled in" >&2; exit 1; }
 done
 
 echo "==> Executables"

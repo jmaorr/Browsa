@@ -41,7 +41,7 @@ for exe in $executables; do
 done
 ok "${#executables} executables checked for Hardened Runtime and entitlements"
 for wc in "$app"/Contents/Frameworks/WebKit-*/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc(N); do
-  codesign -d --entitlements - --xml "$wc" 2>/dev/null | grep -q allow-jit && ok "${wc#$app/}: allow-jit kept" || bad "${wc#$app/}: lost allow-jit"
+  (( $(codesign -d --entitlements - --xml "$wc" 2>/dev/null | grep -c allow-jit || true) > 0 )) && ok "${wc#$app/}: allow-jit kept" || bad "${wc#$app/}: lost allow-jit"
 done
 
 for exe in "$app"/Contents/MacOS/*; do
@@ -50,7 +50,7 @@ for exe in "$app"/Contents/MacOS/*; do
 done
 ok "no call recording in the app's executables"
 for wc in "$app"/Contents/Frameworks/WebKit-*/WebCore.framework/Versions/A/WebCore(N); do
-  (( $(strings "$wc" | grep -c BROWSA_CALL_AUDIO_DUMP || true) == 0 )) && ok "${wc#$app/}: no call dump code" || bad "${wc#$app/}: has call dump code"
+  (( $(strings -a "$wc" | grep -c BROWSA_CALL_AUDIO_DUMP || true) == 0 )) && ok "${wc#$app/}: no call dump code" || bad "${wc#$app/}: has call dump code"
 done
 [[ -z "$(find "$app" -iname '*Chromium*' -o -iname 'Browsa Helper*' | head -1)" ]] && ok "no Chromium" || bad "Chromium is in the app"
 
@@ -61,7 +61,7 @@ if (( ${#majors} )); then
     major="${m##*WebKit-}"
     exe="$app/Contents/MacOS/Browsa-webkit-$major"
     [[ -x "$exe" ]] || { bad "no Browsa-webkit-$major"; continue; }
-    otool -l "$exe" | grep -q "DYLD_FRAMEWORK_PATH=@executable_path/../Frameworks/WebKit-$major" && ok "Browsa-webkit-$major points at WebKit-$major" || bad "Browsa-webkit-$major doesn't point at WebKit-$major"
+    (( $(otool -l "$exe" | grep -c "DYLD_FRAMEWORK_PATH=@executable_path/../Frameworks/WebKit-$major" || true) > 0 )) && ok "Browsa-webkit-$major points at WebKit-$major" || bad "Browsa-webkit-$major doesn't point at WebKit-$major"
     echo "     WebKit-$major: $(cat "$app/Contents/Resources/BROWSA_WEBKIT-$major.txt" 2>/dev/null || echo 'no label'), $(du -sh "$m" | cut -f1)"
   done
 else

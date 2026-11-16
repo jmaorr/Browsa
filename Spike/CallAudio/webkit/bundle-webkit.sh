@@ -34,6 +34,8 @@ for f in $frameworks; do
   rm -rf "$dest/$f.framework/Headers" "$dest/$f.framework/PrivateHeaders" "$dest/$f.framework/Modules" \
          "$dest/$f.framework/Versions/A/Headers" "$dest/$f.framework/Versions/A/PrivateHeaders" "$dest/$f.framework/Versions/A/Modules"
 done
+# JavaScriptCore's jsc shell is a developer tool, not part of the engine.
+rm -rf "$dest/JavaScriptCore.framework/Versions/A/Helpers" "$dest/JavaScriptCore.framework/Helpers"
 for f in libwebrtc.dylib libANGLE-shared.dylib; do cp -c "$fw/$f" "$dest/$f"; done
 # Only code goes in Frameworks. ANGLE's shaders are compiled into libANGLE and the media quirk scripts into WebCore,
 # so the loose .metallib / .js files in the build folder aren't needed. The build's label goes with the resources.
@@ -52,6 +54,15 @@ for s in GPU Networking WebContent; do
 done
 rm -f "$dest/WebKit.framework/XPCServices"
 ln -s Versions/Current/XPCServices "$dest/WebKit.framework/XPCServices"
+
+# Xcode's export refuses a bundle whose Info.plist names no platform (WebKitLegacy's says [""]).
+for plist in "$dest"/*.framework/Versions/A/Resources/Info.plist "$xpcdir"/*.xpc/Contents/Info.plist; do
+  platforms=$(plutil -extract CFBundleSupportedPlatforms json -o - "$plist" 2>/dev/null || echo none)
+  if [[ "$platforms" != *MacOSX* && "$platforms" != *macosx* ]]; then
+    plutil -replace CFBundleSupportedPlatforms -json '["MacOSX"]' "$plist"
+    plutil -replace DTPlatformName -string macosx "$plist"
+  fi
+done
 
 if [[ "${BUNDLE_STRIP:-}" == 1 ]]; then
   for f in $frameworks; do strip -x "$dest/$f.framework/Versions/A/$f"; done
