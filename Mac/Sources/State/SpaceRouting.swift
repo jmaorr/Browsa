@@ -345,7 +345,6 @@ final class SpaceRouter {
 /// lists (each one a row that opens to its sites) and your own sites. Everything edits in place.
 struct SpaceRoutingSettings: View {
     @Environment(Library.self) private var library
-    @State private var adding = false
 
     private var router: SpaceRouter { .shared }
     private var spaces: [Space] { library.regularSpaces }
@@ -379,9 +378,7 @@ struct SpaceRoutingSettings: View {
                                 }
                             } onRename: { router.renameRule(rule.pattern, to: $0) } onRemove: { router.remove(rule.id) }
                         }
-                        if sets.isEmpty && rules.isEmpty {
-                            Text("Nothing opens here yet.").foregroundStyle(.secondary)
-                        }
+                        AddSiteRow(space: space)
                     } header: {
                         Label {
                             Text(space.name)
@@ -397,13 +394,9 @@ struct SpaceRoutingSettings: View {
                     }
                 }
                 Section {
-                    HStack {
-                        Text("Your sites win over Browsa's lists. Sign-in and checkout pages always open next to the tab that asked for them.")
-                            .font(.callout).foregroundStyle(.secondary)
-                        Spacer(minLength: 16)
-                        Button("Add Site…") { adding = true }
-                            .popover(isPresented: $adding, arrowEdge: .bottom) { AddSitePopover() }
-                    }
+                } footer: {
+                    Text("Your sites win over Browsa's lists. Sign-in and checkout pages always open next to the tab that asked for them.")
+                        .font(.callout).foregroundStyle(.secondary)
                 }
             }
         }
@@ -535,35 +528,34 @@ private struct SiteRow<MoveItems: View>: View {
     }
 }
 
-/// A site and the Space it opens in.
-private struct AddSitePopover: View {
-    @Environment(Library.self) private var library
-    @Environment(\.dismiss) private var dismiss
-    @State private var pattern = ""
-    @State private var spaceID: UUID?
+/// The last row of a Space's group: click, type an address, Return adds it to that Space.
+private struct AddSiteRow: View {
+    let space: Space
+    @State private var draft = ""
+    @FocusState private var focused: Bool
 
     var body: some View {
-        Form {
-            TextField("Site", text: $pattern, prompt: Text("github.com/acme"))
-            Picker("Opens in", selection: $spaceID) {
-                ForEach(library.regularSpaces) { s in Label(s.name, systemImage: s.symbol).tag(Optional(s.id)) }
-            }
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Add") { add() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(SpaceRouter.clean(pattern).isEmpty)
+        HStack(spacing: 10) {
+            Image(systemName: "plus")
+                .frame(width: 16)
+                .foregroundStyle(.secondary)
+            TextField("Add a site…", text: $draft, prompt: Text("Add a site…"))
+                .textFieldStyle(.plain)
+                .labelsHidden()
+                .focused($focused)
+                .onSubmit(add)
+                .onExitCommand { draft = ""; focused = false }
+            if focused {
+                Text("Return adds · Esc cancels").font(.caption).foregroundStyle(.secondary)
             }
         }
-        .padding(16)
-        .frame(width: 320)
-        .onAppear { spaceID = spaceID ?? library.activeWindow?.currentSpace.id ?? library.regularSpaces.first?.id }
+        .contentShape(.rect)
+        .onTapGesture { focused = true }
     }
 
     private func add() {
-        guard let id = spaceID, let space = library.regularSpaces.first(where: { $0.id == id }) else { return }
-        SpaceRouter.shared.add(pattern: pattern, to: space)
-        dismiss()
+        guard !SpaceRouter.clean(draft).isEmpty else { return }
+        SpaceRouter.shared.add(pattern: draft, to: space)
+        draft = ""
     }
 }
