@@ -91,14 +91,17 @@ final class WindowButtonsView: NSView {
         }
         // In full screen it's moved to a window of its own.
         for child in window.childWindows ?? [] { if let v = child.contentView?.superview { walk(v) } }
-        if !found.isEmpty { return found }
-        // Not found where expected: AppKit's own answer, as long as it isn't one of the sidebar's.
-        return [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { kind in
-            guard let button = window.standardWindowButton(kind) else { return nil }
+        // And AppKit's own answer, as long as it isn't one of the sidebar's. In full screen this is
+        // the one that counts: the buttons move to the drop-down title bar's own window, which the
+        // walk above doesn't reach (it can still find the old ones left behind).
+        for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            guard let button = window.standardWindowButton(kind), !found.contains(button) else { continue }
             var v: NSView? = button.superview
-            while let s = v { if s is WindowButtonsView { return nil }; v = s.superview }
-            return button
+            var ours = false
+            while let s = v { if s is WindowButtonsView { ours = true; break }; v = s.superview }
+            if !ours { found.append(button) }
         }
+        return found
     }
 
     func setMinimiseEnabled(_ enabled: Bool) {
