@@ -2,23 +2,24 @@
 
 Sites that always open in a given Space, like Arc's Air Traffic Control and Zen's Space Routing.
 
-- Off by default. Settings › Routing › "Open sites in their Space" turns it on, and so does adding a site
+- Off by default. Settings › Routing › "Open sites in their Space" turns it on, and so does adding a rule
   from ⌘K ("Always Open github.com in Work", or "…github.com/acme in <this Space>" for one org).
-- With it on, Browsa's starter sets apply, matched to your Spaces by name: Work tools (Slack, Linear,
-  Jira, Figma, GitHub…) go to a Space called Work, Watching and social (YouTube, Netflix, Reddit…) to
-  Personal. Shopping and travel is off until you pick a Space for it. Settings can point any set at
-  another Space or turn it off.
-- Each starter set's sites can be edited (Settings › Routing: open a list; click an address to edit it, hover for Move and Remove): take a site out, move it to
-  another set or to a rule of its own, add your own, or restore Browsa's list.
-- Your own sites beat the starter sets, and a path rule beats a host rule.
+- **Routing sets**: a set is a list of sites plus the Space they open in. The first time routing goes on,
+  Browsa adds its Work tools and Watching and social sets for Spaces named like Work and Personal.
+  "Add Set…" adds another of Browsa's sets, an empty one, or imports one from a file (JSON:
+  `{"browsaRoutingSet": 1, "name": "…", "sites": ["…"]}`; Export writes the same). Click a set's row to
+  open it; addresses edit in place; each site's ··· menu moves it to another set or a new one, or
+  removes it. A set made from Browsa's can be restored to Browsa's version.
+- **Custom rules**: one address, one Space, each with its own Space picker. They beat sets, and a more
+  specific address (with a path, longer host) beats a shorter one.
 - New tabs (⌘T, ⌘-click, favourites) and links from other apps follow the rules. Links you follow inside a
   tab never move, private tabs never move, and sign-in and checkout pages (accounts.google.com, PayPal,
   Stripe Checkout…) stay next to the tab that opened them.
-- The first time a site moves, a toast says so with "Keep in <Space>", which takes that site out of
-  routing and moves the tab back. ⌘K › "Stop Routing …" does the same later.
+- The first time a site moves, a toast says so with "Keep in <Space>", which takes that site out of its
+  set (or removes the rule) and moves the tab back. ⌘K › "Stop Routing …" does the same later.
 
-State lives in UserDefaults (`spaceRoutingEnabled`, `spaceRoutes`, `spaceRoutingSets`, `spaceRoutingRemoved`, `spaceRoutingAdded`,
-`spaceRoutingAnnounced`). Code: `Mac/Sources/State/SpaceRouting.swift`, hooks in `Browser.newTab` and
-`Browser.openExternal`.
+State lives in UserDefaults (`spaceRoutingEnabled`, `spaceRoutingSetList`, `spaceRoutes`,
+`spaceRoutingSeeded`, `spaceRoutingAnnounced`). Code: `Mac/Sources/State/SpaceRouting.swift`, hooks in
+`Browser.newTab` and `Browser.openExternal`.
 
-Not yet: route by the app a link came from (Slack → Work), route on redirect, sync rules.
+Not yet: route by the app a link came from (Slack → Work), sets pushed by an organisation, sync.
