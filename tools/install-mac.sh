@@ -47,6 +47,9 @@ cd "$src"
 xcodegen generate --quiet
 extra=()
 (( patched_webkit )) && extra=(CODE_SIGN_ENTITLEMENTS=Mac/BrowsaLocalWebKit.entitlements)
+# A fresh product each time: an incremental build keeps whatever an earlier build embedded (Chromium, after call
+# tabs were removed).
+rm -rf "$work/DerivedData/Build/Products/Release/Browsa.app"
 xcodebuild -project Browsa.xcodeproj -scheme BrowsaMac -configuration Release \
   -destination 'platform=macOS' -derivedDataPath "$work/DerivedData" \
   -allowProvisioningUpdates -quiet build "${extra[@]}"

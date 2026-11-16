@@ -26,7 +26,10 @@ data=(
   "$HOME/Library/HTTPStorages/$bundle_id.binarycookies"
   "$HOME/Library/Application Support/$bundle_id"
 )
-# Preferences go through cfprefsd (defaults export / import), not as a file: it caches them.
+# Preferences go through cfprefsd (defaults export / import), not as a file: it caches them. By path: an old sandbox
+# container for the same bundle ID still exists, and `defaults ... com.orriginal.browsa` would use its copy, not the
+# one the (unsandboxed) app reads.
+prefs="$HOME/Library/Preferences/$bundle_id.plist"
 
 running() { [[ "$(osascript -e "application id \"$bundle_id\" is running")" == true ]]; }
 quit_browsa() {
@@ -49,7 +52,7 @@ backup() {
     mkdir -p "$dest/data/${rel:h}"
     cp -cR "$p" "$dest/data/$rel"
   done
-  defaults export "$bundle_id" "$dest/preferences.plist"
+  defaults export "$prefs" "$dest/preferences.plist"
   git -C "$repo" rev-parse --short HEAD > "$dest/browsa-repo-head.txt" 2>/dev/null || true
   echo "$dest" > "$backups/latest-daily"
   du -sh "$dest" | sed 's/^/   size (as clones, shared until changed): /'
@@ -74,7 +77,7 @@ case "${1:-}" in
     tail -1 "$HOME/Library/Logs/Browsa/webkit.log" 2>/dev/null || true
     ;;
   off)
-    defaults write "$bundle_id" patchedWebKit -bool false
+    defaults write "$prefs" patchedWebKit -bool false
     echo "Browsa will start on the system WebKit next time (Settings › Audio to switch back on)."
     ;;
   rollback)
@@ -99,8 +102,8 @@ case "${1:-}" in
       mkdir -p "${p:h}"
       cp -cR "$src/data/$local_rel" "$p"
     done
-    defaults export "$bundle_id" "$aside/preferences.plist"
-    [[ -f "$src/preferences.plist" ]] && defaults import "$bundle_id" "$src/preferences.plist"
+    defaults export "$prefs" "$aside/preferences.plist"
+    [[ -f "$src/preferences.plist" ]] && defaults import "$prefs" "$src/preferences.plist"
     /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app"
     echo "Restored. Open Browsa when ready (it's the backed-up app, on the system WebKit)."
     ;;
