@@ -86,7 +86,14 @@ final class WindowButtonsView: NSView {
         }
         // In full screen it's moved to a window of its own.
         for child in window.childWindows ?? [] { if let v = child.contentView?.superview { walk(v) } }
-        return found
+        if !found.isEmpty { return found }
+        // Not found where expected: AppKit's own answer, as long as it isn't one of the sidebar's.
+        return [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { kind in
+            guard let button = window.standardWindowButton(kind) else { return nil }
+            var v: NSView? = button.superview
+            while let s = v { if s is WindowButtonsView { return nil }; v = s.superview }
+            return button
+        }
     }
 
     // MARK: Hover
