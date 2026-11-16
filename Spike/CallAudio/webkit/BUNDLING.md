@@ -160,3 +160,15 @@ running major (`BUNDLE_MAJOR=26 BUNDLE_MINIMUM_OS=26.0 bundle-webkit.sh ...` ass
 25.6 → old-os, simulated 27.0 (no 27 build yet) → new-os, both Apple's WebKit. Each major adds one WebKit
 (155 MB stripped, ~57 MB zipped) and one executable (16 MB); with one major the app is 181 MB / 73 MB zipped. With
 several, downloading the matching WebKit on first run keeps the app small.
+
+### The macOS 27 build (2026-11-16)
+
+`WEBKIT_OUTPUTDIR=WebKitBuild-27.0 build-webkit --release MACOSX_DEPLOYMENT_TARGET=27.0 WK_MACOSX_DEPLOYMENT_TARGET=27.0`
+built cleanly with this Mac's Xcode 27.2 (no further source changes); every binary says `minos 27.0`. "Browsa Bundled
+(per-major)" now carries `WebKit-26` and `WebKit-27` with `Browsa-webkit-26` / `Browsa-webkit-27`: on this Mac (26.7.2)
+the launcher picks the 26 build; with `BROWSA_OS_VERSION_OVERRIDE=27.0` it picks the 27 build, which even loaded and
+opened windows on 26.7 without a crash report. So dyld does **not** refuse a build for a newer macOS: the launcher's
+version check is the only guard, and a real test of the 27 build needs a Mac on 27.
+
+Two majors: 628 MB unstripped; stripped about 350 MB on disk and ~136 MB zipped (each major adds a 155 MB / ~57 MB
+WebKit and a 16 MB executable), which is the point where downloading the matching WebKit on first run pays off.
