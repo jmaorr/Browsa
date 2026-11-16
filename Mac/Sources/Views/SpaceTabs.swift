@@ -368,6 +368,13 @@ struct TabMenu: View {
             Button("Duplicate Tab", systemImage: "plus.square.on.square") {
                 browser.newTab(url: url, in: browser.space(containing: tab), source: .link)
             }
+            #if CALL_TABS
+            // Call tabs run on Chromium; any tab can be moved over (or back) by hand.
+            let onChromium = browser.library.existingController(for: tab)?.engineID == ChromiumEngine.shared.info.id
+            Button(onChromium ? "Open in WebKit" : "Open in Chromium", systemImage: "arrow.left.arrow.right") {
+                CallTabs.move(tab, toChromium: !onChromium, in: browser.library)
+            }
+            #endif
         }
         Button("Open in New Window", systemImage: "macwindow.badge.plus") { browser.openInNewWindow(tab) }
         if !tab.isPrivate, browser.regularSpaces.count > 1 {

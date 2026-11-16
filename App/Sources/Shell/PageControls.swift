@@ -34,8 +34,16 @@ struct HistoryButton: View {
             forward ? browser.goForward() : browser.goBack()
         }
         .disabled(!enabled)
-        .sensoryFeedback(.selection, trigger: tab?.url)
+        // Going back or forward in this tab, not landing on another tab (from the gallery, say).
+        .sensoryFeedback(.selection, trigger: HistoryStep(tab: tab?.id, url: tab?.url)) { old, new in
+            old.tab == new.tab && old.url != new.url
+        }
     }
+}
+
+private struct HistoryStep: Equatable {
+    let tab: UUID?
+    let url: URL?
 }
 
 /// Opens and closes the tab gallery. Hold it for your recent tabs. Holds no count, so it reads the
@@ -130,6 +138,8 @@ struct PageMenu: View {
     @Environment(BrowserState.self) private var browser
     /// In the address sheet, where anything that opens a sheet of its own has to wait for it to go.
     var closesNewTabSheetFirst = false
+    /// In the address sheet's page actions row: the whole slot is the button, not just the dots.
+    var fillsCell = false
 
     private func presenting(_ action: @escaping @MainActor () -> Void) {
         if closesNewTabSheetFirst { browser.afterClosingNewTabSheet(action) } else { action() }
@@ -174,7 +184,11 @@ struct PageMenu: View {
                 Button("Settings", systemImage: "gearshape") { presenting { browser.isSettingsPresented = true } }
             }
         } label: {
-            Label("More", systemImage: "ellipsis")
+            if fillsCell {
+                Label("More", systemImage: "ellipsis").pageActionCell()
+            } else {
+                Label("More", systemImage: "ellipsis")
+            }
         }
     }
 }

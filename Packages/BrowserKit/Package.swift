@@ -44,7 +44,8 @@ let package = Package(
         .target(
             name: "WebKitEngine",
             dependencies: ["BrowserEngine", "BrowserCore"],
-            resources: [.copy("Resources/extension-compat.js"), .copy("Resources/extension-diagnostics.js")]
+            resources: [.copy("Resources/extension-compat.js"), .copy("Resources/extension-diagnostics.js"),
+                        .copy("Resources/call-audio.js"), .copy("Resources/call-audio-apm.wasm")]
         ),
 
         // Extensions, plugins, Margin notes and the agent (MCP) toolbox. Foundation only, no

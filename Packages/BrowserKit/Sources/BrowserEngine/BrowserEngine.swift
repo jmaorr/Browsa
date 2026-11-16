@@ -433,9 +433,12 @@ public enum EngineDialogResponse: Sendable, Equatable {
 
 public enum EnginePermission: String, Sendable, Codable, CaseIterable {
     case camera, microphone, cameraAndMicrophone, location, notifications
+    /// Sharing the screen (getDisplayMedia). Asked every time, never remembered.
+    case screen
 
     public var phrase: String {
         switch self {
+        case .screen: "share your entire screen"
         case .camera: "use your camera"
         case .microphone: "use your microphone"
         case .cameraAndMicrophone: "use your camera and microphone"
@@ -479,4 +482,87 @@ public final class EngineDownload: Identifiable {
         cancelHandler?()
         if status == .running { status = .cancelled }
     }
+}
+
+// MARK: - Call audio
+
+/// How Browsa processes the microphone on calls (Meet, Zoom, Teams and the like). Settings › Audio.
+public struct CallAudioTuning: Codable, Equatable, Sendable {
+    public enum Processing: String, Codable, Sendable { case browsa, system }
+    /// Which inputs of an audio interface make up the mic. Some interfaces put a mic on input 2 only.
+    public enum Inputs: String, Codable, Sendable { case mix, first, second }
+
+    /// Browsa's own processing (WebRTC's, as in Chrome), or the system's voice processing.
+    public var processing: Processing = .browsa
+    public var inputs: Inputs = .mix
+    /// -1 off, 0 low, 1 moderate, 2 high, 3 very high.
+    public var noiseSuppression: Int = 2
+    /// Speaker-to-mic delay hint for the echo canceller, in ms. 0 lets it find the delay itself.
+    public var echoDelayMs: Int = 0
+    /// Mic level before any processing, in dB.
+    public var micLevelDb: Double = 0
+    /// Auto gain: how fast it may turn the mic up or down, in dB per second.
+    public var gainSpeed: Double = 3
+    /// Auto gain: it never lifts background noise above this, in dBFS.
+    public var noiseCeilingDb: Double = -50
+    public var rumbleFilter = true
+    public var typingRemover = false
+    /// Automatic mic volume, for sites that ask for it (Meet, Zoom and Teams do).
+    public var autoGain = true
+
+    public init() {}
+
+    // Settings saved by older versions lack newer keys: those take their defaults instead of the whole
+    // setting being thrown away.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = CallAudioTuning()
+        processing = try c.decodeIfPresent(Processing.self, forKey: .processing) ?? d.processing
+        inputs = try c.decodeIfPresent(Inputs.self, forKey: .inputs) ?? d.inputs
+        noiseSuppression = try c.decodeIfPresent(Int.self, forKey: .noiseSuppression) ?? d.noiseSuppression
+        echoDelayMs = try c.decodeIfPresent(Int.self, forKey: .echoDelayMs) ?? d.echoDelayMs
+        micLevelDb = try c.decodeIfPresent(Double.self, forKey: .micLevelDb) ?? d.micLevelDb
+        gainSpeed = try c.decodeIfPresent(Double.self, forKey: .gainSpeed) ?? d.gainSpeed
+        noiseCeilingDb = try c.decodeIfPresent(Double.self, forKey: .noiseCeilingDb) ?? d.noiseCeilingDb
+        rumbleFilter = try c.decodeIfPresent(Bool.self, forKey: .rumbleFilter) ?? d.rumbleFilter
+        typingRemover = try c.decodeIfPresent(Bool.self, forKey: .typingRemover) ?? d.typingRemover
+        autoGain = try c.decodeIfPresent(Bool.self, forKey: .autoGain) ?? d.autoGain
+    }
+
+    /// What the call audio script reads. Settings › Audio offers the processing, the input, the noise level
+    /// (low to high) and auto gain; the rest are fixed at their defaults, whatever an older version saved.
+    public var scriptValue: [String: Any] {
+        let d = CallAudioTuning()
+        return ["inputs": inputs.rawValue, "noise": max(0, min(noiseSuppression, 2)), "autoGain": autoGain,
+                "delayMs": d.echoDelayMs, "micLevelDb": d.micLevelDb, "gainSpeed": d.gainSpeed,
+                "noiseCeilingDb": d.noiseCeilingDb, "rumble": d.rumbleFilter, "typing": d.typingRemover]
+    }
+}
+
+/// The latest numbers from a page using call audio, about once a second.
+public struct CallAudioStats: Sendable, Equatable {
+    public var micDb: Double
+    public var gainDb: Double?
+    /// How much echo the echo canceller removes, in dB.
+    public var echoRemovedDb: Double?
+    /// The speaker-to-mic delay the echo canceller measured, in ms.
+    public var delayMs: Double?
+    /// 0...1: how likely it is that echo still gets through.
+    public var echoLeakLikelihood: Double?
+    public var engine: String
+    public var hasReference: Bool
+    public var at: Date
+
+    public init(micDb: Double, gainDb: Double?, echoRemovedDb: Double?, delayMs: Double?, echoLeakLikelihood: Double?,
+                engine: String, hasReference: Bool, at: Date = Date()) {
+        self.micDb = micDb; self.gainDb = gainDb; self.echoRemovedDb = echoRemovedDb; self.delayMs = delayMs
+        self.echoLeakLikelihood = echoLeakLikelihood; self.engine = engine; self.hasReference = hasReference; self.at = at
+    }
+}
+
+/// Engines that can run Browsa's call audio.
+@MainActor
+public protocol CallAudioConfigurable: AnyObject {
+    var callAudio: CallAudioTuning { get set }
+    var onCallAudioStats: ((CallAudioStats) -> Void)? { get set }
 }

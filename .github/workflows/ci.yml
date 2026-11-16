@@ -1,11 +1,8 @@
 name: CI
 
+# Manual only: macOS runners bill at 10x and used up the month's Actions minutes.
+# Builds and tests run on Josh's Mac instead. Run this from the Actions tab if needed.
 on:
-  push:
-    branches: [main]
-    paths-ignore: ["website/**"]
-  pull_request:
-    paths-ignore: ["website/**"]
   workflow_dispatch:
 
 permissions:

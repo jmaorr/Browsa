@@ -41,6 +41,12 @@ final class Library {
     var useSafariExtensions: Bool {
         didSet { Preferences.useSafariExtensions = useSafariExtensions; reloadExtensions() }
     }
+    /// Settings › Audio. Live: pages in a call pick changes up within a second.
+    var callAudio: CallAudioTuning {
+        didSet { Preferences.callAudio = callAudio; (engine as? CallAudioConfigurable)?.callAudio = callAudio }
+    }
+    /// The latest numbers from a page in a call, for the Audio settings readout.
+    var callAudioStats: CallAudioStats?
     /// The extensions running now, for the toolbar.
     private(set) var extensions: [EngineExtension] = []
     /// Bumped when pins change or an extension updates its action, so the address pill redraws.
@@ -63,6 +69,13 @@ final class Library {
     private(set) var windows: [Browser] = []
 
     let engine: any BrowserEngine
+    /// Which engine a tab's page uses for a URL: `engine` (WebKit) unless something else is set up.
+    /// The full Browsa build sets this for call tabs (Meet, Zoom, Teams run on Chromium).
+    @ObservationIgnored var engineChooser: ((BrowserTab, URL?) -> any BrowserEngine)?
+    /// Asked before a tab closes; false keeps it open (a call tab asks "Leave the call?").
+    @ObservationIgnored var closeGuard: ((BrowserTab) -> Bool)?
+    /// Bumped when a tab's page moves to another engine, so views show the new page.
+    private(set) var pageSwaps = 0
     let history: HistoryStore
     @ObservationIgnored private(set) var suggest: SuggestEngine!
     /// Live pages, by tab. The least recently used are unloaded past `capacity`.
@@ -87,6 +100,7 @@ final class Library {
         clearDataOnQuit = Preferences.clearDataOnQuit
         developerTools = Preferences.developerTools
         useSafariExtensions = Preferences.useSafariExtensions
+        callAudio = Preferences.callAudio
         let support = snapshotURL?.deletingLastPathComponent()
         extensionCatalog = ExtensionCatalog(fileURL: support?.appending(path: "extensions.json"))
         extensionInstaller = ExtensionInstaller(
@@ -109,6 +123,10 @@ final class Library {
         }
         suggest = makeSuggestEngine()
         engine.developerToolsEnabled = developerTools
+        if let calls = engine as? CallAudioConfigurable {
+            calls.callAudio = callAudio
+            calls.onCallAudioStats = { [weak self] in self?.callAudioStats = $0 }
+        }
         applyBlocking()
         archiveStaleTabs()
         engine.extensionHost = self
@@ -234,10 +252,13 @@ final class Library {
 
     /// The live page for a tab, made (and restored) on first use.
     func controller(for tab: BrowserTab) -> TabController {
+        _ = pageSwaps
         touch(tab.id)
         if let c = controllers[tab.id] { return c }
-        let c = TabController(tab: tab, library: self) { delegate in
-            engine.makePage(options: PageOptions(profile: tab.isPrivate ? .ephemeral : .standard,
+        let native = Welcome.isWelcome(tab.url) || LibraryPage.isLibrary(tab.url)
+        let pageEngine = native ? engine : engine(for: tab, url: tab.url)
+        let c = TabController(tab: tab, library: self, engineID: pageEngine.info.id) { delegate in
+            pageEngine.makePage(options: PageOptions(profile: tab.isPrivate ? .ephemeral : .standard,
                                                  // The welcome tab is native; its page starts blank.
                                                  url: Welcome.isWelcome(tab.url) || LibraryPage.isLibrary(tab.url) ? nil : tab.url,
                                                  sessionState: tab.interactionState),
@@ -249,6 +270,30 @@ final class Library {
     }
 
     func existingController(for tab: BrowserTab) -> TabController? { controllers[tab.id] }
+
+    func engine(for tab: BrowserTab, url: URL?) -> any BrowserEngine { engineChooser?(tab, url) ?? engine }
+
+    /// Whether going to `url` means the tab's page has to move to another engine.
+    func needsEngineSwap(_ controller: TabController, to url: URL) -> Bool {
+        engine(for: controller.tab, url: url).info.id != controller.engineID
+    }
+
+    /// Moves a tab's page to the engine `url` belongs on, and loads `url` there. The old page goes.
+    func swapEngine(of tab: BrowserTab, to url: URL, source: Frecency.VisitSource = .link) {
+        let target = engine(for: tab, url: url)
+        if let old = controllers[tab.id] {
+            old.page.close()
+            controllers[tab.id] = nil
+        }
+        tab.interactionState = nil
+        let c = TabController(tab: tab, library: self, engineID: target.info.id) { delegate in
+            target.makePage(options: PageOptions(profile: tab.isPrivate ? .ephemeral : .standard), delegate: delegate)
+        }
+        controllers[tab.id] = c
+        touch(tab.id)
+        c.load(url, source: source)
+        pageSwaps += 1
+    }
 
     private func adopt(_ controller: TabController) {
         controllers[controller.tab.id] = controller
@@ -266,9 +311,14 @@ final class Library {
     /// even if that means more than `capacity` live pages for a while.
     private func evictIfNeeded(keeping id: UUID) {
         let onScreen = Set(windows.compactMap { $0.currentTab?.id })
-        while lru.count > capacity, let victim = lru.first(where: { candidate in
-            candidate != id && !onScreen.contains(candidate) && controllers[candidate]?.page.state.isBusy != true
-        }) {
+        // Never unloaded: pages on another engine (call tabs, on Chromium), which would end a call,
+        // and busy pages (a call, playing audio, a half-written message).
+        let evictable = { (t: UUID) in
+            t != id && !onScreen.contains(t)
+                && self.controllers[t]?.page.state.isBusy != true
+                && self.controllers[t]?.engineID ?? self.engine.info.id == self.engine.info.id
+        }
+        while lru.count > capacity, let victim = lru.first(where: evictable) {
             unload(victim)
         }
     }
@@ -323,6 +373,7 @@ final class Library {
     // MARK: Closing
 
     func close(_ tab: BrowserTab) {
+        if let closeGuard, !closeGuard(tab) { return }
         for w in windows { w.cancelPrompts(for: tab.id) }
         if !tab.isPrivate, !tab.isPinned, tab.url != nil {
             controllers[tab.id]?.freeze()

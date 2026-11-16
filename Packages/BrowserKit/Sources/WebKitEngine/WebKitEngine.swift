@@ -12,7 +12,7 @@ let engineLog = Logger(subsystem: "com.orriginal.browsa", category: "webkit")
 /// Blocking uses BrowserCore's AdGuard-derived content rule lists and DuckDuckGo's autoconsent,
 /// exactly like the iOS app.
 @MainActor
-public final class WebKitEngine: BrowserEngine {
+public final class WebKitEngine: BrowserEngine, CallAudioConfigurable {
     public let info: EngineInfo
     public var downloadsDirectory: URL
     public var developerToolsEnabled = false {
@@ -29,6 +29,24 @@ public final class WebKitEngine: BrowserEngine {
     private static func setDeveloperExtras(_ on: Bool, on configuration: WKWebViewConfiguration) {
         configuration.preferences.setValue(on, forKey: "developerExtrasEnabled")
     }
+
+    /// Browsa's own mic processing for calls (Resources/call-audio.js) instead of Apple's voice
+    /// processing, which lets echo through and over-boosts some audio interfaces. Applies to pages
+    /// loaded after it changes.
+    public var callAudioProcessing = true {
+        didSet { if callAudioProcessing != oldValue { for controller in allContentControllers { install(on: controller) } } }
+    }
+    /// Settings › Audio. Pages read it about once a second while a call runs, so changes apply live;
+    /// switching processing to the system's applies to pages loaded after.
+    public var callAudio = CallAudioTuning() {
+        didSet { callAudioProcessing = callAudio.processing == .browsa }
+    }
+    public var onCallAudioStats: ((CallAudioStats) -> Void)?
+    private static let callAudioScript: WKUserScript? = {
+        guard let url = Bundle.module.url(forResource: "call-audio", withExtension: "js"),
+              let source = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page)
+    }()
 
     private let standardConfiguration: WKWebViewConfiguration
     private var ephemeralConfiguration: WKWebViewConfiguration
@@ -245,6 +263,13 @@ public final class WebKitEngine: BrowserEngine {
         controller.add(PageActivity.Handler { [weak self] webView, report in
             self?.page(for: webView)?.activityChanged(report)
         }, contentWorld: PageActivity.world, name: PageActivity.messageName)
+        controller.removeScriptMessageHandler(forName: CallAudioHandler.name, contentWorld: .page)
+        if callAudioProcessing, let script = Self.callAudioScript {
+            controller.addUserScript(script)
+            controller.addScriptMessageHandler(CallAudioHandler(tuning: { [weak self] in self?.callAudio ?? CallAudioTuning() },
+                                                               stats: { [weak self] in self?.onCallAudioStats?($0) }),
+                                              contentWorld: .page, name: CallAudioHandler.name)
+        }
         if blocking.globalPrivacyControl {
             controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,
                                                   forMainFrameOnly: false, in: .page))
@@ -307,5 +332,100 @@ enum SafariUserAgent {
         let v = ProcessInfo.processInfo.operatingSystemVersion
         return "Version/\(v.majorVersion).\(v.minorVersion) Safari/605.1.15"
     }
+}
+/// Hands the call audio script WebRTC's audio processing (WebAssembly, about a megabyte) when a page
+/// first opens a processed mic, so pages that never use the mic don't carry it. Page world: sites can
+/// ask for it too, which costs nothing but the bytes.
+final class CallAudioHandler: NSObject, WKScriptMessageHandlerWithReply {
+    static let name = "browsaCallAudio"
+    @MainActor private static var apmBase64: String?? = nil
+    private let tuning: @MainActor () -> CallAudioTuning
+    private let stats: @MainActor (CallAudioStats) -> Void
+
+    init(tuning: @escaping @MainActor () -> CallAudioTuning, stats: @escaping @MainActor (CallAudioStats) -> Void) {
+        self.tuning = tuning
+        self.stats = stats
+    }
+
+    @MainActor
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
+                               replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void) {
+        let body = message.body as? [String: Any] ?? [:]
+        switch body["type"] as? String {
+        case "settings":
+            return replyHandler(tuning().scriptValue, nil)
+        case "event":
+            CallAudioLog.write(message, what: body["what"] as? String ?? "?", detail: body["detail"] as? String ?? "")
+            return replyHandler(nil, nil)
+        case "stats":
+            // Only the main frame's numbers, so an embedded frame can't fake them.
+            guard message.frameInfo.isMainFrame else { return replyHandler(nil, nil) }
+            func num(_ k: String) -> Double? { (body[k] as? NSNumber)?.doubleValue.nilIfNaN }
+            CallAudioLog.stats(message, body)
+            stats(CallAudioStats(micDb: num("levelDb") ?? -120, gainDb: num("gainDb"), echoRemovedDb: num("erle"),
+                                 delayMs: num("delayMs"), echoLeakLikelihood: num("residual"),
+                                 engine: body["engine"] as? String ?? "none", hasReference: (num("references") ?? 0) > 0))
+            return replyHandler(nil, nil)
+        case "apm":
+            break
+        default:
+            return replyHandler(nil, "unknown request")
+        }
+        if Self.apmBase64 == nil {
+            Self.apmBase64 = Bundle.module.url(forResource: "call-audio-apm", withExtension: "wasm")
+                .flatMap { try? Data(contentsOf: $0) }?.base64EncodedString()
+        }
+        replyHandler(Self.apmBase64 ?? nil, nil)
+    }
+}
+/// ~/Library/Logs/Browsa/call-audio.log: one line per call audio event (took over the mic, engine
+/// loaded, call audio found, fell back) and a stats line every 10 s, so a call that went wrong can
+/// be explained afterwards. Private windows aren't logged. Kept under 1 MB.
+@MainActor
+enum CallAudioLog {
+    private static var lastStats = Date.distantPast
+    private static let url = FileManager.default.homeDirectoryForCurrentUser
+        .appending(path: "Library/Logs/Browsa/call-audio.log")
+    private static let stamp: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
+    }()
+
+    static func write(_ message: WKScriptMessage, what: String, detail: String) {
+        guard message.webView?.configuration.websiteDataStore.isPersistent ?? false else { return }
+        let host = message.frameInfo.securityOrigin.host
+        let frame = message.frameInfo.isMainFrame ? "" : " (frame)"
+        append("\(stamp.string(from: Date())) \(host)\(frame) \(what) \(detail)\n")
+    }
+
+    static func stats(_ message: WKScriptMessage, _ body: [String: Any]) {
+        guard Date().timeIntervalSince(lastStats) >= 10 else { return }
+        lastStats = Date()
+        func f(_ k: String) -> String {
+            guard let n = (body[k] as? NSNumber)?.doubleValue, n.isFinite else { return "-" }
+            return String(format: "%.2f", n)
+        }
+        write(message, what: "stats", detail: "mic=\(f("levelDb"))dB gain=\(f("gainDb"))dB erle=\(f("erle"))dB delay=\(f("delayMs"))ms "
+              + "residual=\(f("residual")) engine=\(body["engine"] as? String ?? "-") references=\(f("references"))")
+    }
+
+    private static func append(_ line: String) {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let size = (try? fm.attributesOfItem(atPath: url.path))?[.size] as? Int, size > 1_000_000 {
+            try? fm.removeItem(at: url.deletingPathExtension().appendingPathExtension("old.log"))
+            try? fm.moveItem(at: url, to: url.deletingPathExtension().appendingPathExtension("old.log"))
+        }
+        guard let data = line.data(using: .utf8) else { return }
+        if let h = try? FileHandle(forWritingTo: url) {
+            defer { try? h.close() }
+            _ = try? h.seekToEnd(); try? h.write(contentsOf: data)
+        } else {
+            try? data.write(to: url)
+        }
+    }
+}
+
+private extension Double {
+    var nilIfNaN: Double? { isNaN || isInfinite ? nil : self }
 }
 #endif

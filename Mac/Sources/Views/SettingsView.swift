@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreAudio
 import AppKit
 import BrowserCore
 import BrowserEngine
@@ -15,6 +16,7 @@ struct SettingsView: View {
             SpacesSettings().tabItem { Label("Spaces", systemImage: "square.stack") }.tag("spaces")
             ShortcutSettings().tabItem { Label("Shortcuts", systemImage: "keyboard") }.tag("shortcuts")
             PrivacySettings().tabItem { Label("Privacy", systemImage: "hand.raised") }.tag("privacy")
+            AudioSettings().tabItem { Label("Audio", systemImage: "waveform") }.tag("audio")
             AgentSettings().tabItem { Label("Agents", systemImage: AgentIdentity.symbol) }.tag("agents")
             EngineSettings().tabItem { Label("Engine", systemImage: "cpu") }.tag("engine")
         }
@@ -298,6 +300,92 @@ private struct PrivacySettings: View {
 }
 
 /// Which web engine Browsa is running on, and what it can do.
+/// Settings › Audio: how Browsa handles the mic on calls (Meet, Zoom, Teams and the like).
+private struct AudioSettings: View {
+    @Environment(Library.self) private var browser
+    /// Inputs on the Mac's current mic. The input picker is only for audio interfaces with two or more.
+    @State private var micChannels = AudioSettings.defaultInputChannels()
+
+    var body: some View {
+        @Bindable var browser = browser
+        let browsa = browser.callAudio.processing == .browsa
+        Form {
+            Section {
+                Picker("Call audio", selection: $browser.callAudio.processing) {
+                    Text("Browsa (recommended)").tag(CallAudioTuning.Processing.browsa)
+                    Text("macOS").tag(CallAudioTuning.Processing.system)
+                }
+            } footer: {
+                Text(browsa
+                     ? "Browsa removes echo and background noise on calls, like Chrome does. Meet, Zoom and Teams run on Chromium and use its own call audio; this applies to other call sites."
+                     : "macOS voice processing, like Safari. Some audio interfaces let echo through. Meet, Zoom and Teams use Chromium's own call audio either way. Reload a call to switch.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if browsa {
+                Section {
+                    if micChannels >= 2 || browser.callAudio.inputs != .mix {
+                        Picker("Microphone", selection: $browser.callAudio.inputs) {
+                            Text("Both inputs").tag(CallAudioTuning.Inputs.mix)
+                            Text("Input 1").tag(CallAudioTuning.Inputs.first)
+                            Text("Input 2").tag(CallAudioTuning.Inputs.second)
+                        }
+                    }
+                    Picker("Background noise reduction", selection: Binding(
+                        get: { max(0, min(browser.callAudio.noiseSuppression, 2)) },
+                        set: { browser.callAudio.noiseSuppression = $0 })) {
+                        Text("Low").tag(0)
+                        Text("Medium").tag(1)
+                        Text("High").tag(2)
+                    }
+                    Toggle("Automatic mic volume", isOn: $browser.callAudio.autoGain)
+                }
+                Section {
+                    TimelineView(.periodic(from: .now, by: 0.5)) { context in
+                        if let s = browser.callAudioStats, context.date.timeIntervalSince(s.at) < 3 {
+                            HStack {
+                                Text(s.hasReference ? "On a call · echo cancelling" : "On a call")
+                                Spacer()
+                                Gauge(value: max(0, min(1, (s.micDb + 60) / 60))) { EmptyView() }
+                                    .gaugeStyle(.accessoryLinearCapacity)
+                                    .frame(width: 120)
+                                    .accessibilityLabel("Mic level")
+                            }
+                        } else {
+                            Text("Not on a call").foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            Section {
+                HStack {
+                    Spacer()
+                    Button("Restore Defaults") { browser.callAudio = CallAudioTuning() }
+                        .disabled(browser.callAudio == CallAudioTuning())
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear { micChannels = Self.defaultInputChannels() }
+    }
+
+    /// Input channels on the default input device (the mic calls use unless a site picks another).
+    static func defaultInputChannels() -> Int {
+        var device = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice,
+                                                 mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device) == noErr else { return 1 }
+        address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreamConfiguration,
+                                             mScope: kAudioDevicePropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
+        guard AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr, size > 0 else { return 1 }
+        let raw = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+        defer { raw.deallocate() }
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, raw) == noErr else { return 1 }
+        let list = UnsafeMutableAudioBufferListPointer(raw.assumingMemoryBound(to: AudioBufferList.self))
+        return list.reduce(0) { $0 + Int($1.mNumberChannels) }
+    }
+}
+
 private struct EngineSettings: View {
     @Environment(Library.self) private var browser
 

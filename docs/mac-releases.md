@@ -50,6 +50,23 @@ them; Sparkle shows them in its update window.
 Keep the old zips in the releases folder. `generate_appcast` reads them all to build the appcast's
 history and the delta updates.
 
+## Chromium for call tabs
+
+Meet, Zoom and Teams run on Chromium (CEF) inside Browsa tabs (Mac/Chromium/CallTabs.swift), so the
+app carries the CEF framework and five "Browsa Helper" apps.
+
+- `tools/fetch-cef.sh` downloads the pinned CEF minimal build from cef-builds.spotifycdn.com, checks
+  its SHA-1, builds `libcef_dll_wrapper`, and caches it per version in ~/Library/Caches/browsa-cef.
+  `.cef/cef` in the repo links there (gitignored). `install-mac.sh` and `release-mac.sh` run it after
+  exporting. The first run needs cmake (`brew install cmake`) and about 130 MB of download.
+- `Mac/Chromium/embed-cef.sh` (a BrowsaMac build phase) copies the framework and helpers into the app
+  and signs them with the app's identity, the hardened runtime and `Mac/Chromium/Helper/helper.entitlements`
+  (JIT, media capture), so the archive and notarisation see properly signed nested code.
+- Size: the Release app is about 361 MB (Chromium is about 330 MB of it), and a release zip is about
+  156 MB. Before call tabs it was about 30 MB.
+- Updating CEF: change VERSION and SHA1 in fetch-cef.sh (from the build's index.json), rebuild, and
+  re-test a call (docs: Mac/CallSpike notes in the spike branch). Chromium ships about every 4 weeks.
+
 ## Which builds update themselves
 
 Only builds from `release-mac.sh`. The `BrowsaUpdates` Info.plist key is `NO` everywhere else,

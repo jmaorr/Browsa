@@ -1,0 +1,8 @@
+{
+  "name": "browsa-meet-echo-bot",
+  "private": true,
+  "type": "module",
+  "description": "Echo test over a real Google Meet call: a muted guest plays a recording as its mic and scores how much comes back.",
+  "scripts": { "bot": "node bot.mjs" },
+  "dependencies": { "playwright": "1.64.1" }
+}
