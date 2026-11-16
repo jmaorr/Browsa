@@ -172,7 +172,7 @@ extension Browser {
         case "downloads": showPanel("downloads")
         case "archive": isArchivePresented = true
         case "library": openLibrary()
-        case "settings": NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        case "settings": library.openSettings()
         default:
             if id.hasPrefix("space:"), let uuid = UUID(uuidString: String(id.dropFirst(6))),
                let s = spaces.first(where: { $0.id == uuid }) {

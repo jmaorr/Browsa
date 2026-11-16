@@ -262,6 +262,15 @@ final class Library {
 
     /// Opens a window through SwiftUI. Set by the first window that appears.
     @ObservationIgnored var openWindowAction: (() -> Void)?
+    /// Opens (or brings forward) the Settings window. Set by the first browser window.
+    @ObservationIgnored var openSettingsAction: (() -> Void)?
+
+    /// Opens Settings, on a given pane ("spaces", "agents"…) if asked.
+    func openSettings(pane: String? = nil) {
+        if let pane { UserDefaults.standard.set(pane, forKey: "settingsTab") }
+        openSettingsAction?()
+        NSApp.activate()
+    }
     @ObservationIgnored private var windowRequests: [WindowRequest] = []
 
     /// Opens a new window, showing `request` (or a new-tab command bar).

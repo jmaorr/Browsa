@@ -131,7 +131,6 @@ struct PreviewBadge: View {
 /// Who's connected, what they're doing, asks waiting for you, and Stop.
 struct AgentsPanel: View {
     @Environment(Browser.self) private var browser
-    @Environment(\.openSettings) private var openSettings
     @State private var connecting = false
     @State private var confirmingReset = false
     @AppStorage("agentPromptDismissed") private var promptDismissed = false
@@ -227,7 +226,7 @@ struct AgentsPanel: View {
                 }
                 Button("Reset Token…") { confirmingReset = true }
                 Divider()
-                Button("Agent Settings…") { openSettings() }
+                Button("Agent Settings…") { browser.library.openSettings(pane: "agents") }
             } label: {
                 Image(systemName: "ellipsis").font(.system(size: 12, weight: .semibold)).frame(width: 22, height: 22).contentShape(.rect)
             }

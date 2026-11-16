@@ -31,7 +31,7 @@ struct SettingsView: View {
             List(Self.panes, selection: Binding(get: { Optional(tab) }, set: { if let t = $0 { tab = t } })) { pane in
                 Label(pane.title, systemImage: pane.symbol).tag(pane.id)
             }
-            .navigationSplitViewColumnWidth(190)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
             .toolbar(removing: .sidebarToggle)
         } detail: {
             pane
