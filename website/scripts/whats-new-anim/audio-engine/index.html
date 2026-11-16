@@ -46,19 +46,19 @@ window.render = (t) => {
   $("knob").style.transform = `translateX(${22 * on}px)`;
   $("le").style.opacity = $("ln").style.opacity = 1 - 0.65 * clean;
   ctx.clearRect(0, 0, W, H);
-  const scroll = t * 14;
-  for (let i = 0; i < N; i++) {
-    const x = i + scroll;
+  // Bars belong to points in time and slide left smoothly, so each keeps its height as it moves.
+  const scroll = t * 7, first = Math.floor(scroll), off = (scroll - first) * BW;
+  const scale = H * 0.42;
+  for (let i = 0; i <= N; i++) {
+    const x = first + i, left = i * BW - off;
     const v = voice(x) * 1.6, e = echo(x) * (1 - 0.92 * clean), n = noise(x) * (1 - 0.85 * clean);
-    const scale = H * 0.42;
-    const parts = [[v, "#2b2a27"], [e, "#ff9500"], [n, "#c9c6bf"]];
     let up = 0;
-    for (const [h, color] of parts) {
+    for (const [h, color] of [[v, "#2b2a27"], [e, "#ff9500"], [n, "#c9c6bf"]]) {
       const px = h * scale * 0.5;
       ctx.fillStyle = color;
       // Stacked, mirrored around the middle line.
-      ctx.fillRect(i * BW + 2, H / 2 - up - px, BW - 4, px);
-      ctx.fillRect(i * BW + 2, H / 2 + up, BW - 4, px);
+      ctx.fillRect(left + 2, H / 2 - up - px, BW - 4, px);
+      ctx.fillRect(left + 2, H / 2 + up, BW - 4, px);
       up += px;
     }
   }
