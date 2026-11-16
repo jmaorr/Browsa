@@ -99,7 +99,7 @@ struct PageArea: View {
 
 /// The page card's shape and its distance from the window edge.
 enum PageCard {
-    static let radius: CGFloat = 9
+    static let radius: CGFloat = 10
     static let inset: CGFloat = 6
 }
 

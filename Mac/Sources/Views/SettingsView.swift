@@ -27,7 +27,29 @@ struct SettingsView: View {
         Pane(id: "engine", title: "Engine", symbol: "cpu"),
     ]
 
+    /// Which layout this is: the Settings window's sidebar, or the Settings scene's toolbar tabs.
+    /// Preview only: `defaults write <bundle id> settingsLayout tabs` picks the tabs layout.
+    var tabs = false
+
+    static var usesTabs: Bool { UserDefaults.standard.string(forKey: "settingsLayout") == "tabs" }
+
     var body: some View {
+        if tabs { tabsLayout } else { sidebarLayout }
+    }
+
+    /// Toolbar tabs in a preferences title bar, like Safari, Mail and Xcode.
+    private var tabsLayout: some View {
+        TabView(selection: $tab) {
+            ForEach(Self.panes) { pane in
+                paneView(pane.id)
+                    .tabItem { Label(pane.title, systemImage: pane.symbol) }
+                    .tag(pane.id)
+            }
+        }
+        .frame(width: 660, height: 600)
+    }
+
+    private var sidebarLayout: some View {
         NavigationSplitView {
             List(selection: Binding<String?>(get: { tab }, set: { if let t = $0 { tab = t } })) {
                 ForEach(Self.panes) { pane in
@@ -46,8 +68,10 @@ struct SettingsView: View {
         .frame(minWidth: 760, idealWidth: 800, minHeight: 520, idealHeight: 600)
     }
 
-    @ViewBuilder private var pane: some View {
-        switch tab {
+    private var pane: some View { paneView(tab) }
+
+    @ViewBuilder private func paneView(_ id: String) -> some View {
+        switch id {
         case "spaces": SpacesSettings()
         case "routing": SpaceRoutingSettings()
         case "shortcuts": ShortcutSettings()

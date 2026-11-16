@@ -39,6 +39,13 @@ struct BrowsaMacApp: App {
         .windowResizability(.contentMinSize)
         .defaultSize(width: 820, height: 620)
         .defaultPosition(.center)
+
+        // The same panes as Safari-style toolbar tabs, opened instead when settingsLayout is "tabs".
+        Settings {
+            SettingsView(tabs: true)
+                .environment(appDelegate.library)
+                .environment(appDelegate.updates)
+        }
     }
 }
 
@@ -49,6 +56,7 @@ private struct WindowRoot: View {
     /// The window's key, kept by SwiftUI with the window so it comes back with its own tabs.
     @SceneStorage("windowKey") private var windowKey = ""
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         Group {
@@ -63,7 +71,9 @@ private struct WindowRoot: View {
         .frame(minWidth: 640, minHeight: 420)
         .onAppear {
             library.openWindowAction = { [openWindow] in openWindow(id: "browser") }
-            library.openSettingsAction = { [openWindow] in openWindow(id: "settings") }
+            library.openSettingsAction = { [openWindow, openSettings] in
+                if SettingsView.usesTabs { openSettings() } else { openWindow(id: "settings") }
+            }
             if browser == nil {
                 let saved = UUID(uuidString: windowKey).flatMap { key in library.windows.contains { $0.windowKey == key } ? nil : key }
                 let key = saved ?? UUID()
