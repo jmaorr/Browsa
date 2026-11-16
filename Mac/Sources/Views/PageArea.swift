@@ -42,7 +42,7 @@ struct PageArea: View {
         .overlay(alignment: .top) {
             // Clipped to the card, so the line follows its rounded top corners.
             if let tab = browser.currentTab {
-                ProgressLine(tab: tab)
+                ProgressLine(isLoading: tab.isLoading, progress: tab.estimatedProgress)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .clipShape(.rect(cornerRadius: PageCard.radius, style: .continuous))
                     .allowsHitTesting(false)
@@ -190,16 +190,17 @@ struct PageHost: NSViewRepresentable {
 }
 
 /// A hairline of progress along the top of the page while it loads.
-private struct ProgressLine: View {
-    let tab: BrowserTab
+struct ProgressLine: View {
+    let isLoading: Bool
+    let progress: Double
 
     var body: some View {
-        let visible = tab.isLoading && tab.estimatedProgress < 1
+        let visible = isLoading && progress < 1
         Rectangle()
             .fill(.tint)
             .frame(height: 2)
-            .scaleEffect(x: max(0.05, tab.estimatedProgress), y: 1, anchor: .leading)
-            .animation(.easeOut(duration: 0.2), value: tab.estimatedProgress)
+            .scaleEffect(x: max(0.05, progress), y: 1, anchor: .leading)
+            .animation(.easeOut(duration: 0.2), value: progress)
         .opacity(visible ? 1 : 0)
         .animation(.easeOut(duration: visible ? 0.1 : 0.4), value: visible)
         .allowsHitTesting(false)

@@ -40,6 +40,11 @@ final class GlanceSession: Identifiable, EnginePageDelegate {
     }
 
     func pageDidRequestClose(_ page: any EnginePage) { browser?.closeGlance() }
+
+    /// Blocking already applies (same rules as tabs); say so when a cookie banner goes, as tabs do.
+    func pageDidDeclineCookieBanner(_ page: any EnginePage) {
+        browser?.showToast("Cookie banner declined")
+    }
 }
 
 extension Browser {
@@ -76,10 +81,8 @@ struct GlanceOverlay: View {
                 header
                 PageHost(view: glance.page.view, focusesPage: true)
                     .overlay(alignment: .top) {
-                        if glance.page.state.isLoading {
-                            ProgressView(value: max(0.05, glance.page.state.progress))
-                                .progressViewStyle(.linear).tint(.accentColor).frame(height: 2)
-                        }
+                        // The same hairline as a tab's, under the header.
+                        ProgressLine(isLoading: glance.page.state.isLoading, progress: glance.page.state.progress)
                     }
             }
             .clipShape(.rect(cornerRadius: 14, style: .continuous))
@@ -92,6 +95,8 @@ struct GlanceOverlay: View {
             .padding(.horizontal, 44)
             .padding(.vertical, 28)
         }
+        // The dimming stays inside the page card's rounded corners.
+        .clipShape(.rect(cornerRadius: PageCard.radius, style: .continuous))
         .onAppear(perform: watchKeys)
         .onDisappear {
             if let monitor { NSEvent.removeMonitor(monitor) }
