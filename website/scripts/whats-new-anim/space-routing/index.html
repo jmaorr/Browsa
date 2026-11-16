@@ -1,0 +1,97 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  :root { --ink:#161513; --ink2:#5d5a55; --p:#5856d6; --w:#ff9500; }
+  html,body { margin:0; width:1600px; height:1000px; overflow:hidden; background:#f5f4f1; font-family: Inter, sans-serif; color:var(--ink); -webkit-font-smoothing:antialiased; letter-spacing:-.01em; }
+  .stage { position:absolute; inset:0; }
+  .panel { position:absolute; top:380px; width:560px; height:520px; border-radius:28px; overflow:hidden;
+    box-shadow: 0 0 0 1px rgb(22 21 19 / .08), 0 30px 60px -24px rgb(30 25 20 / .25); }
+  .panel .bg { position:absolute; inset:0; }
+  .panel.p { left:180px; } .panel.w { left:860px; }
+  .head { position:absolute; left:32px; top:30px; display:flex; align-items:center; gap:12px; font-size:26px; font-weight:600; }
+  .head svg { width:28px; height:28px; }
+  .list { position:absolute; left:20px; right:20px; top:96px; }
+  .row { position:relative; overflow:hidden; }
+  .row .in { display:flex; align-items:center; gap:16px; height:60px; padding:0 18px; border-radius:14px; font-size:22px; color:#2b2a27; white-space:nowrap; }
+  .row img { width:28px; height:28px; border-radius:7px; flex:none; }
+  .pill { position:absolute; left:0; top:0; display:flex; align-items:center; gap:14px; height:68px; padding:0 28px 0 18px; border-radius:34px; background:#fff;
+    box-shadow: 0 0 0 1px rgb(22 21 19 / .08), 0 18px 40px -14px rgb(30 25 20 / .35); font-size:26px; font-weight:500; white-space:nowrap; transform-origin: 0 50%; }
+  .pill img { width:34px; height:34px; border-radius:8px; }
+  .label { position:absolute; left:0; right:0; top:110px; text-align:center; font-size:30px; font-weight:600; letter-spacing:-.02em; color:var(--ink); }
+  .sub { position:absolute; left:0; right:0; top:158px; text-align:center; font-size:22px; color:var(--ink2); }
+  .where { position:absolute; top:0; left:0; font-size:22px; font-weight:600; white-space:nowrap; }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="label">Sites open in the Space they belong to</div>
+  <div class="sub">With Space Routing on, new tabs sort themselves.</div>
+  <div class="panel p"><div class="bg" id="bgp"></div>
+    <div class="head" style="color:#3f3db3"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 11.2 12 4.5l8 6.7V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H5a1 1 0 0 1-1-1z"/></svg>Personal</div>
+    <div class="list" id="lp"></div></div>
+  <div class="panel w"><div class="bg" id="bgw"></div>
+    <div class="head" style="color:#b86a00"><svg viewBox="0 0 24 24"><rect x="3.5" y="7.5" width="17" height="12" rx="2.5" fill="currentColor"/><path d="M9 7.5V6a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 6v1.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>Work</div>
+    <div class="list" id="lw"></div></div>
+  <div class="pill" id="pill"><img id="pfav"><span id="ptext"></span></div>
+  <div class="where" id="where"></div>
+</div>
+<script>
+const P = { tint:'#5856d6', base:'#ecebf3', list: document.getElementById('lp'), bg: document.getElementById('bgp'), x:180, name:'Personal', color:'#3f3db3' };
+const W = { tint:'#ff9500', base:'#f6eee3', list: document.getElementById('lw'), bg: document.getElementById('bgw'), x:860, name:'Work', color:'#b86a00' };
+const start = { P: [['aeon.co','Chasing light in Lofoten'],['bonappetit.com','Slow-roast tomatoes']], W: [['notion.so','Standup notes'],['stripe.com','Payments · Stripe']] };
+// Each link: when it appears, where it goes.
+const LINKS = [
+  ['github.com','github.com/browsa/pulls','Pull requests · GitHub', W],
+  ['youtube.com','youtube.com/watch?v=lofi','lofi hip hop radio · YouTube', P],
+  ['linear.app','linear.app/browsa/inbox','Inbox · Linear', W],
+  ['airbnb.com','airbnb.com/rooms/lofoten','Cabin in Lofoten · Airbnb', P],
+  ['figma.com','figma.com/design/browsa-site','Browsa site · Figma', W],
+];
+const STEP = 2.3, FIRST = 0.6, TOTAL = FIRST + STEP * LINKS.length + 1.6;
+const rowEl = (fav, title) => { const r = document.createElement('div'); r.className='row'; r.innerHTML = `<div class="in"><img src="../../../public/media/fav/${fav}.png"><span>${title}</span></div>`; return r; };
+for (const [f,t] of start.P) P.list.append(rowEl(f,t));
+for (const [f,t] of start.W) W.list.append(rowEl(f,t));
+const added = LINKS.map(([f,,title,sp]) => { const r = rowEl(f,title); sp.list.prepend(r); return r; });
+const pill = document.getElementById('pill'), pfav = document.getElementById('pfav'), ptext = document.getElementById('ptext'), where = document.getElementById('where');
+const clamp = x => Math.min(1, Math.max(0, x));
+const ph = (t, a, d) => clamp((t - a) / d);
+const eo = x => 1 - Math.pow(1 - x, 3);
+const eio = x => x < .5 ? 4*x*x*x : 1 - Math.pow(-2*x+2, 3)/2;
+const mix = (a,b,f) => a + (b-a)*f;
+function hexMix(a, b, f) { const p = h => [1,3,5].map(i => parseInt(h.slice(i,i+2),16)); const A=p(a),B=p(b); return `rgb(${A.map((v,i)=>Math.round(mix(v,B[i],f))).join(',')})`; }
+window.render = (t) => {
+  let glowP = 0, glowW = 0;
+  pill.style.opacity = 0; where.style.opacity = 0;
+  LINKS.forEach(([fav, url, title, sp], i) => {
+    const t0 = FIRST + i * STEP;
+    const appear = eo(ph(t, t0, .4)), travel = eio(ph(t, t0 + .95, .75)), land = eo(ph(t, t0 + 1.55, .35));
+    // The new row opens at the top of its Space's list.
+    const row = added[i];
+    row.style.height = (60 + 6) * land + 'px';
+    row.firstChild.style.opacity = land;
+    row.firstChild.style.background = `rgb(255 255 255 / ${.85 * (1 - ph(t, t0 + 1.9, .6)) + .0})`;
+    if (t >= t0 && t < t0 + 1.7) {
+      pfav.src = `../../../public/media/fav/${fav}.png`; ptext.textContent = url;
+      const w = pill.offsetWidth;
+      const sx = 800 - w / 2, sy = 250;
+      const rect = sp.list.getBoundingClientRect();
+      const ex = sp.x + 38, ey = rect.top - 4;
+      const x = mix(sx, ex, travel), y = mix(sy, ey, travel) - Math.sin(travel * Math.PI) * 40;
+      const s = mix(1, .82, travel);
+      pill.style.transform = `translate(${x}px, ${y}px) scale(${s * mix(.92, 1, appear)})`;
+      pill.style.opacity = appear * (1 - ph(t, t0 + 1.45, .25));
+      // "Opens in Work" under the pill while it waits.
+      where.textContent = `Opens in ${sp.name}`; where.style.color = sp.color;
+      where.style.transform = `translate(${800 - where.offsetWidth / 2}px, ${sy + 84 + (1 - eo(ph(t, t0 + .35, .35))) * 6}px)`;
+      where.style.opacity = eo(ph(t, t0 + .35, .35)) * (1 - ph(t, t0 + .95, .25));
+    }
+    const g = Math.sin(Math.PI * ph(t, t0 + 1.5, .9));
+    if (sp === P) glowP = Math.max(glowP, g); else glowW = Math.max(glowW, g);
+  });
+  for (const [sp, g] of [[P, glowP], [W, glowW]]) {
+    sp.bg.style.background = `linear-gradient(180deg, rgb(255 255 255 / .45), transparent 40%), ${hexMix(sp.base, sp.tint, .07 + .1 * g)}`;
+  }
+  // Fade out and back in at the loop point.
+  document.getElementById('stage').style.opacity = Math.min(ph(t, 0, .3), 1 - ph(t, TOTAL - .45, .45));
+};
+window.TOTAL = TOTAL;
+render(0);
+</script></body></html>
