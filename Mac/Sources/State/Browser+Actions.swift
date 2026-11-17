@@ -324,6 +324,7 @@ extension Browser {
         // With the bar closed, Find Next opens it; with it open and empty, there's nothing to do.
         guard let text = find?.text else { showFind(); return }
         guard !text.isEmpty, let page = currentController?.page else { return }
+        findPage = page
         Task { @MainActor in
             let found = await page.find(text, backwards: backwards)
             let matches = found ? await page.findMatches(text) : nil
@@ -336,6 +337,14 @@ extension Browser {
 
     func closeFind() {
         currentController?.page.clearFind()
+        find = nil
+    }
+
+    /// Closes find when the page it searched goes away (tab or space switch). The marks stay on that
+    /// page otherwise, so clear them on the page find was showing on.
+    func dismissFind() {
+        guard find != nil else { return }
+        findPage?.clearFind()
         find = nil
     }
 }
