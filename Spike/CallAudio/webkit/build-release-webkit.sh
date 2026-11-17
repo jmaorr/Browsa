@@ -21,14 +21,21 @@ for h in BrowsaCallAudioInternalUnit.h BrowsaSideSpeakers.h BrowsaAudioTimeline.
   [[ -f "$cocoa/$h" ]] || { echo "missing $cocoa/$h (apply webkit.patch and copy the headers, README.md)" >&2; exit 1; }
 done
 [[ -e "$cocoa/BrowsaCallAudioRecording.h" ]] && { echo "$cocoa/BrowsaCallAudioRecording.h is there: a release WebKit must not record calls" >&2; exit 1; }
-cmp -s "$here/BrowsaCallAudioInternalUnit.h" "$cocoa/BrowsaCallAudioInternalUnit.h" || { echo "BrowsaCallAudioInternalUnit.h differs from this branch's" >&2; exit 1; }
-cmp -s "$here/BrowsaSideSpeakers.h" "$cocoa/BrowsaSideSpeakers.h" || { echo "BrowsaSideSpeakers.h differs from this branch's" >&2; exit 1; }
+# The engine: this branch's files, or those at BROWSA_ENGINE_REF (a commit) when the release ships an earlier engine.
+ref="${BROWSA_ENGINE_REF:-}"
+engine() { if [[ -n "$ref" ]]; then git -C "$here" show "$ref:Spike/CallAudio/$1"; else cat "$here/../$1"; fi; }
+for pair in "webkit/BrowsaCallAudioInternalUnit.h BrowsaCallAudioInternalUnit.h" "webkit/BrowsaSideSpeakers.h BrowsaSideSpeakers.h" \
+            "core/CallGuard.h BrowsaCallGuard.h" "core/AudioTimeline.h BrowsaAudioTimeline.h"; do
+  src="${pair%% *}" dst="${pair##* }"
+  cmp -s <(engine "$src") "$cocoa/$dst" || { echo "$dst differs from the engine ${ref:-on this branch}" >&2; exit 1; }
+done
 free_gb=$(df -g "$tree" | awk 'NR==2 {print $4}')
 (( free_gb >= 40 )) || { echo "only ${free_gb} GB free; a WebKit build needs about 30" >&2; exit 1; }
 
 echo "==> Building WebKit for macOS $major.0 into $out (about an hour)"
 cd "$tree"
-WEBKIT_OUTPUTDIR="$out" Tools/Scripts/build-webkit --release \
+# BUILD_JOBS limits parallel compiles (e.g. half the cores, to stay out of the way of a call).
+WEBKIT_OUTPUTDIR="$out" nice -n "${BUILD_NICE:-0}" Tools/Scripts/build-webkit --release ${BUILD_JOBS:+-jobs $BUILD_JOBS} \
   MACOSX_DEPLOYMENT_TARGET="$major.0" WK_MACOSX_DEPLOYMENT_TARGET="$major.0"
 
 fw="$out/Release"
@@ -44,5 +51,5 @@ dumps=$(strings -a "$fw/WebCore.framework/Versions/A/WebCore" | grep -c BROWSA_C
 (( $(strings -a "$fw/WebCore.framework/Versions/A/WebCore" | grep -c "BrowsaCallAudioInternalUnit ready" || true) > 0 )) || { echo "WebCore lacks Browsa's call audio unit" >&2; bad=1; }
 (( bad == 0 )) || exit 1
 patch_id=$(git -C "$tree" diff | shasum | cut -c1-12)
-echo "release $major.0 $(git -C "$tree" rev-parse --short HEAD) patch $patch_id $(date +%Y-%m-%d)" > "$fw/BROWSA_WEBKIT.txt"
+echo "release $major.0 $(git -C "$tree" rev-parse --short HEAD) patch $patch_id engine ${ref:-$(git -C "$here" rev-parse --short HEAD)} $(date +%Y-%m-%d)" > "$fw/BROWSA_WEBKIT.txt"
 echo "==> $fw: $(cat "$fw/BROWSA_WEBKIT.txt")"
