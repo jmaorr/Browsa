@@ -22,11 +22,7 @@ struct BrowserCommands: Commands {
             }
         }
 
-        // Browsa › Settings… opens the Settings window (a Window scene, not SwiftUI's Settings scene).
-        CommandGroup(replacing: .appSettings) {
-            Button("Settings…") { library.openSettings() }
-                .keyboardShortcut(",", modifiers: .command)
-        }
+        // Browsa › Settings… (⌘,) is the Settings scene's own menu item.
                 CommandGroup(replacing: .newItem) {
             Button("New Tab") { newTab(.newTab) }
                 .keyboardShortcut(keys.shortcut(.newTab))
@@ -68,10 +64,10 @@ struct BrowserCommands: Commands {
                 .disabled(!hasPage)
             Button("Find Next") { browser?.findNext() }
                 .keyboardShortcut(keys.shortcut(.findNext))
-                .disabled(browser?.find == nil)
+                .disabled(!hasPage)
             Button("Find Previous") { browser?.findNext(backwards: true) }
                 .keyboardShortcut(keys.shortcut(.findPrevious))
-                .disabled(browser?.find == nil)
+                .disabled(!hasPage)
         }
 
         CommandGroup(replacing: .sidebar) {

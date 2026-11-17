@@ -321,10 +321,16 @@ extension Browser {
     }
 
     func findNext(backwards: Bool = false) {
-        guard let text = find?.text, !text.isEmpty, let page = currentController?.page else { showFind(); return }
+        // With the bar closed, Find Next opens it; with it open and empty, there's nothing to do.
+        guard let text = find?.text else { showFind(); return }
+        guard !text.isEmpty, let page = currentController?.page else { return }
         Task { @MainActor in
             let found = await page.find(text, backwards: backwards)
-            if find?.text == text { find?.found = found }
+            let matches = found ? await page.findMatches(text) : nil
+            if find?.text == text {
+                find?.found = found
+                find?.matches = matches
+            }
         }
     }
 
