@@ -30,37 +30,58 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const ctx = $("c").getContext("2d"); ctx.scale(2, 2);
-const W = 1004, H = 280, N = 84, BW = W / N;
-// Deterministic noise.
-const hash = (n) => { const s = Math.sin(n * 127.1) * 43758.5453; return s - Math.floor(s); };
-const voice = (x) => { const e = Math.max(0, Math.sin(x * 0.11) * 0.8 + Math.sin(x * 0.037 + 1) * 0.5); return e * (0.55 + 0.45 * Math.abs(Math.sin(x * 0.9))); };
-const echo = (x) => { const e = Math.max(0, Math.sin(x * 0.083 + 2.4) * 0.7 + 0.25); return e * (0.5 + 0.5 * Math.abs(Math.sin(x * 1.3 + 1))); };
-const noise = (x) => 0.12 + 0.16 * hash(Math.floor(x));
-const ON = 3.4;
-const CAPS = [[0.6, 3.2, "Your speakers’ sound and the room get picked up too"], [4.0, 8.8, "With the engine on, much less of that reaches the call"]];
-window.TOTAL = 9.2;
+const W = 1004, H = 280, MID = H / 2;
+const STEP = 3, N = Math.floor(W / STEP);          // thin bars, like a recording
+// Deterministic jitter, so every take is the same.
+const hash = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+// Phrases (where in the strip someone is talking) times fast jitter (the sound itself).
+const env = (f, phrases) => { for (const [a, b] of phrases) if (f >= a && f <= b) return Math.pow(Math.sin(Math.PI * (f - a) / (b - a)), 0.6) * (0.75 + 0.25 * Math.sin(f * 90)); return 0; };
+const VOICE = [[0.0, 0.2], [0.27, 0.42], [0.52, 0.74], [0.8, 0.99]], ECHO = [[0.04, 0.3], [0.34, 0.62], [0.66, 0.96]];
+const voice = (i) => env(i / N, VOICE) * (0.45 + 0.55 * hash(i));
+const echo = (i) => (0.12 + env(i / N, ECHO)) * (0.35 + 0.65 * hash(i + 999));
+const noise = (i) => 0.08 + 0.1 * hash(i + 4242);
+const T0 = 0.4, SWEEP = 7.6, AT = 0.46, ON = T0 + AT * SWEEP;
+const CAPS = [[0.6, ON - 0.3, "Your speakers’ sound and the room get picked up too"], [ON + 0.5, 9.0, "With the engine on, much less of that reaches the call"]];
+window.TOTAL = 9.4;
 window.render = (t) => {
-  const on = eio(ph(t, ON, 0.35));
-  const clean = eo(ph(t, ON + 0.2, 1.2));
+  const on = eio(ph(t, ON - 0.15, 0.3));
   $("sw").style.background = `rgb(${mix(214, 52, on)} ${mix(211, 199, on)} ${mix(206, 89, on)})`;
   $("knob").style.transform = `translateX(${22 * on}px)`;
-  $("le").style.opacity = $("ln").style.opacity = 1 - 0.65 * clean;
+  $("le").style.opacity = $("ln").style.opacity = 1 - 0.65 * on;
   ctx.clearRect(0, 0, W, H);
-  // Bars belong to points in time and slide left smoothly, so each keeps its height as it moves.
-  const scroll = t * 7, first = Math.floor(scroll), off = (scroll - first) * BW;
-  const scale = H * 0.42;
-  for (let i = 0; i <= N; i++) {
-    const x = first + i, left = i * BW - off;
-    const v = voice(x) * 1.6, e = echo(x) * (1 - 0.92 * clean), n = noise(x) * (1 - 0.85 * clean);
+  // The centre line, then everything recorded so far, up to the playhead.
+  ctx.fillStyle = "#e7e5e0"; ctx.fillRect(0, MID - 0.5, W, 1);
+  const head = clamp((t - T0) / SWEEP) * W;
+  const scale = H * 0.46;
+  for (let i = 0; i < N; i++) {
+    const x = i * STEP;
+    if (x > head) break;
+    // Each bar was recorded at its own moment: before the switch, or after.
+    const when = T0 + (x / W) * SWEEP;
+    const clean = eo(clamp((when - ON) / 0.12));
+    const parts = [[voice(i) * 1.15, "#2b2a27"], [echo(i) * (1 - 0.93 * clean), "#ff9500"], [noise(i) * (1 - 0.85 * clean), "#c9c6bf"]];
     let up = 0;
-    for (const [h, color] of [[v, "#2b2a27"], [e, "#ff9500"], [n, "#c9c6bf"]]) {
+    for (const [h, color] of parts) {
       const px = h * scale * 0.5;
+      if (px <= 0) continue;
       ctx.fillStyle = color;
-      // Stacked, mirrored around the middle line.
-      ctx.fillRect(left + 2, H / 2 - up - px, BW - 4, px);
-      ctx.fillRect(left + 2, H / 2 + up, BW - 4, px);
+      ctx.fillRect(x, MID - up - px, STEP - 1, px);
+      ctx.fillRect(x, MID + up, STEP - 1, px);
       up += px;
     }
+  }
+  // The playhead.
+  if (head > 0 && head < W) {
+    ctx.fillStyle = "#0a84ff";
+    ctx.fillRect(head, 10, 2, H - 20);
+    ctx.beginPath(); ctx.arc(head + 1, 10, 5, 0, Math.PI * 2); ctx.fill();
+  }
+  // Where the switch flipped.
+  if (head > AT * W) {
+    ctx.fillStyle = "#c9c6bf"; ctx.fillRect(AT * W - 1, 24, 1, H - 48);
+    ctx.font = "500 14px Inter"; ctx.fillStyle = "#8a8781";
+    ctx.textAlign = "right"; ctx.fillText("Apple’s WebKit audio", AT * W - 12, H - 14);
+    ctx.textAlign = "left"; ctx.fillStyle = "#2b8a3e"; ctx.fillText("Browsa Audio Engine", AT * W + 12, H - 14);
   }
   const k = CAPS.find(([a, b]) => t >= a && t < b);
   $("cap").textContent = k ? k[2] : "";
