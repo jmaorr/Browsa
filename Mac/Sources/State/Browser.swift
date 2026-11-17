@@ -2,6 +2,7 @@ import AppKit
 import Observation
 import BrowserCore
 import BrowserEngine
+import WebKitEngine
 import Suggest
 import SwiftUI
 
@@ -581,6 +582,11 @@ enum Preferences {
             var t = (d.data(forKey: "callAudio")).flatMap { try? JSONDecoder().decode(CallAudioTuning.self, from: $0) } ?? CallAudioTuning()
             // The spike's old switch: `defaults write <bundle id> callAudioProcessing -bool NO`.
             if d.data(forKey: "callAudio") == nil, d.object(forKey: "callAudioProcessing") as? Bool == false { t.processing = .system }
+            // tools/audio-bench picks the in-page processing per run (test builds only).
+            if AudioBench.isEnabled, let v = ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH_CALL_AUDIO"], let p = CallAudioTuning.Processing(rawValue: v) { t.processing = p }
+            // The in-page script is retired from Settings: calls get the Browsa Audio Engine (inside WebKit) or Apple's
+            // processing. Only the test bench can still pick it.
+            if !(AudioBench.isEnabled && ProcessInfo.processInfo.environment["BROWSA_AUDIO_BENCH_CALL_AUDIO"] != nil) { t.processing = .system }
             return t
         }
         set { d.set(try? JSONEncoder().encode(newValue), forKey: "callAudio") }

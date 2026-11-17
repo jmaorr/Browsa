@@ -4,6 +4,9 @@
 #
 #   tools/install-mac.sh              # latest origin/main
 #   tools/install-mac.sh <git-ref>    # any branch, tag or commit, e.g. origin/claude/some-branch
+#   tools/install-mac.sh --patched-webkit [<git-ref>]
+#                                     # signed so it may run on Browsa's own WebKit build
+#                                     # (Mac/BrowsaLocalWebKit.entitlements; see Mac/Sources/PatchedWebKit.swift)
 #
 # Builds from a clean export of the ref, so it doesn't matter which branch this checkout (or any
 # worktree) is on, or what's uncommitted in it. Website data, sign-ins, tabs and extensions live
@@ -12,6 +15,8 @@
 set -euo pipefail
 
 repo="${0:A:h:h}"
+patched_webkit=0
+if [[ "${1:-}" == --patched-webkit ]]; then patched_webkit=1; shift; fi
 ref="${1:-origin/main}"
 work="$HOME/Library/Caches/com.orriginal.browsa.install"
 src="$work/src"
@@ -34,18 +39,26 @@ echo "==> Exporting $ref ($commit)"
 rm -rf "$work/export" && mkdir -p "$work/export" "$src"
 git -C "$repo" archive "$commit" | tar -x -C "$work/export"
 # Copy only files that changed, keeping the rest's timestamps so the build stays incremental.
-rsync -rlc --delete --exclude Browsa.xcodeproj --exclude .cef "$work/export/" "$src/"
+rsync -rlc --delete --exclude Browsa.xcodeproj "$work/export/" "$src/"
 rm -rf "$work/export"
 
 echo "==> Building Browsa (Release)"
 cd "$src"
-# Chromium for call tabs (downloaded and checked once, then cached).
-tools/fetch-cef.sh
 xcodegen generate --quiet
+extra=()
+# The local daily also gets the development-only call recording switch (Settings › Audio), never in releases.
+(( patched_webkit )) && extra=(CODE_SIGN_ENTITLEMENTS=Mac/BrowsaLocalWebKit.entitlements 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) BROWSA_CALL_RECORDING')
+# A fresh product each time: an incremental build keeps whatever an earlier build embedded (Chromium, after call
+# tabs were removed).
+rm -rf "$work/DerivedData/Build/Products/Release/Browsa.app"
 xcodebuild -project Browsa.xcodeproj -scheme BrowsaMac -configuration Release \
   -destination 'platform=macOS' -derivedDataPath "$work/DerivedData" \
-  -allowProvisioningUpdates -quiet build
+  -allowProvisioningUpdates -quiet build "${extra[@]}"
 built="$work/DerivedData/Build/Products/Release/Browsa.app"
+if (( patched_webkit )); then
+  codesign -d --entitlements - "$built" 2>/dev/null | grep -q allow-dyld-environment-variables \
+    || { echo "built app isn't signed for Browsa's WebKit (Mac/BrowsaLocalWebKit.entitlements missing from the ref?)" >&2; exit 1; }
+fi
 [[ "$(defaults read "$built/Contents/Info.plist" CFBundleIdentifier)" == "$bundle_id" ]] \
   || { echo "built app doesn't have the bundle ID $bundle_id" >&2; exit 1; }
 

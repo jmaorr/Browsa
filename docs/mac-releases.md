@@ -51,22 +51,54 @@ has the template, the tone, and `tools/mac-changelog.sh` to list what changed si
 Keep the old zips in the releases folder. `generate_appcast` reads them all to build the appcast's
 history and the delta updates.
 
-## Chromium for call tabs
+## Browsa's WebKit inside the app (opt-in)
 
-Meet, Zoom and Teams run on Chromium (CEF) inside Browsa tabs (Mac/Chromium/CallTabs.swift), so the
-app carries the CEF framework and five "Browsa Helper" apps.
+Browsa's call audio (the Browsa Audio Engine) lives in its own WebKit build. A release carries it only when
+asked; without `BROWSA_BUNDLE_WEBKIT` the app is exactly as before and uses Apple's WebKit everywhere. The
+details and the reasoning are in `Spike/CallAudio/webkit/BUNDLING.md`. (The Chromium call tabs are gone,
+1954f68: the app carries no CEF.)
 
-- `tools/fetch-cef.sh` downloads the pinned CEF minimal build from cef-builds.spotifycdn.com, checks
-  its SHA-1, builds `libcef_dll_wrapper`, and caches it per version in ~/Library/Caches/browsa-cef.
-  `.cef/cef` in the repo links there (gitignored). `install-mac.sh` and `release-mac.sh` run it after
-  exporting. The first run needs cmake (`brew install cmake`) and about 130 MB of download.
-- `Mac/Chromium/embed-cef.sh` (a BrowsaMac build phase) copies the framework and helpers into the app
-  and signs them with the app's identity, the hardened runtime and `Mac/Chromium/Helper/helper.entitlements`
-  (JIT, media capture), so the archive and notarisation see properly signed nested code.
-- Size: the Release app is about 361 MB (Chromium is about 330 MB of it), and a release zip is about
-  156 MB. Before call tabs it was about 30 MB.
-- Updating CEF: change VERSION and SHA1 in fetch-cef.sh (from the build's index.json), rebuild, and
-  re-test a call (docs: Mac/CallSpike notes in the spike branch). Chromium ships about every 4 weeks.
+1. A clean WebKit source tree at `Spike/CallAudio/webkit/WEBKIT_COMMIT`, with `webkit.patch` applied and
+   the two headers from `Spike/CallAudio/core` copied in (that folder's README), and **without**
+   `BrowsaCallAudioRecording.h`, so no call recording code is compiled in. For example a worktree:
+   `git -C ~/Developer/BrowsaWebKit worktree add --detach ~/Developer/BrowsaWebKit-release <commit>`.
+2. One release WebKit per macOS major (about an hour and 30 GB each, Apple silicon only):
+
+   ```sh
+   Spike/CallAudio/webkit/build-release-webkit.sh ~/Developer/BrowsaWebKit-release 26
+   Spike/CallAudio/webkit/build-release-webkit.sh ~/Developer/BrowsaWebKit-release 27
+   ```
+
+   Each lands in `<tree>/WebKitBuild-release-<major>.0/Release`, targets `<major>.0`, is checked for the
+   right minimum macOS and for having no dump code, and is labelled `release <major>.0 …`.
+3. Release with them:
+
+   ```sh
+   BROWSA_BUNDLE_WEBKIT="26=$HOME/Developer/BrowsaWebKit-release/WebKitBuild-release-26.0/Release 27=$HOME/Developer/BrowsaWebKit-release/WebKitBuild-release-27.0/Release" \
+     tools/release-mac.sh --local 1.1 origin/main     # first: local only, nothing sent to Apple
+   BROWSA_BUNDLE_WEBKIT="…same…" tools/release-mac.sh 1.1 origin/main
+   ```
+
+After archiving, `tools/mac-bundle-webkit.sh` turns the archived app into: a small launcher as
+`Contents/MacOS/Browsa` that picks, before anything loads, `Browsa-webkit-<major>` (the app, arm64, pointed
+at `Contents/Frameworks/WebKit-<major>` by load commands in the signed executable) when this macOS major has a
+bundled WebKit, or `Browsa-system` (Apple's WebKit) otherwise: another major, an Intel Mac, or the engine
+switched off in Settings. Each WebKit is stripped; its dSYMs go into the archive. Every executable keeps the
+app's identity, entitlements and Hardened Runtime, with no exception entitlement; only WebKit's WebContent
+service may JIT. It refuses a WebKit with the dump compiled in, and an app with call recording or local-only
+entitlements. Then the export re-signs everything with Developer ID as before.
+
+`tools/mac-check-release.sh <app>` checks the result (the release runs it on every release, bundled or not):
+signature, Developer ID on every executable, Hardened Runtime, entitlements, no call recording, no Chromium,
+and each bundled WebKit's executable and label.
+
+`--local` stops after the Developer ID export to disk (the cloud-managed certificate signs it; nothing goes to
+the notary service), checks it and zips it in `~/Library/Caches/com.orriginal.browsa.release-local`. Gatekeeper
+rejects that copy as "Unnotarized Developer ID", which is expected.
+
+Still to do before shipping it: the first notarisation of a bundled app (does the notary service accept it, and
+does the WebContent service keep its JIT entitlement after Apple's checks), and runs on a Mac on macOS 26.0 and on
+macOS 27. Each major adds about 57 MB to the download.
 
 ## Which builds update themselves
 

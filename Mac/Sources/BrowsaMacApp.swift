@@ -8,6 +8,7 @@ struct BrowsaMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
+        // (Browsa's own WebKit, if any, was taken up before main(): PatchedWebKitStart.c.)
         // Before anything opens a store: bring data over from the old sandbox container, once.
         SandboxMigration.runIfNeeded()
     }
@@ -97,22 +98,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if ProcessInfo.processInfo.environment["BROWSA_SNAPSHOT"] != nil || ProcessInfo.processInfo.environment["BROWSA_COLUMNS_CHECK"] != nil
             || ProcessInfo.processInfo.environment["BROWSA_DROP_CHECK"] != nil
             || ProcessInfo.processInfo.environment["BROWSA_AGENT_GATE_CHECK"] != nil
-            || ProcessInfo.processInfo.environment["BROWSA_RADAR_CHECK"] != nil {
+            || ProcessInfo.processInfo.environment["BROWSA_RADAR_CHECK"] != nil
+            // tools/audio-bench: a fresh session, nothing restored or saved. A bench page left in the last session came
+            // back and played alongside the new one (2026-11-16, "double looping").
+            || AudioBench.isEnabled {
             return Library(engine: WebKitEngine(), history: HistoryStore(fileURL: nil), snapshotURL: nil)
         }
         #endif
+        // Before WebKit starts its processes.
+        #if DEBUG || BROWSA_CALL_RECORDING
+        CallRecordings.applyAtLaunch()
+        #endif
         let engine = WebKitEngine()
         let library = Library(engine: engine)
-        #if CALL_TABS
-        // Meet, Zoom and Teams run on Chromium (see Mac/Chromium/CallTabs.swift).
-        CallTabs.install(in: library)
-        #endif
+        // Calls (Meet, Zoom, Teams) run in ordinary WebKit tabs: on Browsa's WebKit where it's present, with its call
+        // audio in the capture unit; elsewhere on Apple's WebKit. Closing one mid-call asks first.
+        CallGuards.install(in: library)
         return library
     }
     private var keyMonitor: Any?
     private var archiveTimer: Timer?
 
+    /// tools/audio-bench: open its page once a window is up (it can take a moment, and longer while the
+    /// screen is locked). Progress goes to stderr, which the bench keeps.
+    private func openAudioBenchPage(_ url: URL, attempt: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self else { return }
+            let hasWindow = self.library.activeWindow != nil
+            FileHandle.standardError.write(Data("AudioBench: attempt \(attempt), window \(hasWindow)\n".utf8))
+            if let window = self.library.activeWindow {
+                // A bench page from an earlier run comes back with the session: close it, or two pages play.
+                for old in self.library.allTabs where old.url?.path == url.path && ["localhost", "127.0.0.1"].contains(old.url?.host ?? "") {
+                    self.library.close(old)
+                }
+                // Make the page now: tabs normally get theirs when their view first draws, which doesn't
+                // happen while the screen is locked.
+                let tab = window.newTab(url: url, source: .link)
+                _ = self.library.controller(for: tab)
+                FileHandle.standardError.write(Data("AudioBench: opened \(url.absoluteString)\n".utf8))
+            } else if attempt >= 20 {
+                FileHandle.standardError.write(Data("AudioBench: no window, gave up\n".utf8))
+            } else {
+                self.openAudioBenchPage(url, attempt: attempt + 1)
+            }
+        }
+    }
+
+    /// tools/audio-bench: every `every` seconds, show a blank tab for 2 s and go back, as you might mid-call,
+    /// to check the call's audio carries on when its tab isn't in front.
+    private func scheduleAudioBenchTabSwitch(every: Double) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + every) { [weak self] in
+            guard let self, let window = self.library.activeWindow, let back = window.currentTab else { self?.scheduleAudioBenchTabSwitch(every: every); return }
+            let blank = window.newTab(url: URL(string: "about:blank"), source: .link)
+            FileHandle.standardError.write(Data("AudioBench: switched away from the call tab\n".utf8))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                window.select(back)
+                self.library.close(blank)
+                FileHandle.standardError.write(Data("AudioBench: back on the call tab\n".utf8))
+                self.scheduleAudioBenchTabSwitch(every: every)
+            }
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // tools/audio-bench opens its page at launch (test builds only; see AudioBench).
+        if let url = AudioBench.launchURL { openAudioBenchPage(url, attempt: 0) }
+        if let every = AudioBench.tabSwitchSeconds { scheduleAudioBenchTabSwitch(every: every) }
         // Sign-ins from the sandbox days, once. Pages that loaded before they're in reload.
         CookieImport.runIfNeeded { [weak self] in
             guard let library = self?.library else { return }
@@ -208,13 +259,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// tabs in the window in use rather than in a new window.
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls { library.openExternal(url) }
+        // Launched to open a link (clicked in another app while Browsa was closed), SwiftUI makes no window of its own,
+        // and only a window can ask it for one: the link waited for a window that never came. A reopen (what clicking
+        // the Dock icon sends) makes SwiftUI open one, which then picks the link up.
+        if library.openWindowAction == nil { Self.askForFirstWindow() }
+    }
+
+    static func askForFirstWindow() {
+        let me = NSAppleEventDescriptor(processIdentifier: ProcessInfo.processInfo.processIdentifier)
+        let reopen = NSAppleEventDescriptor(eventClass: AEEventClass(kCoreEventClass), eventID: AEEventID(kAEReopenApplication),
+                                            targetDescriptor: me, returnID: AEReturnID(kAutoGenerateReturnID),
+                                            transactionID: AETransactionID(kAnyTransactionID))
+        if let desc = reopen.aeDesc { _ = AESendMessage(desc, nil, AESendMode(kAENoReply), kAEDefaultTimeout) }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        #if CALL_TABS
         // Cmd-Q in the middle of a meeting would just drop you from it.
-        if !isClearingForQuit, !CallTabs.confirmLeaving(CallTabs.tabsInCall(in: library), quitting: true) { return .terminateCancel }
-        #endif
+        if !isClearingForQuit, !CallGuards.confirmLeaving(CallGuards.tabsInCall(in: library), quitting: true) { return .terminateCancel }
         // From here the app is going: windows that close keep their tabs for next launch.
         library.isTerminating = true
         guard library.clearDataOnQuit, !isClearingForQuit else { return .terminateNow }
@@ -244,9 +305,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         library.saveNow()
         library.margin.saveNow()
         library.agents.stop()
-        #if CALL_TABS
-        if ChromiumEngine.shared.isRunning { BCEFRuntime.shutdown() }
-        #endif
     }
 
     func applicationDidResignActive(_ notification: Notification) {

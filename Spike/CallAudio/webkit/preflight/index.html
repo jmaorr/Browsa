@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Camera and mic check</title>
+<style>
+:root { --bg:#fbfaf8; --fg:#1d1d1f; --muted:#6b6b70; --line:#e3e1dc; --ok:#2f7d4f; --bad:#b3261e; --accent:#3d5afe; }
+@media (prefers-color-scheme: dark) { :root { --bg:#141416; --fg:#ececef; --muted:#9a9aa2; --line:#2b2b30; --ok:#5cc78a; --bad:#ff7a70; --accent:#8c9eff; } }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 -apple-system, BlinkMacSystemFont, sans-serif; }
+main { max-width: 640px; margin: 0 auto; padding: 32px 16px; }
+h1 { font-size: 22px; margin: 0 0 6px; } p { color: var(--muted); margin: 0 0 16px; }
+video { width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 10px; object-fit: cover; }
+.row { display:flex; gap:12px; align-items:center; margin: 14px 0; }
+.meter { flex:1; height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.meter i { display:block; height:100%; width:0; background: var(--accent); transition: width 60ms linear; }
+.status { font-weight: 600; } .ok { color: var(--ok); } .bad { color: var(--bad); }
+button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+</style></head><body><main>
+<h1>Camera and mic check</h1>
+<p>Run this once in Browsa WebKit Spike before a meeting: allow the camera and microphone when Browsa and macOS ask. Nothing is recorded or sent anywhere; nothing plays.</p>
+<video id="v" autoplay muted playsinline></video>
+<div class="row"><span>Mic</span><div class="meter"><i id="m"></i></div></div>
+<div class="row"><span class="status" id="s">Asking for the camera and microphone…</span></div>
+<div class="row"><button id="again">Ask again</button><button id="stop">Stop camera and mic</button></div>
+<script>
+let stream, ctx, raf;
+const s = document.getElementById("s"), v = document.getElementById("v"), m = document.getElementById("m");
+function stop() { if (raf) cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach((t) => t.stop()); if (ctx) ctx.close(); stream = ctx = null; v.srcObject = null; m.style.width = "0"; }
+async function ask() {
+  stop();
+  s.className = "status"; s.textContent = "Asking for the camera and microphone…";
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: true });
+    v.srcObject = stream;
+    const a = stream.getAudioTracks()[0], c = stream.getVideoTracks()[0];
+    s.className = "status ok"; s.textContent = `Camera: ${c ? c.label || "on" : "none"} · Mic: ${a ? a.label || "on" : "none"}. Speak and watch the bar move. You're set for meetings.`;
+    ctx = new AudioContext();
+    const an = ctx.createAnalyser(); an.fftSize = 1024; ctx.createMediaStreamSource(stream).connect(an);
+    const buf = new Float32Array(an.fftSize);
+    const tick = () => { an.getFloatTimeDomainData(buf); let p = 0; for (const x of buf) p += x * x; const dbfs = 10 * Math.log10(p / buf.length + 1e-12); m.style.width = `${Math.max(0, Math.min(100, (dbfs + 70) * 1.6))}%`; raf = requestAnimationFrame(tick); };
+    tick();
+  } catch (e) {
+    s.className = "status bad";
+    s.textContent = e.name === "NotAllowedError" ? "Blocked. Allow the camera and mic for this page in Browsa, and for Browsa WebKit Spike in System Settings > Privacy & Security > Camera / Microphone, then Ask again." : `${e.name}: ${e.message}`;
+  }
+}
+document.getElementById("again").onclick = ask;
+document.getElementById("stop").onclick = () => { stop(); s.className = "status"; s.textContent = "Stopped."; };
+ask();
+</script>
+</main></body></html>

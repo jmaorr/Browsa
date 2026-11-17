@@ -58,6 +58,12 @@ public final class WebKitPage: NSObject, EnginePage {
             webView.observe(\.hasOnlySecureContent, options: [.new]) { wv, _ in
                 MainActor.assumeIsolated { state.isSecure = wv.hasOnlySecureContent }
             },
+            webView.observe(\.cameraCaptureState, options: [.new]) { wv, _ in
+                MainActor.assumeIsolated { state.isCapturingMedia = wv.cameraCaptureState == .active || wv.microphoneCaptureState == .active }
+            },
+            webView.observe(\.microphoneCaptureState, options: [.new]) { wv, _ in
+                MainActor.assumeIsolated { state.isCapturingMedia = wv.cameraCaptureState == .active || wv.microphoneCaptureState == .active }
+            },
             webView.observe(\.themeColor, options: [.new]) { wv, _ in
                 MainActor.assumeIsolated { state.themeColor = wv.themeColor?.cgColor }
             },
@@ -415,6 +421,11 @@ extension WebKitPage: WKUIDelegate {
 
     public func webView(_ webView: WKWebView, decideMediaCapturePermissionsFor origin: WKSecurityOrigin,
                         initiatedBy frame: WKFrameInfo, type: WKMediaCaptureType) async -> WKPermissionDecision {
+        // tools/audio-bench runs unattended: its local page gets the mic without asking (test builds only).
+        if AudioBench.isEnabled {
+            FileHandle.standardError.write(Data("AudioBench: media capture asked by \(origin.host), type \(type.rawValue)\n".utf8))
+            if type == .microphone, ["localhost", "127.0.0.1"].contains(origin.host) { return .grant }
+        }
         guard let delegate else { return .deny }
         let kind: EnginePermission = switch type {
         case .camera: .camera
