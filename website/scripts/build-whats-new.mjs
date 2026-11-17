@@ -47,6 +47,7 @@ function parse(file) {
   for (const key of ["video", "poster", "image"]) {
     if (meta[key] && !existsSync(join(publicDir, meta[key]))) throw new Error(`${file}: ${meta[key]} isn't in public/`);
   }
+  if (meta.order && !/^\d+$/.test(meta.order)) throw new Error(`${file}: order: is a whole number`);
   if ((meta.video || meta.image) && !meta.alt) throw new Error(`${file}: describe the clip or picture in alt:`);
   const paragraphs = m[2].trim().split(/\n\s*\n/).filter(Boolean).map((p) => p.replace(/\n/g, " "));
   const slug = file.replace(/\.md$/, "").replace(/^\d{4}-\d{2}-\d{2}-/, "");
@@ -91,7 +92,8 @@ const files = readdirSync(entriesDir).filter((f) => f.endsWith(".md") && !f.star
 const entries = files.map(parse)
   .filter((e) => withDrafts || !e.draft)
   // Newest first; undated drafts sit at the top, where they'd land.
-  .sort((a, b) => (b.date ?? "9999").localeCompare(a.date ?? "9999") || a.slug.localeCompare(b.slug));
+  // Within a day, by order: (the release notes' order), then by name.
+  .sort((a, b) => (b.date ?? "9999").localeCompare(a.date ?? "9999") || (Number(a.order ?? 999) - Number(b.order ?? 999)) || a.slug.localeCompare(b.slug));
 const needsWindow = entries.some((e) => e.scene && !e.video && !e.image);
 
 const html = `<!doctype html>

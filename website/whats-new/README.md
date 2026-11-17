@@ -29,6 +29,7 @@ before you commit (a deploy always does).
 | `image` | A still instead of a clip. |
 | `scene` | Instead of a clip: the Mac pages' drawn window (`sidebar`, `spaces`, `command`, `notes`, `extensions`, `agent`, or several separated by spaces to loop through them). |
 | `alt` | What the clip or picture shows, for screen readers. Needed with `video` or `image`. |
+| `order` | Optional, a whole number: the order among entries with the same date (1 first), as in the release notes. Without it, same-day entries go by name after the numbered ones. |
 | `draft` | `true` keeps it off the live page. |
 
 The build stops with a message if a published entry has no date, or a clip or picture is missing.
