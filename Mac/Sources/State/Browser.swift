@@ -46,6 +46,8 @@ final class Browser {
     var sidebarWidth: CGFloat { didSet { Preferences.sidebarWidth = sidebarWidth } }
     /// Find on page, when the find bar is open.
     var find: FindState?
+    /// The page find last searched, so its marks can be cleared after a tab switch.
+    @ObservationIgnored weak var findPage: (any EnginePage)?
     /// Bumped to put the cursor in the find field.
     var findFocusRequest: UUID?
     var toast: String?
@@ -200,7 +202,7 @@ final class Browser {
         if space.id != selectedSpaceID { selectSpace(space, resolving: false) }
         setSelection(tab, in: space)
         tab.lastActive = .now
-        find = nil
+        dismissFind()
         reader = nil
         library.existingController(for: tab)?.recoverIfNeeded()
         scheduleSave()
@@ -217,7 +219,7 @@ final class Browser {
         }
         selectedSpaceID = space.id
         if resolving { resolveSelection(in: space) }
-        find = nil
+        dismissFind()
         reader = nil
         toast = nil
         scheduleSave()
@@ -246,7 +248,7 @@ final class Browser {
     /// Arc moves to the tab below, then above.
     func moveOff(_ tab: BrowserTab, in space: Space) {
         guard tabSelection[space.id] == tab.id else { return }
-        if selectedSpaceID == space.id { find = nil; reader = nil }
+        if selectedSpaceID == space.id { dismissFind(); reader = nil }
         let list = today(in: space)
         guard !tab.isPinned, let i = list.firstIndex(where: { $0.id == tab.id }) else {
             // Leaving a pinned tab only unloads it, like Arc.
@@ -277,7 +279,7 @@ final class Browser {
         selectedSpaceID = back.id
         spaceBeforePrivate = nil
         resolveSelection(in: back)
-        find = nil
+        dismissFind()
         reader = nil
     }
 
