@@ -32,6 +32,8 @@ done
 free_gb=$(df -g "$tree" | awk 'NR==2 {print $4}')
 (( free_gb >= 40 )) || { echo "only ${free_gb} GB free; a WebKit build needs about 30" >&2; exit 1; }
 
+# No label until this build has passed its checks, so a failed build can't be bundled as a good one.
+rm -f "$out/Release/BROWSA_WEBKIT.txt"
 echo "==> Building WebKit for macOS $major.0 into $out (about an hour)"
 cd "$tree"
 # BUILD_JOBS limits parallel compiles (e.g. half the cores, to stay out of the way of a call).

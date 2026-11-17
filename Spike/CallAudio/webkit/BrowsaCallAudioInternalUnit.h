@@ -363,9 +363,14 @@ private:
         // Start from the gain that suited this microphone last time (rememberedGain), not from 0 dB, so your first
         // words go out at the right level. Bounded, and corrected quickly downwards for the first 3 s of speech, so
         // a turned-up gain knob or a louder talker can't start loud.
-        m_memoryKey = deviceMemoryKey();
+        // Development builds only until a live call has confirmed it (BROWSA_CALL_AUDIO_RECORDING).
         double remembered = 0;
+#if BROWSA_CALL_AUDIO_RECORDING
+        m_memoryKey = deviceMemoryKey();
         m_startedFromMemory = guardOptions.gatedGain && environmentNumber("BROWSA_CALL_AUDIO_REMEMBER", 1, 0, 1) >= 0.5 && rememberedGain(m_memoryKey, remembered);
+#else
+        m_startedFromMemory = false;
+#endif
         if (m_startedFromMemory) {
             // 6 dB under what it settled on: a remembered value 12 dB too high then starts at most ~2 dB loud for a
             // moment (offline, today's calls), and one that is right starts within ~2 dB of where it settles.
@@ -532,7 +537,7 @@ private:
             noteTimingEvents();
 
             float rawCopy[frameSize], referenceCopy[frameSize];
-            const bool dumping = !m_dumpRing[0].empty();
+            const bool dumping = isDumping();
             memcpy(rawCopy, clean, sizeof(rawCopy));
             memcpy(referenceCopy, reference, sizeof(referenceCopy));
             const webrtc::StreamConfig stream(48000, 1);
@@ -814,6 +819,7 @@ private:
         RELEASE_LOG(WebRTC, "BrowsaCallAudioInternalUnit: dumping to %s", folder.c_str());
     }
     // Audio thread: one 10 ms frame of each stream into the ring. Never blocks or allocates.
+    bool isDumping() const { return !m_dumpRing[0].empty(); }
     void dumpFrame(const float* mic, const float* reference, const float* sent)
     {
         const uint64_t written = m_dumpWritten.load(std::memory_order_relaxed);
@@ -940,10 +946,12 @@ private:
 
 #else
     // A WebKit built for release has no call recording: none of the dump code is compiled in.
+    bool isDumping() const { return false; }
     void startDump() { }
     void dumpFrame(const float*, const float*, const float*) { }
     void finishDump() { }
 #endif
+#if BROWSA_CALL_AUDIO_RECORDING
     std::vector<float> m_dumpRing[dumpStreams];
     FILE* m_dumpFiles[dumpStreams] { nullptr, nullptr, nullptr };
     std::string m_dumpFolder;
@@ -964,9 +972,10 @@ private:
     int m_seenResyncs { 0 };
     int m_seenMisses { 0 };
     double m_footprintStartMB { 0 };
+    double m_footprintPeakMB { 0 };
+#endif
     std::string m_memoryKey;
     bool m_startedFromMemory { false };
-    double m_footprintPeakMB { 0 };
     std::atomic<uint64_t> m_speakerCallbacks { 0 };
     std::atomic<uint64_t> m_speakerSilentCallbacks { 0 };
     Settings m_settings;
