@@ -585,6 +585,7 @@ private:
         m_sideFrames++;
     }
 
+#if BROWSA_CALL_AUDIO_RECORDING
     // When the reference reader had to jump or found gaps (call time, seconds), for the dump: a machine too busy
     // to run the audio threads on time shows up here. Microphone thread.
     void noteTimingEvents()
@@ -601,6 +602,9 @@ private:
                 m_missAt[m_missEvents++] = at;
         }
     }
+#else
+    void noteTimingEvents() { }
+#endif
     // ---------- per-device memory ----------
     // One line per microphone (its unique ID, rate and channel count): the gain the gated gain settled on, and when.
     // In the GPU process's own cache folder (the one place its sandbox lets it write; the call dumps go there too),
@@ -608,6 +612,7 @@ private:
     // older than 30 days are ignored; at most 32 microphones are kept.
     static constexpr double rememberedGainLow = -10, rememberedGainHigh = 20, rememberedStartBelowDb = 6, rememberMinSpeechSeconds = 30, rememberMaxAgeSeconds = 30 * 86400;
     static constexpr size_t rememberMaxEntries = 32;
+#if BROWSA_CALL_AUDIO_RECORDING
     static std::string deviceUID(AudioDeviceID device)
     {
         CFStringRef uid = nullptr;
@@ -693,6 +698,12 @@ private:
         RELEASE_LOG(WebRTC, "BrowsaCallAudioInternalUnit: remembered %.1f dB for this microphone (%.0f s of speech)", stats.gainDb, stats.nearSeconds);
     }
 
+#else
+    std::string deviceMemoryKey() const { return { }; }
+    static bool rememberedGain(const std::string&, double&) { return false; }
+    void rememberGain() { }
+#endif
+#if BROWSA_CALL_AUDIO_RECORDING
     // This process's memory (what Activity Monitor calls Memory), MB.
     static double footprintMB()
     {
@@ -703,6 +714,8 @@ private:
         return info.phys_footprint / 1048576.0;
     }
 
+#else
+#endif
     // WebKit's microphone callback pulls the samples it was just told about.
     OSStatus render(AudioUnitRenderActionFlags*, const AudioTimeStamp*, UInt32, UInt32 frames, AudioBufferList* list) final
     {
@@ -737,6 +750,7 @@ private:
     static constexpr size_t dumpRingFrames = 30 * 48000; // a multiple of frameSize
     static constexpr int dumpStreams = 3;
 
+#if BROWSA_CALL_AUDIO_RECORDING
     static const char* dumpSetting()
     {
 #if BROWSA_CALL_AUDIO_RECORDING
@@ -924,6 +938,12 @@ private:
         m_dumpFolder.clear();
     }
 
+#else
+    // A WebKit built for release has no call recording: none of the dump code is compiled in.
+    void startDump() { }
+    void dumpFrame(const float*, const float*, const float*) { }
+    void finishDump() { }
+#endif
     std::vector<float> m_dumpRing[dumpStreams];
     FILE* m_dumpFiles[dumpStreams] { nullptr, nullptr, nullptr };
     std::string m_dumpFolder;

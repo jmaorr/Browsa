@@ -46,8 +46,9 @@ for b in WebKit WebCore JavaScriptCore WebGPU WebKitLegacy; do
   minos=$(otool -l "$fw/$b.framework/Versions/A/$b" | awk '/LC_BUILD_VERSION/ {f=1} f && /minos/ {print $2; exit}')
   [[ "$minos" == "$major.0" ]] || { echo "$b: minos $minos, wanted $major.0" >&2; bad=1; }
 done
-dumps=$(strings -a "$fw/WebCore.framework/Versions/A/WebCore" | grep -c BROWSA_CALL_AUDIO_DUMP || true)
-[[ "$dumps" == 0 ]] || { echo "WebCore has call dump code ($dumps strings)" >&2; bad=1; }
+# Nothing recording-related: the dump, its memory and timing log, or the per-device memory (development only).
+dumps=$(strings -a "$fw/WebCore.framework/Versions/A/WebCore" | grep -c -E "BROWSA_CALL_AUDIO_DUMP|browsa-call-audio-|gpuProcessMemoryMB|resyncAt|remembered gain|BROWSA_CALL_AUDIO_REMEMBER" || true)
+[[ "$dumps" == 0 ]] || { echo "WebCore has recording-related code ($dumps strings)" >&2; bad=1; }
 # (grep -c, not -q: -q stops reading early and pipefail would count the cut-off strings as a failure)
 (( $(strings -a "$fw/WebCore.framework/Versions/A/WebCore" | grep -c "BrowsaCallAudioInternalUnit ready" || true) > 0 )) || { echo "WebCore lacks Browsa's call audio unit" >&2; bad=1; }
 (( bad == 0 )) || exit 1
