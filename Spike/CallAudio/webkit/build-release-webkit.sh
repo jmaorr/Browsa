@@ -35,7 +35,8 @@ free_gb=$(df -g "$tree" | awk 'NR==2 {print $4}')
 echo "==> Building WebKit for macOS $major.0 into $out (about an hour)"
 cd "$tree"
 # BUILD_JOBS limits parallel compiles (e.g. half the cores, to stay out of the way of a call).
-WEBKIT_OUTPUTDIR="$out" nice -n "${BUILD_NICE:-0}" Tools/Scripts/build-webkit --release ${BUILD_JOBS:+-jobs $BUILD_JOBS} \
+jobs=(); [[ -n "${BUILD_JOBS:-}" ]] && jobs=(-jobs "$BUILD_JOBS")
+WEBKIT_OUTPUTDIR="$out" nice -n "${BUILD_NICE:-0}" Tools/Scripts/build-webkit --release $jobs \
   MACOSX_DEPLOYMENT_TARGET="$major.0" WK_MACOSX_DEPLOYMENT_TARGET="$major.0"
 
 fw="$out/Release"
