@@ -40,6 +40,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <mutex>
 #include <string>
@@ -511,6 +512,7 @@ private:
             else
                 memset(reference, 0, sizeof(reference));
             addSideSpeakers(reference, start, end);
+            noteTimingEvents();
 
             float rawCopy[frameSize], referenceCopy[frameSize];
             const bool dumping = !m_dumpRing[0].empty();
@@ -564,6 +566,32 @@ private:
         for (int i = 0; i < frameSize; ++i)
             reference[i] += extra[i];
         m_sideFrames++;
+    }
+
+    // When the reference reader had to jump or found gaps (call time, seconds), for the dump: a machine too busy
+    // to run the audio threads on time shows up here. Microphone thread.
+    void noteTimingEvents()
+    {
+        const double at = m_cleanFrames * 0.01;
+        if (m_referenceReader.resyncs != m_seenResyncs) {
+            m_seenResyncs = m_referenceReader.resyncs;
+            if (m_resyncEvents < timingEventCount)
+                m_resyncAt[m_resyncEvents++] = at;
+        }
+        if (m_referenceReader.misses != m_seenMisses) {
+            m_seenMisses = m_referenceReader.misses;
+            if (m_missEvents < timingEventCount)
+                m_missAt[m_missEvents++] = at;
+        }
+    }
+    // This process's memory (what Activity Monitor calls Memory), MB.
+    static double footprintMB()
+    {
+        task_vm_info_data_t info { };
+        mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+        if (task_info(mach_task_self(), TASK_VM_INFO, reinterpret_cast<task_info_t>(&info), &count) != KERN_SUCCESS)
+            return -1;
+        return info.phys_footprint / 1048576.0;
     }
 
     // WebKit's microphone callback pulls the samples it was just told about.
@@ -653,6 +681,10 @@ private:
         m_speakerCallbacks = 0;
         m_speakerSilentCallbacks = 0;
         m_dumpStartedAt = time(nullptr);
+        m_footprintStartMB = m_footprintPeakMB = footprintMB();
+        m_resyncEvents = m_missEvents = 0;
+        m_seenResyncs = m_referenceReader.resyncs;
+        m_seenMisses = m_referenceReader.misses;
         m_dumpStop = false;
         writeDumpMeta(false);
         m_dumpThread = std::thread([this] { dumpLoop(); });
@@ -720,13 +752,26 @@ private:
             return std::string(text);
         };
         // The reader and clock figures belong to the audio threads; they are only read once those have stopped.
-        char timing[400] = "";
+        char timing[2000] = "";
         if (final) {
+            auto list = [](const double* v, int n) {
+                std::string out = "[";
+                for (int i = 0; i < n; ++i) { char t[24]; snprintf(t, sizeof(t), "%s%.2f", i ? ", " : "", v[i]); out += t; }
+                return out + "]";
+            };
             snprintf(timing, sizeof(timing), " \"referenceResyncs\": %d, \"referenceMisses\": %d, \"speakerClockRate\": %.3f, \"micClockRate\": %.3f,\n"
+                " \"resyncAt\": %s, \"missAt\": %s, \"speakerClockResets\": %d, \"micClockResets\": %d,\n"
                 " \"sideSpeakerFrames\": %llu, \"sideSpeakerResyncs\": %d, \"sideSpeakerMisses\": %d,\n",
                 m_referenceReader.resyncs, m_referenceReader.misses, m_speakerClock.rate(), m_micClock.rate(),
+                list(m_resyncAt, m_resyncEvents).c_str(), list(m_missAt, m_missEvents).c_str(), m_speakerClock.resets(), m_micClock.resets(),
                 (unsigned long long)m_sideFrames, m_sideReader.resyncs, m_sideReader.misses);
         }
+        // This process's memory now, at the start of the call and its peak so far (a slow leak shows here).
+        const double footprint = footprintMB();
+        m_footprintPeakMB = std::max(m_footprintPeakMB, footprint);
+        char memory[200];
+        snprintf(memory, sizeof(memory), " \"gpuProcessMemoryMB\": {\"start\": %.0f, \"now\": %.0f, \"peak\": %.0f},\n", m_footprintStartMB, footprint, m_footprintPeakMB);
+        const std::string timingAndMemory = std::string(timing) + memory;
         const std::string path = m_dumpFolder + "/meta.json", temporary = path + ".tmp";
         FILE* f = fopen(temporary.c_str(), "w");
         if (!f)
@@ -743,7 +788,7 @@ private:
             m_settings.warmup ? "true" : "false", m_settings.gatedGain ? "true" : "false",
             m_deviceRate, m_deviceChannels, m_inputLatency * 1000, m_outputLatency * 1000, describe(m_micFormat).c_str(), describe(m_speakerFormat).c_str(),
             m_holdSamples, m_referenceLead * 1000, referenceLead * 1000,
-            (unsigned long long)m_speakerCallbacks.load(), (unsigned long long)m_speakerSilentCallbacks.load(), timing,
+            (unsigned long long)m_speakerCallbacks.load(), (unsigned long long)m_speakerSilentCallbacks.load(), timingAndMemory.c_str(),
             (unsigned long long)m_dumpDropped.load(), m_dumpLimitFrames / processingRate, frames / processingRate);
         fclose(f);
         rename(temporary.c_str(), path.c_str());
@@ -782,6 +827,15 @@ private:
     std::atomic<uint64_t> m_dumpDropped { 0 };
     uint64_t m_dumpLimitFrames { 0 };
     time_t m_dumpStartedAt { 0 };
+    static constexpr int timingEventCount = 64;
+    double m_resyncAt[timingEventCount] { };
+    double m_missAt[timingEventCount] { };
+    int m_resyncEvents { 0 };
+    int m_missEvents { 0 };
+    int m_seenResyncs { 0 };
+    int m_seenMisses { 0 };
+    double m_footprintStartMB { 0 };
+    double m_footprintPeakMB { 0 };
     std::atomic<uint64_t> m_speakerCallbacks { 0 };
     std::atomic<uint64_t> m_speakerSilentCallbacks { 0 };
     Settings m_settings;
