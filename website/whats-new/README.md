@@ -24,8 +24,7 @@ before you commit (a deploy always does).
 | `date` | `YYYY-MM-DD`, the day it shipped. Needed once it isn't a draft. |
 | `platform` | `Mac`, `iPhone` or `Mac and iPhone`. |
 | `version` | The release it came in, like `1.1`. |
-| `video` | A clip under `public/`, like `/media/whats-new/audio-engine.mp4`. Short clips loop silently while on screen. |
-| `loop` | `false` for a longer film with sound, which waits for its play button. |
+| `video` | A clip under `public/`, like `/media/whats-new/audio-engine.mp4`. It plays muted and loops while it's on screen. |
 | `poster` | The clip's still, shown before it plays and with reduced motion. |
 | `image` | A still instead of a clip. |
 | `scene` | Instead of a clip: the Mac pages' drawn window (`sidebar`, `spaces`, `command`, `notes`, `extensions`, `agent`, or several separated by spaces to loop through them). |

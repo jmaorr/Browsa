@@ -57,12 +57,9 @@ const formatDate = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-GB",
 
 function media(e) {
   if (e.video) {
-    // Short demos loop silently while on screen (whats-new.js); `loop: false` is for a longer
-    // film, which waits for its play button.
-    const loops = e.loop !== "false";
-    const attrs = loops
-      ? `muted loop playsinline preload="metadata" data-loop`
-      : `controls playsinline preload="none"`;
+    // Every clip plays muted and loops while it's on screen (whats-new.js starts and pauses it).
+    // autoplay is there for when the script doesn't run.
+    const attrs = `muted loop autoplay playsinline preload="metadata" data-loop`;
     return `<div class="wn-media"><video ${attrs}${e.poster ? ` poster="${esc(e.poster)}"` : ""} aria-label="${esc(e.alt)}"><source src="${esc(e.video)}" type="video/mp4"></video></div>`;
   }
   if (e.image) return `<div class="wn-media"><img src="${esc(e.image)}" alt="${esc(e.alt)}" loading="lazy"></div>`;
