@@ -367,7 +367,7 @@ private:
         double remembered = 0;
 #if BROWSA_CALL_AUDIO_RECORDING
         m_memoryKey = deviceMemoryKey();
-        m_startedFromMemory = guardOptions.gatedGain && environmentNumber("BROWSA_CALL_AUDIO_REMEMBER", 1, 0, 1) >= 0.5 && rememberedGain(m_memoryKey, remembered);
+        m_startedFromMemory = guardOptions.gatedGain && environmentNumber("BROWSA_CALL_AUDIO_REMEMBER", 0, 0, 1) >= 0.5 && rememberedGain(m_memoryKey, remembered);
 #else
         m_startedFromMemory = false;
 #endif

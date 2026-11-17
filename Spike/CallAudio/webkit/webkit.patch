@@ -82,10 +82,10 @@ index 7110e0b26e..660fbb9df6 100644
  
 diff --git a/Source/WebCore/platform/mediastream/cocoa/BrowsaCallAudioInternalUnit.h b/Source/WebCore/platform/mediastream/cocoa/BrowsaCallAudioInternalUnit.h
 new file mode 100644
-index 0000000000..4d824a8db2
+index 0000000000..3190c966fe
 --- /dev/null
 +++ b/Source/WebCore/platform/mediastream/cocoa/BrowsaCallAudioInternalUnit.h
-@@ -0,0 +1,838 @@
+@@ -0,0 +1,1032 @@
 +// Browsa call audio inside WebKit.
 +//
 +// WebKit's microphone capture (CoreAudioCaptureUnit, in the GPU process) talks to an "internal unit":
@@ -128,6 +128,7 @@ index 0000000000..4d824a8db2
 +#include <cstdio>
 +#include <cstdlib>
 +#include <ctime>
++#include <mach/mach.h>
 +#include <mach/mach_time.h>
 +#include <mutex>
 +#include <string>
@@ -447,6 +448,27 @@ index 0000000000..4d824a8db2
 +        browsa::CallGuardOptions guardOptions;
 +        guardOptions.warmup = m_settings.warmup;
 +        guardOptions.gatedGain = m_settings.gatedGain;
++        // Start from the gain that suited this microphone last time (rememberedGain), not from 0 dB, so your first
++        // words go out at the right level. Bounded, and corrected quickly downwards for the first 3 s of speech, so
++        // a turned-up gain knob or a louder talker can't start loud.
++        // Development builds only until a live call has confirmed it (BROWSA_CALL_AUDIO_RECORDING).
++        double remembered = 0;
++#if BROWSA_CALL_AUDIO_RECORDING
++        m_memoryKey = deviceMemoryKey();
++        m_startedFromMemory = guardOptions.gatedGain && environmentNumber("BROWSA_CALL_AUDIO_REMEMBER", 0, 0, 1) >= 0.5 && rememberedGain(m_memoryKey, remembered);
++#else
++        m_startedFromMemory = false;
++#endif
++        if (m_startedFromMemory) {
++            // 6 dB under what it settled on: a remembered value 12 dB too high then starts at most ~2 dB loud for a
++            // moment (offline, today's calls), and one that is right starts within ~2 dB of where it settles.
++            const double gain = std::clamp(remembered - rememberedStartBelowDb, rememberedGainLow, rememberedGainHigh);
++            guardOptions.initialGainDb = gain;
++            guardOptions.initialLevelDbfs = guardOptions.targetDbfs - gain;
++            guardOptions.fastSpeechSeconds = 3;
++            guardOptions.fastDownDbPerFrame = 0.3;
++            RELEASE_LOG(WebRTC, "BrowsaCallAudioInternalUnit: starting from the remembered gain for this microphone, %.1f dB", gain);
++        }
 +        m_guard = browsa::CallGuard(guardOptions);
 +        m_processing = webrtc::BuiltinAudioProcessingBuilder(config).Build(webrtc::CreateEnvironment());
 +        if (!m_processing) {
@@ -467,6 +489,7 @@ index 0000000000..4d824a8db2
 +    OSStatus uninitialize() final
 +    {
 +        stop();
++        rememberGain();  // the audio threads have stopped
 +        browsa::SideSpeakers::shared().setListening(false);
 +        finishDump();
 +        for (AudioUnit* unit : { &m_inUnit, &m_outUnit }) {
@@ -599,9 +622,10 @@ index 0000000000..4d824a8db2
 +            else
 +                memset(reference, 0, sizeof(reference));
 +            addSideSpeakers(reference, start, end);
++            noteTimingEvents();
 +
 +            float rawCopy[frameSize], referenceCopy[frameSize];
-+            const bool dumping = !m_dumpRing[0].empty();
++            const bool dumping = isDumping();
 +            memcpy(rawCopy, clean, sizeof(rawCopy));
 +            memcpy(referenceCopy, reference, sizeof(referenceCopy));
 +            const webrtc::StreamConfig stream(48000, 1);
@@ -654,6 +678,137 @@ index 0000000000..4d824a8db2
 +        m_sideFrames++;
 +    }
 +
++#if BROWSA_CALL_AUDIO_RECORDING
++    // When the reference reader had to jump or found gaps (call time, seconds), for the dump: a machine too busy
++    // to run the audio threads on time shows up here. Microphone thread.
++    void noteTimingEvents()
++    {
++        const double at = m_cleanFrames * 0.01;
++        if (m_referenceReader.resyncs != m_seenResyncs) {
++            m_seenResyncs = m_referenceReader.resyncs;
++            if (m_resyncEvents < timingEventCount)
++                m_resyncAt[m_resyncEvents++] = at;
++        }
++        if (m_referenceReader.misses != m_seenMisses) {
++            m_seenMisses = m_referenceReader.misses;
++            if (m_missEvents < timingEventCount)
++                m_missAt[m_missEvents++] = at;
++        }
++    }
++#else
++    void noteTimingEvents() { }
++#endif
++    // ---------- per-device memory ----------
++    // One line per microphone (its unique ID, rate and channel count): the gain the gated gain settled on, and when.
++    // In the GPU process's own cache folder (the one place its sandbox lets it write; the call dumps go there too),
++    // so it never leaves this Mac and holds no audio. Only calls with at least 30 s of your speech count; entries
++    // older than 30 days are ignored; at most 32 microphones are kept.
++    static constexpr double rememberedGainLow = -10, rememberedGainHigh = 20, rememberedStartBelowDb = 6, rememberMinSpeechSeconds = 30, rememberMaxAgeSeconds = 30 * 86400;
++    static constexpr size_t rememberMaxEntries = 32;
++#if BROWSA_CALL_AUDIO_RECORDING
++    static std::string deviceUID(AudioDeviceID device)
++    {
++        CFStringRef uid = nullptr;
++        if (!deviceProperty(device, kAudioDevicePropertyDeviceUID, kAudioObjectPropertyScopeGlobal, &uid) || !uid)
++            return std::to_string(device);
++        char text[256] = { };
++        CFStringGetCString(uid, text, sizeof(text), kCFStringEncodingUTF8);
++        CFRelease(uid);
++        return text;
++    }
++    std::string deviceMemoryKey() const
++    {
++        std::string key = deviceUID(m_inputDevice) + "|" + std::to_string(static_cast<int>(m_deviceRate)) + "|" + std::to_string(m_deviceChannels);
++        for (char& c : key) { if (c == '\t' || c == '\n') c = ' '; }
++        return key;
++    }
++    static std::string memoryPath()
++    {
++        char cache[PATH_MAX] = { };
++        confstr(_CS_DARWIN_USER_CACHE_DIR, cache, sizeof(cache));
++        return std::string(cache) + "/browsa-call-audio-devices.txt";
++    }
++    static std::vector<std::string> memoryLines()
++    {
++        std::vector<std::string> lines;
++        FILE* f = fopen(memoryPath().c_str(), "r");
++        if (!f)
++            return lines;
++        char line[512];
++        while (fgets(line, sizeof(line), f) && lines.size() < rememberMaxEntries + 1) {
++            std::string text = line;
++            if (!text.empty() && text.back() == '\n')
++                text.pop_back();
++            if (!text.empty())
++                lines.push_back(text);
++        }
++        fclose(f);
++        return lines;
++    }
++    static bool rememberedGain(const std::string& key, double& gain)
++    {
++        for (const auto& line : memoryLines()) {
++            const auto tab = line.find('\t');
++            if (tab == std::string::npos || line.compare(0, tab, key))
++                continue;
++            double value = 0, at = 0;
++            if (sscanf(line.c_str() + tab + 1, "%lf\t%lf", &value, &at) != 2 || !std::isfinite(value))
++                return false;
++            if (static_cast<double>(time(nullptr)) - at > rememberMaxAgeSeconds)
++                return false;
++            gain = value;
++            return true;
++        }
++        return false;
++    }
++    void rememberGain()
++    {
++        if (!m_initialized || !m_settings.gatedGain || m_memoryKey.empty())
++            return;
++        const auto& stats = m_guard.stats();
++        // Not enough of you to go on, or the gain ran into its ceiling (a call mostly listening, where leaks and
++        // quiet acknowledgements set it): don't remember that.
++        if (stats.nearSeconds < rememberMinSpeechSeconds || stats.gainDb >= browsa::CallGuardOptions().maxGainDb - 1)
++            return;
++        std::vector<std::string> kept;
++        char entry[512];
++        snprintf(entry, sizeof(entry), "%s\t%.2f\t%lld", m_memoryKey.c_str(), stats.gainDb, static_cast<long long>(time(nullptr)));
++        kept.push_back(entry);
++        for (const auto& line : memoryLines()) {
++            if (kept.size() >= rememberMaxEntries)
++                break;
++            if (line.compare(0, m_memoryKey.size() + 1, m_memoryKey + "\t"))
++                kept.push_back(line);
++        }
++        const std::string path = memoryPath(), temporary = path + ".tmp";
++        FILE* f = fopen(temporary.c_str(), "w");
++        if (!f)
++            return;
++        for (const auto& line : kept)
++            fprintf(f, "%s\n", line.c_str());
++        fclose(f);
++        rename(temporary.c_str(), path.c_str());
++        RELEASE_LOG(WebRTC, "BrowsaCallAudioInternalUnit: remembered %.1f dB for this microphone (%.0f s of speech)", stats.gainDb, stats.nearSeconds);
++    }
++
++#else
++    std::string deviceMemoryKey() const { return { }; }
++    static bool rememberedGain(const std::string&, double&) { return false; }
++    void rememberGain() { }
++#endif
++#if BROWSA_CALL_AUDIO_RECORDING
++    // This process's memory (what Activity Monitor calls Memory), MB.
++    static double footprintMB()
++    {
++        task_vm_info_data_t info { };
++        mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
++        if (task_info(mach_task_self(), TASK_VM_INFO, reinterpret_cast<task_info_t>(&info), &count) != KERN_SUCCESS)
++            return -1;
++        return info.phys_footprint / 1048576.0;
++    }
++
++#else
++#endif
 +    // WebKit's microphone callback pulls the samples it was just told about.
 +    OSStatus render(AudioUnitRenderActionFlags*, const AudioTimeStamp*, UInt32, UInt32 frames, AudioBufferList* list) final
 +    {
@@ -688,6 +843,7 @@ index 0000000000..4d824a8db2
 +    static constexpr size_t dumpRingFrames = 30 * 48000; // a multiple of frameSize
 +    static constexpr int dumpStreams = 3;
 +
++#if BROWSA_CALL_AUDIO_RECORDING
 +    static const char* dumpSetting()
 +    {
 +#if BROWSA_CALL_AUDIO_RECORDING
@@ -741,12 +897,17 @@ index 0000000000..4d824a8db2
 +        m_speakerCallbacks = 0;
 +        m_speakerSilentCallbacks = 0;
 +        m_dumpStartedAt = time(nullptr);
++        m_footprintStartMB = m_footprintPeakMB = footprintMB();
++        m_resyncEvents = m_missEvents = 0;
++        m_seenResyncs = m_referenceReader.resyncs;
++        m_seenMisses = m_referenceReader.misses;
 +        m_dumpStop = false;
 +        writeDumpMeta(false);
 +        m_dumpThread = std::thread([this] { dumpLoop(); });
 +        RELEASE_LOG(WebRTC, "BrowsaCallAudioInternalUnit: dumping to %s", folder.c_str());
 +    }
 +    // Audio thread: one 10 ms frame of each stream into the ring. Never blocks or allocates.
++    bool isDumping() const { return !m_dumpRing[0].empty(); }
 +    void dumpFrame(const float* mic, const float* reference, const float* sent)
 +    {
 +        const uint64_t written = m_dumpWritten.load(std::memory_order_relaxed);
@@ -808,13 +969,26 @@ index 0000000000..4d824a8db2
 +            return std::string(text);
 +        };
 +        // The reader and clock figures belong to the audio threads; they are only read once those have stopped.
-+        char timing[400] = "";
++        char timing[2000] = "";
 +        if (final) {
++            auto list = [](const double* v, int n) {
++                std::string out = "[";
++                for (int i = 0; i < n; ++i) { char t[24]; snprintf(t, sizeof(t), "%s%.2f", i ? ", " : "", v[i]); out += t; }
++                return out + "]";
++            };
 +            snprintf(timing, sizeof(timing), " \"referenceResyncs\": %d, \"referenceMisses\": %d, \"speakerClockRate\": %.3f, \"micClockRate\": %.3f,\n"
++                " \"resyncAt\": %s, \"missAt\": %s, \"speakerClockResets\": %d, \"micClockResets\": %d,\n"
 +                " \"sideSpeakerFrames\": %llu, \"sideSpeakerResyncs\": %d, \"sideSpeakerMisses\": %d,\n",
 +                m_referenceReader.resyncs, m_referenceReader.misses, m_speakerClock.rate(), m_micClock.rate(),
++                list(m_resyncAt, m_resyncEvents).c_str(), list(m_missAt, m_missEvents).c_str(), m_speakerClock.resets(), m_micClock.resets(),
 +                (unsigned long long)m_sideFrames, m_sideReader.resyncs, m_sideReader.misses);
 +        }
++        // This process's memory now, at the start of the call and its peak so far (a slow leak shows here).
++        const double footprint = footprintMB();
++        m_footprintPeakMB = std::max(m_footprintPeakMB, footprint);
++        char memory[300];
++        snprintf(memory, sizeof(memory), " \"gpuProcessMemoryMB\": {\"start\": %.0f, \"now\": %.0f, \"peak\": %.0f}, \"startedFromRememberedGain\": %s,\n", m_footprintStartMB, footprint, m_footprintPeakMB, m_startedFromMemory ? "true" : "false");
++        const std::string timingAndMemory = std::string(timing) + memory;
 +        const std::string path = m_dumpFolder + "/meta.json", temporary = path + ".tmp";
 +        FILE* f = fopen(temporary.c_str(), "w");
 +        if (!f)
@@ -831,7 +1005,7 @@ index 0000000000..4d824a8db2
 +            m_settings.warmup ? "true" : "false", m_settings.gatedGain ? "true" : "false",
 +            m_deviceRate, m_deviceChannels, m_inputLatency * 1000, m_outputLatency * 1000, describe(m_micFormat).c_str(), describe(m_speakerFormat).c_str(),
 +            m_holdSamples, m_referenceLead * 1000, referenceLead * 1000,
-+            (unsigned long long)m_speakerCallbacks.load(), (unsigned long long)m_speakerSilentCallbacks.load(), timing,
++            (unsigned long long)m_speakerCallbacks.load(), (unsigned long long)m_speakerSilentCallbacks.load(), timingAndMemory.c_str(),
 +            (unsigned long long)m_dumpDropped.load(), m_dumpLimitFrames / processingRate, frames / processingRate);
 +        fclose(f);
 +        rename(temporary.c_str(), path.c_str());
@@ -858,6 +1032,14 @@ index 0000000000..4d824a8db2
 +        m_dumpFolder.clear();
 +    }
 +
++#else
++    // A WebKit built for release has no call recording: none of the dump code is compiled in.
++    bool isDumping() const { return false; }
++    void startDump() { }
++    void dumpFrame(const float*, const float*, const float*) { }
++    void finishDump() { }
++#endif
++#if BROWSA_CALL_AUDIO_RECORDING
 +    std::vector<float> m_dumpRing[dumpStreams];
 +    FILE* m_dumpFiles[dumpStreams] { nullptr, nullptr, nullptr };
 +    std::string m_dumpFolder;
@@ -870,6 +1052,18 @@ index 0000000000..4d824a8db2
 +    std::atomic<uint64_t> m_dumpDropped { 0 };
 +    uint64_t m_dumpLimitFrames { 0 };
 +    time_t m_dumpStartedAt { 0 };
++    static constexpr int timingEventCount = 64;
++    double m_resyncAt[timingEventCount] { };
++    double m_missAt[timingEventCount] { };
++    int m_resyncEvents { 0 };
++    int m_missEvents { 0 };
++    int m_seenResyncs { 0 };
++    int m_seenMisses { 0 };
++    double m_footprintStartMB { 0 };
++    double m_footprintPeakMB { 0 };
++#endif
++    std::string m_memoryKey;
++    bool m_startedFromMemory { false };
 +    std::atomic<uint64_t> m_speakerCallbacks { 0 };
 +    std::atomic<uint64_t> m_speakerSilentCallbacks { 0 };
 +    Settings m_settings;
