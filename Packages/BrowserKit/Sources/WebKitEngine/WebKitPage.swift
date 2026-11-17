@@ -132,12 +132,88 @@ public final class WebKitPage: NSObject, EnginePage {
         config.backwards = backwards
         config.caseSensitive = false
         config.wraps = true
-        return (try? await webView.find(text, configuration: config).matchFound) ?? false
+        let found = (try? await webView.find(text, configuration: config).matchFound) ?? false
+        // WebKit marks the match only as a selection, which goes grey while the find field has
+        // focus, so it looked like nothing was found. Paint it with a CSS custom highlight too.
+        _ = try? await webView.evaluateJavaScript(found ? Self.highlightMatch : Self.clearHighlight,
+                                                  contentWorld: .defaultClient)
+        return found
+    }
+
+    public func findMatches(_ text: String) async -> FindMatches? {
+        guard !text.isEmpty,
+              let result = try? await webView.callAsyncJavaScript(Self.countMatches, arguments: ["q": text],
+                                                                   contentWorld: .defaultClient) as? [Int],
+              result.count == 3 else { return nil }
+        return FindMatches(current: result[0], total: result[1], capped: result[2] == 1)
     }
 
     public func clearFind() {
-        webView.evaluateJavaScript("window.getSelection().removeAllRanges()")
+        webView.evaluateJavaScript("window.getSelection().removeAllRanges();" + Self.clearHighlight,
+                                   in: nil, in: .defaultClient)
     }
+
+    private static let highlightMatch = """
+        (() => {
+          const sel = getSelection();
+          if (!sel.rangeCount || !window.CSS || !CSS.highlights) return;
+          let sheet = document.__browsaFindSheet;
+          if (!sheet) {
+            sheet = new CSSStyleSheet();
+            document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+            document.__browsaFindSheet = sheet;
+          }
+          // The match is the page's selection, which paints over a highlight, so colour that too
+          // while find is open. Separate rules, so one selector a build doesn't know can't drop all.
+          const mark = 'background-color: #ffd60a !important; color: #000 !important;';
+          sheet.replaceSync('');
+          for (const sel of ['::highlight(browsa-find)', '::selection', '::selection:window-inactive']) {
+            try { sheet.insertRule(sel + ' { ' + mark + ' }', sheet.cssRules.length); } catch (e) {}
+          }
+          // The other matches, softer, like Safari and Chrome.
+          try { sheet.insertRule('::highlight(browsa-find-all) { background-color: rgba(255, 214, 10, 0.35); }', 0); } catch (e) {}
+          CSS.highlights.set('browsa-find', new Highlight(sel.getRangeAt(0).cloneRange()));
+        })();
+        """
+    /// Counts visible matches of `q` (case-insensitive, within single text nodes, up to 1000), marks
+    /// them all, and works out which one the selection is on. Returns [current, total, capped].
+    private static let countMatches = """
+        const needle = q.toLocaleLowerCase();
+        const sel = getSelection();
+        const cur = sel.rangeCount ? sel.getRangeAt(0) : null;
+        const root = document.body || document.documentElement;
+        const skip = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE']);
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+          acceptNode(node) {
+            const el = node.parentElement;
+            if (!el || skip.has(el.tagName) || !el.getClientRects().length) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          }
+        });
+        const limit = 1000;
+        const ranges = [];
+        let current = 0;
+        let node;
+        while ((node = walker.nextNode()) && ranges.length < limit) {
+          const text = node.data.toLocaleLowerCase();
+          let i = text.indexOf(needle);
+          while (i !== -1 && ranges.length < limit) {
+            const r = document.createRange();
+            r.setStart(node, i);
+            r.setEnd(node, i + needle.length);
+            ranges.push(r);
+            if (cur && !current && r.compareBoundaryPoints(Range.START_TO_START, cur) === 0) current = ranges.length;
+            i = text.indexOf(needle, i + needle.length);
+          }
+        }
+        if (window.CSS && CSS.highlights) CSS.highlights.set('browsa-find-all', new Highlight(...ranges));
+        return [current, ranges.length, ranges.length >= limit ? 1 : 0];
+        """
+
+    private static let clearHighlight = """
+        if (window.CSS && CSS.highlights) { CSS.highlights.delete('browsa-find'); CSS.highlights.delete('browsa-find-all'); }
+        if (document.__browsaFindSheet) document.__browsaFindSheet.replaceSync('');
+        """
 
     public func sessionState() -> Data? { webView.interactionState as? Data }
 

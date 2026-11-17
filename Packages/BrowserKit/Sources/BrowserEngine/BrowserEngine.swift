@@ -299,6 +299,8 @@ public protocol EnginePage: AnyObject {
 
     /// Highlights the next match. Returns false when there isn't one.
     func find(_ text: String, backwards: Bool) async -> Bool
+    /// Which match the last `find` landed on, out of how many. Nil when the engine can't tell.
+    func findMatches(_ text: String) async -> FindMatches?
     func clearFind()
 
     /// Back/forward list and scroll position, for `PageOptions.sessionState`.
@@ -371,6 +373,24 @@ public protocol EnginePageDelegate: AnyObject {
     func page(_ page: any EnginePage, didStartDownload download: EngineDownload)
     /// The cookie-banner script declined a banner on this page.
     func pageDidDeclineCookieBanner(_ page: any EnginePage)
+}
+
+/// Find on page progress: the current match (1-based, 0 if unknown) and how many there are.
+public struct FindMatches: Sendable, Equatable {
+    public var current: Int
+    public var total: Int
+    /// Counting stopped at `total`; there may be more.
+    public var capped: Bool
+
+    public init(current: Int, total: Int, capped: Bool) {
+        self.current = current
+        self.total = total
+        self.capped = capped
+    }
+}
+
+public extension EnginePage {
+    func findMatches(_ text: String) async -> FindMatches? { nil }
 }
 
 public extension EnginePageDelegate {

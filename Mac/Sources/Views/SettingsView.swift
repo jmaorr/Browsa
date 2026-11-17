@@ -6,7 +6,7 @@ import BrowserEngine
 import Suggest
 import Extensibility
 
-/// Browsa > Settings (Cmd-,): a sidebar of panes, like System Settings, so each pane has room to grow.
+/// Browsa > Settings (Cmd-,): toolbar tabs in a preferences title bar, like Safari and Mail.
 struct SettingsView: View {
     @AppStorage("settingsTab") private var tab = "general"
 
@@ -24,30 +24,23 @@ struct SettingsView: View {
         Pane(id: "privacy", title: "Privacy", symbol: "hand.raised"),
         Pane(id: "audio", title: "Audio", symbol: "waveform"),
         Pane(id: "agents", title: "Agents", symbol: AgentIdentity.symbol),
-        Pane(id: "engine", title: "Engine", symbol: "cpu"),
+        Pane(id: "engine", title: "Advanced", symbol: "gearshape.2"),
     ]
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: Binding<String?>(get: { tab }, set: { if let t = $0 { tab = t } })) {
-                ForEach(Self.panes) { pane in
-                    Label(pane.title, systemImage: pane.symbol).tag(Optional(pane.id))
-                }
+        TabView(selection: $tab) {
+            ForEach(Self.panes) { pane in
+                paneView(pane.id)
+                    .modifier(FitsContent())
+                    .tabItem { Label(pane.title, systemImage: pane.symbol) }
+                    .tag(pane.id)
             }
-            .listStyle(.sidebar)
-            // Eight rows never need scrolling; a scrolled-away sidebar looked empty.
-            .scrollDisabled(true)
-            .navigationSplitViewColumnWidth(min: 200, ideal: 210, max: 260)
-            .toolbar(removing: .sidebarToggle)
-        } detail: {
-            pane
-                .navigationTitle(Self.panes.first { $0.id == tab }?.title ?? "Settings")
         }
-        .frame(minWidth: 760, idealWidth: 800, minHeight: 520, idealHeight: 600)
+        .frame(width: 660)
     }
 
-    @ViewBuilder private var pane: some View {
-        switch tab {
+    @ViewBuilder private func paneView(_ id: String) -> some View {
+        switch id {
         case "spaces": SpacesSettings()
         case "routing": SpaceRoutingSettings()
         case "shortcuts": ShortcutSettings()
@@ -325,11 +318,29 @@ private struct PrivacySettings: View {
         .formStyle(.grouped)
     }
 
+    private static func title(_ permission: EnginePermission) -> String {
+        switch permission {
+        case .camera: "Camera"
+        case .microphone: "Microphone"
+        case .cameraAndMicrophone: "Camera and microphone"
+        case .location: "Location"
+        case .notifications: "Notifications"
+        case .screen: "Screen sharing"
+        }
+    }
+
     private func summary(_ perms: [String: Bool]) -> String {
-        perms.sorted { $0.key < $1.key }.map { k, v in
-            let name = EnginePermission(rawValue: k).map { "\($0)" }
-                ?? (k.hasPrefix("app:") ? "\(k.dropFirst(4)) links" : k)
-            return "\(name): \(v ? "allowed" : "denied")"
+        var perms = perms
+        // A combined camera-and-mic answer covers the single ones saved alongside it.
+        if let both = perms[EnginePermission.cameraAndMicrophone.rawValue] {
+            for single in [EnginePermission.camera, .microphone] where perms[single.rawValue] == both {
+                perms[single.rawValue] = nil
+            }
+        }
+        return perms.sorted { $0.key < $1.key }.map { k, v in
+            let name = EnginePermission(rawValue: k).map(Self.title)
+                ?? (k.hasPrefix("app:") ? "Open in \(k.dropFirst(4))" : k)
+            return "\(name): \(v ? "Allowed" : "Denied")"
         }.joined(separator: ", ")
     }
 }
@@ -400,59 +411,31 @@ private struct AudioSettings: View {
     }
 }
 
-/// Which web engine Browsa is running on, and what it can do.
+/// Settings › Advanced: which engine is running, and the switches only some people want.
 private struct EngineSettings: View {
     @Environment(Library.self) private var browser
-
-    private let features: [(EngineCapabilities, String)] = [
-        (.contentBlocking, "Ad and tracker blocking"),
-        (.isolatedScripts, "Cookie banner declining"),
-        (.sessionRestore, "Tabs restore with their history"),
-        (.pageZoom, "Page zoom"),
-        (.findInPage, "Find on page"),
-        (.developerTools, "Web Inspector (right-click > Inspect Element)"),
-        (.passkeys, "Passkeys and security keys"),
-        (.webExtensions, "Safari web extensions"),
-        (.chromeExtensions, "Chrome extensions"),
-    ]
 
     var body: some View {
         let info = browser.engine.info
         Form {
             Section {
-                LabeledContent("Engine", value: info.name)
-                LabeledContent("Version", value: info.version)
-            }
-            Section("Supports") {
-                ForEach(features, id: \.1) { cap, title in
-                    let on = info.capabilities.contains(cap)
-                    Label {
-                        Text(title).foregroundStyle(on ? .primary : .secondary)
-                    } icon: {
-                        Image(systemName: on ? "checkmark.circle.fill" : "minus.circle")
-                            .foregroundStyle(on ? .green : .secondary)
-                    }
-                }
+                LabeledContent("Web engine", value: "\(info.name) (\(info.version))")
             }
             if info.capabilities.contains(.webExtensions) {
                 Section {
-                    Toggle("Safari extensions from apps (experimental)", isOn: Bindable(browser).useSafariExtensions)
+                    Toggle("Safari extensions from apps", isOn: Bindable(browser).useSafariExtensions)
                 } footer: {
-                    Text("Runs the Safari extensions that apps on this Mac include. Most need to talk to their app, which doesn't work in Browsa, so add the Chrome Web Store version from the Library instead. If both are added, Browsa uses the Chrome one.")
+                    Text("Experimental. Most Safari extensions need their app, which doesn't work in Browsa, so add the Chrome Web Store version from the Library instead.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
             if info.capabilities.contains(.developerTools) {
                 Section {
-                    Toggle("Show Inspect Element in the page menu", isOn: Bindable(browser).developerTools)
+                    Toggle("Show Inspect Element", isOn: Bindable(browser).developerTools)
                 } footer: {
-                    Text("Opens the Web Inspector from a right-click on any page, or with View › Web Inspector.")
+                    Text("Adds Inspect Element to the right-click menu on pages, for web developers.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-            }
-            Section {
-                Text("Browsa talks to its engine through a small protocol, so another engine, such as Chromium with Chrome extension support, can be added beside WebKit. See docs/engines.md in the repository.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -773,5 +756,23 @@ private struct ShortcutRecorder: View {
         let taken = shortcuts.set(action, to: combo)
         recorded(taken.map { "Taken from \($0.title)" })
         stop()
+    }
+}
+
+/// Sizes a pane's scrolling form to its content, so the Settings window grows and shrinks with
+/// each tab like Safari's does, and only scrolls once a pane is taller than most screens allow.
+private struct FitsContent: ViewModifier {
+    var maxHeight: CGFloat = 640
+    @State private var height: CGFloat?
+
+    func body(content: Content) -> some View {
+        content
+            // Content height only: the insets change as the window resizes, and counting them
+            // fed each resize back into the next until AppKit gave up and crashed.
+            .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height.rounded(.up) } action: { _, h in
+                let next = min(max(h, 120), maxHeight)
+                if abs(next - (height ?? 0)) > 1 { height = next }
+            }
+            .frame(height: height ?? 420)
     }
 }

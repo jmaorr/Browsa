@@ -502,6 +502,8 @@ struct SpaceSwitch: Equatable {
 struct FindState: Equatable {
     var text = ""
     var found: Bool?
+    /// "3 of 12", when the engine can count.
+    var matches: FindMatches?
 }
 
 /// What a new window should show first.
