@@ -29,10 +29,15 @@
 #include <webrtc/api/environment/environment_factory.h>
 #include <webrtc/api/audio/audio_processing.h>
 #include <webrtc/api/field_trials_view.h>
+#include <webrtc/api/audio/echo_canceller3_config.h>
 #include <map>
 
 // FieldTrialsView's default CreateCopy (inline, never called here) refers to this, which libwebrtc doesn't export.
-namespace webrtc::webrtc_checks_impl { void UnreachableCodeReached(const char*, int) { abort(); } }
+namespace webrtc::webrtc_checks_impl {
+void UnreachableCodeReached(const char*, int) { abort(); }
+// echo_canceller3_config.cc (compiled in here, see build-replay.sh) checks its fields with RTC_DCHECK.
+void FatalLog(const char* file, int line, const char*, const CheckArgType*, ...) { fprintf(stderr, "check failed %s:%d\n", file, line); abort(); }
+}
 
 // Field trials from a "Key/Value/Key/Value/" string.
 class Trials final : public webrtc::FieldTrialsView {
@@ -56,7 +61,7 @@ class Trials final : public webrtc::FieldTrialsView {
 int main(int argc, char** argv) {
   std::string raw, ref, out, trace;
   std::vector<std::string> guardSets;
-  double shiftMs = 0, maxGain = 30, noiseDbfs = -60;
+  double shiftMs = 0, maxGain = 30, noiseDbfs = -60, aecDefaultGain = -1, releaseOnErle = -1;
   int delayHint = 10, ns = 2;
   bool agc = true, aec = true, warmup = false, gatedGain = false;
   for (int i = 1; i < argc; i++) {
@@ -74,6 +79,8 @@ int main(int argc, char** argv) {
     else if (a == "--trace") trace = next();
     else if (a == "--guard") guardSets.push_back(next());  // name=value, a CallGuardOptions field (tuning)
     else if (a == "--delay-hint-ms") delayHint = atoi(next().c_str());
+    else if (a == "--aec-default-gain") aecDefaultGain = atof(next().c_str());  // AEC3's assumed echo path gain before it has learned (amplitude, default 1 = 0 dB)
+    else if (a == "--release-on-erle") releaseOnErle = atof(next().c_str());    // release the warm-up once AEC3's own ERLE reaches this (dB)
     else { fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
   }
   std::vector<float> mic, reference;
@@ -100,6 +107,7 @@ int main(int argc, char** argv) {
     if (!f) { fprintf(stderr, "unknown guard option %s\n", k.c_str()); return 2; }
     *f = v;
   }
+  go.releaseOnCanceller = releaseOnErle >= 0;
   browsa::CallGuard guard(go);
   const bool guarding = warmup || gatedGain;
   // As BrowsaCallAudioInternalUnit::initialize sets it up.
@@ -117,7 +125,13 @@ int main(int argc, char** argv) {
   config.gain_controller2.adaptive_digital.max_output_noise_level_dbfs = float(noiseDbfs);
   static Trials trials(getenv("BROWSA_AEC3_TRIALS"));
   if (trials.size()) fprintf(stderr, "AEC3 field trials: %zu\n", trials.size());
-  auto apm = webrtc::BuiltinAudioProcessingBuilder(config).Build(trials.size() ? webrtc::CreateEnvironment(&trials) : webrtc::CreateEnvironment());
+  webrtc::BuiltinAudioProcessingBuilder builder(config);
+  if (aecDefaultGain > 0) {
+    webrtc::EchoCanceller3Config aec;
+    aec.ep_strength.default_gain = float(aecDefaultGain);
+    builder.SetEchoCancellerConfig(aec, std::nullopt);
+  }
+  auto apm = builder.Build(trials.size() ? webrtc::CreateEnvironment(&trials) : webrtc::CreateEnvironment());
   if (!apm) { fprintf(stderr, "no audio processing\n"); return 1; }
 
   FILE* tr = trace.empty() ? nullptr : fopen(trace.c_str(), "w");
@@ -141,6 +155,10 @@ int main(int argc, char** argv) {
     apm->set_stream_delay_ms(delayHint);
     apm->ProcessStream(f, stream, stream, f);
     if (guarding) {
+      if (releaseOnErle >= 0) {
+        const auto stats = apm->GetStatistics();
+        guard.setCancellerLearned(stats.echo_return_loss_enhancement && *stats.echo_return_loss_enhancement >= releaseOnErle);
+      }
       guard.process(rawFrame, refFrame, frame);
       if (tr) { const auto f = guard.last(); fprintf(tr, "%.2f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%d,%d,%d,%d\n", at / 48000.0, f.ref, f.raw, f.clean, f.refEnv, f.floor, f.coupling, f.appliedDb, f.far, f.near, f.talking, f.attenuate); }
     }

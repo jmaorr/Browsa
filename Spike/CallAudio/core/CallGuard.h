@@ -45,6 +45,9 @@ struct CallGuardOptions {
   // (tools/audio-bench replays, 2026-11-17): four of the five bursts gone, the fifth 15 dB lower; Josh talking over
   // the far end (live desk run) cut by over 10 dB in 5% of 250 ms blocks instead of 3%. 12 dB / 3 frames cut 24%.
   double farNearMarginDb = 9, farConfirmFrames = 1;
+  // Release the join warm-up as soon as the echo canceller itself reports it has learned the room
+  // (setCancellerLearned), not only once our own removal measure says so (which stays as the backstop).
+  bool releaseOnCanceller = false;
 };
 
 struct CallGuardStats {
@@ -71,6 +74,9 @@ class CallGuard {
   struct Frame { double ref, raw, clean, refEnv, floor, coupling, appliedDb; bool far, near, talking, attenuate; };
   Frame last() const { return last_; }
   const CallGuardStats& stats() const { stats_.gainDb = gainDb_; stats_.couplingDb = coupling_; return stats_; }
+
+  // The echo canceller's own view (its ERLE and state, where the caller can read them): it has learned the room.
+  void setCancellerLearned(bool learned) { cancellerLearned_ = learned; }
 
   // raw: the mic as the canceller got it; ref: the far end it was cancelled against; clean: WebRTC's output,
   // changed in place into what is sent. All 480 samples.
@@ -130,7 +136,7 @@ class CallGuard {
     if (o_.warmup && !converged_ && t < o_.warmupMaxSeconds && far && !talking) {
       double sum = 0;
       for (int i = 0; i < removalCount_; i++) sum += removal_[i];
-      const bool enough = removalCount_ >= kRemoval && sum / removalCount_ >= o_.warmupConvergedDb;
+      const bool enough = (removalCount_ >= kRemoval && sum / removalCount_ >= o_.warmupConvergedDb) || (o_.releaseOnCanceller && cancellerLearned_);
       if (enough) { converged_ = true; stats_.warmupReleasedAt = t; }
       else { attenuate = true; stats_.warmupAttenuatedSeconds += 0.01; }
     }
@@ -163,7 +169,7 @@ class CallGuard {
   int holdFrames_ = 0, removalCount_ = 0, removalIndex_ = 0, nearRun_ = 0;
   int64_t speechFrames_ = 0;
   double removal_[kRemoval] = {};
-  bool converged_ = false;
+  bool converged_ = false, cancellerLearned_ = false;
   Frame last_ = {};
 };
 
