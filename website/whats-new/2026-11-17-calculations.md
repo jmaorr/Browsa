@@ -3,6 +3,7 @@ title: Calculations
 date: 2026-11-17
 platform: Mac
 version: 1.1
+order: 5
 video: /media/whats-new/calculations.mp4
 poster: /media/whats-new/calculations.webp
 alt: Typing 5 km in mi into ⌘K shows the answer, 3.107 mi.
