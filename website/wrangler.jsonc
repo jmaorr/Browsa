@@ -2,6 +2,8 @@
   "name": "browsa-website",
   "main": "src/index.js",
   "compatibility_date": "2026-10-01",
+  // Builds public/whats-new/ from whats-new/*.md before every dev and deploy.
+  "build": { "command": "node scripts/build-whats-new.mjs" },
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",

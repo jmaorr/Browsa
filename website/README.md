@@ -11,6 +11,9 @@ npx wrangler deploy   # publish to browsa.app
 ## Pages
 
 - `/` iPhone Duo, `/mac/` Browsa for Mac, `/mac/developers/` building for it, `/download/` both.
+- `/whats-new/` is built from one Markdown file per entry in `whats-new/` by
+  `scripts/build-whats-new.mjs`, which Wrangler runs before every dev and deploy. Entries stay off
+  the page while they say `draft: true`. How to add one: `whats-new/README.md`.
 - The Mac pages draw the window in HTML and CSS (`desktop.js`, `desktop.css`) instead of using
   footage, so they never go stale. A frame with `data-mw` gets a window; `data-scene` picks what
   it shows and `data-cycle="sidebar focus"` loops through scenes. Swap one for a `<video>` when

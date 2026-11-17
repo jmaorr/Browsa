@@ -1,0 +1,92 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><script src="../kit/kit.js"></script>
+<style>
+  .card { position:absolute; left:250px; top:262px; width:1100px; height:580px; border-radius:26px; background:#fff;
+    box-shadow: 0 0 0 1px rgb(22 21 19 / .08), 0 34px 70px -26px rgb(30 25 20 / .28); }
+  .title { position:absolute; left:48px; top:40px; font-size:20px; font-weight:600; }
+  .legend { position:absolute; right:48px; top:40px; display:flex; gap:26px; font-size:17px; color:var(--ink2); }
+  .legend span { display:flex; align-items:center; gap:9px; }
+  .legend i { width:14px; height:14px; border-radius:4px; }
+  canvas { position:absolute; left:48px; top:100px; }
+  .setting { position:absolute; left:48px; right:48px; top:420px; padding:20px 22px; border-radius:16px; background:#f4f3f0; }
+  .setting .r { display:flex; align-items:center; justify-content:space-between; font-size:19px; font-weight:500; }
+  .setting p { margin:8px 0 0; font-size:15px; color:var(--ink2); }
+  .sw { width:52px; height:30px; border-radius:15px; position:relative; }
+  .sw i { position:absolute; top:2px; left:2px; width:26px; height:26px; border-radius:50%; background:#fff; box-shadow: 0 1px 3px rgb(0 0 0 / .25); }
+  .cap { position:absolute; left:0; right:0; top:890px; text-align:center; font-size:24px; font-weight:500; }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="label">Less echo and noise in meetings</div>
+  <div class="sub">Browsa’s own audio engine cleans up your microphone before the call hears it.</div>
+  <div class="card">
+    <div class="title">What the call hears</div>
+    <div class="legend"><span><i style="background:#2b2a27"></i>Your voice</span><span><i style="background:#ff9500" id="le"></i>Echo from your speakers</span><span><i style="background:#c9c6bf" id="ln"></i>Background noise</span></div>
+    <canvas id="c" width="2008" height="560" style="width:1004px;height:280px"></canvas>
+    <div class="setting"><div class="r">Browsa Audio Engine<span class="sw" id="sw"><i id="knob"></i></span></div>
+      <p>Reduces echo and improves noise cancellation. You can turn this off to use Apple’s WebKit audio instead of Browsa’s Audio Engine.</p></div>
+  </div>
+  <div class="cap" id="cap"></div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const ctx = $("c").getContext("2d"); ctx.scale(2, 2);
+const W = 1004, H = 280, MID = H / 2;
+const STEP = 3, N = Math.floor(W / STEP);          // thin bars, like a recording
+// Deterministic jitter, so every take is the same.
+const hash = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+// Phrases (where in the strip someone is talking) times fast jitter (the sound itself).
+const env = (f, phrases) => { for (const [a, b] of phrases) if (f >= a && f <= b) return Math.pow(Math.sin(Math.PI * (f - a) / (b - a)), 0.6) * (0.75 + 0.25 * Math.sin(f * 90)); return 0; };
+const VOICE = [[0.0, 0.2], [0.27, 0.42], [0.52, 0.74], [0.8, 0.99]], ECHO = [[0.04, 0.3], [0.34, 0.62], [0.66, 0.96]];
+const voice = (i) => env(i / N, VOICE) * (0.45 + 0.55 * hash(i));
+const echo = (i) => (0.12 + env(i / N, ECHO)) * (0.35 + 0.65 * hash(i + 999));
+const noise = (i) => 0.08 + 0.1 * hash(i + 4242);
+const T0 = 0.4, SWEEP = 7.6, AT = 0.46, ON = T0 + AT * SWEEP;
+const CAPS = [[0.6, ON - 0.3, "Your speakers’ sound and the room get picked up too"], [ON + 0.5, 9.0, "With the engine on, much less of that reaches the call"]];
+window.TOTAL = 9.4;
+window.render = (t) => {
+  const on = eio(ph(t, ON - 0.15, 0.3));
+  $("sw").style.background = `rgb(${mix(214, 52, on)} ${mix(211, 199, on)} ${mix(206, 89, on)})`;
+  $("knob").style.transform = `translateX(${22 * on}px)`;
+  $("le").style.opacity = $("ln").style.opacity = 1 - 0.65 * on;
+  ctx.clearRect(0, 0, W, H);
+  // The centre line, then everything recorded so far, up to the playhead.
+  ctx.fillStyle = "#e7e5e0"; ctx.fillRect(0, MID - 0.5, W, 1);
+  const head = clamp((t - T0) / SWEEP) * W;
+  const scale = H * 0.46;
+  for (let i = 0; i < N; i++) {
+    const x = i * STEP;
+    if (x > head) break;
+    // Each bar was recorded at its own moment: before the switch, or after.
+    const when = T0 + (x / W) * SWEEP;
+    const clean = eo(clamp((when - ON) / 0.12));
+    const parts = [[voice(i) * 1.15, "#2b2a27"], [echo(i) * (1 - 0.93 * clean), "#ff9500"], [noise(i) * (1 - 0.85 * clean), "#c9c6bf"]];
+    let up = 0;
+    for (const [h, color] of parts) {
+      const px = h * scale * 0.5;
+      if (px <= 0) continue;
+      ctx.fillStyle = color;
+      ctx.fillRect(x, MID - up - px, STEP - 1, px);
+      ctx.fillRect(x, MID + up, STEP - 1, px);
+      up += px;
+    }
+  }
+  // The playhead.
+  if (head > 0 && head < W) {
+    ctx.fillStyle = "#0a84ff";
+    ctx.fillRect(head, 10, 2, H - 20);
+    ctx.beginPath(); ctx.arc(head + 1, 10, 5, 0, Math.PI * 2); ctx.fill();
+  }
+  // Where the switch flipped.
+  if (head > AT * W) {
+    ctx.fillStyle = "#c9c6bf"; ctx.fillRect(AT * W - 1, 24, 1, H - 48);
+    ctx.font = "500 14px Inter"; ctx.fillStyle = "#8a8781";
+    ctx.textAlign = "right"; ctx.fillText("Apple’s WebKit audio", AT * W - 12, H - 14);
+    ctx.textAlign = "left"; ctx.fillStyle = "#2b8a3e"; ctx.fillText("Browsa Audio Engine", AT * W + 12, H - 14);
+  }
+  const k = CAPS.find(([a, b]) => t >= a && t < b);
+  $("cap").textContent = k ? k[2] : "";
+  $("cap").style.opacity = k ? Math.min(eo(ph(t, k[0], 0.35)), 1 - ph(t, k[1] - 0.3, 0.3)) : 0;
+  $("stage").style.opacity = loopFade(t, TOTAL);
+};
+render(0);
+</script></body></html>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><script src="../kit/kit.js"></script>
+<style>
+  .win { left:250px; top:270px; width:1100px; height:600px; }
+  .side { width:300px; }
+  .addr { margin-top:16px; height:40px; border-radius:11px; background: rgb(255 255 255 / .6); display:flex; align-items:center; gap:9px; padding:0 12px; font-size:17px; color:#3a3936; }
+  .addr svg { width:14px; height:14px; color:#8a8781; }
+  .page { left:312px; display:grid; place-items:center; }
+  .invite { text-align:center; }
+  .invite .ic { width:76px; height:76px; border-radius:20px; background:#e8eefc; display:grid; place-items:center; margin:0 auto 22px; }
+  .invite .ic svg { width:40px; height:40px; color:#2d6cdf; }
+  .invite h2 { margin:0; font-size:30px; letter-spacing:-.02em; }
+  .invite p { margin:8px 0 26px; font-size:18px; color:var(--ink2); }
+  .launch { display:inline-flex; align-items:center; height:50px; padding:0 30px; border-radius:12px; background:#2d6cdf; color:#fff; font-size:19px; font-weight:600; }
+  .sheet { position:absolute; left:618px; top:282px; width:400px; padding:22px 22px 18px; box-sizing:border-box; border-radius:22px; background: rgb(250 249 247 / .98);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / .1), 0 26px 50px -12px rgb(0 0 0 / .32); transform-origin:50% 0; }
+  .sheet h3 { margin:0 0 6px; font-size:17px; font-weight:700; }
+  .sheet p { margin:0 0 18px; font-size:14px; color:#4a4945; }
+  .sheet .btns { display:flex; justify-content:flex-end; gap:10px; }
+  .sheet .btn { height:32px; padding:0 16px; border-radius:16px; font-size:14px; }
+  .sheet .btn + .btn { margin-top:0; }
+  .veil { position:absolute; inset:0; background: rgb(0 0 0 / .12); }
+  .cursor { position:absolute; left:0; top:0; width:30px; height:30px; }
+  .cap { position:absolute; left:0; right:0; top:910px; text-align:center; font-size:24px; font-weight:500; }
+  .flash { position:absolute; left:0; top:0; font-size:15px; color:#2d6cdf; font-weight:600; }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="label">Sites ask before opening apps</div>
+  <div class="sub">The first time a site tries to open another app, Browsa checks with you and remembers.</div>
+  <div class="win"><div class="side" id="side"></div>
+    <div class="page"><div class="invite">
+      <div class="ic"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="2.5" y="6.5" width="13" height="11" rx="3"/><path d="M17 10.5l4.5-3v9L17 13.5z"/></svg></div>
+      <h2>Design review</h2><p>Thursday, 10:00 AM</p><span class="launch" id="launch">Launch Meeting</span></div></div>
+    <div class="veil" id="veil"></div>
+  </div>
+  <div class="sheet" id="sheet"><h3>Allow zoom.us to open Zoom?</h3><p>You can change this later in Settings.</p>
+    <div class="btns"><span class="btn">Don’t Allow</span><span class="btn def" id="ok">Open Zoom</span></div></div>
+  <svg class="cursor" id="cursor" viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.5L10 19z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+  <div class="cap" id="cap"></div>
+</div>
+<script>
+document.getElementById("side").innerHTML = `
+  <div class="lights"><i></i><i></i><i></i></div>
+  <div class="addr"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10V8a5 5 0 0 1 10 0v2h1v10H6V10zm2 0h6V8a3 3 0 0 0-6 0z"/></svg>zoom.us</div>
+  <div class="favs">${["mail.google.com","calendar.google.com","linear.app","notion.so"].map(f => `<span><img src="${fav(f)}"></span>`).join("")}</div>
+  <div class="sect">Today</div>
+  <div class="row sel"><div class="in"><img src="${fav("calendar.google.com")}"><span>Design review</span></div></div>
+  ${row(fav("figma.com"), "Browsa site · Figma")}${row(fav("notion.so"), "Standup notes")}`;
+const $ = (id) => document.getElementById(id);
+// Where the pointer goes: the Launch button, then Open Zoom, then Launch again.
+const LAUNCH = [870, 668], OK = [968, 382], REST = [1180, 800];
+const path = [[0, REST], [0.5, REST], [1.2, LAUNCH], [2.6, LAUNCH], [3.3, OK], [4.3, OK], [4.9, [1120, 760]], [5.6, LAUNCH], [8, LAUNCH]];
+function pointer(t) {
+  for (let i = 1; i < path.length; i++) {
+    const [t0, a] = path[i - 1], [t1, b] = path[i];
+    if (t <= t1) { const f = eio(clamp((t - t0) / (t1 - t0))); return [mix(a[0], b[0], f), mix(a[1], b[1], f)]; }
+  }
+  return path.at(-1)[1];
+}
+const CAPS = [[1.9, 4.6, "Browsa asks the first time"], [5.4, 8.2, "After that, it remembers your answer for that site"]];
+window.TOTAL = 8.6;
+window.render = (t) => {
+  const [x, y] = pointer(t);
+  const click = (t0) => Math.sin(Math.PI * ph(t, t0, 0.25));
+  const c = Math.max(click(1.35), click(3.45), click(5.75));
+  $("cursor").style.transform = `translate(${x}px, ${y}px) scale(${1 - 0.12 * c})`;
+  $("launch").style.filter = `brightness(${1 - 0.18 * Math.max(click(1.35), click(5.75))})`;
+  $("ok").style.filter = `brightness(${1 - 0.2 * click(3.45)})`;
+  // The sheet, the first time only.
+  const s = eo(ph(t, 1.6, 0.35)), out = ph(t, 3.65, 0.25);
+  $("sheet").style.opacity = s * (1 - out);
+  $("sheet").style.transform = `translateY(${(1 - s) * -16}px) scale(${mix(0.97, 1, s)})`;
+  $("veil").style.opacity = s * (1 - out);
+  const cap = $("cap"), k = CAPS.find(([a, b]) => t >= a && t < b);
+  cap.textContent = k ? k[2] : "";
+  cap.style.opacity = k ? Math.min(eo(ph(t, k[0], 0.35)), 1 - ph(t, k[1] - 0.3, 0.3)) : 0;
+  $("stage").style.opacity = loopFade(t, TOTAL);
+};
+render(0);
+</script></body></html>

@@ -1,0 +1,34 @@
+/* Shared look for the What's New explainers: a 1600 × 1000 stage in the site's colours. */
+:root { --ink:#161513; --ink2:#5d5a55; --line: rgb(22 21 19 / .1); --p:#5856d6; --w:#ff9500; --blue:#0a84ff; }
+html,body { margin:0; width:1600px; height:1000px; overflow:hidden; background:#f5f4f1; font-family: Inter, -apple-system, sans-serif; color:var(--ink); -webkit-font-smoothing:antialiased; letter-spacing:-.01em; }
+.stage { position:absolute; inset:0; }
+.label { position:absolute; left:0; right:0; top:110px; text-align:center; font-size:30px; font-weight:600; letter-spacing:-.02em; }
+.sub { position:absolute; left:0; right:0; top:158px; text-align:center; font-size:22px; color:var(--ink2); }
+.abs { position:absolute; }
+/* A Browsa window: tinted sidebar on the left, page card on the right. */
+.win { position:absolute; border-radius:22px; overflow:hidden; background: color-mix(in srgb, var(--tint, var(--p)) 7%, #ecebe8);
+  box-shadow: 0 0 0 1px rgb(22 21 19 / .1), 0 34px 70px -26px rgb(30 25 20 / .32); }
+.win .side { position:absolute; left:0; top:0; bottom:0; padding:18px 14px; box-sizing:border-box; }
+.lights { display:flex; gap:9px; padding:4px 6px 0; }
+.lights i { width:13px; height:13px; border-radius:50%; background:#ff5f57; } .lights i:nth-child(2){background:#febc2e} .lights i:nth-child(3){background:#28c840}
+.favs { display:flex; gap:10px; margin-top:18px; }
+.favs span { flex:1; height:46px; border-radius:12px; background: rgb(255 255 255 / .55); display:grid; place-items:center; }
+.favs img { width:24px; height:24px; border-radius:6px; }
+.sect { margin:18px 8px 6px; font-size:14px; font-weight:600; color:var(--ink2); letter-spacing:.02em; text-transform:uppercase; }
+.row { position:relative; overflow:hidden; }
+.row .in { display:flex; align-items:center; gap:13px; height:38px; margin:3px 0; padding:0 12px; border-radius:11px; font-size:18px; color:#2b2a27; white-space:nowrap; }
+.row img { width:22px; height:22px; border-radius:6px; flex:none; }
+.row.sel .in { background: rgb(255 255 255 / .8); box-shadow: 0 1px 2px rgb(0 0 0 / .06); }
+.page { position:absolute; top:12px; right:12px; bottom:12px; border-radius:14px; background:#fff; box-shadow: 0 0 0 1px rgb(22 21 19 / .06); overflow:hidden; }
+.bar { height:12px; border-radius:6px; background:#ecebe8; }
+/* macOS alert and Browsa's sheet. */
+.alert { position:absolute; width:300px; padding:22px 20px 18px; border-radius:26px; background: rgb(246 245 243 / .97); text-align:center;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / .1), 0 30px 60px -10px rgb(0 0 0 / .35); }
+.alert h3 { margin:12px 0 6px; font-size:16px; font-weight:700; letter-spacing:-.01em; }
+.alert p { margin:0 0 16px; font-size:13px; line-height:1.35; color:#3a3936; }
+.btn { display:flex; align-items:center; justify-content:center; height:30px; border-radius:15px; font-size:14px; font-weight:500; background: rgb(0 0 0 / .07); color:#1d1d1f; }
+.btn.def { background: var(--blue); color:#fff; }
+.btn + .btn { margin-top:8px; }
+.key { display:inline-flex; align-items:center; gap:6px; }
+.key b { display:grid; place-items:center; min-width:58px; height:58px; padding:0 12px; box-sizing:border-box; border-radius:12px; background:#fff; font-size:26px; font-weight:500;
+  box-shadow: 0 0 0 1px rgb(22 21 19 / .12), 0 3px 0 rgb(22 21 19 / .12); }

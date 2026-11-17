@@ -1,0 +1,64 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><script src="../kit/kit.js"></script>
+<style>
+  .win { left:250px; top:270px; width:1100px; height:600px; }
+  .side { width:300px; }
+  .page { left:312px; background:#1c1d20; }
+  .tiles { position:absolute; inset:18px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .tile { border-radius:12px; display:grid; place-items:center; color:#fff; font-size:34px; font-weight:600; position:relative; }
+  .tile small { position:absolute; left:14px; bottom:12px; font-size:15px; font-weight:500; opacity:.85; }
+  .live { margin-left:auto; display:flex; gap:5px; align-items:center; }
+  .live i { width:9px; height:9px; border-radius:50%; background:#ff3b30; }
+  .live svg { width:18px; height:18px; color:#ff3b30; }
+  .veil { position:absolute; inset:0; background: rgb(0 0 0 / .18); }
+  .alert { left:650px; top:420px; transform-origin:50% 40%; }
+  .alert img { width:64px; height:64px; }
+  .keys { position:absolute; left:0; right:0; top:900px; display:flex; justify-content:center; }
+  .cap { position:absolute; left:0; right:0; top:910px; text-align:center; font-size:24px; font-weight:500; }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="label">Browsa checks before you leave a call</div>
+  <div class="sub">Closing a tab or quitting while you’re on a call asks you first.</div>
+  <div class="win" style="--tint:#ff9500"><div class="side" id="side"></div>
+    <div class="page"><div class="tiles">
+      <div class="tile" style="background:#3b4a63">AL<small>Ada</small></div><div class="tile" style="background:#5b4636">GH<small>Grace</small></div>
+      <div class="tile" style="background:#35524a">KJ<small>Katherine</small></div><div class="tile" style="background:#4a3b5c">You<small>You</small></div>
+    </div></div>
+    <div class="veil" id="veil"></div>
+  </div>
+  <div class="alert" id="alert"><img src="../../../public/media/orb.webp"><h3>Leave the call?</h3><p>Weekly sync is using your microphone or camera. Closing the tab ends the call.</p>
+    <div class="btn def" id="leave">Leave Call</div><div class="btn" id="cancel">Cancel</div></div>
+  <div class="keys" id="keys"><span class="key"><b id="k1">⌘</b><b id="k2">W</b></span></div>
+  <div class="cap" id="cap">Cancel, and the call carries on</div>
+</div>
+<script>
+const cam = `<span class="live"><i></i><svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="7" width="12" height="10" rx="2.5"/><path d="M16 11l5-3v8l-5-3z"/></svg></span>`;
+document.getElementById("side").innerHTML = `
+  <div class="lights"><i></i><i></i><i></i></div>
+  <div class="favs">${["mail.google.com","calendar.google.com","linear.app","notion.so"].map(f => `<span><img src="${fav(f)}"></span>`).join("")}</div>
+  <div class="sect">Today</div>
+  <div class="row sel"><div class="in"><img src="${fav("calendar.google.com")}"><span>Weekly sync</span>${cam}</div></div>
+  ${row(fav("linear.app"), "Inbox · Linear")}${row(fav("notion.so"), "Standup notes")}${row(fav("github.com"), "Pull requests · GitHub")}`;
+const $ = (id) => document.getElementById(id);
+window.TOTAL = 7.2;
+window.render = (t) => {
+  // ⌘W, pressed.
+  const keysIn = eo(ph(t, 0.7, 0.35)), keysOut = ph(t, 2.2, 0.3);
+  $("keys").style.opacity = keysIn * (1 - keysOut);
+  const press = Math.sin(Math.PI * ph(t, 1.15, 0.35));
+  for (const k of ["k1", "k2"]) { $(k).style.transform = `translateY(${press * 3}px)`; $(k).style.boxShadow = `0 0 0 1px rgb(22 21 19 / .12), 0 ${3 - press * 3}px 0 rgb(22 21 19 / .12)`; }
+  // The alert.
+  const a = eo(ph(t, 1.45, 0.3)), out = ph(t, 4.55, 0.25);
+  $("alert").style.opacity = a * (1 - out);
+  $("alert").style.transform = `scale(${mix(0.94, 1, a) * mix(1, 0.97, out)})`;
+  $("veil").style.opacity = a * (1 - out);
+  // Cancel, pressed.
+  const c = Math.sin(Math.PI * ph(t, 4.1, 0.4));
+  $("cancel").style.background = `rgb(0 0 0 / ${0.07 + 0.13 * c})`;
+  $("cap").style.opacity = eo(ph(t, 4.9, 0.4)) * (1 - ph(t, TOTAL - 0.8, 0.35));
+  // The call keeps blinking its light.
+  document.querySelectorAll(".live i").forEach((i) => (i.style.opacity = 0.55 + 0.45 * Math.cos(t * 4)));
+  $("stage").style.opacity = loopFade(t, TOTAL);
+};
+render(0);
+</script></body></html>
