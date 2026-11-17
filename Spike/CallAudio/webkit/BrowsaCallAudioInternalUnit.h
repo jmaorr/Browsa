@@ -360,6 +360,22 @@ private:
         browsa::CallGuardOptions guardOptions;
         guardOptions.warmup = m_settings.warmup;
         guardOptions.gatedGain = m_settings.gatedGain;
+        // Start from the gain that suited this microphone last time (rememberedGain), not from 0 dB, so your first
+        // words go out at the right level. Bounded, and corrected quickly downwards for the first 3 s of speech, so
+        // a turned-up gain knob or a louder talker can't start loud.
+        m_memoryKey = deviceMemoryKey();
+        double remembered = 0;
+        m_startedFromMemory = guardOptions.gatedGain && environmentNumber("BROWSA_CALL_AUDIO_REMEMBER", 1, 0, 1) >= 0.5 && rememberedGain(m_memoryKey, remembered);
+        if (m_startedFromMemory) {
+            // 6 dB under what it settled on: a remembered value 12 dB too high then starts at most ~2 dB loud for a
+            // moment (offline, today's calls), and one that is right starts within ~2 dB of where it settles.
+            const double gain = std::clamp(remembered - rememberedStartBelowDb, rememberedGainLow, rememberedGainHigh);
+            guardOptions.initialGainDb = gain;
+            guardOptions.initialLevelDbfs = guardOptions.targetDbfs - gain;
+            guardOptions.fastSpeechSeconds = 3;
+            guardOptions.fastDownDbPerFrame = 0.3;
+            RELEASE_LOG(WebRTC, "BrowsaCallAudioInternalUnit: starting from the remembered gain for this microphone, %.1f dB", gain);
+        }
         m_guard = browsa::CallGuard(guardOptions);
         m_processing = webrtc::BuiltinAudioProcessingBuilder(config).Build(webrtc::CreateEnvironment());
         if (!m_processing) {
@@ -380,6 +396,7 @@ private:
     OSStatus uninitialize() final
     {
         stop();
+        rememberGain();  // the audio threads have stopped
         browsa::SideSpeakers::shared().setListening(false);
         finishDump();
         for (AudioUnit* unit : { &m_inUnit, &m_outUnit }) {
@@ -584,6 +601,98 @@ private:
                 m_missAt[m_missEvents++] = at;
         }
     }
+    // ---------- per-device memory ----------
+    // One line per microphone (its unique ID, rate and channel count): the gain the gated gain settled on, and when.
+    // In the GPU process's own cache folder (the one place its sandbox lets it write; the call dumps go there too),
+    // so it never leaves this Mac and holds no audio. Only calls with at least 30 s of your speech count; entries
+    // older than 30 days are ignored; at most 32 microphones are kept.
+    static constexpr double rememberedGainLow = -10, rememberedGainHigh = 20, rememberedStartBelowDb = 6, rememberMinSpeechSeconds = 30, rememberMaxAgeSeconds = 30 * 86400;
+    static constexpr size_t rememberMaxEntries = 32;
+    static std::string deviceUID(AudioDeviceID device)
+    {
+        CFStringRef uid = nullptr;
+        if (!deviceProperty(device, kAudioDevicePropertyDeviceUID, kAudioObjectPropertyScopeGlobal, &uid) || !uid)
+            return std::to_string(device);
+        char text[256] = { };
+        CFStringGetCString(uid, text, sizeof(text), kCFStringEncodingUTF8);
+        CFRelease(uid);
+        return text;
+    }
+    std::string deviceMemoryKey() const
+    {
+        std::string key = deviceUID(m_inputDevice) + "|" + std::to_string(static_cast<int>(m_deviceRate)) + "|" + std::to_string(m_deviceChannels);
+        for (char& c : key) { if (c == '\t' || c == '\n') c = ' '; }
+        return key;
+    }
+    static std::string memoryPath()
+    {
+        char cache[PATH_MAX] = { };
+        confstr(_CS_DARWIN_USER_CACHE_DIR, cache, sizeof(cache));
+        return std::string(cache) + "/browsa-call-audio-devices.txt";
+    }
+    static std::vector<std::string> memoryLines()
+    {
+        std::vector<std::string> lines;
+        FILE* f = fopen(memoryPath().c_str(), "r");
+        if (!f)
+            return lines;
+        char line[512];
+        while (fgets(line, sizeof(line), f) && lines.size() < rememberMaxEntries + 1) {
+            std::string text = line;
+            if (!text.empty() && text.back() == '\n')
+                text.pop_back();
+            if (!text.empty())
+                lines.push_back(text);
+        }
+        fclose(f);
+        return lines;
+    }
+    static bool rememberedGain(const std::string& key, double& gain)
+    {
+        for (const auto& line : memoryLines()) {
+            const auto tab = line.find('\t');
+            if (tab == std::string::npos || line.compare(0, tab, key))
+                continue;
+            double value = 0, at = 0;
+            if (sscanf(line.c_str() + tab + 1, "%lf\t%lf", &value, &at) != 2 || !std::isfinite(value))
+                return false;
+            if (static_cast<double>(time(nullptr)) - at > rememberMaxAgeSeconds)
+                return false;
+            gain = value;
+            return true;
+        }
+        return false;
+    }
+    void rememberGain()
+    {
+        if (!m_initialized || !m_settings.gatedGain || m_memoryKey.empty())
+            return;
+        const auto& stats = m_guard.stats();
+        // Not enough of you to go on, or the gain ran into its ceiling (a call mostly listening, where leaks and
+        // quiet acknowledgements set it): don't remember that.
+        if (stats.nearSeconds < rememberMinSpeechSeconds || stats.gainDb >= browsa::CallGuardOptions().maxGainDb - 1)
+            return;
+        std::vector<std::string> kept;
+        char entry[512];
+        snprintf(entry, sizeof(entry), "%s\t%.2f\t%lld", m_memoryKey.c_str(), stats.gainDb, static_cast<long long>(time(nullptr)));
+        kept.push_back(entry);
+        for (const auto& line : memoryLines()) {
+            if (kept.size() >= rememberMaxEntries)
+                break;
+            if (line.compare(0, m_memoryKey.size() + 1, m_memoryKey + "\t"))
+                kept.push_back(line);
+        }
+        const std::string path = memoryPath(), temporary = path + ".tmp";
+        FILE* f = fopen(temporary.c_str(), "w");
+        if (!f)
+            return;
+        for (const auto& line : kept)
+            fprintf(f, "%s\n", line.c_str());
+        fclose(f);
+        rename(temporary.c_str(), path.c_str());
+        RELEASE_LOG(WebRTC, "BrowsaCallAudioInternalUnit: remembered %.1f dB for this microphone (%.0f s of speech)", stats.gainDb, stats.nearSeconds);
+    }
+
     // This process's memory (what Activity Monitor calls Memory), MB.
     static double footprintMB()
     {
@@ -769,8 +878,8 @@ private:
         // This process's memory now, at the start of the call and its peak so far (a slow leak shows here).
         const double footprint = footprintMB();
         m_footprintPeakMB = std::max(m_footprintPeakMB, footprint);
-        char memory[200];
-        snprintf(memory, sizeof(memory), " \"gpuProcessMemoryMB\": {\"start\": %.0f, \"now\": %.0f, \"peak\": %.0f},\n", m_footprintStartMB, footprint, m_footprintPeakMB);
+        char memory[300];
+        snprintf(memory, sizeof(memory), " \"gpuProcessMemoryMB\": {\"start\": %.0f, \"now\": %.0f, \"peak\": %.0f}, \"startedFromRememberedGain\": %s,\n", m_footprintStartMB, footprint, m_footprintPeakMB, m_startedFromMemory ? "true" : "false");
         const std::string timingAndMemory = std::string(timing) + memory;
         const std::string path = m_dumpFolder + "/meta.json", temporary = path + ".tmp";
         FILE* f = fopen(temporary.c_str(), "w");
@@ -835,6 +944,8 @@ private:
     int m_seenResyncs { 0 };
     int m_seenMisses { 0 };
     double m_footprintStartMB { 0 };
+    std::string m_memoryKey;
+    bool m_startedFromMemory { false };
     double m_footprintPeakMB { 0 };
     std::atomic<uint64_t> m_speakerCallbacks { 0 };
     std::atomic<uint64_t> m_speakerSilentCallbacks { 0 };
