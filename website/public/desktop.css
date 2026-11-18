@@ -575,7 +575,7 @@
 .way:hover { transform: translateY(-3px); box-shadow: 0 0 0 1px var(--line), 0 18px 40px -20px rgb(30 25 20 / .35); }
 .way-ic { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; margin-bottom: 6px; }
 .way-ic svg { width: 24px; height: 24px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.way:nth-child(1) .way-ic { background: #3d7bfd; } .way:nth-child(2) .way-ic { background: #e3a008; } .way:nth-child(3) .way-ic { background: #8a63f2; }
+.way:nth-child(1) .way-ic { background: #3d7bfd; } .way:nth-child(2) .way-ic { background: #8a63f2; } .way:nth-child(3) .way-ic { background: #e3a008; }
 .way h3 { margin: 0; font-size: 1.25rem; letter-spacing: -.02em; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .way p { color: var(--ink-2); font-size: 1rem; }
 .way .go { margin-top: auto; padding-top: 8px; font-size: .9375rem; font-weight: 500; }
@@ -948,4 +948,88 @@
   .v-import { grid-template-columns: minmax(0, 1fr) auto; gap: 14px 10px; }
   .v-from { grid-column: 1 / -1; grid-template-columns: repeat(3, auto); justify-content: center; }
   .v-lane { height: 40px; }
+}
+
+/* ---------- Developers page: the two lanes and the built-in tools ---------- */
+.lanes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(14px, 2vw, 24px); margin-top: clamp(32px, 4vw, 52px); }
+.lane { display: flex; flex-direction: column; gap: 10px; padding: clamp(22px, 2.6vw, 30px); border-radius: 22px; background: var(--raised); box-shadow: 0 0 0 1px var(--line); text-decoration: none; transition: transform .3s cubic-bezier(.22, 1, .36, 1), box-shadow .3s; }
+.lane:hover { transform: translateY(-3px); box-shadow: 0 0 0 1px var(--line), 0 18px 40px -20px rgb(30 25 20 / .35); }
+.lane:nth-child(1) .way-ic { background: #1d8a46; } .lane:nth-child(2) .way-ic { background: #3d7bfd; }
+.lane h3 { margin: 0; font-size: 1.375rem; letter-spacing: -.02em; }
+.lane p { color: var(--ink-2); }
+.lane-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.lane-chips span { padding: 4px 10px; border-radius: 8px; background: rgb(118 118 128 / .12); font-size: .875rem; }
+.lane-chips em { font-style: normal; color: light-dark(#8a5d00, #f2c14e); font-size: .8125rem; }
+.lane .go { margin-top: auto; padding-top: 8px; font-size: .9375rem; font-weight: 500; }
+
+.bento.dev-bento {
+  grid-auto-rows: minmax(280px, auto);
+  grid-template-areas:
+    "radar radar radar insp insp insp"
+    "radar radar radar agent agent agent"
+    "notes notes bangs bangs keys keys";
+}
+.dv-radar { grid-area: radar; --hue: #30d158; } .dv-insp { grid-area: insp; --hue: #0a84ff; } .dv-agent { grid-area: agent; --hue: #8a63f2; }
+.dv-notes { grid-area: notes; --hue: #ffb800; } .dv-bangs { grid-area: bangs; --hue: #ff6b3d; } .dv-keys { grid-area: keys; --hue: #5856d6; }
+.dev-bento .bt p a { color: var(--link); text-decoration: none; }
+.dev-bento .bt p a:hover { text-decoration: underline; }
+.dev-bento kbd { font: inherit; }
+
+/* Radar: the sidebar's Dev Servers card, a little larger than life. */
+.v-radar { width: min(100%, 400px); padding: 14px; border-radius: 16px; background: var(--raised); box-shadow: 0 0 0 1px var(--line), 0 18px 36px -18px rgb(30 25 20 / .35); display: grid; gap: 4px; }
+.v-radar-h { display: flex; align-items: center; gap: 7px; margin: 0 0 4px 4px; font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.v-radar-h svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.v-radar-h svg .fill { fill: currentColor; stroke: none; }
+.v-srv { display: flex; align-items: center; gap: 10px; margin: 0; padding: 9px 10px; border-radius: 10px; }
+.v-srv:first-of-type { background: rgb(118 118 128 / .1); }
+.v-srv > i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #30d158; box-shadow: 0 0 0 3px color-mix(in srgb, #30d158 22%, transparent); }
+.v-srv.off > i { background: rgb(118 118 128 / .5); box-shadow: none; }
+.v-srv > span { flex: 1; min-width: 0; display: grid; }
+.v-srv b { font-size: .9375rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v-srv em { font-style: normal; font-size: .8125rem; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v-srv code { font: .8125rem ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-2); }
+.v-srv.off b { color: var(--ink-2); }
+
+/* Web Inspector: its keys, and the menu item. */
+.v-insp { display: flex; align-items: center; gap: clamp(16px, 3vw, 32px); flex-wrap: wrap; justify-content: center; }
+.v-insp .v-caps .cap { min-width: 62px; height: 62px; font-size: 1.625rem; }
+.v-menu { display: grid; min-width: 168px; padding: 5px; border-radius: 10px; background: color-mix(in srgb, var(--raised) 92%, transparent); box-shadow: 0 0 0 1px var(--line), 0 12px 28px -12px rgb(0 0 0 / .35); font-size: .875rem; }
+.v-menu span { padding: 4px 10px; border-radius: 6px; }
+.v-menu .sep { height: 1px; padding: 0; margin: 4px 8px; background: var(--line); }
+.v-menu .on { background: #0a84ff; color: #fff; }
+
+/* Agents: a few calls in a small terminal. */
+.v-term { width: min(100%, 440px); box-shadow: 0 0 0 1px rgb(255 255 255 / .06), 0 18px 36px -18px rgb(30 25 20 / .45); font-size: .8125rem; }
+.v-term pre { padding: 14px 16px 16px; white-space: pre; word-break: normal; overflow: hidden; }
+
+/* Notes: a note on a selector, and the agent's answer. */
+.v-note { width: min(100%, 300px); padding: 12px 14px; border-radius: 14px; background: var(--raised); box-shadow: 0 0 0 1px var(--line), 0 14px 30px -16px rgb(30 25 20 / .35); font-size: .875rem; display: grid; gap: 4px; }
+.v-note p { margin: 0; }
+.v-note .who { display: flex; align-items: center; gap: 7px; font-size: .8125rem; }
+.v-note .who em { font: .75rem ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-2); margin-left: auto; }
+.v-note .pin { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: #ffb800; color: #000; font-size: .6875rem; font-weight: 700; }
+.v-note .ai { color: light-dark(#c2410c, #fb923c); }
+.v-reply { margin-top: 6px; padding: 8px 0 0 12px; border-top: 1px solid var(--line); display: grid; gap: 3px; }
+.v-reply .who em { font-family: inherit; color: light-dark(#1d8a46, #5fd38a); font-weight: 600; }
+
+/* Bangs: the address field, its answer and a few more. */
+.v-bang { width: min(100%, 320px); display: grid; gap: 8px; }
+.v-field { padding: 9px 12px; border-radius: 10px; background: var(--raised); box-shadow: 0 0 0 1px var(--line), 0 10px 24px -14px rgb(30 25 20 / .35); font-size: .9375rem; }
+.v-field b { color: light-dark(#c2410c, #fb923c); }
+.v-hit { padding: 7px 12px; border-radius: 8px; background: color-mix(in srgb, #0a84ff 14%, transparent); color: light-dark(#0a5fd6, #8ab4ff); font-size: .8125rem; font-weight: 500; }
+.v-bang-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.v-bang-chips code { padding: 3px 8px; border-radius: 7px; background: rgb(118 118 128 / .12); font: .75rem ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-2); }
+
+.dv-keys .v-cheat { flex-direction: column; align-items: stretch; flex-wrap: nowrap; width: min(100%, 280px); }
+.dv-keys .v-cheat span { justify-content: space-between; flex-direction: row-reverse; font-size: .8125rem; padding: 6px 10px; }
+
+@media (max-width: 1060px) {
+  .bento.dev-bento { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "radar radar" "insp agent" "notes bangs" "keys keys"; }
+}
+@media (max-width: 860px) {
+  .lanes { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .bento.dev-bento { grid-template-columns: minmax(0, 1fr); grid-template-areas: "radar" "insp" "agent" "notes" "bangs" "keys"; }
+  .v-term pre { font-size: .75rem; }
 }
