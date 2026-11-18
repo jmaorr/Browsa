@@ -20,13 +20,15 @@ struct CallCapsule: View {
 
     var body: some View {
         ZStack {
-            if let tab = call, let state = tab.call, tab.id != hiddenFor {
+            // While the call floats in its own window (CallPiP), that window leads back instead.
+            if let tab = call, let state = tab.call, tab.id != hiddenFor, tab.id != browser.library.pipTabID {
                 capsule(tab, state)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .animation(Motion.snappy, value: call?.id)
         .animation(Motion.snappy, value: hiddenFor)
+        .animation(Motion.snappy, value: browser.library.pipTabID)
     }
 
     private func capsule(_ tab: BrowserTab, _ state: TabCall) -> some View {
