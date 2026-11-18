@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Build for Browsa</title>
-<meta name="description" content="How to extend Browsa for Mac: Chrome extensions, Browsa plugins and agents over MCP.">
+<title>Browsa for Developers</title>
+<meta name="description" content="What Browsa for Mac gives you for building on the web, and how to build on Browsa: Chrome extensions, agents over MCP and plugins.">
 <!-- Kept out of search until launch: drop this noindex then. -->
 <meta name="robots" content="noindex">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f4f1">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121211">
-<meta property="og:title" content="Build for Browsa">
-<meta property="og:description" content="Chrome extensions, Browsa plugins and agents: three ways to extend Browsa for Mac.">
+<meta property="og:title" content="Browsa for Developers">
+<meta property="og:description" content="Radar, Web Inspector, Notes and agents for building on the web, and three ways to build on Browsa for Mac.">
 <meta property="og:image" content="https://browsa.app/media/hero.webp">
 <meta property="og:url" content="https://browsa.app/mac/developers/">
 <link rel="canonical" href="https://browsa.app/mac/developers/">
@@ -21,7 +21,7 @@
 <script type="module" src="/desktop.js"></script>
 </head>
 <body>
-<a class="skip" href="#plugins">Skip to plugins</a>
+<a class="skip" href="#tools">Skip to the tools</a>
 
 <header class="bar">
   <a class="brand" href="/"><img src="/media/orb.webp" alt="" width="26" height="26">Browsa</a>
@@ -37,9 +37,112 @@
 <main>
   <section class="dev-hero" aria-labelledby="dev-title">
     <p class="crumbs"><a href="/mac/">Browsa for Mac</a> / Developers</p>
-    <h1 id="dev-title">Build for Browsa.</h1>
-    <p>Everything runs inside WebKit, and everything is free. If you've made a browser extension, you already know most of it.</p>
+    <h1 id="dev-title">Browsa for developers.</h1>
+    <p>Tools for building on the web come built in. And when Browsa doesn't do something you need, you can add it yourself.</p>
 
+    <div class="lanes">
+      <a class="lane" href="#tools">
+        <span class="way-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5.5l-3 13"/></svg></span>
+        <h3>Build with Browsa</h3>
+        <p>For working on your own sites and apps.</p>
+        <span class="lane-chips"><span>Radar</span><span>Web Inspector</span><span>Notes</span><span>Agents</span><span>Bangs</span><span>Shortcuts</span></span>
+        <span class="go">What's built in →</span>
+      </a>
+      <a class="lane" href="#extend">
+        <span class="way-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 4.5a2 2 0 1 1 4 0V6h3.5a1 1 0 0 1 1 1v3.5H19a2 2 0 1 1 0 4h-1.5V18a1 1 0 0 1-1 1H13v-1.5a2 2 0 1 0-4 0V19H5.5a1 1 0 0 1-1-1v-3.5H6a2 2 0 1 0 0-4H4.5V7a1 1 0 0 1 1-1H9z"/></svg></span>
+        <h3>Build for Browsa</h3>
+        <p>For changing what the browser itself can do.</p>
+        <span class="lane-chips"><span>Chrome extensions</span><span>MCP agents</span><span>Plugins <em>coming</em></span></span>
+        <span class="go">Ways to extend it →</span>
+      </a>
+    </div>
+  </section>
+
+  <section class="section" id="tools" aria-labelledby="tools-title">
+    <h2 id="tools-title">Built in, for building.</h2>
+    <p class="sub">Turn on the Agent Pack in the Library and you get Radar, Notes and Agents together. Web Inspector is one switch in Settings › Advanced.</p>
+
+    <div class="bento dev-bento">
+      <article class="bt dv-radar">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="v-radar">
+            <p class="v-radar-h"><svg viewBox="0 0 24 24"><circle class="fill" cx="12" cy="12" r="1.8"/><path d="M8.5 15.5a5 5 0 0 1 0-7M15.5 8.5a5 5 0 0 1 0 7M5.6 18.4a9 9 0 0 1 0-12.8M18.4 5.6a9 9 0 0 1 0 12.8"/></svg>Dev servers</p>
+            <p class="v-srv"><i></i><span><b>checkout-web</b><em>Next.js · main</em></span><code>3000</code></p>
+            <p class="v-srv"><i></i><span><b>feat/pay-button</b><em>Vite · worktree of checkout-web</em></span><code>5173</code></p>
+            <p class="v-srv off"><i></i><span><b>api</b><em>Stopped. Its tab reloads when it's back.</em></span><code>8080</code></p>
+          </div>
+        </div>
+        <h3>Radar</h3>
+        <p>Finds the dev servers running on your Mac and names them by project and branch, worktrees included. When a server restarts, its tab reloads by itself.</p>
+      </article>
+
+      <article class="bt dv-insp">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="v-insp">
+            <span class="v-caps"><kbd class="cap">⌥</kbd><kbd class="cap">⌘</kbd><kbd class="cap">I</kbd></span>
+            <span class="v-menu"><span>Back</span><span>Reload</span><span class="sep"></span><span class="on">Inspect Element</span></span>
+          </div>
+        </div>
+        <h3>Web Inspector</h3>
+        <p>Safari's Web Inspector, with Elements, Console, Network and the rest. Open it with <kbd>⌥⌘I</kbd> or Inspect Element in the right-click menu.</p>
+      </article>
+
+      <article class="bt dv-agent">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="term v-term"><div class="term-bar"><i></i><i></i><i></i></div>
+<pre><span class="dim">&gt; check the pay button on localhost:3000</span>
+<span class="ok">●</span> tab_open        localhost:3000
+<span class="ok">●</span> page_screenshot Checkout
+<span class="ok">●</span> notes_resolve   #pay-button</pre>
+          </div>
+        </div>
+        <h3>Agents</h3>
+        <p>Claude Code, Codex or Cursor can test your localhost over MCP, in an Agent space you can watch. <a href="#agents">How it works</a></p>
+      </article>
+
+      <article class="bt dv-notes">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="v-note">
+            <p class="who"><i class="pin">1</i><b>You</b><em>#pay-button</em></p>
+            <p>Overlaps the total on narrow windows.</p>
+            <div class="v-reply"><p class="who"><b class="ai">Claude Code</b><em>Resolved</em></p><p>Fixed in checkout.css. Wraps under 420pt now.</p></div>
+          </div>
+        </div>
+        <h3>Notes</h3>
+        <p>Pin a note to anything on a page. Agents can read, reply to and resolve them. <kbd>⇧⌘M</kbd></p>
+      </article>
+
+      <article class="bt dv-bangs">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="v-bang">
+            <span class="v-field"><b>!mdn</b> structuredClone</span>
+            <span class="v-hit">Search MDN for “structuredClone”</span>
+            <span class="v-bang-chips"><code>!gh</code><code>!npm</code><code>!so</code><code>!caniuse</code><code>!pypi</code><code>!crates</code></span>
+          </div>
+        </div>
+        <h3>Bangs</h3>
+        <p>Search GitHub, MDN, npm, Stack Overflow, Can I use and more straight from the address bar.</p>
+      </article>
+
+      <article class="bt dv-keys">
+        <div class="bt-vis" aria-hidden="true">
+          <div class="v-cheat">
+            <span class="on"><kbd>⌘K</kbd>Commands</span>
+            <span><kbd>⌥⌘R</kbd>Reload without cache</span>
+            <span><kbd>⌥⇧⌘C</kbd>Copy link as Markdown</span>
+            <span><kbd>⌥⌘↓</kbd>Next tab</span>
+            <span><kbd>⌥⌘→</kbd>Next space</span>
+          </div>
+        </div>
+        <h3>Your keys</h3>
+        <p>Every action has a shortcut. Start from Arc, Chrome or Safari's layout and change any of them.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="section" id="extend" aria-labelledby="extend-title">
+    <h2 id="extend-title">Build for Browsa.</h2>
+    <p class="sub">Everything runs inside WebKit, and everything is free. If you've made a browser extension, you already know most of it.</p>
     <div class="ways">
       <a class="way" href="#extensions">
         <span class="way-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 4.5a2 2 0 1 1 4 0V6h3.5a1 1 0 0 1 1 1v3.5H19a2 2 0 1 1 0 4h-1.5V18a1 1 0 0 1-1 1H13v-1.5a2 2 0 1 0-4 0V19H5.5a1 1 0 0 1-1-1v-3.5H6a2 2 0 1 0 0-4H4.5V7a1 1 0 0 1 1-1H9z"/></svg></span>
@@ -47,18 +150,71 @@
         <p>From the Chrome Web Store, on Apple's WebKit with a compatibility layer in front. Seven are verified in the Library.</p>
         <span class="go">How they run →</span>
       </a>
-      <a class="way" href="#plugins">
-        <span class="way-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="M9 5v14M15 5v14"/></svg></span>
-        <h3>Browsa plugins <span class="badge spec">Start building</span></h3>
-        <p>A web extension with a <code>browsa</code> block that adds a sidebar section, a panel, commands, badges and agent tools.</p>
-        <span class="go">The manifest →</span>
-      </a>
       <a class="way" href="#agents">
         <span class="way-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10.2 8.6c-.6-.3-1.2.3-.9.9l4.6 10.1c.3.6 1.1.5 1.3-.1l1.1-3.6c.1-.3.3-.5.6-.6l3.6-1.1c.6-.2.7-1-.1-1.3z"/><path d="M6.6 6.6 4.8 4.8M6 10H3.5M10 6V3.5"/></svg></span>
         <h3>Agents <span class="badge live">Works today</span></h3>
         <p>A local MCP server, so Claude Code, Codex or Cursor can use the browser you're watching, with page notes they can read and resolve.</p>
         <span class="go">Connect one →</span>
       </a>
+      <a class="way" href="#plugins">
+        <span class="way-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="M9 5v14M15 5v14"/></svg></span>
+        <h3>Browsa plugins <span class="badge spec">Coming</span></h3>
+        <p>A web extension with a <code>browsa</code> block that adds a sidebar section, a panel, commands, badges and agent tools. The runtime is still being built.</p>
+        <span class="go">The manifest →</span>
+      </a>
+    </div>
+  </section>
+
+  <section class="section" id="extensions" aria-labelledby="ext-title">
+    <h2 id="ext-title">How Chrome extensions run.</h2>
+    <p class="sub">Browsa installs extensions from the Chrome Web Store on Apple's <code>WKWebExtension</code>, checks for updates once a day, and asks again when an update wants more permissions. A small compatibility layer goes in front of each one, without changing the extension's own files.</p>
+    <h3 class="sub-h">Filled in for you</h3>
+    <div class="msgs" aria-label="What the compatibility layer adds">
+      <div><code>WebSocket</code><span>Real sockets in service workers, which WebKit would freeze</span></div>
+      <div><code>navigator.locks</code><span>Locks inside the worker</span></div>
+      <div><code>chrome.offscreen</code><span>Hidden documents for copying and translating</span></div>
+      <div><code>Keep-alive</code><span>Backgrounds aren't paused or unloaded</span></div>
+      <div><code>Chrome APIs</code><span>Stand-ins for the ones WebKit lacks, so startup doesn't throw</span></div>
+      <div><code>User agent</code><span>Says Chrome inside the extension only</span></div>
+    </div>
+    <h3 class="sub-h">Limits to design around</h3>
+    <dl class="limits" id="limits" aria-label="WebKit limits to design around">
+      <div><dt>Desktop-app connections</dt><dd>Unlocking with a password manager's desktop app needs that app to trust Browsa, and those helpers only trust a signed list of browsers. Extensions work on their own instead: 1Password signs in inside the extension.</dd></div>
+      <div><dt>Stand-ins, not features</dt><dd><code>notifications</code>, <code>downloads</code>, side panels and <code>identity.launchWebAuthFlow</code> answer but do nothing yet. Each can become a real Browsa feature when an extension needs it.</dd></div>
+      <div><dt>No API wrapping</dt><dd>Wrapping <code>chrome.*</code> in a JS Proxy stops runtime messages reaching the background, so missing APIs are added as plain objects.</dd></div>
+      <div><dt>Not supported</dt><dd><code>chrome.debugger</code>, blocking <code>webRequest</code> and DevTools panels. <code>declarativeNetRequest</code> works.</dd></div>
+    </dl>
+  </section>
+
+  <section class="section" id="agents" aria-labelledby="agents-title">
+    <div class="split">
+      <div>
+        <h2 id="agents-title">Let agents use the real browser.</h2>
+        <p>Switch on the Agent Pack in the Library, or press Turn On Agents in the Agents panel, and Browsa listens on 127.0.0.1 for MCP. Add to Claude Code sets it up in one click, token and all. For Codex, Cursor or anything else that speaks MCP over HTTP, Connect an Agent gives you the lines to paste.</p>
+        <div class="tools" aria-label="Agent tools">
+          <code>tabs_list</code><code>tab_open</code><code>page_navigate</code><code>page_read</code><code>page_screenshot</code><code>page_click</code><code>page_type</code><code class="lh">page_eval</code><code>notes_list</code><code>notes_add</code><code>notes_reply</code><code>notes_resolve</code>
+        </div>
+        <ul class="points">
+          <li><span><b>Visible.</b> Agents open pages in their own Agent space, with a yellow pointer and a caption on the page. Each call shows in the Agents panel as a sentence.</span></li>
+          <li><span><b>Your tabs ask first.</b> Anything in the Agent space runs without a prompt. Using one of your own tabs, or listing them, asks you until Browsa quits. <code>page_eval</code> only runs on localhost.</span></li>
+          <li><span><b>Stoppable.</b> Stop, in the sidebar or the panel, refuses everything that changes a page until it's resumed.</span></li>
+          <li><span><b>Local only.</b> A bearer token is required, and requests carrying a web page's Origin are refused.</span></li>
+        </ul>
+      </div>
+      <div class="term" aria-label="Adding Browsa to Claude Code">
+        <div class="term-bar"><i></i><i></i><i></i></div>
+<pre><span class="dim"># What Add to Claude Code runs for you</span>
+<span class="dim">$</span> claude mcp add --scope user --transport http browsa \
+    <span class="key">http://127.0.0.1:47913/mcp</span> \
+    --header <span class="key">"Authorization: Bearer &lt;your token&gt;"</span>
+<span class="ok">✓</span> Added browsa
+
+<span class="dim">&gt; open localhost:3000 and check the sign-in form</span>
+<span class="ok">●</span> tab_open      localhost:3000
+<span class="ok">●</span> page_read     Sign in · 2 fields
+<span class="ok">●</span> page_type     email
+<span class="ok">●</span> page_click    Continue</pre>
+      </div>
     </div>
   </section>
 
@@ -94,14 +250,14 @@
     <span data-points="badges" tabindex="0"><span class="n">"badges"</span>: true</span>
   }
 <span class="k">}</span></pre>
-        <p class="spec-note"><span class="badge spec">Start building</span><span>Browsa reads the <code>browsa</code> block today, and its own plugins (Notes, Agents, Radar, Downloads) already plug into the window this way. The runtime that lets your plugin do the same is still being built, so details may change. When it opens up, plugins will be listed in the Library next to ours, and they'll be free.</span></p>
+        <p class="spec-note"><span class="badge spec">Coming</span><span>Browsa reads the <code>browsa</code> block today, and its own plugins (Notes, Agents, Radar, Downloads) already plug into the window this way. The runtime that lets your plugin do the same is still being built, so this is a preview and details may change. When it opens up, plugins will be listed in the Library next to ours, and they'll be free.</span></p>
       </div>
     </div>
   </section>
 
   <section class="section" aria-labelledby="wire-title">
     <h2 id="wire-title">Talking to Browsa.</h2>
-    <p class="sub">Plugins send native messages to a built-in host, <code>app.browsa</code>. Each part of the <code>browsa</code> block is a permission people see before they add it, and plugins never run native code.</p>
+    <p class="sub">Once the runtime opens up, plugins will send native messages to a built-in host, <code>app.browsa</code>. Each part of the <code>browsa</code> block will be a permission people see before they add it, and plugins never run native code.</p>
     <div class="wire" aria-label="How a message travels">
       <div class="wire-box"><b>Your background script</b><span><code>runtime.sendNativeMessage</code></span></div>
       <span class="wire-arrow" aria-hidden="true"></span>
@@ -119,59 +275,6 @@
     </div>
   </section>
 
-  <section class="section" id="agents" aria-labelledby="agents-title">
-    <div class="split">
-      <div>
-        <h2 id="agents-title">Let agents use the real browser.</h2>
-        <p>Switch on the Agent Pack in the Library, or press Turn On Agents in the Agents panel, and Browsa listens on 127.0.0.1 for MCP. Add to Claude Code sets it up in one click, token and all. For Codex, Cursor or anything else that speaks MCP over HTTP, Connect an Agent gives you the lines to paste.</p>
-        <div class="tools" aria-label="Agent tools">
-          <code>tabs_list</code><code>tab_open</code><code>page_navigate</code><code>page_read</code><code>page_screenshot</code><code>page_click</code><code>page_type</code><code class="lh">page_eval</code><code>notes_list</code><code>notes_add</code><code>notes_reply</code><code>notes_resolve</code>
-        </div>
-        <ul class="points">
-          <li><span><b>Visible.</b> Agents open pages in their own Agent space, with a yellow pointer and a caption on the page. Each call shows in the Agents panel as a sentence.</span></li>
-          <li><span><b>Your tabs ask first.</b> Anything in the Agent space runs without a prompt. Using one of your own tabs, or listing them, asks you until Browsa quits. <code>page_eval</code> only runs on localhost.</span></li>
-          <li><span><b>Stoppable.</b> Stop, in the sidebar or the panel, refuses everything that changes a page until it's resumed.</span></li>
-          <li><span><b>Local only.</b> A bearer token is required, and requests carrying a web page's Origin are refused.</span></li>
-        </ul>
-      </div>
-      <div class="term" aria-label="Adding Browsa to Claude Code">
-        <div class="term-bar"><i></i><i></i><i></i></div>
-<pre><span class="dim"># What Add to Claude Code runs for you</span>
-<span class="dim">$</span> claude mcp add --scope user --transport http browsa \
-    <span class="key">http://127.0.0.1:47913/mcp</span> \
-    --header <span class="key">"Authorization: Bearer &lt;your token&gt;"</span>
-<span class="ok">✓</span> Added browsa
-
-<span class="dim">&gt; open localhost:3000 and check the sign-in form</span>
-<span class="ok">●</span> tab_open      localhost:3000
-<span class="ok">●</span> page_read     Sign in · 2 fields
-<span class="ok">●</span> page_type     email
-<span class="ok">●</span> page_click    Continue</pre>
-      </div>
-    </div>
-  </section>
-
-  <section class="section" id="extensions" aria-labelledby="ext-title">
-    <h2 id="ext-title">How Chrome extensions run.</h2>
-    <p class="sub">Browsa installs extensions from the Chrome Web Store on Apple's <code>WKWebExtension</code>, checks for updates once a day, and asks again when an update wants more permissions. A small compatibility layer goes in front of each one, without changing the extension's own files.</p>
-    <h3 class="sub-h">Filled in for you</h3>
-    <div class="msgs" aria-label="What the compatibility layer adds">
-      <div><code>WebSocket</code><span>Real sockets in service workers, which WebKit would freeze</span></div>
-      <div><code>navigator.locks</code><span>Locks inside the worker</span></div>
-      <div><code>chrome.offscreen</code><span>Hidden documents for copying and translating</span></div>
-      <div><code>Keep-alive</code><span>Backgrounds aren't paused or unloaded</span></div>
-      <div><code>Chrome APIs</code><span>Stand-ins for the ones WebKit lacks, so startup doesn't throw</span></div>
-      <div><code>User agent</code><span>Says Chrome inside the extension only</span></div>
-    </div>
-    <h3 class="sub-h">Limits to design around</h3>
-    <dl class="limits" id="limits" aria-label="WebKit limits to design around">
-      <div><dt>Desktop-app connections</dt><dd>Unlocking with a password manager's desktop app needs that app to trust Browsa, and those helpers only trust a signed list of browsers. Extensions work on their own instead: 1Password signs in inside the extension.</dd></div>
-      <div><dt>Stand-ins, not features</dt><dd><code>notifications</code>, <code>downloads</code>, side panels and <code>identity.launchWebAuthFlow</code> answer but do nothing yet. Each can become a real Browsa feature when an extension needs it.</dd></div>
-      <div><dt>No API wrapping</dt><dd>Wrapping <code>chrome.*</code> in a JS Proxy stops runtime messages reaching the background, so missing APIs are added as plain objects.</dd></div>
-      <div><dt>Not supported</dt><dd><code>chrome.debugger</code>, blocking <code>webRequest</code> and DevTools panels. <code>declarativeNetRequest</code> works.</dd></div>
-    </dl>
-  </section>
-
   <section class="section" aria-labelledby="code-title">
     <h2 id="code-title">Where it lives in the code.</h2>
     <p class="sub">Browsa is MIT licensed. The full write-up is <a href="https://github.com/jmaorr/Browsa/blob/main/docs/extensibility.md">docs/extensibility.md</a>.</p>
@@ -183,6 +286,7 @@
           <tr><th scope="row">Store links, updates, CRX unpacking</th><td><a href="https://github.com/jmaorr/Browsa/blob/main/Packages/BrowserKit/Sources/Extensibility/ExtensionSources.swift"><code>Extensibility/ExtensionSources.swift</code></a></td></tr>
           <tr><th scope="row">The Chrome compatibility layer</th><td><a href="https://github.com/jmaorr/Browsa/blob/main/Packages/BrowserKit/Sources/WebKitEngine/ExtensionCompat.swift"><code>WebKitEngine/ExtensionCompat.swift</code></a></td></tr>
           <tr><th scope="row">Manifest and the <code>browsa</code> block</th><td><a href="https://github.com/jmaorr/Browsa/blob/main/Packages/BrowserKit/Sources/Extensibility/ExtensionManifest.swift"><code>Extensibility/ExtensionManifest.swift</code></a></td></tr>
+          <tr><th scope="row">Radar and its scanner</th><td><a href="https://github.com/jmaorr/Browsa/blob/main/Mac/Sources/Workbench/Radar.swift"><code>Workbench/Radar.swift</code></a></td></tr>
           <tr><th scope="row">Tools: panel, sidebar, commands</th><td><a href="https://github.com/jmaorr/Browsa/blob/main/Mac/Sources/Workbench/Workbench.swift"><code>Mac/Sources/Workbench/</code></a></td></tr>
           <tr><th scope="row">MCP toolbox</th><td><a href="https://github.com/jmaorr/Browsa/blob/main/Packages/BrowserKit/Sources/Extensibility/AgentToolbox.swift"><code>Extensibility/AgentToolbox.swift</code></a></td></tr>
           <tr><th scope="row">Local endpoint and Agent space</th><td><a href="https://github.com/jmaorr/Browsa/tree/main/Mac/Sources/Agents"><code>Mac/Sources/Agents/</code></a></td></tr>
