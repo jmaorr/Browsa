@@ -298,6 +298,10 @@ struct TabRow: View {
                 .lineLimit(1)
                 .foregroundStyle(.primary)
             Spacer(minLength: 0)
+            if let call = tab.call {
+                CallBadge(call: call)
+                    .transition(.scale.combined(with: .opacity))
+            }
             let notes = openNoteCount(tab.url, in: browser.library)
             if notes > 0 {
                 // Stays put and slides left when the close button comes in on hover. A click opens
@@ -343,6 +347,42 @@ struct TabRow: View {
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
         .contextMenu { TabMenu(tab: tab) }
         .help(tab.url?.absoluteString ?? tab.displayTitle)
+    }
+}
+
+/// Marks a tab that's in a call, so it's easy to find your way back. Green while the camera is on and
+/// orange with just the microphone, the colours macOS uses for the same thing; grey when muted.
+struct CallBadge: View {
+    let call: TabCall
+    /// A round dot (on a favourite tile) instead of the row capsule.
+    var compact = false
+
+    private var symbol: String {
+        if call.camera { return "video.fill" }
+        return call.microphone ? "mic.fill" : "mic.slash.fill"
+    }
+
+    private var fill: Color {
+        if call.camera { return .green }
+        return call.microphone ? .orange : Color(nsColor: .systemGray)
+    }
+
+    private var label: String {
+        if call.camera { return "In a call, camera on" }
+        return call.microphone ? "In a call, microphone on" : "In a call, muted"
+    }
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: compact ? 7.5 : 9, weight: .bold))
+            .foregroundStyle(.black.opacity(0.75))
+            .frame(width: compact ? 15 : 22, height: compact ? 15 : 16)
+            .background(fill, in: .capsule)
+            .overlay { if compact { Capsule().strokeBorder(.background, lineWidth: 1.5) } }
+            .contentTransition(.symbolEffect(.replace))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(label)
+            .help(label)
     }
 }
 

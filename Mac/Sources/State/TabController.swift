@@ -36,7 +36,7 @@ final class TabController: EnginePageDelegate {
         guard let page else { return }
         withObservationTracking {
             let s = page.state
-            _ = (s.url, s.title, s.progress, s.isLoading, s.canGoBack, s.canGoForward, s.isSecure)
+            _ = (s.url, s.title, s.progress, s.isLoading, s.canGoBack, s.canGoForward, s.isSecure, s.camera, s.microphone)
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.sync()
@@ -55,6 +55,8 @@ final class TabController: EnginePageDelegate {
         if tab.isLoading != s.isLoading { tab.isLoading = s.isLoading }
         if tab.canGoBack != s.canGoBack { tab.canGoBack = s.canGoBack }
         if tab.canGoForward != s.canGoForward { tab.canGoForward = s.canGoForward }
+        let call = s.camera == .off && s.microphone == .off ? nil : TabCall(camera: s.camera == .on, microphone: s.microphone == .on)
+        if tab.call != call { tab.call = call }
     }
 
     func load(_ url: URL, source: Frecency.VisitSource) {

@@ -68,10 +68,16 @@ public final class WebKitPage: NSObject, EnginePage {
                 MainActor.assumeIsolated { state.themeColor = wv.themeColor?.cgColor }
             },
             webView.observe(\.cameraCaptureState, options: [.new]) { wv, _ in
-                MainActor.assumeIsolated { state.isCapturing = wv.cameraCaptureState != .none || wv.microphoneCaptureState != .none }
+                MainActor.assumeIsolated {
+                    state.isCapturing = wv.cameraCaptureState != .none || wv.microphoneCaptureState != .none
+                    state.camera = CaptureState(wv.cameraCaptureState)
+                }
             },
             webView.observe(\.microphoneCaptureState, options: [.new]) { wv, _ in
-                MainActor.assumeIsolated { state.isCapturing = wv.cameraCaptureState != .none || wv.microphoneCaptureState != .none }
+                MainActor.assumeIsolated {
+                    state.isCapturing = wv.cameraCaptureState != .none || wv.microphoneCaptureState != .none
+                    state.microphone = CaptureState(wv.microphoneCaptureState)
+                }
             },
         ]
     }
@@ -577,3 +583,13 @@ final class DownloadBridge: NSObject, WKDownloadDelegate {
     }
 }
 #endif
+
+private extension CaptureState {
+    init(_ state: WKMediaCaptureState) {
+        switch state {
+        case .active: self = .on
+        case .muted: self = .muted
+        default: self = .off
+        }
+    }
+}

@@ -36,6 +36,8 @@ public final class BrowserTab: Identifiable {
     public var pageBackground: CGColor?
     /// A new web view hasn't drawn its page yet, so show the tab's last picture over it.
     public var isAwaitingFirstPaint = false
+    /// The page has the camera or microphone on: the tab is in a call. Nil otherwise.
+    public var call: TabCall?
 
     public init(id: UUID = UUID(), url: URL?, title: String = "", isPinned: Bool = false,
                 lastActive: Date = .now, interactionState: Data? = nil, isPrivate: Bool = false) {
@@ -52,6 +54,19 @@ public final class BrowserTab: Identifiable {
         if !title.isEmpty { return title }
         if let url { return URLNormalizer.displayHost(url) }
         return "New Tab"
+    }
+}
+
+/// What a tab in a call is using, for the badge that leads back to it.
+public struct TabCall: Equatable, Sendable {
+    /// The camera is on.
+    public var camera: Bool
+    /// The microphone is on (false when it's muted or off).
+    public var microphone: Bool
+
+    public init(camera: Bool, microphone: Bool) {
+        self.camera = camera
+        self.microphone = microphone
     }
 }
 

@@ -334,6 +334,9 @@ public final class PageState {
     public var isCapturingMedia = false
     /// The camera or microphone is on (muted counts: the call is still going).
     public var isCapturing = false
+    /// The camera alone, and the microphone alone, for the call badge.
+    public var camera: CaptureState = .off
+    public var microphone: CaptureState = .off
     /// Audio or video is playing with sound.
     public var isPlayingAudio = false
     /// Someone typed into a field on the page and it still holds text.
@@ -343,6 +346,11 @@ public final class PageState {
     public var isBusy: Bool { isCapturing || isPlayingAudio || hasUnsavedInput }
 
     public init() {}
+}
+
+/// A camera or microphone, as the page has it.
+public enum CaptureState: Sendable {
+    case off, on, muted
 }
 
 // MARK: - Delegate

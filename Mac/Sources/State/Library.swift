@@ -349,6 +349,7 @@ final class Library {
         if let old = controllers[tab.id] {
             old.page.close()
             controllers[tab.id] = nil
+            tab.call = nil
         }
         tab.interactionState = nil
         let c = TabController(tab: tab, library: self, engineID: target.info.id) { delegate in
@@ -393,6 +394,7 @@ final class Library {
         if let c = controllers[id] {
             c.freeze()
             c.page.close()
+            c.tab.call = nil
         }
         controllers[id] = nil
         lru.removeAll { $0 == id }

@@ -641,8 +641,20 @@ struct FavoriteTile: View {
         return tab.favoriteID == favorite.id || tab.url.map(URLNormalizer.key(for:)) == URLNormalizer.key(for: favorite.url)
     }
 
+    /// This favourite's tab is in a call (whichever space it's open in).
+    private var call: TabCall? {
+        browser.library.allTabs.first { $0.favoriteID == favorite.id && $0.call != nil }?.call
+    }
+
     var body: some View {
         FaviconView(url: favorite.url, size: 26, chip: true, letter: favorite.customName ?? favorite.title)
+            .overlay(alignment: .topTrailing) {
+                if let call {
+                    CallBadge(call: call, compact: true)
+                        .offset(x: 6, y: -6)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
             .frame(maxWidth: .infinity, minHeight: 50)
             .background(isCurrent ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(hovering ? 0.09 : 0.05)),
                         in: .rect(cornerRadius: 12, style: .continuous))
@@ -653,7 +665,7 @@ struct FavoriteTile: View {
             .onTapGesture { browser.open(favorite) }
             // A tap gesture alone gives VoiceOver nothing to press.
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(favorite.displayName)
+            .accessibilityLabel(call == nil ? favorite.displayName : "\(favorite.displayName), in a call")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { browser.open(favorite) }
             .onHover { hovering = $0 }
