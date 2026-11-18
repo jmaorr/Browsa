@@ -84,6 +84,7 @@ struct PageArea: View {
                     .id(toast)
             }
         }
+        .overlay(alignment: .bottomTrailing) { CallCapsule().padding(12) }
         .overlay {
             if let glance = browser.glance {
                 GlanceOverlay(glance: glance)
