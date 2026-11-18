@@ -85,10 +85,10 @@ final class Library {
     @ObservationIgnored var closeGuard: ((BrowserTab) -> Bool)?
     /// Bumped when a tab's page moves to another engine, so views show the new page.
     private(set) var pageSwaps = 0
-    /// The call floating in its own window while you're on other tabs (`CallPiP`), and the call you closed
-    /// that window for (the capsule leads back to it instead).
+    /// The call floating in its own window while you're on other tabs (`CallPiP`), and the calls you closed
+    /// that window for (the capsule leads back to them instead).
     var pipTabID: UUID?
-    var pipClosedFor: UUID?
+    var pipClosedFor: Set<UUID> = []
     let history: HistoryStore
     @ObservationIgnored private(set) var suggest: SuggestEngine!
     /// Live pages, by tab. The least recently used are unloaded past `capacity`.

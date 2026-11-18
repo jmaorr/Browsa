@@ -65,10 +65,10 @@ struct CallCapsule: View {
         .contentShape(.capsule)
         .onTapGesture { browser.select(tab) }
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
-        .help("Go back to the call")
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Back to call: \(tab.displayTitle)")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { browser.select(tab) }
+        .accessibilityAction(named: "Hide Until the Next Call") { hiddenFor = tab.id }
     }
 }
