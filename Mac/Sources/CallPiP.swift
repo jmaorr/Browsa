@@ -143,7 +143,9 @@ final class CallPiPPanel: NSPanel {
     private var callTab: BrowserTab?
     private static let miniSize: CGFloat = 52
     private static let cornerRadius: CGFloat = 16
-    private static let inset: CGFloat = 8
+    private static let inset: CGFloat = 10
+    /// The buttons' diameter and the name capsule's height.
+    static let controlSize: CGFloat = 32
     private static let fullMinSize = NSSize(width: 240, height: 165)
     /// Shrunk to a small glass icon, out of the way but one click from coming back.
     private(set) var isMinimised = false
@@ -211,6 +213,26 @@ final class CallPiPPanel: NSPanel {
     // Clicks reach the call's own buttons; typing (Meet's chat) needs the panel to take keys.
     override var canBecomeKey: Bool { !isMinimised }
     override var canBecomeMain: Bool { false }
+
+    /// The page stays fully interactive, so the call's own buttons work. Moving the window: drag the top strip
+    /// while the name and buttons are showing, or Command-drag anywhere, even over the page.
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown, !isMinimised, !morphing,
+           event.modifierFlags.contains(.command) || isOnTopStrip(event) {
+            performDrag(with: event)
+            return
+        }
+        super.sendEvent(event)
+    }
+
+    /// The band across the top that holds the name and buttons, while they're showing, apart from the buttons.
+    private func isOnTopStrip(_ event: NSEvent) -> Bool {
+        guard let content = contentView, !buttonsHost.isHidden, buttonsHost.alphaValue > 0 else { return false }
+        let point = content.convert(event.locationInWindow, from: nil)
+        guard point.y >= content.bounds.maxY - (Self.inset * 2 + Self.controlSize) else { return false }
+        if let hit = content.hitTest(point), hit.isDescendant(of: buttonsHost) { return false }
+        return true
+    }
 
     func show(_ page: NSView, tab: BrowserTab, back: @escaping () -> Void, close: @escaping () -> Void) {
         callTab = tab
@@ -462,23 +484,24 @@ private struct CallPiPIcon: View {
     }
 }
 
-/// The call's icon, name and badge in a glass capsule over the top-left corner. Drag it to move the window.
+/// The call's icon, name and badge in a glass capsule over the top-left corner, as tall as the buttons beside it.
 private struct CallPiPTitle: View {
     let tab: BrowserTab
     let maxWidth: CGFloat
 
     var body: some View {
         HStack(spacing: 6) {
-            TabIcon(tab: tab, size: 14)
-                .frame(width: 14, height: 14)
+            TabIcon(tab: tab, size: 16)
+                .frame(width: 16, height: 16)
             Text(tab.displayTitle)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .layoutPriority(-1)
             if let call = tab.call { CallBadge(call: call) }
         }
-        .padding(.leading, 8).padding(.trailing, 6).padding(.vertical, 5)
+        .padding(.leading, 10).padding(.trailing, 8)
+        .frame(height: CallPiPPanel.controlSize)
         // Glass alone lets the video show through the text; a thin material under it keeps it legible.
         .background(.thinMaterial, in: .capsule)
         .glassEffect(.regular, in: .capsule)
@@ -490,14 +513,14 @@ private struct CallPiPTitle: View {
     }
 }
 
-/// Back to the call's tab and minimise, as small glass circles over the top-right corner.
+/// Back to the call's tab and minimise, as glass circles over the top-right corner.
 private struct CallPiPButtons: View {
     let back: () -> Void
     let minimise: () -> Void
 
     var body: some View {
-        GlassEffectContainer(spacing: 6) {
-            HStack(spacing: 6) {
+        GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 8) {
                 button("pip.exit", label: "Back to the call's tab", action: back)
                 button("minus", label: "Minimise to an icon. The call keeps going.", action: minimise)
             }
@@ -507,8 +530,8 @@ private struct CallPiPButtons: View {
     private func button(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 10, weight: .semibold))
-                .frame(width: 26, height: 26)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: CallPiPPanel.controlSize, height: CallPiPPanel.controlSize)
                 .background(.thinMaterial, in: .circle)
                 .glassEffect(.regular.interactive(), in: .circle)
                 .contentShape(.circle)
