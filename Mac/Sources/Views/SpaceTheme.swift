@@ -17,23 +17,21 @@ struct SpaceThemeEditor: View {
             VStack(alignment: .leading, spacing: 10) {
                 label("Colour")
                 HStack(spacing: 10) {
-                    ForEach(SpacePalette.presetHues.indices, id: \.self) { i in
-                        let selected = space.themeHue == nil && space.colorIndex == i
+                    ForEach(SpacePalette.presets, id: \.name) { preset in
+                        let selected = abs(SpacePalette.hue(of: space) - preset.hue) < 1
                         Button {
-                            withAnimation(Motion.snappy) {
-                                space.colorIndex = i
-                                space.themeHue = nil
-                            }
+                            withAnimation(Motion.snappy) { space.themeHue = preset.hue }
                             save()
                         } label: {
                             Circle()
-                                .fill(Color(nsColor: SpacePalette.hsl(SpacePalette.presetHues[i], SpacePalette.saturation, 0.55)))
+                                .fill(Color(nsColor: SpacePalette.hsl(preset.hue, SpacePalette.saturation, 0.55)))
                                 .frame(width: 18, height: 18)
                                 .overlay(Circle().strokeBorder(.primary.opacity(selected ? 0.6 : 0), lineWidth: 2).padding(-3))
                                 .contentShape(.circle)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(SpacePalette.names[i])
+                        .help(preset.name)
+                        .accessibilityLabel(preset.name)
                         .accessibilityAddTraits(selected ? .isSelected : [])
                     }
                 }

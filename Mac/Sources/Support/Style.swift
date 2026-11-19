@@ -6,11 +6,14 @@ import Suggest
 /// Space colours, the same six as the iPhone app.
 enum SpacePalette {
     static let colors: [Color] = [.indigo, .orange, .teal, .pink, .green, .purple]
-    /// The Mac's names for the presets below (same order as the iPhone's colours).
-    static let names = ["Ocean", "Coral", "Sage", "Rose", "Moss", "Lavender"]
+    /// The theme's suggested colours, one for each colour of the rainbow, in rainbow order.
+    static let presets: [(name: String, hue: Double)] = [
+        ("Red", 356), ("Orange", 24), ("Yellow", 46), ("Green", 135),
+        ("Blue", 208), ("Indigo", 236), ("Violet", 276),
+    ]
     static func color(_ i: Int) -> Color { colors[((i % colors.count) + colors.count) % colors.count] }
-    /// The palette's colours as hues on the theme's colour strip, in the same order.
-    static let presetHues: [Double] = [212, 14, 165, 342, 95, 262]
+    /// The hue a space has before you pick one, from its palette colour (the iPhone's six, in its order).
+    static let paletteHues: [Double] = [236, 24, 180, 340, 135, 276]
     /// How saturated a space's colour is: kept soft, so no hue on the strip turns loud.
     static let saturation = 0.55
     static let defaultShade = 0.3
@@ -18,7 +21,7 @@ enum SpacePalette {
     static let tintOpacity = 0.5
 
     @MainActor static func hue(of space: Space) -> Double {
-        space.themeHue ?? presetHues[((space.colorIndex % presetHues.count) + presetHues.count) % presetHues.count]
+        space.themeHue ?? paletteHues[((space.colorIndex % paletteHues.count) + paletteHues.count) % paletteHues.count]
     }
 
     /// A space's colour at full strength, for small accents (and the theme swatch). Private is a neutral grey.
