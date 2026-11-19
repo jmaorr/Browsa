@@ -697,6 +697,8 @@ struct FavoriteTile: View {
 struct SpaceSwitcher: View {
     @Environment(Browser.self) private var browser
     @Environment(SidebarDragging.self) private var dragging
+    /// The space whose theme popover is open, from its right-click menu.
+    @State private var theming: UUID?
 
     var body: some View {
         HStack(spacing: 2) {
@@ -729,12 +731,19 @@ struct SpaceSwitcher: View {
                 }
                 .onDisappear { dragging.spaceFrames[s.id] = nil }
                 .help(i < 9 ? "\(s.name) (⌃\(i + 1))" : s.name)
+                .popover(isPresented: Binding(get: { theming == s.id }, set: { if !$0 { theming = nil } }), arrowEdge: .bottom) {
+                    SpaceThemeEditor(space: s) { browser.scheduleSave() }
+                }
                 .contextMenu {
                     if s.isPrivate {
                         Button("Close Private Tabs", systemImage: "xmark", role: .destructive) {
                             withAnimation(Motion.spring) { browser.closePrivateSpace() }
                         }
                     } else {
+                        // After the menu has closed, so the popover has somewhere to anchor.
+                        Button("Colour and Appearance…", systemImage: "paintpalette") {
+                            DispatchQueue.main.async { theming = s.id }
+                        }
                         Button("Edit Spaces…", systemImage: "pencil") { browser.library.openSettings(pane: "spaces") }
                         if browser.regularSpaces.count > 1 {
                             Button("Delete \(s.name)", systemImage: "trash", role: .destructive) {

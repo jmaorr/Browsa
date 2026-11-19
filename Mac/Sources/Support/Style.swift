@@ -6,11 +6,50 @@ import Suggest
 /// Space colours, the same six as the iPhone app.
 enum SpacePalette {
     static let colors: [Color] = [.indigo, .orange, .teal, .pink, .green, .purple]
+    static let names = ["Indigo", "Orange", "Teal", "Pink", "Green", "Purple"]
     static func color(_ i: Int) -> Color { colors[((i % colors.count) + colors.count) % colors.count] }
-    /// Private is a neutral grey.
-    @MainActor static func color(for space: Space) -> Color { space.isPrivate ? .gray : color(space.colorIndex) }
+    /// A space's colour: its own or the palette's, at its saturation. Private is a neutral grey.
+    @MainActor static func color(for space: Space) -> Color {
+        guard !space.isPrivate else { return .gray }
+        let base = space.customColor.flatMap(nsColor(hex:)) ?? NSColor(color(space.colorIndex))
+        guard let s = space.tintSaturation, s < 0.999, let rgb = base.usingColorSpace(.sRGB) else { return Color(nsColor: base) }
+        return Color(nsColor: NSColor(hue: rgb.hueComponent, saturation: rgb.saturationComponent * max(0, s),
+                                      brightness: rgb.brightnessComponent, alpha: 1))
+    }
+
+    /// The intensity a space tints at unless you change it.
+    static let defaultIntensity = 0.25
+
     /// How strongly a space tints the sidebar background. The tint never reaches icons or the page.
-    static func surfaceOpacity(_ scheme: ColorScheme) -> Double { scheme == .dark ? 0.10 : 0.06 }
+    /// At the default intensity: 6% in light, 10% in dark; the slider goes up to four times that.
+    @MainActor static func surfaceOpacity(_ scheme: ColorScheme, for space: Space? = nil) -> Double {
+        let base = scheme == .dark ? 0.10 : 0.06
+        guard let space, !space.isPrivate else { return base }
+        return base * (space.tintIntensity ?? defaultIntensity) / defaultIntensity
+    }
+
+    /// The window appearance a space keeps to, or nil to follow the Mac.
+    @MainActor static func appearance(for space: Space) -> NSAppearance? {
+        switch space.isPrivate ? nil : space.appearance {
+        case "light": NSAppearance(named: .aqua)
+        case "dark": NSAppearance(named: .darkAqua)
+        default: nil
+        }
+    }
+
+    static func nsColor(hex: String) -> NSColor? {
+        var s = hex.trimmingCharacters(in: .whitespaces)
+        if s.hasPrefix("#") { s.removeFirst() }
+        guard s.count == 6, let v = UInt32(s, radix: 16) else { return nil }
+        return NSColor(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255,
+                       blue: CGFloat(v & 0xFF) / 255, alpha: 1)
+    }
+
+    static func hex(_ color: NSColor) -> String? {
+        guard let c = color.usingColorSpace(.sRGB) else { return nil }
+        let r = Int((c.redComponent * 255).rounded()), g = Int((c.greenComponent * 255).rounded()), b = Int((c.blueComponent * 255).rounded())
+        return String(format: "#%02X%02X%02X", max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b)))
+    }
 
     /// Symbols offered for a space.
     static let symbols = ["house.fill", "briefcase.fill", "book.fill", "gamecontroller.fill", "cart.fill", "paintpalette.fill",

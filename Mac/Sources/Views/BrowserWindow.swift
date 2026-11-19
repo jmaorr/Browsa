@@ -64,6 +64,10 @@ struct BrowserWindow: View {
             ArchiveSheet().environment(browser)
         }
         .onChange(of: browser.selectedSpaceID) { browser.isSidebarPeeking = false }
+        // A space set to Light or Dark switches the window as you move to it, or as you change its theme.
+        .onChange(of: SpacePalette.appearance(for: browser.currentSpace)?.name) {
+            if let window = browser.nsWindow { configure(window) }
+        }
     }
 
     /// The space's colour, lightly, over the window material. It tints the sidebar and the frame
@@ -73,7 +77,7 @@ struct BrowserWindow: View {
             WindowMaterial(material: .sidebar)
             // Neutral until the intro reaches the sidebar, then the tint comes in.
             SpacePalette.color(for: browser.currentSpace)
-                .opacity(browser.isIntroHoldingSidebar ? 0 : SpacePalette.surfaceOpacity(colorScheme))
+                .opacity(browser.isIntroHoldingSidebar ? 0 : SpacePalette.surfaceOpacity(colorScheme, for: browser.currentSpace))
                 .animation(Motion.spring, value: browser.selectedSpaceID)
                 .animation(.easeInOut(duration: 0.5), value: browser.isIntroHoldingSidebar)
         }
@@ -97,7 +101,7 @@ struct BrowserWindow: View {
                     .background {
                         ZStack {
                             WindowMaterial(material: .popover)
-                            SpacePalette.color(for: browser.currentSpace).opacity(SpacePalette.surfaceOpacity(colorScheme))
+                            SpacePalette.color(for: browser.currentSpace).opacity(SpacePalette.surfaceOpacity(colorScheme, for: browser.currentSpace))
                         }
                     }
                     .clipShape(.rect(cornerRadius: 12, style: .continuous))
@@ -172,6 +176,10 @@ struct BrowserWindow: View {
         for button in browser.titleBarButtons where button.isHidden == fullScreen {
             button.isHidden = !fullScreen
         }
+        // A space set to Light or Dark keeps the whole window that way, sites included (WebKit follows
+        // the window's appearance for prefers-color-scheme).
+        let appearance = SpacePalette.appearance(for: browser.currentSpace)
+        if window.appearance?.name != appearance?.name { window.appearance = appearance }
     }
 
     private func fullScreenChanged(_ note: Notification, to fullScreen: Bool) {

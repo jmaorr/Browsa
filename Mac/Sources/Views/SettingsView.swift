@@ -157,16 +157,8 @@ private struct SpaceEditor: View {
                 // The grouped form would otherwise add a "Name" label and push the field right.
                 .labelsHidden()
                 .onSubmit { browser.scheduleSave() }
-            HStack(spacing: 4) {
-                ForEach(SpacePalette.colors.indices, id: \.self) { i in
-                    Circle()
-                        .fill(SpacePalette.color(i))
-                        .frame(width: 14, height: 14)
-                        .overlay(Circle().strokeBorder(.primary.opacity(space.colorIndex == i ? 0.6 : 0), lineWidth: 2).padding(-3))
-                        .onTapGesture { space.colorIndex = i; browser.scheduleSave() }
-                }
-            }
-            .padding(.horizontal, 4)
+            SpaceThemeButton(space: space) { browser.scheduleSave() }
+                .padding(.horizontal, 4)
             Button(role: .destructive) { browser.deleteSpace(space) } label: { Image(systemName: "trash") }
                 .buttonStyle(.borderless)
                 .disabled(browser.regularSpaces.count < 2)

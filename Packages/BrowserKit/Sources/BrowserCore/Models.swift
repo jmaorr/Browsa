@@ -78,6 +78,15 @@ public final class Space: Identifiable {
     public var symbol: String
     /// Index into the app's space colour palette.
     public var colorIndex: Int
+    /// The Mac's space theme, on top of `colorIndex` (the iPhone app keeps to the palette).
+    /// A colour of your own, as sRGB hex ("#3A7BD5"), instead of the palette's.
+    public var customColor: String?
+    /// How strongly the colour tints the sidebar, 0...1. Nil is the default (0.25).
+    public var tintIntensity: Double?
+    /// How saturated the colour is, 0 (grey) to 1 (as picked). Nil is 1.
+    public var tintSaturation: Double?
+    /// "light" or "dark" keeps the space's whole window in that appearance. Nil follows the Mac.
+    public var appearance: String?
     public var pinned: [BrowserTab]
     public var today: [BrowserTab]
     public var selectedTabID: UUID?
@@ -276,6 +285,11 @@ public struct TabRecord: Codable, Sendable {
 public struct SpaceRecord: Codable, Sendable {
     public var id: UUID, name: String, symbol: String, colorIndex: Int
     public var pinned: [TabRecord], today: [TabRecord], selectedTabID: UUID?, isSidebarOpen: Bool
+    /// Missing in state saved before Mac space themes (see `Space`).
+    public var customColor: String? = nil
+    public var tintIntensity: Double? = nil
+    public var tintSaturation: Double? = nil
+    public var appearance: String? = nil
 }
 
 public struct BrowserSnapshot: Codable, Sendable {
@@ -317,11 +331,17 @@ extension Space {
         SpaceRecord(id: id, name: name, symbol: symbol, colorIndex: colorIndex,
                     pinned: pinned.map(\.record),
                     today: today.filter { !$0.isPrivate }.map(\.record),
-                    selectedTabID: selectedTabID, isSidebarOpen: isSidebarOpen)
+                    selectedTabID: selectedTabID, isSidebarOpen: isSidebarOpen,
+                    customColor: customColor, tintIntensity: tintIntensity, tintSaturation: tintSaturation,
+                    appearance: appearance)
     }
     public convenience init(_ r: SpaceRecord) {
         self.init(id: r.id, name: r.name, symbol: r.symbol, colorIndex: r.colorIndex,
                   pinned: r.pinned.map(BrowserTab.init), today: r.today.map(BrowserTab.init),
                   selectedTabID: r.selectedTabID, isSidebarOpen: r.isSidebarOpen)
+        customColor = r.customColor
+        tintIntensity = r.tintIntensity
+        tintSaturation = r.tintSaturation
+        appearance = r.appearance
     }
 }
