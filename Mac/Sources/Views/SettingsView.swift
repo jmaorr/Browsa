@@ -143,15 +143,11 @@ private struct SpacesSettings: View {
     var body: some View {
         Form {
             Section {
+                // Drag a row to reorder: the list moves the rows apart as you drag, like any Mac list.
                 ForEach(browser.regularSpaces) { space in
                     SpaceEditor(space: space)
-                        // Drag a space by its handle onto another to put it there.
-                        .dropDestination(for: String.self) { ids, _ in
-                            guard let id = ids.first.flatMap(UUID.init(uuidString:)) else { return false }
-                            withAnimation(Motion.snappy) { browser.moveSpace(id, to: space.id) }
-                            return true
-                        }
                 }
+                .onMove { browser.moveSpaces(fromOffsets: $0, toOffset: $1) }
             } footer: {
                 HStack {
                     Spacer()
@@ -176,7 +172,6 @@ private struct SpaceEditor: View {
                 .contentShape(.rect)
                 .help("Drag to reorder")
                 .accessibilityHidden(true)
-                .draggable(space.id.uuidString) { Label(space.name, systemImage: space.symbol).padding(6) }
             SpaceIconPicker(symbol: $space.symbol) { browser.scheduleSave() }
             TextField("Name", text: $space.name, prompt: Text("Name"))
                 .textFieldStyle(.roundedBorder)

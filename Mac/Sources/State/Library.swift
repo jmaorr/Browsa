@@ -576,6 +576,15 @@ final class Library {
         scheduleSave()
     }
 
+    /// Reorders the regular spaces (as listed in Settings), leaving the Private space where it is.
+    func moveSpaces(fromOffsets source: IndexSet, toOffset destination: Int) {
+        var regular = regularSpaces
+        regular.move(fromOffsets: source, toOffset: destination)
+        var next = regular.makeIterator()
+        spaces = spaces.map { $0.isPrivate ? $0 : next.next()! }
+        scheduleSave()
+    }
+
     func deleteSpace(_ space: Space) {
         if space.isPrivate { closePrivateSpace(); return }
         guard regularSpaces.count > 1, let i = spaces.firstIndex(where: { $0.id == space.id }) else { return }

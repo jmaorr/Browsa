@@ -2,23 +2,21 @@ import SwiftUI
 import AppKit
 import BrowserCore
 
-/// A space's theme: a preview of its sidebar, its colour (six presets, or anywhere along a soft colour
+/// A space's theme: its colour (eight presets, or anywhere along a soft colour
 /// strip), Shade (lighter or darker), and whether the space keeps the window light or dark. Shown in a
 /// popover from Settings › Spaces and from the space's right-click menu in the sidebar.
 struct SpaceThemeEditor: View {
     @Bindable var space: Space
     let save: () -> Void
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            preview
-
             VStack(alignment: .leading, spacing: 10) {
                 label("Colour")
-                HStack(spacing: 10) {
+                // Spread across the strip's width, so each sits roughly over its own colour below.
+                HStack(spacing: 0) {
                     ForEach(SpacePalette.presets, id: \.name) { preset in
-                        let selected = abs(SpacePalette.hue(of: space) - preset.hue) < 1
+                        let selected = space.themeHue.map { abs($0 - preset.hue) < 1 } ?? false
                         Button {
                             withAnimation(Motion.snappy) { space.themeHue = preset.hue }
                             save()
@@ -30,6 +28,7 @@ struct SpaceThemeEditor: View {
                                 .contentShape(.circle)
                         }
                         .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity)
                         .help(preset.name)
                         .accessibilityLabel(preset.name)
                         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -69,7 +68,7 @@ struct SpaceThemeEditor: View {
 
             HStack {
                 Spacer()
-                Button("Reset") {
+                Button("Reset to Classic") {
                     withAnimation(Motion.snappy) {
                         space.themeHue = nil
                         space.themeShade = nil
@@ -77,42 +76,12 @@ struct SpaceThemeEditor: View {
                     }
                     save()
                 }
+                .help("Back to the original subtle colour, following Browsa's appearance")
                 .disabled(space.themeHue == nil && space.themeShade == nil && space.appearance == nil)
             }
         }
         .padding(16)
         .frame(width: 290)
-    }
-
-    /// The preview shows the space as it will look: its own Light or Dark, or the window's when on Auto.
-    private var previewScheme: ColorScheme {
-        switch space.appearance {
-        case "light": .light
-        case "dark": .dark
-        default: colorScheme
-        }
-    }
-
-    /// A slice of the sidebar: the window's material with the space's colour over it, and its name.
-    private var preview: some View {
-        let surface = SpacePalette.surface(for: space, dark: previewScheme == .dark)
-        return ZStack(alignment: .leading) {
-            WindowMaterial(material: .sidebar)
-            Color(nsColor: surface.color).opacity(surface.opacity)
-            HStack(spacing: 8) {
-                Image(systemName: space.symbol).font(.system(size: 13, weight: .medium))
-                Text(space.name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-            }
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 14)
-            .environment(\.colorScheme, surface.isDark ? .dark : .light)
-        }
-        .environment(\.colorScheme, previewScheme)
-        .frame(height: 52)
-        .clipShape(.rect(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.primary.opacity(0.1)))
-        .animation(Motion.snappy, value: previewScheme)
-        .accessibilityHidden(true)
     }
 
     private func label(_ text: String) -> some View {

@@ -6,10 +6,11 @@ import Suggest
 /// Space colours, the same six as the iPhone app.
 enum SpacePalette {
     static let colors: [Color] = [.indigo, .orange, .teal, .pink, .green, .purple]
-    /// The theme's suggested colours, one for each colour of the rainbow, in rainbow order.
+    /// The theme's suggested colours, one for each colour of the rainbow and magenta to close the strip,
+    /// in the strip's order.
     static let presets: [(name: String, hue: Double)] = [
-        ("Red", 356), ("Orange", 24), ("Yellow", 46), ("Green", 135),
-        ("Blue", 208), ("Indigo", 236), ("Violet", 276),
+        ("Red", 0), ("Orange", 24), ("Yellow", 46), ("Green", 135),
+        ("Blue", 208), ("Indigo", 236), ("Violet", 276), ("Magenta", 318),
     ]
     static func color(_ i: Int) -> Color { colors[((i % colors.count) + colors.count) % colors.count] }
     /// The hue a space has before you pick one, from its palette colour (the iPhone's six, in its order).
@@ -27,6 +28,8 @@ enum SpacePalette {
     /// A space's colour at full strength, for small accents (and the theme swatch). Private is a neutral grey.
     @MainActor static func color(for space: Space) -> Color {
         guard !space.isPrivate else { return .gray }
+        // Untouched (the classic look): the palette colour itself.
+        guard space.themeHue != nil || space.themeShade != nil else { return color(space.colorIndex) }
         return Color(nsColor: hsl(hue(of: space), saturation, 0.55))
     }
 
@@ -34,6 +37,12 @@ enum SpacePalette {
     /// Shade moves lighter or darker inside the window's range: 88% to 55% lightness in light, 32% to 16%
     /// in dark, so a space on Auto keeps its character when the Mac switches.
     @MainActor static func surface(for space: Space, dark: Bool) -> (color: NSColor, opacity: Double, isDark: Bool) {
+        // No colour or shade picked (a new space, or after Reset): the original subtle wash, the space's
+        // palette colour lightly over the glass.
+        if space.isPrivate || (space.themeHue == nil && space.themeShade == nil) {
+            let base = space.isPrivate ? NSColor.gray : NSColor(color(space.colorIndex))
+            return (base, dark ? 0.10 : 0.06, dark)
+        }
         let shade = space.isPrivate ? defaultShade : (space.themeShade ?? defaultShade)
         let lightness = dark ? 0.32 - shade * 0.16 : 0.88 - shade * 0.33
         let color = hsl(hue(of: space), space.isPrivate ? 0 : (dark ? saturation * 0.8 : saturation), lightness)
