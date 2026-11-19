@@ -152,6 +152,8 @@ private struct SpacesSettings: View {
                 HStack {
                     Spacer()
                     Button("Add Space") { browser.addSpace() }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
                 }
             }
         }

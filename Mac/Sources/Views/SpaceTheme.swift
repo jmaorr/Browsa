@@ -68,7 +68,7 @@ struct SpaceThemeEditor: View {
 
             HStack {
                 Spacer()
-                Button("Reset to Classic") {
+                Button("Revert to Original") {
                     withAnimation(Motion.snappy) {
                         space.themeHue = nil
                         space.themeShade = nil
@@ -77,6 +77,8 @@ struct SpaceThemeEditor: View {
                     save()
                 }
                 .help("Back to the original subtle colour, following Browsa's appearance")
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
                 .disabled(space.themeHue == nil && space.themeShade == nil && space.appearance == nil)
             }
         }
