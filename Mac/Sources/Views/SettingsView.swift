@@ -79,7 +79,12 @@ private struct GeneralSettings: View {
             }
             Section {
                 LabeledContent("Appearance") { AppearanceTabs(value: $appearance) }
-                .onChange(of: appearance) { BrowsaAppearance.apply(appearance) }
+                // After the pill has slid across: switching every window's appearance mid-slide (and the
+                // fade with it) redraws Settings too and cuts the slide short.
+                .onChange(of: appearance) {
+                    let value = appearance
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { BrowsaAppearance.apply(value) }
+                }
                 Text("Auto follows your Mac. A space can keep to Light or Dark in its colour settings.")
                     .font(.caption).foregroundStyle(.secondary)
             }
