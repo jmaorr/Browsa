@@ -1,18 +1,18 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><script src="../kit/kit.js"></script>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><link rel="stylesheet" href="../kit/sites.css"><script src="../kit/kit.js"></script><script src="../kit/sites.js"></script>
 <style>
   .win { left:160px; top:250px; width:1280px; height:640px; transition:none; }
   .side { width:300px; }
-  .page { left:312px; padding:40px 44px; box-sizing:border-box; }
+  .page { left:312px; }
   .page .hero { height:200px; border-radius:12px; background:#efeeeb; margin-bottom:24px; }
   .page .bar { margin-bottom:16px; }
   .win.dark .row .in, .win.dark .sect { color:#e8e6e3; } .win.dark .favs span { background: rgb(255 255 255 / .1); }
   .win.dark .row.sel .in { background: rgb(255 255 255 / .14); }
-  .win.dark .page { background:#1e1e20; } .win.dark .page .hero, .win.dark .page .bar { background:#2c2c2f; }
+  .win.dark .page { background:#1b1c1f; }
   .spaces { position:absolute; left:14px; right:14px; bottom:18px; display:flex; gap:14px; justify-content:center; }
   .spaces span { width:30px; height:30px; border-radius:50%; display:grid; place-items:center; }
   .spaces svg { width:18px; height:18px; }
-  .pop { position:absolute; left:500px; top:300px; width:400px; padding:22px; box-sizing:border-box; border-radius:20px; background: rgb(250 250 249 / .97);
+  .pop { position:absolute; left:500px; top:300px; width:400px; padding:22px; box-sizing:border-box; border-radius:20px; background:#fafaf9;
     box-shadow: 0 0 0 1px rgb(0 0 0 / .08), 0 24px 60px -14px rgb(0 0 0 / .35); }
   .pop h4 { margin:0 0 10px; font-size:15px; font-weight:600; color:#6e6c68; }
   .chips { display:flex; justify-content:space-between; margin-bottom:14px; }
@@ -28,7 +28,7 @@
   .tabs span.on { color:#1d1d1f; font-weight:600; }
   .tabs .lens { position:absolute; top:4px; height:34px; border-radius:17px; background:#fff; box-shadow: 0 0 0 1px rgb(0 0 0 / .06), 0 2px 6px rgb(0 0 0 / .12); }
   .revert { margin-left:auto; width:max-content; padding:0 16px; height:32px; border-radius:16px; display:flex; align-items:center; font-size:14px; color:#a7a5a1; background: rgb(0 0 0 / .05); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .06); }
-  .pop.dark { background: rgb(40 40 42 / .97); box-shadow: 0 0 0 1px rgb(255 255 255 / .1), 0 24px 60px -14px rgb(0 0 0 / .5); }
+  .pop.dark { background:#28282a; box-shadow: 0 0 0 1px rgb(255 255 255 / .1), 0 24px 60px -14px rgb(0 0 0 / .5); }
   .pop.dark h4, .pop.dark .ends { color:#a09e9a; } .pop.dark .slider { background:#4a4a4d; } .pop.dark .chips i { --ring:#28282a; }
   .pop.dark .tabs { background: rgb(255 255 255 / .06); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .12); } .pop.dark .tabs span { color:#a09e9a; } .pop.dark .tabs span.on { color:#fff; }
   .pop.dark .lens { background: rgb(255 255 255 / .18); } .pop.dark .revert { background: rgb(255 255 255 / .06); color:#77756f; }
@@ -39,7 +39,7 @@
   <div class="label">Give each space its own colour</div>
   <div class="sub">Pick a colour, make it lighter or darker, and keep a space light or dark.</div>
   <div class="win" id="win"><div class="side" id="side"></div>
-    <div class="page"><div class="hero"></div><div class="bar" style="width:72%"></div><div class="bar" style="width:90%"></div><div class="bar" style="width:60%"></div></div>
+    <div class="page" id="page"></div>
   </div>
   <div class="pop" id="pop">
     <h4>Colour</h4><div class="chips" id="chips"></div>
@@ -61,9 +61,10 @@ document.getElementById("strip").style.background = `linear-gradient(90deg, ${Ar
 document.getElementById("side").innerHTML = `
   <div class="lights"><i></i><i></i><i></i></div>
   <div class="favs">${["mail.google.com","calendar.google.com","figma.com","notion.so"].map(f => `<span><img src="${fav(f)}"></span>`).join("")}</div>
-  <div class="sect">Pinned</div>${row(fav("figma.com"), "Browsa site · Figma")}${row(fav("linear.app"), "Inbox · Linear")}
-  <div class="sect">Today</div>${row(fav("airbnb.com"), "Cabin in Lofoten · Airbnb", "sel")}${row(fav("spotify.com"), "Focus playlist · Spotify")}${row(fav("nytimes.com"), "The New York Times")}
+  <div class="sect">Pinned</div>${row(fav("figma.com"), "Browsa site · Figma")}${row(fav("linear.app"), "My issues · Linear", "sel")}
+  <div class="sect">Today</div>${row(fav("airbnb.com"), "Cabin in Lofoten · Airbnb")}${row(fav("spotify.com"), "Focus playlist · Spotify")}${row(fav("nytimes.com"), "The New York Times")}
   <div class="spaces"><span id="sp1"></span><span></span><span></span></div>`;
+document.getElementById("page").innerHTML = site("linear");
 const HOUSE = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l9 8h-3v9h-5v-6h-2v6H6v-9H3z"/></svg>`;
 document.querySelectorAll(".spaces span").forEach((s, i) => { s.innerHTML = HOUSE; s.style.color = "#8a8884"; });
 const $ = (id) => document.getElementById(id);

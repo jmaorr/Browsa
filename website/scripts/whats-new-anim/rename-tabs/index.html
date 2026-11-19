@@ -1,9 +1,9 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><script src="../kit/kit.js"></script>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><link rel="stylesheet" href="../kit/sites.css"><script src="../kit/kit.js"></script><script src="../kit/sites.js"></script>
 <style>
   .win { left:200px; top:250px; width:1200px; height:640px; }
   .side { width:340px; }
-  .page { left:352px; padding:40px 44px; box-sizing:border-box; }
+  .page { left:352px; }
   .page .hero { height:220px; border-radius:12px; background:linear-gradient(135deg,#e4e1f0,#e9ece6); margin-bottom:24px; }
   .page .bar { margin-bottom:16px; }
   .field { display:inline-flex; align-items:center; height:28px; }
@@ -18,7 +18,7 @@
   <div class="label">Name your tabs</div>
   <div class="sub">Double-click a tab to give it your own name. Pinned tabs keep it for good.</div>
   <div class="win" style="--tint:#5856d6"><div class="side" id="side"></div>
-    <div class="page"><div class="hero"></div><div class="bar" style="width:72%"></div><div class="bar" style="width:90%"></div><div class="bar" style="width:60%"></div></div>
+    <div class="page" id="page"></div>
   </div>
   <div class="click" id="click"></div>
   <svg class="cursor" id="cursor" viewBox="0 0 22 30"><path d="M2 2v22l6-6 4 9 4-2-4-9h8z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
@@ -34,6 +34,7 @@ document.getElementById("side").innerHTML = `
   <div class="row sel" id="target"><div class="in"><img src="${fav("linear.app")}"><span id="name"></span></div></div>
   ${row(fav("stripe.com"), "Payments · Stripe")}
   <div class="sect">Today</div>${row(fav("airbnb.com"), "Cabin in Lofoten · Airbnb")}${row(fav("spotify.com"), "Focus playlist · Spotify")}`;
+document.getElementById("page").innerHTML = site("linear");
 const $ = (id) => document.getElementById(id);
 const OLD = "Inbox · My issues · Linear", NEW = "Team inbox";
 // The row's text, in stage coordinates.
