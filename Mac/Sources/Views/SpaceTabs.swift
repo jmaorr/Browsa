@@ -359,6 +359,9 @@ struct TabRow: View {
         .onTapGesture { browser.select(tab) }
         // Alongside the single click, so selecting a tab never waits to see if a second click follows.
         .simultaneousGesture(TapGesture(count: 2).onEnded { startRename() })
+        // Moving to another tab, however it happens, finishes a rename left open (clicking a row
+        // doesn't take focus from the field, so its own focus change never comes).
+        .onChange(of: selected) { if !selected { commitRename() } }
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
         .contextMenu { TabMenu(tab: tab, rename: startRename) }
         .help(tab.url?.absoluteString ?? tab.displayTitle)
