@@ -65,7 +65,9 @@ function media(e) {
     // Every clip plays muted and loops while it's on screen (whats-new.js starts and pauses it).
     // autoplay is there for when the script doesn't run.
     const attrs = `muted loop autoplay playsinline preload="metadata" data-loop`;
-    return `<div class="wn-media"><video ${attrs}${e.poster ? ` poster="${esc(e.poster)}"` : ""} aria-label="${esc(e.alt)}"><source src="${esc(e.video)}" type="video/mp4"></video></div>`;
+    // The poster also sits behind the video, so a browser that won't start the clip still shows its picture.
+    const bg = e.poster ? ` style="background-image:url('${esc(e.poster)}')"` : "";
+    return `<div class="wn-media"${bg}><video ${attrs}${e.poster ? ` poster="${esc(e.poster)}"` : ""} aria-label="${esc(e.alt)}"><source src="${esc(e.video)}" type="video/mp4"></video></div>`;
   }
   if (e.image) return `<div class="wn-media"><img src="${esc(e.image)}" alt="${esc(e.alt)}" loading="lazy"></div>`;
   if (e.scene) return `<div class="wn-media wn-window"><div data-mw data-cycle="${esc(e.scene)}" role="img" aria-label="${esc(e.alt ?? "A drawing of Browsa's Mac window.")}"></div></div>`;
