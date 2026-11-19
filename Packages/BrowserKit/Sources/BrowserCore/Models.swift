@@ -20,6 +20,8 @@ public final class BrowserTab: Identifiable {
     /// Pinned and favourite tabs ignore it: every window shares those. Nil, or a window that isn't
     /// open, means any window may take the tab. iOS has one window and ignores it.
     public var windowKey: UUID?
+    /// A name you gave the tab (double-click it in the sidebar). Shown instead of the page's title.
+    public var customTitle: String?
 
     // Live state mirrored from the web view (not persisted).
     public var estimatedProgress: Double = 0
@@ -54,6 +56,7 @@ public final class BrowserTab: Identifiable {
     }
 
     public var displayTitle: String {
+        if let customTitle, !customTitle.isEmpty { return customTitle }
         if !title.isEmpty { return title }
         if let url { return URLNormalizer.displayHost(url) }
         return "New Tab"
@@ -282,6 +285,8 @@ public struct TabRecord: Codable, Sendable {
     public var favoriteID: UUID? = nil
     /// Missing in state saved before each Mac window had its own Today tabs.
     public var windowKey: UUID? = nil
+    /// Missing in state saved before tabs could be renamed.
+    public var customTitle: String? = nil
 }
 
 public struct SpaceRecord: Codable, Sendable {
@@ -317,13 +322,14 @@ extension BrowserTab {
     public var record: TabRecord {
         TabRecord(id: id, url: url, title: title, isPinned: isPinned, lastActive: lastActive,
                   interactionState: interactionState, favoriteID: favoriteID,
-                  windowKey: isPinned || favoriteID != nil ? nil : windowKey)
+                  windowKey: isPinned || favoriteID != nil ? nil : windowKey, customTitle: customTitle)
     }
     public convenience init(_ r: TabRecord) {
         self.init(id: r.id, url: r.url, title: r.title, isPinned: r.isPinned,
                   lastActive: r.lastActive, interactionState: r.interactionState)
         favoriteID = r.favoriteID
         windowKey = r.windowKey
+        customTitle = r.customTitle
     }
 }
 

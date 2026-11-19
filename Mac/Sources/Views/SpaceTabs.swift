@@ -283,6 +283,9 @@ struct TabRow: View {
     /// Drawn under the pointer while dragged.
     var isLifted = false
     @State private var hovering = false
+    /// Renaming in place: double-click the tab, or Rename Tab… in its menu.
+    @State private var draft: String?
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
         HStack(spacing: 10) {
@@ -294,9 +297,19 @@ struct TabRow: View {
                 }
             }
             .frame(width: 16, height: 16)
-            Text(tab.displayTitle)
-                .lineLimit(1)
-                .foregroundStyle(.primary)
+            if draft != nil {
+                TextField("Tab Name", text: Binding(get: { draft ?? "" }, set: { draft = $0 }),
+                          prompt: Text(tab.title.isEmpty ? "Tab Name" : tab.title))
+                    .textFieldStyle(.plain)
+                    .focused($nameFocused)
+                    .onSubmit(commitRename)
+                    .onExitCommand { draft = nil }
+                    .onChange(of: nameFocused) { if !nameFocused { commitRename() } }
+            } else {
+                Text(tab.displayTitle)
+                    .lineLimit(1)
+                    .foregroundStyle(.primary)
+            }
             Spacer(minLength: 0)
             if let call = tab.call {
                 CallBadge(call: call)
@@ -344,9 +357,25 @@ struct TabRow: View {
         }
         .contentShape(.rect)
         .onTapGesture { browser.select(tab) }
+        // Alongside the single click, so selecting a tab never waits to see if a second click follows.
+        .simultaneousGesture(TapGesture(count: 2).onEnded { startRename() })
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
-        .contextMenu { TabMenu(tab: tab) }
+        .contextMenu { TabMenu(tab: tab, rename: startRename) }
         .help(tab.url?.absoluteString ?? tab.displayTitle)
+    }
+
+    private func startRename() {
+        guard draft == nil else { return }
+        draft = tab.displayTitle
+        DispatchQueue.main.async { nameFocused = true }
+    }
+
+    /// Keeps the new name, or goes back to the page's own title when the field is left empty.
+    private func commitRename() {
+        guard let name = draft?.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+        draft = nil
+        tab.customTitle = name.isEmpty || name == tab.title ? nil : name
+        browser.library.scheduleSave()
     }
 }
 
@@ -389,8 +418,19 @@ struct CallBadge: View {
 struct TabMenu: View {
     @Environment(Browser.self) private var browser
     let tab: BrowserTab
+    /// Starts renaming the tab in place, where the menu's row can.
+    var rename: (() -> Void)? = nil
 
     var body: some View {
+        if let rename {
+            Button("Rename Tab…", systemImage: "pencil", action: rename)
+        }
+        if tab.customTitle != nil {
+            Button("Use Page Title", systemImage: "arrow.uturn.backward") {
+                tab.customTitle = nil
+                browser.library.scheduleSave()
+            }
+        }
         if !tab.isPrivate {
             Button(tab.isPinned ? "Unpin Tab" : "Pin Tab", systemImage: tab.isPinned ? "pin.slash" : "pin") {
                 withAnimation(Motion.snappy) { browser.togglePinned(tab) }
