@@ -220,7 +220,8 @@ extension Browser {
         currentController?.zoom(by: direction)
     }
 
-    var currentZoom: Double { currentTab.flatMap { library.existingController(for: $0)?.page.zoom } ?? 1 }
+    /// Read from the tab, which is observable, so the address bar's badge follows ⌘+ and ⌘− without a redraw.
+    var currentZoom: Double { currentTab?.pageZoom ?? 1 }
 
     func copyCurrentLink() {
         guard let url = currentTab?.url else { return }

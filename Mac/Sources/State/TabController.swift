@@ -27,7 +27,7 @@ final class TabController: EnginePageDelegate {
         self.library = library
         page = makePage(self)
         page.delegate = self
-        if let host = tab.url?.host() { page.zoom = Preferences.zoom(for: host) }
+        if let host = tab.url?.host() { setZoom(Preferences.zoom(for: host)) }
         mirror()
     }
 
@@ -81,6 +81,12 @@ final class TabController: EnginePageDelegate {
 
     // MARK: Zoom
 
+    /// Zooms the page and keeps the tab's copy in step, so the address bar's badge updates straight away.
+    private func setZoom(_ z: Double) {
+        page.zoom = z
+        if tab.pageZoom != z { tab.pageZoom = z }
+    }
+
     private static let zoomSteps: [Double] = [0.5, 0.67, 0.75, 0.85, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3]
 
     func zoom(by direction: Int) {
@@ -93,7 +99,7 @@ final class TabController: EnginePageDelegate {
         } else {
             next = Self.zoomSteps.last { $0 < current - 0.001 } ?? Self.zoomSteps.first!
         }
-        page.zoom = next
+        setZoom(next)
         // Private tabs zoom for now only: the saved per-site zoom would record the host.
         if !tab.isPrivate, let host = tab.url?.host() { Preferences.setZoom(next, for: host) }
         window?.showToast(direction == 0 ? "Actual Size" : "Zoom \(Int((next * 100).rounded()))%")
@@ -173,7 +179,7 @@ final class TabController: EnginePageDelegate {
         library?.windows.forEach { $0.cancelPrompts(for: tab.id) }
         if let host = url?.host() {
             let z = Preferences.zoom(for: host)
-            if abs(page.zoom - z) > 0.001 { page.zoom = z }
+            if abs(page.zoom - z) > 0.001 { setZoom(z) }
         }
     }
 

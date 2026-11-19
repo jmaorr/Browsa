@@ -38,6 +38,9 @@ public final class BrowserTab: Identifiable {
     public var isAwaitingFirstPaint = false
     /// The page has the camera or microphone on: the tab is in a call. Nil otherwise.
     public var call: TabCall?
+    /// The page's zoom (1 = actual size), for the address bar's zoom badge. The engine's own value
+    /// can't be observed, so the Mac app keeps this one in step whenever it zooms.
+    public var pageZoom: Double = 1
 
     public init(id: UUID = UUID(), url: URL?, title: String = "", isPinned: Bool = false,
                 lastActive: Date = .now, interactionState: Data? = nil, isPrivate: Bool = false) {
