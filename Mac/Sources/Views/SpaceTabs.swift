@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import BrowserCore
 import BrowserEngine
 
@@ -305,6 +306,8 @@ struct TabRow: View {
                     .onSubmit(commitRename)
                     .onExitCommand { draft = nil }
                     .onChange(of: nameFocused) { if !nameFocused { commitRename() } }
+                    // Renaming a tab that isn't the selected one: switching to any tab keeps the name too.
+                    .onChange(of: browser.currentTab?.id) { commitRename() }
             } else {
                 Text(tab.displayTitle)
                     .lineLimit(1)
@@ -370,7 +373,11 @@ struct TabRow: View {
     private func startRename() {
         guard draft == nil else { return }
         draft = tab.displayTitle
-        DispatchQueue.main.async { nameFocused = true }
+        DispatchQueue.main.async {
+            nameFocused = true
+            // The whole name selected, so typing replaces it, as when renaming in Finder.
+            DispatchQueue.main.async { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
+        }
     }
 
     /// Keeps the new name, or goes back to the page's own title when the field is left empty.
