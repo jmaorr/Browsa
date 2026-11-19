@@ -1,0 +1,69 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><script src="../kit/kit.js"></script>
+<style>
+  .win { left:200px; top:250px; width:1200px; height:640px; }
+  .side { width:340px; }
+  .page { left:352px; padding:40px 44px; box-sizing:border-box; }
+  .page .hero { height:220px; border-radius:12px; background:linear-gradient(135deg,#e4e1f0,#e9ece6); margin-bottom:24px; }
+  .page .bar { margin-bottom:16px; }
+  .field { display:inline-flex; align-items:center; height:28px; }
+  .selt { background: rgb(10 132 255 / .28); border-radius:3px; }
+  .caret { display:inline-block; width:2px; height:20px; background:#0a84ff; margin-left:1px; }
+  .keys { position:absolute; left:0; right:0; top:900px; display:flex; justify-content:center; }
+  .cap { position:absolute; left:0; right:0; top:920px; text-align:center; font-size:24px; font-weight:500; }
+  .cursor { position:absolute; width:22px; height:30px; }
+  .click { position:absolute; width:36px; height:36px; margin:-18px 0 0 -18px; border-radius:50%; border:2px solid rgb(10 132 255 / .6); }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="label">Name your tabs</div>
+  <div class="sub">Double-click a tab to give it your own name. Pinned tabs keep it for good.</div>
+  <div class="win" style="--tint:#5856d6"><div class="side" id="side"></div>
+    <div class="page"><div class="hero"></div><div class="bar" style="width:72%"></div><div class="bar" style="width:90%"></div><div class="bar" style="width:60%"></div></div>
+  </div>
+  <div class="click" id="click"></div>
+  <svg class="cursor" id="cursor" viewBox="0 0 22 30"><path d="M2 2v22l6-6 4 9 4-2-4-9h8z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+  <div class="keys" id="keys"><span class="key"><b id="kr">Return</b></span></div>
+  <div class="cap" id="cap"></div>
+</div>
+<script>
+document.getElementById("side").innerHTML = `
+  <div class="lights"><i></i><i></i><i></i></div>
+  <div class="favs">${["mail.google.com","calendar.google.com","figma.com","notion.so"].map(f => `<span><img src="${fav(f)}"></span>`).join("")}</div>
+  <div class="sect">Pinned</div>
+  ${row(fav("figma.com"), "Browsa site · Figma")}
+  <div class="row sel" id="target"><div class="in"><img src="${fav("linear.app")}"><span id="name"></span></div></div>
+  ${row(fav("stripe.com"), "Payments · Stripe")}
+  <div class="sect">Today</div>${row(fav("airbnb.com"), "Cabin in Lofoten · Airbnb")}${row(fav("spotify.com"), "Focus playlist · Spotify")}`;
+const $ = (id) => document.getElementById(id);
+const OLD = "Inbox · My issues · Linear", NEW = "Team inbox";
+// The row's text, in stage coordinates.
+const RX = 200 + 14 + 12 + 22 + 13 + 40, RY = 250 + 18 + 13 + 18 + 46 + 18 + 40 + 44 + 19;
+window.TOTAL = 8.4;
+window.render = (t) => {
+  const m = eio(ph(t, 0.4, 0.9));
+  $("cursor").style.transform = `translate(${mix(760, RX, m)}px, ${mix(720, RY, m)}px)`;
+  $("cursor").style.opacity = 1 - ph(t, 2.2, 0.3);
+  // Two clicks.
+  const c = (t0) => ph(t, t0, 0.3);
+  const k = t < 1.75 ? c(1.45) : c(1.75);
+  $("click").style.left = RX + 4 + "px"; $("click").style.top = RY + 4 + "px";
+  $("click").style.opacity = t > 1.45 && t < 2.05 ? 1 - k : 0; $("click").style.transform = `scale(${0.6 + 0.8 * k})`;
+  // Editing: selected, then typed, then Return.
+  let html;
+  if (t < 1.9) html = OLD;
+  else if (t < 2.6) html = `<span class="field"><span class="selt">${OLD}</span></span>`;
+  else if (t < 5.0) { const n = Math.min(NEW.length, Math.floor((t - 2.6) / 0.14)); html = `<span class="field">${NEW.slice(0, n)}<span class="caret" style="opacity:${Math.floor(t * 2.4) % 2 ? 1 : 0.2}"></span></span>`; }
+  else html = NEW;
+  $("name").innerHTML = html;
+  const keysIn = eo(ph(t, 4.3, 0.3)), keysOut = ph(t, 5.6, 0.3);
+  $("keys").style.opacity = keysIn * (1 - keysOut);
+  const press = Math.sin(Math.PI * ph(t, 4.75, 0.3));
+  $("kr").style.transform = `translateY(${press * 3}px)`;
+  $("kr").style.fontSize = "20px";
+  const cap = $("cap"), show = t > 5.9 && t < 8.0;
+  cap.textContent = "It keeps the name, even after Browsa quits";
+  cap.style.opacity = show ? Math.min(eo(ph(t, 5.9, 0.35)), 1 - ph(t, 7.7, 0.3)) : 0;
+  $("stage").style.opacity = loopFade(t, TOTAL);
+};
+render(0);
+</script></body></html>

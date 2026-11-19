@@ -282,6 +282,10 @@ td:last-child, th:last-child { padding-right: 0; }
 .wn-body h2 a:hover { text-decoration: underline; }
 .wn-body > p { margin-top: 8px; max-width: 58ch; color: var(--ink-2); }
 .wn-body > p.wn-note { margin-top: 6px; font-size: .9375rem; }
+.wn-body > h2:first-child { margin-top: 0; }
+.wn-list { margin: 10px 0 0; padding-left: 1.2em; max-width: 58ch; color: var(--ink-2); }
+.wn-list li { margin-top: 6px; }
+.wn-list li::marker { color: var(--ink-2); }
 .wn-body a:not(h2 a) { color: var(--link); }
 .wn-none { margin-top: 48px; color: var(--ink-2); }
 @media (max-width: 720px) {

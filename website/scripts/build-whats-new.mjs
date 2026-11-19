@@ -49,7 +49,11 @@ function parse(file) {
   }
   if (meta.order && !/^\d+$/.test(meta.order)) throw new Error(`${file}: order: is a whole number`);
   if ((meta.video || meta.image) && !meta.alt) throw new Error(`${file}: describe the clip or picture in alt:`);
-  const paragraphs = m[2].trim().split(/\n\s*\n/).filter(Boolean).map((p) => p.replace(/\n/g, " "));
+  // A paragraph made only of "- " lines is a list (a fixes post); the others join into one line.
+  const paragraphs = m[2].trim().split(/\n\s*\n/).filter(Boolean).map((p) => {
+    const lines = p.split("\n");
+    return lines.every((l) => l.startsWith("- ")) ? { list: lines.map((l) => l.slice(2)) } : p.replace(/\n/g, " ");
+  });
   const slug = file.replace(/\.md$/, "").replace(/^\d{4}-\d{2}-\d{2}-/, "");
   return { ...meta, draft, slug, paragraphs };
 }
@@ -68,6 +72,10 @@ function media(e) {
   return e.draft ? `<div class="wn-media wn-empty"><span>Clip to come</span></div>` : "";
 }
 
+const block = (p, cls) => p.list
+  ? `<ul class="wn-list">${p.list.map((l) => `<li>${inline(l)}</li>`).join("")}</ul>`
+  : `<p${cls ? ` class="${cls}"` : ""}>${inline(p)}</p>`;
+
 function article(e) {
   const [first, ...rest] = e.paragraphs;
   const label = [e.platform, e.version && `Version ${e.version}`].filter(Boolean).map(esc).join(" · ");
@@ -82,8 +90,8 @@ function article(e) {
     <div class="wn-body">
       ${media(e)}
       <h2><a href="#${esc(e.slug)}">${inline(e.title)}</a></h2>
-      ${first ? `<p>${inline(first)}</p>` : ""}
-      ${rest.map((p) => `<p class="wn-note">${inline(p)}</p>`).join("\n      ")}
+      ${first ? block(first, "") : ""}
+      ${rest.map((p) => block(p, "wn-note")).join("\n      ")}
     </div>
   </article>`;
 }

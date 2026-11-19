@@ -8,6 +8,8 @@ Sparkle shows it in the update window, so every Mac user who updates reads it.
 | Version | Build | Built from | Date |
 |---|---|---|---|
 | 1.0 | 338 | `8eefcf8` (main, PR #56) | 2026-11-11 |
+| 1.1 | 535 | `7386a31` (main) | 2026-11-17 |
+| 1.2 | 578 | `88542ea` (main, PR #88) | 2026-11-19 |
 
 Add a row when a release ships. The build number is the commit count of the ref it was built from
 (`release-mac.sh`), so `git rev-list --count <ref>` on the release Mac finds it again. A full clone is needed:

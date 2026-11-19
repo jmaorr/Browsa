@@ -1,0 +1,71 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><script src="../kit/kit.js"></script>
+<style>
+  .win { left:200px; top:250px; width:1200px; height:640px; }
+  .side { width:300px; }
+  .page { left:312px; }
+  .layer { position:absolute; inset:0; }
+  .article { padding:40px 44px; box-sizing:border-box; background:#fff; }
+  .article .hero { height:220px; border-radius:12px; background:linear-gradient(135deg,#e6ece4,#e9e3dc); margin-bottom:26px; }
+  .article .bar { margin-bottom:16px; }
+  .callv { background:#1c1d20; }
+  .tiles { position:absolute; inset:16px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .tile { border-radius:12px; display:grid; place-items:center; color:#fff; font-size:34px; font-weight:600; position:relative; }
+  .tile small { position:absolute; left:14px; bottom:12px; font-size:15px; font-weight:500; opacity:.85; }
+  .badge { height:20px; border-radius:10px; display:grid; place-items:center; flex:none; }
+  .badge svg { width:13px; height:13px; color:rgb(0 0 0 / .75); }
+  .capsule { position:absolute; right:22px; bottom:22px; display:flex; align-items:center; gap:10px; height:40px; padding:0 12px 0 14px; border-radius:20px; font-size:16px; font-weight:500;
+    background: rgb(250 250 250 / .9); backdrop-filter: blur(12px); box-shadow: 0 0 0 1px rgb(0 0 0 / .08), 0 8px 22px rgb(0 0 0 / .14); }
+  .capsule img { width:18px; height:18px; border-radius:5px; }
+  .cursor { position:absolute; width:22px; height:30px; }
+  .cap { position:absolute; left:0; right:0; top:920px; text-align:center; font-size:24px; font-weight:500; }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="label">Always find your way back to a call</div>
+  <div class="sub">Tabs on a call show a badge, and a capsule leads back from any other tab.</div>
+  <div class="win" style="--tint:#34c759"><div class="side" id="side"></div>
+    <div class="page">
+      <div class="layer callv" id="callv"><div class="tiles">
+        <div class="tile" style="background:#3b4a63">AL<small>Ada</small></div><div class="tile" style="background:#5b4636">GH<small>Grace</small></div>
+        <div class="tile" style="background:#35524a">KJ<small>Katherine</small></div><div class="tile" style="background:#4a3b5c">You<small>You</small></div></div></div>
+      <div class="layer article" id="article"><div class="hero"></div><div class="bar" style="width:72%"></div><div class="bar" style="width:90%"></div><div class="bar" style="width:84%"></div><div class="bar" style="width:60%"></div></div>
+      <div class="capsule" id="capsule"><img id="cicon"><span>Weekly sync</span><span id="cbadge"></span></div>
+    </div>
+  </div>
+  <svg class="cursor" id="cursor" viewBox="0 0 22 30"><path d="M2 2v22l6-6 4 9 4-2-4-9h8z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+  <div class="cap" id="cap"></div>
+</div>
+<script>
+const CAM = `<svg viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="6" width="14" height="12" rx="3"/><path d="M17 10.5l5-3v9l-5-3z"/></svg>`;
+const MIC = `<svg viewBox="0 0 24 24" fill="currentColor"><rect x="8" y="2" width="8" height="13" rx="4"/><path d="M5 11a7 7 0 0014 0" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M12 18v4" stroke="currentColor" stroke-width="2.2"/></svg>`;
+const MUTED = `<svg viewBox="0 0 24 24" fill="currentColor"><rect x="8" y="2" width="8" height="13" rx="4"/><path d="M5 11a7 7 0 0014 0" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M3 3l18 18" stroke="currentColor" stroke-width="2.6"/></svg>`;
+const badge = (kind) => { const [bg, ic, w] = { cam: ["#34c759", CAM, 30], mic: ["#ff9500", MIC, 30], muted: ["#aeaeb2", MUTED, 30] }[kind];
+  return `<span class="badge" style="background:${bg};width:${w}px">${ic}</span>`; };
+document.getElementById("side").innerHTML = `
+  <div class="lights"><i></i><i></i><i></i></div>
+  <div class="favs">${["mail.google.com","calendar.google.com","linear.app","notion.so"].map(f => `<span><img src="${fav(f)}"></span>`).join("")}</div>
+  <div class="sect">Today</div>
+  <div class="row" id="r1"><div class="in"><img src="${fav("calendar.google.com")}"><span>Weekly sync</span><span id="sbadge" style="margin-left:auto"></span></div></div>
+  <div class="row" id="r2"><div class="in"><img src="${fav("notion.so")}"><span>Standup notes</span></div></div>
+  ${row(fav("linear.app"), "Inbox · Linear")}${row(fav("github.com"), "Pull requests · GitHub")}`;
+document.getElementById("cicon").src = fav("calendar.google.com");
+const $ = (id) => document.getElementById(id);
+const CAPS = [[0.4, 3.6, "Green with the camera on, orange for just the mic, grey when muted"], [4.0, 6.2, "Click the capsule to go straight back"]];
+window.TOTAL = 7.6;
+window.render = (t) => {
+  const kind = t < 1.6 ? "cam" : t < 2.6 ? "mic" : t < 3.6 ? "muted" : "cam";
+  $("sbadge").innerHTML = badge(kind); $("cbadge").innerHTML = badge(kind);
+  const back = t >= 5.0;
+  $("r1").classList.toggle("sel", back); $("r2").classList.toggle("sel", !back);
+  $("article").style.opacity = 1 - eo(ph(t, 5.0, 0.35));
+  const c = eo(ph(t, 0.5, 0.4)) * (1 - eo(ph(t, 5.0, 0.3)));
+  $("capsule").style.opacity = c; $("capsule").style.transform = `translateY(${(1 - eo(ph(t, 0.5, 0.4))) * 14}px) scale(${1 - 0.05 * Math.sin(Math.PI * ph(t, 4.7, 0.3))})`;
+  const m = eio(ph(t, 3.9, 0.8));
+  $("cursor").style.transform = `translate(${mix(820, 1270, m)}px, ${mix(700, 850, m)}px)`;
+  const cap = $("cap"), k = CAPS.find(([s, e]) => t >= s && t < e);
+  cap.textContent = k ? k[2] : "";
+  cap.style.opacity = k ? Math.min(eo(ph(t, k[0], 0.35)), 1 - ph(t, k[1] - 0.3, 0.3)) : 0;
+  $("stage").style.opacity = loopFade(t, TOTAL);
+};
+render(0);
+</script></body></html>
