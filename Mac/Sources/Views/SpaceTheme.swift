@@ -47,7 +47,7 @@ struct SpaceThemeEditor: View {
 
                 slider("Glass", detail: glass < 0.01 ? "Off" : "\(Int((glass * 100).rounded()))%", value: Binding(
                     get: { glass },
-                    set: { space.themeGlass = $0 > 0.99 ? nil : $0; save() }))
+                    set: { space.themeGlass = abs($0 - SpacePalette.defaultGlass) < 0.01 ? nil : $0; save() }))
 
                 VStack(alignment: .leading, spacing: 8) {
                     label("Appearance")

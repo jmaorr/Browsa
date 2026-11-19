@@ -12,8 +12,8 @@ enum SpacePalette {
     static let presetHues: [Double] = [235, 28, 180, 335, 135, 280]
     static let defaultVivid = 0.75
     static let defaultShade = 0.15
-    /// Full glass: the sidebar material with a light wash of colour, the look spaces had before themes.
-    static let defaultGlass = 1.0
+    /// Some glass: the colour reads clearly and the window's material still shows through.
+    static let defaultGlass = 0.5
 
     @MainActor static func hue(of space: Space) -> Double {
         space.themeHue ?? presetHues[((space.colorIndex % presetHues.count) + presetHues.count) % presetHues.count]
@@ -34,7 +34,8 @@ enum SpacePalette {
         let glass = space.isPrivate ? defaultGlass : (space.themeGlass ?? defaultGlass)
         let lightness = dark ? 0.30 - shade * 0.20 : 0.93 - shade * 0.68
         let color = hsl(hue(of: space), vivid, lightness)
-        let opacity = 1 - glass * 0.85
+        // Even at full glass a third of the colour stays, so the ring and Shade always show.
+        let opacity = 1 - glass * 0.65
         // Roughly how light the sidebar ends up, over the material, to pick dark or light text on it.
         let material = dark ? 0.2 : 0.9
         let result = material * (1 - opacity) + luminance(color) * opacity
