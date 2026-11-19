@@ -78,9 +78,10 @@ private struct GeneralSettings: View {
                 }
             }
             Section {
-                LabeledContent("Appearance") {
-                    GlassSwitcher.appearance($appearance).frame(width: 260)
+                Picker("Appearance", selection: $appearance) {
+                    AppearanceOptions()
                 }
+                .pickerStyle(.segmented)
                 .onChange(of: appearance) { BrowsaAppearance.apply(appearance) }
                 Text("Auto follows your Mac. A space can keep to Light or Dark in its colour settings.")
                     .font(.caption).foregroundStyle(.secondary)

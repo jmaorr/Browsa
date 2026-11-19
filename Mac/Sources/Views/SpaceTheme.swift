@@ -62,9 +62,13 @@ struct SpaceThemeEditor: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 label("Appearance")
-                GlassSwitcher.appearance(Binding(
+                Picker("Appearance", selection: Binding(
                     get: { space.appearance ?? "" },
-                    set: { space.appearance = $0.isEmpty ? nil : $0; save() }))
+                    set: { space.appearance = $0.isEmpty ? nil : $0; save() })) {
+                    AppearanceOptions()
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
                 Text("Auto follows Browsa's appearance in Settings › General.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -190,5 +194,14 @@ struct SpaceThemeButton: View {
         .popover(isPresented: $open, arrowEdge: .bottom) {
             SpaceThemeEditor(space: space, save: save)
         }
+    }
+}
+
+/// Auto, Light and Dark, for the appearance pickers here and in Settings › General.
+struct AppearanceOptions: View {
+    var body: some View {
+        Label("Auto", systemImage: "circle.lefthalf.filled").tag("")
+        Label("Light", systemImage: "sun.max").tag("light")
+        Label("Dark", systemImage: "moon").tag("dark")
     }
 }
