@@ -302,7 +302,7 @@ td:last-child, th:last-child { padding-right: 0; }
 .wn-media:has(video) { cursor: pointer; }
 .wn-media:has(video)::after {
   content: ""; position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px;
-  border-radius: 50%; background: rgba(20, 20, 19, 0.55) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8 5.5v13l11-6.5z' fill='white'/%3E%3C/svg%3E") 55% 50% / 24px no-repeat;
+  border-radius: 50%; background: rgba(20, 20, 19, 0.55) url("/media/play.svg") 55% 50% / 24px no-repeat;
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
   opacity: 0; transition: opacity 0.2s; pointer-events: none;
 }
