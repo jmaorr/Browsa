@@ -85,12 +85,8 @@ public final class Space: Identifiable {
     /// back to the palette colour's defaults.
     /// The colour's hue in degrees, 0...360.
     public var themeHue: Double?
-    /// How vivid the colour is, 0.2 (soft) to 1 (vivid): distance out on the picker's ring.
-    public var themeVivid: Double?
-    /// How light or deep the colour sits, 0 (pale) to 1 (deep), within the window's light or dark range.
+    /// How light or dark the colour sits, 0 (lighter) to 1 (darker), within the window's light or dark range.
     public var themeShade: Double?
-    /// How much of the desktop shows through the sidebar, 0 (solid) to 1 (full glass).
-    public var themeGlass: Double?
     /// "light" or "dark" keeps the space's whole window in that appearance. Nil follows Browsa's setting.
     public var appearance: String?
     public var pinned: [BrowserTab]
@@ -293,9 +289,7 @@ public struct SpaceRecord: Codable, Sendable {
     public var pinned: [TabRecord], today: [TabRecord], selectedTabID: UUID?, isSidebarOpen: Bool
     /// Missing in state saved before Mac space themes (see `Space`).
     public var themeHue: Double? = nil
-    public var themeVivid: Double? = nil
     public var themeShade: Double? = nil
-    public var themeGlass: Double? = nil
     public var appearance: String? = nil
 }
 
@@ -339,7 +333,7 @@ extension Space {
                     pinned: pinned.map(\.record),
                     today: today.filter { !$0.isPrivate }.map(\.record),
                     selectedTabID: selectedTabID, isSidebarOpen: isSidebarOpen,
-                    themeHue: themeHue, themeVivid: themeVivid, themeShade: themeShade, themeGlass: themeGlass,
+                    themeHue: themeHue, themeShade: themeShade,
                     appearance: appearance)
     }
     public convenience init(_ r: SpaceRecord) {
@@ -347,9 +341,7 @@ extension Space {
                   pinned: r.pinned.map(BrowserTab.init), today: r.today.map(BrowserTab.init),
                   selectedTabID: r.selectedTabID, isSidebarOpen: r.isSidebarOpen)
         themeHue = r.themeHue
-        themeVivid = r.themeVivid
         themeShade = r.themeShade
-        themeGlass = r.themeGlass
         appearance = r.appearance
     }
 }

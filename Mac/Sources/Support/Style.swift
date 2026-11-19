@@ -8,12 +8,13 @@ enum SpacePalette {
     static let colors: [Color] = [.indigo, .orange, .teal, .pink, .green, .purple]
     static let names = ["Indigo", "Orange", "Teal", "Pink", "Green", "Purple"]
     static func color(_ i: Int) -> Color { colors[((i % colors.count) + colors.count) % colors.count] }
-    /// The palette's colours as hues on the theme picker's ring, in the same order.
+    /// The palette's colours as hues on the theme's colour strip, in the same order.
     static let presetHues: [Double] = [235, 28, 180, 335, 135, 280]
-    static let defaultVivid = 0.75
-    static let defaultShade = 0.15
-    /// Some glass: the colour reads clearly and the window's material still shows through.
-    static let defaultGlass = 0.5
+    /// How saturated a space's colour is: kept soft, so no hue on the strip turns loud.
+    static let saturation = 0.55
+    static let defaultShade = 0.3
+    /// How much of the colour lies over the sidebar's glass. Fixed, so the material stays the Mac's own.
+    static let tintOpacity = 0.5
 
     @MainActor static func hue(of space: Space) -> Double {
         space.themeHue ?? presetHues[((space.colorIndex % presetHues.count) + presetHues.count) % presetHues.count]
@@ -22,24 +23,20 @@ enum SpacePalette {
     /// A space's colour at full strength, for small accents (and the theme swatch). Private is a neutral grey.
     @MainActor static func color(for space: Space) -> Color {
         guard !space.isPrivate else { return .gray }
-        return Color(nsColor: hsl(hue(of: space), space.themeVivid ?? defaultVivid, 0.55))
+        return Color(nsColor: hsl(hue(of: space), saturation, 0.55))
     }
 
     /// What a space lays over the sidebar's glass: its colour at its shade, and how opaque that layer is.
-    /// Shade works inside the window's range: pale to rich in light (93% to 25% lightness), dark grey to
-    /// near black in dark (30% to 10%), so a space on Auto keeps its character when the Mac switches.
+    /// Shade moves lighter or darker inside the window's range: 88% to 55% lightness in light, 32% to 16%
+    /// in dark, so a space on Auto keeps its character when the Mac switches.
     @MainActor static func surface(for space: Space, dark: Bool) -> (color: NSColor, opacity: Double, isDark: Bool) {
-        let vivid = space.isPrivate ? 0 : (space.themeVivid ?? defaultVivid)
         let shade = space.isPrivate ? defaultShade : (space.themeShade ?? defaultShade)
-        let glass = space.isPrivate ? defaultGlass : (space.themeGlass ?? defaultGlass)
-        let lightness = dark ? 0.30 - shade * 0.20 : 0.93 - shade * 0.68
-        let color = hsl(hue(of: space), vivid, lightness)
-        // Even at full glass a third of the colour stays, so the ring and Shade always show.
-        let opacity = 1 - glass * 0.65
+        let lightness = dark ? 0.32 - shade * 0.16 : 0.88 - shade * 0.33
+        let color = hsl(hue(of: space), space.isPrivate ? 0 : (dark ? saturation * 0.8 : saturation), lightness)
         // Roughly how light the sidebar ends up, over the material, to pick dark or light text on it.
         let material = dark ? 0.2 : 0.9
-        let result = material * (1 - opacity) + luminance(color) * opacity
-        return (color, opacity, result < 0.5)
+        let result = material * (1 - tintOpacity) + luminance(color) * tintOpacity
+        return (color, tintOpacity, result < 0.5)
     }
 
     /// The window appearance a space keeps to, or nil to follow Browsa's own setting.
