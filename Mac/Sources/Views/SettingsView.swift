@@ -58,6 +58,7 @@ private struct GeneralSettings: View {
     @Environment(Updates.self) private var updates
     @State private var isDefault = false
     @State private var importing = false
+    @AppStorage(BrowsaAppearance.key) private var appearance = ""
 
     var body: some View {
         @Bindable var browser = browser
@@ -75,6 +76,17 @@ private struct GeneralSettings: View {
                     Button("Import from Another Browser…") { importing = true }
                         .sheet(isPresented: $importing) { ImportSheet().environment(browser) }
                 }
+            }
+            Section {
+                Picker("Appearance", selection: $appearance) {
+                    Text("Auto").tag("")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: appearance) { BrowsaAppearance.apply(appearance) }
+                Text("Auto follows your Mac. A space can keep to Light or Dark in its colour settings.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section {
                 Picker("Search engine", selection: Binding(

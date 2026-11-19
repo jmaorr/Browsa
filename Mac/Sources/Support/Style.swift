@@ -8,27 +8,40 @@ enum SpacePalette {
     static let colors: [Color] = [.indigo, .orange, .teal, .pink, .green, .purple]
     static let names = ["Indigo", "Orange", "Teal", "Pink", "Green", "Purple"]
     static func color(_ i: Int) -> Color { colors[((i % colors.count) + colors.count) % colors.count] }
-    /// A space's colour: its own or the palette's, at its saturation. Private is a neutral grey.
+    /// The palette's colours as hues on the theme picker's ring, in the same order.
+    static let presetHues: [Double] = [235, 28, 180, 335, 135, 280]
+    static let defaultVivid = 0.75
+    static let defaultShade = 0.15
+    /// Full glass: the sidebar material with a light wash of colour, the look spaces had before themes.
+    static let defaultGlass = 1.0
+
+    @MainActor static func hue(of space: Space) -> Double {
+        space.themeHue ?? presetHues[((space.colorIndex % presetHues.count) + presetHues.count) % presetHues.count]
+    }
+
+    /// A space's colour at full strength, for small accents (and the theme swatch). Private is a neutral grey.
     @MainActor static func color(for space: Space) -> Color {
         guard !space.isPrivate else { return .gray }
-        let base = space.customColor.flatMap(nsColor(hex:)) ?? NSColor(color(space.colorIndex))
-        guard let s = space.tintSaturation, s < 0.999, let rgb = base.usingColorSpace(.sRGB) else { return Color(nsColor: base) }
-        return Color(nsColor: NSColor(hue: rgb.hueComponent, saturation: rgb.saturationComponent * max(0, s),
-                                      brightness: rgb.brightnessComponent, alpha: 1))
+        return Color(nsColor: hsl(hue(of: space), space.themeVivid ?? defaultVivid, 0.55))
     }
 
-    /// The intensity a space tints at unless you change it.
-    static let defaultIntensity = 0.25
-
-    /// How strongly a space tints the sidebar background. The tint never reaches icons or the page.
-    /// At the default intensity: 6% in light, 10% in dark; the slider goes up to four times that.
-    @MainActor static func surfaceOpacity(_ scheme: ColorScheme, for space: Space? = nil) -> Double {
-        let base = scheme == .dark ? 0.10 : 0.06
-        guard let space, !space.isPrivate else { return base }
-        return base * (space.tintIntensity ?? defaultIntensity) / defaultIntensity
+    /// What a space lays over the sidebar's glass: its colour at its shade, and how opaque that layer is.
+    /// Shade works inside the window's range: pale to rich in light (93% to 25% lightness), dark grey to
+    /// near black in dark (30% to 10%), so a space on Auto keeps its character when the Mac switches.
+    @MainActor static func surface(for space: Space, dark: Bool) -> (color: NSColor, opacity: Double, isDark: Bool) {
+        let vivid = space.isPrivate ? 0 : (space.themeVivid ?? defaultVivid)
+        let shade = space.isPrivate ? defaultShade : (space.themeShade ?? defaultShade)
+        let glass = space.isPrivate ? defaultGlass : (space.themeGlass ?? defaultGlass)
+        let lightness = dark ? 0.30 - shade * 0.20 : 0.93 - shade * 0.68
+        let color = hsl(hue(of: space), vivid, lightness)
+        let opacity = 1 - glass * 0.85
+        // Roughly how light the sidebar ends up, over the material, to pick dark or light text on it.
+        let material = dark ? 0.2 : 0.9
+        let result = material * (1 - opacity) + luminance(color) * opacity
+        return (color, opacity, result < 0.5)
     }
 
-    /// The window appearance a space keeps to, or nil to follow the Mac.
+    /// The window appearance a space keeps to, or nil to follow Browsa's own setting.
     @MainActor static func appearance(for space: Space) -> NSAppearance? {
         switch space.isPrivate ? nil : space.appearance {
         case "light": NSAppearance(named: .aqua)
@@ -37,18 +50,19 @@ enum SpacePalette {
         }
     }
 
-    static func nsColor(hex: String) -> NSColor? {
-        var s = hex.trimmingCharacters(in: .whitespaces)
-        if s.hasPrefix("#") { s.removeFirst() }
-        guard s.count == 6, let v = UInt32(s, radix: 16) else { return nil }
-        return NSColor(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255,
-                       blue: CGFloat(v & 0xFF) / 255, alpha: 1)
+    static func hsl(_ hue: Double, _ saturation: Double, _ lightness: Double) -> NSColor {
+        let s = max(0, min(1, saturation)), l = max(0, min(1, lightness))
+        let a = s * min(l, 1 - l)
+        func f(_ n: Double) -> Double {
+            let k = (n + hue / 30).truncatingRemainder(dividingBy: 12)
+            return l - a * max(-1, min(k - 3, 9 - k, 1))
+        }
+        return NSColor(srgbRed: f(0), green: f(8), blue: f(4), alpha: 1)
     }
 
-    static func hex(_ color: NSColor) -> String? {
-        guard let c = color.usingColorSpace(.sRGB) else { return nil }
-        let r = Int((c.redComponent * 255).rounded()), g = Int((c.greenComponent * 255).rounded()), b = Int((c.blueComponent * 255).rounded())
-        return String(format: "#%02X%02X%02X", max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b)))
+    static func luminance(_ c: NSColor) -> Double {
+        guard let c = c.usingColorSpace(.sRGB) else { return 0.5 }
+        return 0.2126 * c.redComponent + 0.7152 * c.greenComponent + 0.0722 * c.blueComponent
     }
 
     /// Symbols offered for a space.
@@ -120,7 +134,46 @@ private struct SpaceCascade: ViewModifier {
     }
 }
 
+/// Browsa's own appearance: Auto (follows the Mac), Light or Dark. A space set to Light or Dark keeps
+/// its windows that way over this.
+enum BrowsaAppearance {
+    static let key = "browsaAppearance"
+
+    @MainActor static func apply(_ value: String? = nil) {
+        let value = value ?? UserDefaults.standard.string(forKey: key) ?? ""
+        let appearance: NSAppearance? = switch value {
+        case "light": NSAppearance(named: .aqua)
+        case "dark": NSAppearance(named: .darkAqua)
+        default: nil
+        }
+        guard NSApp.appearance?.name != appearance?.name else { return }
+        // Cross-fade every window rather than snapping.
+        for window in NSApp.windows where window.isVisible {
+            guard let layer = window.contentView?.superview?.layer ?? window.contentView?.layer else { continue }
+            let fade = CATransition()
+            fade.type = .fade
+            fade.duration = 0.3
+            layer.add(fade, forKey: "appearance")
+        }
+        NSApp.appearance = appearance
+    }
+}
+
+/// Text and icons in the sidebar stay readable on the space's colour: on a deep, solid colour in a light
+/// window they turn light, and on a pale one in a dark window they turn dark.
+private struct SpaceContrast: ViewModifier {
+    @Environment(Browser.self) private var browser
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        let dark = SpacePalette.surface(for: browser.currentSpace, dark: scheme == .dark).isDark
+        content.environment(\.colorScheme, dark ? .dark : .light)
+    }
+}
+
 extension View {
+    func spaceContrast() -> some View { modifier(SpaceContrast()) }
+
     func spaceCascade(index: Int, distance: CGFloat = 120, spaceSwitch: SpaceSwitch?) -> some View {
         modifier(SpaceCascade(index: index, distance: distance, spaceSwitch: spaceSwitch))
     }

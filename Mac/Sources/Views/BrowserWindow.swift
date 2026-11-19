@@ -70,14 +70,18 @@ struct BrowserWindow: View {
         }
     }
 
-    /// The space's colour, lightly, over the window material. It tints the sidebar and the frame
+    /// The space's colour and shade over the window material. It tints the sidebar and the frame
     /// around the page, never the icons or the page itself.
+    private var surface: (color: NSColor, opacity: Double, isDark: Bool) {
+        SpacePalette.surface(for: browser.currentSpace, dark: colorScheme == .dark)
+    }
+
     private var background: some View {
         ZStack {
             WindowMaterial(material: .sidebar)
             // Neutral until the intro reaches the sidebar, then the tint comes in.
-            SpacePalette.color(for: browser.currentSpace)
-                .opacity(browser.isIntroHoldingSidebar ? 0 : SpacePalette.surfaceOpacity(colorScheme, for: browser.currentSpace))
+            Color(nsColor: surface.color)
+                .opacity(browser.isIntroHoldingSidebar ? 0 : surface.opacity)
                 .animation(Motion.spring, value: browser.selectedSpaceID)
                 .animation(.easeInOut(duration: 0.5), value: browser.isIntroHoldingSidebar)
         }
@@ -97,11 +101,12 @@ struct BrowserWindow: View {
                 }
             if browser.isSidebarPeeking {
                 Sidebar(isFloating: true)
+                    .spaceContrast()
                     .frame(width: browser.sidebarWidth)
                     .background {
                         ZStack {
                             WindowMaterial(material: .popover)
-                            SpacePalette.color(for: browser.currentSpace).opacity(SpacePalette.surfaceOpacity(colorScheme, for: browser.currentSpace))
+                            Color(nsColor: surface.color).opacity(surface.opacity)
                         }
                     }
                     .clipShape(.rect(cornerRadius: 12, style: .continuous))
@@ -179,7 +184,17 @@ struct BrowserWindow: View {
         // A space set to Light or Dark keeps the whole window that way, sites included (WebKit follows
         // the window's appearance for prefers-color-scheme).
         let appearance = SpacePalette.appearance(for: browser.currentSpace)
-        if window.appearance?.name != appearance?.name { window.appearance = appearance }
+        if window.appearance?.name != appearance?.name {
+            // Cross-fade rather than snap, moving between a light space and a dark one.
+            if window.isVisible, let layer = window.contentView?.superview?.layer ?? window.contentView?.layer {
+                let fade = CATransition()
+                fade.type = .fade
+                fade.duration = 0.3
+                fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                layer.add(fade, forKey: "appearance")
+            }
+            window.appearance = appearance
+        }
     }
 
     private func fullScreenChanged(_ note: Notification, to fullScreen: Bool) {
