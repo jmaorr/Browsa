@@ -48,9 +48,10 @@ struct GlassTabs<Option: Hashable>: View {
             }
             .padding(3)
             .glassEffect(.regular, in: Capsule())
-            // A hairline, so the track holds its shape on white (light mode).
-            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5))
         }
+        // A hairline, so the track holds its shape on white (light mode). Outside the glass container,
+        // which otherwise draws its glass over it.
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.14), lineWidth: 1))
         .fixedSize()
         .accessibilityElement(children: .contain)
     }
