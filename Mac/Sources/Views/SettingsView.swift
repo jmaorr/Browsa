@@ -78,13 +78,7 @@ private struct GeneralSettings: View {
                 }
             }
             Section {
-                Picker("Appearance", selection: $appearance) {
-                    AppearanceOptions()
-                }
-                .pickerStyle(.segmented)
-                // Large is the macOS 26 capsule with the sliding glass selection; regular is the older squared control.
-                .controlSize(.large)
-                .fixedSize()
+                LabeledContent("Appearance") { AppearanceTabs(value: $appearance) }
                 .onChange(of: appearance) { BrowsaAppearance.apply(appearance) }
                 Text("Auto follows your Mac. A space can keep to Light or Dark in its colour settings.")
                     .font(.caption).foregroundStyle(.secondary)

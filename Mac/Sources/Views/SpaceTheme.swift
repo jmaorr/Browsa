@@ -60,15 +60,9 @@ struct SpaceThemeEditor: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 label("Appearance")
-                Picker("Appearance", selection: Binding(
+                AppearanceTabs(value: Binding(
                     get: { space.appearance ?? "" },
-                    set: { space.appearance = $0.isEmpty ? nil : $0; save() })) {
-                    AppearanceOptions()
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                // Large is the macOS 26 capsule with the sliding glass selection; regular is the older squared control.
-                .controlSize(.large)
+                    set: { space.appearance = $0.isEmpty ? nil : $0; save() }))
                 Text("Auto follows Browsa's appearance in Settings › General.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -197,11 +191,19 @@ struct SpaceThemeButton: View {
     }
 }
 
-/// Auto, Light and Dark, for the appearance pickers here and in Settings › General.
-struct AppearanceOptions: View {
+/// Auto, Light and Dark, for the appearance switches here and in Settings › General.
+enum AppearanceChoice: String, CaseIterable {
+    case auto = "", light, dark
+    var title: String { switch self { case .auto: "Auto"; case .light: "Light"; case .dark: "Dark" } }
+    var symbol: String { switch self { case .auto: "circle.lefthalf.filled"; case .light: "sun.max"; case .dark: "moon" } }
+}
+
+/// The Liquid Glass switch (the same one as SilicaOS) for Auto, Light and Dark, over the stored string.
+struct AppearanceTabs: View {
+    @Binding var value: String
+
     var body: some View {
-        Label("Auto", systemImage: "circle.lefthalf.filled").tag("")
-        Label("Light", systemImage: "sun.max").tag("light")
-        Label("Dark", systemImage: "moon").tag("dark")
+        GlassTabs(selection: Binding(get: { AppearanceChoice(rawValue: value) ?? .auto }, set: { value = $0.rawValue }),
+                  options: AppearanceChoice.allCases, title: \.title, symbol: \.symbol)
     }
 }
