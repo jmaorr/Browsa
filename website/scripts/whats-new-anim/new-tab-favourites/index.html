@@ -1,0 +1,64 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><script src="../kit/kit.js"></script>
+<style>
+  .screen { position:absolute; left:160px; top:240px; width:1280px; height:650px; border-radius:22px; overflow:hidden; background:#fff;
+    box-shadow: 0 0 0 1px rgb(22 21 19 / .1), 0 34px 70px -26px rgb(30 25 20 / .32); }
+  .pg { position:absolute; inset:0; padding:56px 70px; box-sizing:border-box; }
+  .pg .hero { height:240px; border-radius:14px; margin-bottom:28px; }
+  .pg .bar { margin-bottom:18px; }
+  .veil { position:absolute; inset:0; background: rgb(0 0 0 / .12); }
+  .cmd { position:absolute; left:340px; top:120px; width:600px; border-radius:24px; padding:18px; box-sizing:border-box; background: rgb(252 252 251 / .96);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / .08), 0 30px 70px -20px rgb(0 0 0 / .4); transform-origin:50% 0; }
+  .favrow { display:flex; gap:12px; margin-bottom:14px; }
+  .favrow span { flex:1; height:64px; border-radius:14px; background: rgb(0 0 0 / .045); display:grid; place-items:center; }
+  .favrow img { width:30px; height:30px; border-radius:7px; }
+  .field { display:flex; align-items:center; gap:12px; height:48px; padding:0 14px; border-radius:14px; background:#fff; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .08); font-size:19px; color:#9a9894; }
+  .field svg { width:20px; height:20px; color:#9a9894; }
+  .keys { position:absolute; left:0; right:0; top:900px; display:flex; justify-content:center; }
+  .cap { position:absolute; left:0; right:0; top:920px; text-align:center; font-size:24px; font-weight:500; }
+  .cursor { position:absolute; width:22px; height:30px; }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="label">Your favourites in every new tab</div>
+  <div class="sub">⌘T shows them across the top, so they’re one click away even in full screen.</div>
+  <div class="screen">
+    <div class="pg" id="pgA"><div class="hero" style="background:linear-gradient(135deg,#e7e2d8,#dfe6ea)"></div><div class="bar" style="width:70%"></div><div class="bar" style="width:88%"></div><div class="bar" style="width:62%"></div></div>
+    <div class="pg" id="pgB"><div class="hero" style="background:linear-gradient(135deg,#d9e6dc,#e4e9f2)"></div><div class="bar" style="width:55%"></div><div class="bar" style="width:80%"></div><div class="bar" style="width:74%"></div></div>
+    <div class="veil" id="veil"></div>
+    <div class="cmd" id="cmd"><div class="favrow" id="favrow"></div>
+      <div class="field"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M16 16l5 5"/></svg>Search or enter address</div></div>
+  </div>
+  <div class="keys" id="keys"><span class="key"><b id="k1">⌘</b><b id="k2">T</b></span></div>
+  <svg class="cursor" id="cursor" viewBox="0 0 22 30"><path d="M2 2v22l6-6 4 9 4-2-4-9h8z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+  <div class="cap" id="cap"></div>
+</div>
+<script>
+const FAVS = ["mail.google.com","calendar.google.com","linear.app","notion.so","figma.com","github.com"];
+document.getElementById("favrow").innerHTML = FAVS.map((f, i) => `<span id="f${i}"><img src="${fav(f)}"></span>`).join("");
+const $ = (id) => document.getElementById(id);
+window.TOTAL = 7.4;
+window.render = (t) => {
+  const keysIn = eo(ph(t, 0.5, 0.3)), keysOut = ph(t, 1.9, 0.3);
+  $("keys").style.opacity = keysIn * (1 - keysOut);
+  const press = Math.sin(Math.PI * ph(t, 0.95, 0.35));
+  for (const k of ["k1", "k2"]) { $(k).style.transform = `translateY(${press * 3}px)`; }
+  const open = eo(ph(t, 1.2, 0.3)), close = ph(t, 4.6, 0.25);
+  $("cmd").style.opacity = open * (1 - close);
+  $("cmd").style.transform = `scale(${mix(0.97, 1, open)})`;
+  $("veil").style.opacity = open * (1 - close);
+  // Cursor to the Figma favourite, hover, click.
+  const m = eio(ph(t, 2.6, 0.9));
+  const tx = 160 + 340 + 18 + 4 * (84 + 12) + 40, ty = 240 + 120 + 18 + 32;
+  $("cursor").style.transform = `translate(${mix(1000, tx, m)}px, ${mix(760, ty, m)}px)`;
+  const hover = ph(t, 3.3, 0.2);
+  for (let i = 0; i < FAVS.length; i++) $("f" + i).style.background = i === 4 ? `rgb(0 0 0 / ${0.045 + 0.08 * hover})` : "rgb(0 0 0 / .045)";
+  $("f4").style.transform = `scale(${1 - 0.05 * Math.sin(Math.PI * ph(t, 4.2, 0.3))})`;
+  $("pgB").style.opacity = eo(ph(t, 4.6, 0.4)); $("pgA").style.opacity = 1 - eo(ph(t, 4.6, 0.4));
+  $("cursor").style.opacity = 1 - ph(t, 5.6, 0.3);
+  const cap = $("cap"); const show = t > 2.3 && t < 6.6;
+  cap.textContent = "Click a favourite to jump straight to it";
+  cap.style.opacity = show ? Math.min(eo(ph(t, 2.3, 0.35)), 1 - ph(t, 6.3, 0.3)) : 0;
+  $("stage").style.opacity = loopFade(t, TOTAL);
+};
+render(0);
+</script></body></html>

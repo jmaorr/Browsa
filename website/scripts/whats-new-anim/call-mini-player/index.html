@@ -1,0 +1,103 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><script src="../kit/kit.js"></script>
+<style>
+  .win { left:200px; top:250px; width:1200px; height:640px; }
+  .side { width:300px; }
+  .page { left:312px; }
+  .article { position:absolute; inset:0; padding:40px 44px; box-sizing:border-box; background:#fff; }
+  .article .hero { height:220px; border-radius:12px; background:linear-gradient(135deg,#e9e4da,#d9e2e6); margin-bottom:26px; }
+  .article .bar { margin-bottom:16px; }
+  .call { position:absolute; background:#1c1d20; overflow:hidden; transform-origin:0 0; }
+  .callin { position:absolute; left:0; top:0; width:876px; height:616px; transform-origin:0 0; }
+  .badge { margin-left:auto; width:26px; height:18px; border-radius:9px; background:#34c759; display:grid; place-items:center; }
+  .badge svg { width:13px; height:13px; color:rgb(0 0 0 / .75); }
+  .tiles { position:absolute; inset:16px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .tile { border-radius:12px; display:grid; place-items:center; color:#fff; font-size:34px; font-weight:600; position:relative; }
+  .tile small { position:absolute; left:14px; bottom:12px; font-size:15px; font-weight:500; opacity:.85; }
+  .ctrl { position:absolute; left:50%; bottom:22px; transform:translateX(-50%); display:flex; gap:12px; }
+  .ctrl i { width:46px; height:46px; border-radius:50%; background:#3a3b40; display:block; } .ctrl i.end { background:#ea4335; width:62px; border-radius:23px; }
+  .glass { background: rgb(255 255 255 / .55); backdrop-filter: blur(14px); box-shadow: 0 0 0 1px rgb(255 255 255 / .5), 0 6px 18px rgb(0 0 0 / .18); }
+  .pill { position:absolute; display:flex; align-items:center; gap:8px; height:34px; padding:0 14px; border-radius:17px; font-size:15px; font-weight:600; color:#1d1d1f; }
+  .pill img { width:18px; height:18px; border-radius:5px; }
+  .circ { position:absolute; width:34px; height:34px; border-radius:50%; display:grid; place-items:center; }
+  .circ svg { width:16px; height:16px; color:#1d1d1f; }
+  .icon { position:absolute; width:64px; height:64px; border-radius:50%; display:grid; place-items:center; }
+  .icon img { width:30px; height:30px; border-radius:8px; }
+  .live { margin-left:auto; display:flex; gap:5px; align-items:center; }
+  .live i { width:9px; height:9px; border-radius:50%; background:#34c759; }
+  .cursor { position:absolute; width:22px; height:30px; }
+  .cap { position:absolute; left:0; right:0; top:920px; text-align:center; font-size:24px; font-weight:500; }
+  .desk { position:absolute; inset:0; background: radial-gradient(1200px 700px at 70% 30%, #e7e3f4, #f5f4f1 70%); }
+</style></head>
+<body><div class="desk"></div><div class="stage" id="stage">
+  <div class="label">Your call comes with you</div>
+  <div class="sub">Leave the call’s tab and it floats in a small window above everything.</div>
+  <div class="win" style="--tint:#5856d6"><div class="side" id="side"></div>
+    <div class="page" id="page"><div class="article" id="article"><div class="hero"></div><div class="bar" style="width:72%"></div><div class="bar" style="width:90%"></div><div class="bar" style="width:84%"></div><div class="bar" style="width:60%"></div></div></div>
+  </div>
+  <div class="call" id="call"><div class="callin" id="callin"><div class="tiles">
+      <div class="tile" style="background:#3b4a63">AL<small>Ada</small></div><div class="tile" style="background:#5b4636">GH<small>Grace</small></div>
+      <div class="tile" style="background:#35524a">KJ<small>Katherine</small></div><div class="tile" style="background:#4a3b5c">You<small>You</small></div>
+    </div><div class="ctrl"><i></i><i></i><i class="end"></i></div></div>
+    <div class="pill glass" id="title"><img id="ticon"><span>Weekly sync</span></div>
+    <div class="circ glass" id="back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M9 15l6-6M10 9h5v5"/></svg></div>
+    <div class="circ glass" id="mini"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 12h12"/></svg></div>
+  </div>
+  <div class="icon glass" id="icon"><img id="iicon"></div>
+  <svg class="cursor" id="cursor" viewBox="0 0 22 30"><path d="M2 2v22l6-6 4 9 4-2-4-9h8z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+  <div class="cap" id="cap"></div>
+</div>
+<script>
+const live = `<span class="badge"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="6" width="14" height="12" rx="3"/><path d="M17 10.5l5-3v9l-5-3z"/></svg></span>`;
+document.getElementById("side").innerHTML = `
+  <div class="lights"><i></i><i></i><i></i></div>
+  <div class="favs">${["mail.google.com","calendar.google.com","linear.app","notion.so"].map(f => `<span><img src="${fav(f)}"></span>`).join("")}</div>
+  <div class="sect">Today</div>
+  <div class="row" id="r1"><div class="in"><img src="${fav("calendar.google.com")}"><span>Weekly sync</span>${live}</div></div>
+  <div class="row" id="r2"><div class="in"><img src="${fav("notion.so")}"><span>Standup notes</span></div></div>
+  ${row(fav("linear.app"), "Inbox · Linear")}${row(fav("github.com"), "Pull requests · GitHub")}`;
+document.getElementById("ticon").src = fav("calendar.google.com");
+document.getElementById("iicon").src = fav("calendar.google.com");
+const $ = (id) => document.getElementById(id);
+// The page card in stage coordinates, and the floating player's frame.
+const PAGE = { x: 512, y: 262, w: 876, h: 616 }, PIP = { x: 1030, y: 540, w: 438, h: 308 }, ICON = { x: 1440, y: 800 };
+const CAPS = [[0.4, 2.0, "On a call in Weekly sync"], [2.4, 5.2, "Switch tabs and the call floats over everything"], [5.6, 8.6, "Minimise it to a small glass icon"]];
+window.TOTAL = 9.4;
+window.render = (t) => {
+  // Cursor: to Standup notes, click; later to the minimise button.
+  const c1 = eio(ph(t, 1.0, 0.9)), c2 = eio(ph(t, 5.4, 0.9));
+  const cx = mix(mix(760, 400, c1), PIP.x + PIP.w - 30, c2), cy = mix(mix(560, 552, c1), PIP.y + 22, c2);
+  $("cursor").style.transform = `translate(${cx}px, ${cy}px)`;
+  const switched = t >= 2.0;
+  $("r1").classList.toggle("sel", !switched); $("r2").classList.toggle("sel", switched);
+  // The call moves from the page into the floating player.
+  const f = eio(ph(t, 2.1, 0.75));
+  const m = eio(ph(t, 6.4, 0.55));
+  const x = mix(PAGE.x, PIP.x, f), y = mix(PAGE.y, PIP.y, f), w = mix(PAGE.w, PIP.w, f), h = mix(PAGE.h, PIP.h, f);
+  const call = $("call");
+  call.style.left = x + "px"; call.style.top = y + "px"; call.style.width = w + "px"; call.style.height = h + "px";
+  call.style.borderRadius = mix(14, 22, f) + "px";
+  $("callin").style.transform = `scale(${w / PAGE.w})`;
+  call.style.boxShadow = `0 ${30 * f}px ${60 * f}px -16px rgb(0 0 0 / ${0.4 * f}), 0 0 0 1px rgb(0 0 0 / .08)`;
+  // Minimise: shrink toward the icon.
+  call.style.transform = `translate(${(ICON.x - x - w / 2 + 32) * m}px, ${(ICON.y - y - h / 2 + 32) * m}px) scale(${mix(1, 0.12, m)})`;
+  call.style.transformOrigin = "50% 50%";
+  call.style.opacity = 1 - ph(t, 6.6, 0.3);
+  $("article").style.opacity = f;
+  // Glass controls fade in on the floating player.
+  const g = eo(ph(t, 3.0, 0.4));
+  for (const id of ["title", "back", "mini"]) $(id).style.opacity = g;
+  $("title").style.left = "12px"; $("title").style.top = "12px";
+  $("back").style.right = "54px"; $("back").style.top = "12px"; $("mini").style.right = "12px"; $("mini").style.top = "12px";
+  const press = Math.sin(Math.PI * ph(t, 6.25, 0.3));
+  $("mini").style.transform = `scale(${1 - press * 0.12})`;
+  const i = eo(ph(t, 6.75, 0.4));
+  $("icon").style.left = ICON.x + "px"; $("icon").style.top = ICON.y + "px";
+  $("icon").style.opacity = i; $("icon").style.transform = `scale(${mix(0.6, 1, i)})`;
+  const cap = $("cap"), k = CAPS.find(([s, e]) => t >= s && t < e);
+  cap.textContent = k ? k[2] : "";
+  cap.style.opacity = k ? Math.min(eo(ph(t, k[0], 0.35)), 1 - ph(t, k[1] - 0.3, 0.3)) : 0;
+  $("stage").style.opacity = loopFade(t, TOTAL);
+};
+render(0);
+</script></body></html>
