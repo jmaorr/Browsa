@@ -54,6 +54,7 @@ struct SpaceThemeEditor: View {
                 } maximumValueLabel: {
                     Text("Darker")
                 }
+                .labelsHidden()
                 .controlSize(.small)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
