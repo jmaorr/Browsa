@@ -20,6 +20,8 @@ public final class BrowserTab: Identifiable {
     /// Pinned and favourite tabs ignore it: every window shares those. Nil, or a window that isn't
     /// open, means any window may take the tab. iOS has one window and ignores it.
     public var windowKey: UUID?
+    /// A name you gave the tab (double-click it in the sidebar). Shown instead of the page's title.
+    public var customTitle: String?
 
     // Live state mirrored from the web view (not persisted).
     public var estimatedProgress: Double = 0
@@ -36,6 +38,11 @@ public final class BrowserTab: Identifiable {
     public var pageBackground: CGColor?
     /// A new web view hasn't drawn its page yet, so show the tab's last picture over it.
     public var isAwaitingFirstPaint = false
+    /// The page has the camera or microphone on: the tab is in a call. Nil otherwise.
+    public var call: TabCall?
+    /// The page's zoom (1 = actual size), for the address bar's zoom badge. The engine's own value
+    /// can't be observed, so the Mac app keeps this one in step whenever it zooms.
+    public var pageZoom: Double = 1
 
     public init(id: UUID = UUID(), url: URL?, title: String = "", isPinned: Bool = false,
                 lastActive: Date = .now, interactionState: Data? = nil, isPrivate: Bool = false) {
@@ -49,9 +56,23 @@ public final class BrowserTab: Identifiable {
     }
 
     public var displayTitle: String {
+        if let customTitle, !customTitle.isEmpty { return customTitle }
         if !title.isEmpty { return title }
         if let url { return URLNormalizer.displayHost(url) }
         return "New Tab"
+    }
+}
+
+/// What a tab in a call is using, for the badge that leads back to it.
+public struct TabCall: Equatable, Sendable {
+    /// The camera is on.
+    public var camera: Bool
+    /// The microphone is on (false when it's muted or off).
+    public var microphone: Bool
+
+    public init(camera: Bool, microphone: Bool) {
+        self.camera = camera
+        self.microphone = microphone
     }
 }
 
@@ -63,6 +84,14 @@ public final class Space: Identifiable {
     public var symbol: String
     /// Index into the app's space colour palette.
     public var colorIndex: Int
+    /// The Mac's space theme, on top of `colorIndex` (the iPhone app keeps to the palette). Nil fields fall
+    /// back to the palette colour's defaults.
+    /// The colour's hue in degrees, 0...360.
+    public var themeHue: Double?
+    /// How light or dark the colour sits, 0 (lighter) to 1 (darker), within the window's light or dark range.
+    public var themeShade: Double?
+    /// "light" or "dark" keeps the space's whole window in that appearance. Nil follows Browsa's setting.
+    public var appearance: String?
     public var pinned: [BrowserTab]
     public var today: [BrowserTab]
     public var selectedTabID: UUID?
@@ -256,11 +285,17 @@ public struct TabRecord: Codable, Sendable {
     public var favoriteID: UUID? = nil
     /// Missing in state saved before each Mac window had its own Today tabs.
     public var windowKey: UUID? = nil
+    /// Missing in state saved before tabs could be renamed.
+    public var customTitle: String? = nil
 }
 
 public struct SpaceRecord: Codable, Sendable {
     public var id: UUID, name: String, symbol: String, colorIndex: Int
     public var pinned: [TabRecord], today: [TabRecord], selectedTabID: UUID?, isSidebarOpen: Bool
+    /// Missing in state saved before Mac space themes (see `Space`).
+    public var themeHue: Double? = nil
+    public var themeShade: Double? = nil
+    public var appearance: String? = nil
 }
 
 public struct BrowserSnapshot: Codable, Sendable {
@@ -287,13 +322,14 @@ extension BrowserTab {
     public var record: TabRecord {
         TabRecord(id: id, url: url, title: title, isPinned: isPinned, lastActive: lastActive,
                   interactionState: interactionState, favoriteID: favoriteID,
-                  windowKey: isPinned || favoriteID != nil ? nil : windowKey)
+                  windowKey: isPinned || favoriteID != nil ? nil : windowKey, customTitle: customTitle)
     }
     public convenience init(_ r: TabRecord) {
         self.init(id: r.id, url: r.url, title: r.title, isPinned: r.isPinned,
                   lastActive: r.lastActive, interactionState: r.interactionState)
         favoriteID = r.favoriteID
         windowKey = r.windowKey
+        customTitle = r.customTitle
     }
 }
 
@@ -302,11 +338,16 @@ extension Space {
         SpaceRecord(id: id, name: name, symbol: symbol, colorIndex: colorIndex,
                     pinned: pinned.map(\.record),
                     today: today.filter { !$0.isPrivate }.map(\.record),
-                    selectedTabID: selectedTabID, isSidebarOpen: isSidebarOpen)
+                    selectedTabID: selectedTabID, isSidebarOpen: isSidebarOpen,
+                    themeHue: themeHue, themeShade: themeShade,
+                    appearance: appearance)
     }
     public convenience init(_ r: SpaceRecord) {
         self.init(id: r.id, name: r.name, symbol: r.symbol, colorIndex: r.colorIndex,
                   pinned: r.pinned.map(BrowserTab.init), today: r.today.map(BrowserTab.init),
                   selectedTabID: r.selectedTabID, isSidebarOpen: r.isSidebarOpen)
+        themeHue = r.themeHue
+        themeShade = r.themeShade
+        appearance = r.appearance
     }
 }

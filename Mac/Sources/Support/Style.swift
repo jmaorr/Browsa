@@ -6,16 +6,99 @@ import Suggest
 /// Space colours, the same six as the iPhone app.
 enum SpacePalette {
     static let colors: [Color] = [.indigo, .orange, .teal, .pink, .green, .purple]
+    /// The theme's suggested colours, one for each colour of the rainbow and magenta to close the strip,
+    /// in the strip's order.
+    static let presets: [(name: String, hue: Double)] = [
+        ("Red", 0), ("Orange", 24), ("Yellow", 46), ("Green", 135),
+        ("Blue", 208), ("Indigo", 236), ("Violet", 276), ("Magenta", 318),
+    ]
     static func color(_ i: Int) -> Color { colors[((i % colors.count) + colors.count) % colors.count] }
-    /// Private is a neutral grey.
-    @MainActor static func color(for space: Space) -> Color { space.isPrivate ? .gray : color(space.colorIndex) }
-    /// How strongly a space tints the sidebar background. The tint never reaches icons or the page.
-    static func surfaceOpacity(_ scheme: ColorScheme) -> Double { scheme == .dark ? 0.10 : 0.06 }
+    /// The hue a space has before you pick one, from its palette colour (the iPhone's six, in its order).
+    static let paletteHues: [Double] = [236, 24, 180, 340, 135, 276]
+    /// How saturated a space's colour is: kept soft, so no hue on the strip turns loud.
+    static let saturation = 0.55
+    static let defaultShade = 0.3
+    /// How much of the colour lies over the sidebar's glass. Fixed, so the material stays the Mac's own.
+    static let tintOpacity = 0.5
+
+    @MainActor static func hue(of space: Space) -> Double {
+        space.themeHue ?? paletteHues[((space.colorIndex % paletteHues.count) + paletteHues.count) % paletteHues.count]
+    }
+
+    /// A space's colour at full strength, for small accents (and the theme swatch). Private is a neutral grey.
+    @MainActor static func color(for space: Space) -> Color {
+        guard !space.isPrivate else { return .gray }
+        // Untouched (the classic look): the palette colour itself.
+        guard space.themeHue != nil || space.themeShade != nil else { return color(space.colorIndex) }
+        return Color(nsColor: hsl(hue(of: space), saturation, 0.55))
+    }
+
+    /// What a space lays over the sidebar's glass: its colour at its shade, and how opaque that layer is.
+    /// Shade moves lighter or darker inside the window's range: 88% to 55% lightness in light, 32% to 16%
+    /// in dark, so a space on Auto keeps its character when the Mac switches.
+    @MainActor static func surface(for space: Space, dark: Bool) -> (color: NSColor, opacity: Double, isDark: Bool) {
+        // No colour or shade picked (a new space, or after Reset): the original subtle wash, the space's
+        // palette colour lightly over the glass.
+        if space.isPrivate || (space.themeHue == nil && space.themeShade == nil) {
+            let base = space.isPrivate ? NSColor.gray : NSColor(color(space.colorIndex))
+            return (base, dark ? 0.10 : 0.06, dark)
+        }
+        let shade = space.isPrivate ? defaultShade : (space.themeShade ?? defaultShade)
+        let lightness = dark ? 0.32 - shade * 0.16 : 0.88 - shade * 0.33
+        let color = hsl(hue(of: space), space.isPrivate ? 0 : (dark ? saturation * 0.8 : saturation), lightness)
+        // Roughly how light the sidebar ends up, over the material, to pick dark or light text on it.
+        let material = dark ? 0.2 : 0.9
+        let result = material * (1 - tintOpacity) + luminance(color) * tintOpacity
+        return (color, tintOpacity, result < 0.5)
+    }
+
+    /// The window appearance a space keeps to, or nil to follow Browsa's own setting.
+    @MainActor static func appearance(for space: Space) -> NSAppearance? {
+        switch space.isPrivate ? nil : space.appearance {
+        case "light": NSAppearance(named: .aqua)
+        case "dark": NSAppearance(named: .darkAqua)
+        default: nil
+        }
+    }
+
+    static func hsl(_ hue: Double, _ saturation: Double, _ lightness: Double) -> NSColor {
+        let s = max(0, min(1, saturation)), l = max(0, min(1, lightness))
+        let a = s * min(l, 1 - l)
+        func f(_ n: Double) -> Double {
+            let k = (n + hue / 30).truncatingRemainder(dividingBy: 12)
+            return l - a * max(-1, min(k - 3, 9 - k, 1))
+        }
+        return NSColor(srgbRed: f(0), green: f(8), blue: f(4), alpha: 1)
+    }
+
+    static func luminance(_ c: NSColor) -> Double {
+        guard let c = c.usingColorSpace(.sRGB) else { return 0.5 }
+        return 0.2126 * c.redComponent + 0.7152 * c.greenComponent + 0.0722 * c.blueComponent
+    }
 
     /// Symbols offered for a space.
-    static let symbols = ["house.fill", "briefcase.fill", "book.fill", "gamecontroller.fill", "cart.fill", "paintpalette.fill",
-                          "graduationcap.fill", "heart.fill", "star.fill", "leaf.fill", "airplane", "music.note",
-                          "film.fill", "hammer.fill", "chart.bar.fill", "circle.fill"]
+    static let symbols = [
+        // Places and everyday
+        "house.fill", "briefcase.fill", "building.2.fill", "cup.and.saucer.fill", "fork.knife", "cart.fill",
+        "bag.fill", "creditcard.fill", "gift.fill", "bed.double.fill", "sofa.fill", "tent.fill",
+        // Work and making
+        "hammer.fill", "wrench.and.screwdriver.fill", "chevron.left.forwardslash.chevron.right", "terminal.fill",
+        "cpu.fill", "server.rack", "chart.bar.fill", "chart.pie.fill", "doc.text.fill", "folder.fill",
+        "tray.full.fill", "paperplane.fill", "envelope.fill", "calendar", "checklist", "lightbulb.fill",
+        "pencil.and.ruler.fill", "paintpalette.fill", "paintbrush.pointed.fill", "camera.fill", "photo.fill", "scissors",
+        // Learning and play
+        "book.fill", "books.vertical.fill", "graduationcap.fill", "globe.americas.fill", "atom", "flask.fill",
+        "gamecontroller.fill", "puzzlepiece.fill", "dice.fill", "music.note", "headphones", "guitars.fill",
+        "film.fill", "tv.fill", "theatermasks.fill", "sportscourt.fill", "figure.run", "dumbbell.fill",
+        // Nature and travel
+        "leaf.fill", "tree.fill", "mountain.2.fill", "sun.max.fill", "moon.fill", "cloud.fill",
+        "snowflake", "flame.fill", "drop.fill", "pawprint.fill", "airplane", "car.fill",
+        "bicycle", "sailboat.fill", "map.fill", "location.fill",
+        // People and feelings
+        "person.fill", "person.2.fill", "figure.2.and.child.holdinghands", "heart.fill", "star.fill", "sparkles",
+        "bolt.fill", "crown.fill", "flag.fill", "bookmark.fill", "tag.fill", "bell.fill",
+        "lock.fill", "shield.fill", "eye.fill", "circle.fill", "square.fill", "triangle.fill",
+    ]
 }
 
 /// One motion vocabulary, shared with the iPhone app. Reduce Motion turns springs into short eases.
@@ -62,7 +145,46 @@ private struct SpaceCascade: ViewModifier {
     }
 }
 
+/// Browsa's own appearance: Auto (follows the Mac), Light or Dark. A space set to Light or Dark keeps
+/// its windows that way over this.
+enum BrowsaAppearance {
+    static let key = "browsaAppearance"
+
+    @MainActor static func apply(_ value: String? = nil) {
+        let value = value ?? UserDefaults.standard.string(forKey: key) ?? ""
+        let appearance: NSAppearance? = switch value {
+        case "light": NSAppearance(named: .aqua)
+        case "dark": NSAppearance(named: .darkAqua)
+        default: nil
+        }
+        guard NSApp.appearance?.name != appearance?.name else { return }
+        // Cross-fade every window rather than snapping.
+        for window in NSApp.windows where window.isVisible {
+            guard let layer = window.contentView?.superview?.layer ?? window.contentView?.layer else { continue }
+            let fade = CATransition()
+            fade.type = .fade
+            fade.duration = 0.3
+            layer.add(fade, forKey: "appearance")
+        }
+        NSApp.appearance = appearance
+    }
+}
+
+/// Text and icons in the sidebar stay readable on the space's colour: on a deep, solid colour in a light
+/// window they turn light, and on a pale one in a dark window they turn dark.
+private struct SpaceContrast: ViewModifier {
+    @Environment(Browser.self) private var browser
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        let dark = SpacePalette.surface(for: browser.currentSpace, dark: scheme == .dark).isDark
+        content.environment(\.colorScheme, dark ? .dark : .light)
+    }
+}
+
 extension View {
+    func spaceContrast() -> some View { modifier(SpaceContrast()) }
+
     func spaceCascade(index: Int, distance: CGFloat = 120, spaceSwitch: SpaceSwitch?) -> some View {
         modifier(SpaceCascade(index: index, distance: distance, spaceSwitch: spaceSwitch))
     }

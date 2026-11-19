@@ -114,6 +114,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Calls (Meet, Zoom, Teams) run in ordinary WebKit tabs: on Browsa's WebKit where it's present, with its call
         // audio in the capture unit; elsewhere on Apple's WebKit. Closing one mid-call asks first.
         CallGuards.install(in: library)
+        // Leaving a call's tab floats the call in a small window that follows you; see CallPiP.
+        CallPiP.install(in: library)
         return library
     }
     private var keyMonitor: Any?
@@ -161,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        BrowsaAppearance.apply()
         // tools/audio-bench opens its page at launch (test builds only; see AudioBench).
         if let url = AudioBench.launchURL { openAudioBenchPage(url, attempt: 0) }
         if let every = AudioBench.tabSwitchSeconds { scheduleAudioBenchTabSwitch(every: every) }

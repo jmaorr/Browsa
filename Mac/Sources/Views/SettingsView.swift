@@ -58,6 +58,7 @@ private struct GeneralSettings: View {
     @Environment(Updates.self) private var updates
     @State private var isDefault = false
     @State private var importing = false
+    @AppStorage(BrowsaAppearance.key) private var appearance = ""
 
     var body: some View {
         @Bindable var browser = browser
@@ -75,6 +76,17 @@ private struct GeneralSettings: View {
                     Button("Import from Another Browser…") { importing = true }
                         .sheet(isPresented: $importing) { ImportSheet().environment(browser) }
                 }
+            }
+            Section {
+                LabeledContent("Appearance") { AppearanceTabs(value: $appearance) }
+                // After the pill has slid across: switching every window's appearance mid-slide (and the
+                // fade with it) redraws Settings too and cuts the slide short.
+                .onChange(of: appearance) {
+                    let value = appearance
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { BrowsaAppearance.apply(value) }
+                }
+                Text("Auto follows your Mac. A space can keep to Light or Dark in its colour settings.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section {
                 Picker("Search engine", selection: Binding(
@@ -127,46 +139,110 @@ private struct GeneralSettings: View {
 
 private struct SpacesSettings: View {
     @Environment(Library.self) private var browser
+    /// The space being dragged by its handle, how far it has moved, and the slot it would drop into.
+    @State private var dragging: UUID?
+    @State private var dragOffset: CGFloat = 0
+    @State private var target: Int?
+    private static let rowHeight: CGFloat = 44
 
     var body: some View {
-        Form {
-            Section {
-                ForEach(browser.regularSpaces) { space in
-                    SpaceEditor(space: space)
+        // Reordering is by the handle only, so a click in the name field focuses it straight away (a List
+        // makes the whole row draggable and holds every click while it decides). The dragged row lifts and
+        // follows the pointer; the rows it passes slide out of its way.
+        let spaces = browser.regularSpaces
+        ScrollView {
+            VStack(spacing: 14) {
+                VStack(spacing: 0) {
+                    ForEach(Array(spaces.enumerated()), id: \.element.id) { i, space in
+                        let lifted = dragging == space.id
+                        SpaceEditor(space: space,
+                                    onDrag: { drag(space.id, from: i, by: $0, count: spaces.count) },
+                                    onDrop: { drop(from: i) })
+                            .padding(.horizontal, 12)
+                            .frame(height: Self.rowHeight)
+                            .background {
+                                if lifted {
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(.background)
+                                        .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+                                }
+                            }
+                            .offset(y: lifted ? dragOffset : shift(for: i))
+                            .zIndex(lifted ? 1 : 0)
+                    }
                 }
-            } footer: {
+                .padding(.vertical, 4)
+                .background(Color.primary.opacity(0.04), in: .rect(cornerRadius: 12, style: .continuous))
                 HStack {
                     Spacer()
-                    Button("Add Space") { browser.addSpace() }
+                    Button("Add Space", systemImage: "plus") { browser.addSpace() }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
                 }
             }
+            .padding(20)
         }
-        .formStyle(.grouped)
+    }
+
+    /// How far a row slides to make room for the dragged one.
+    private func shift(for i: Int) -> CGFloat {
+        guard let id = dragging, let target, let from = browser.regularSpaces.firstIndex(where: { $0.id == id })
+        else { return 0 }
+        if from < target, i > from, i <= target { return -Self.rowHeight }
+        if target < from, i >= target, i < from { return Self.rowHeight }
+        return 0
+    }
+
+    private func drag(_ id: UUID, from: Int, by y: CGFloat, count: Int) {
+        if dragging == nil { dragging = id }
+        dragOffset = y
+        let next = max(0, min(count - 1, from + Int((y / Self.rowHeight).rounded())))
+        if next != target { withAnimation(Motion.snappy) { target = next } }
+    }
+
+    private func drop(from: Int) {
+        let to = target ?? from
+        // Settle the lifted row into its slot, then reorder without animation so nothing jumps.
+        withAnimation(Motion.snappy) { dragOffset = CGFloat(to - from) * Self.rowHeight }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) {
+                if to != from { browser.moveSpaces(fromOffsets: [from], toOffset: to > from ? to + 1 : to) }
+                dragging = nil
+                dragOffset = 0
+                target = nil
+            }
+        }
     }
 }
 
 private struct SpaceEditor: View {
     @Environment(Library.self) private var browser
     @Bindable var space: Space
+    /// The handle's drag: how far it has moved down (negative is up), then the drop.
+    let onDrag: (CGFloat) -> Void
+    let onDrop: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .frame(width: 16, height: 26)
+                .contentShape(.rect)
+                .help("Drag to reorder")
+                .accessibilityHidden(true)
+                .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                    .onChanged { onDrag($0.translation.height) }
+                    .onEnded { _ in onDrop() })
             SpaceIconPicker(symbol: $space.symbol) { browser.scheduleSave() }
             TextField("Name", text: $space.name, prompt: Text("Name"))
                 .textFieldStyle(.roundedBorder)
-                // The grouped form would otherwise add a "Name" label and push the field right.
                 .labelsHidden()
                 .onSubmit { browser.scheduleSave() }
-            HStack(spacing: 4) {
-                ForEach(SpacePalette.colors.indices, id: \.self) { i in
-                    Circle()
-                        .fill(SpacePalette.color(i))
-                        .frame(width: 14, height: 14)
-                        .overlay(Circle().strokeBorder(.primary.opacity(space.colorIndex == i ? 0.6 : 0), lineWidth: 2).padding(-3))
-                        .onTapGesture { space.colorIndex = i; browser.scheduleSave() }
-                }
-            }
-            .padding(.horizontal, 4)
+            SpaceThemeButton(space: space) { browser.scheduleSave() }
+                .padding(.horizontal, 4)
             Button(role: .destructive) { browser.deleteSpace(space) } label: { Image(systemName: "trash") }
                 .buttonStyle(.borderless)
                 .disabled(browser.regularSpaces.count < 2)
@@ -195,7 +271,8 @@ private struct SpaceIconPicker: View {
         .onHover { hovering = $0 }
         .help("Change icon")
         .popover(isPresented: $open, arrowEdge: .bottom) {
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(28), spacing: 4), count: 6), spacing: 4) {
+            ScrollView {
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(28), spacing: 4), count: 8), spacing: 4) {
                 ForEach(SpacePalette.symbols, id: \.self) { s in
                     Button {
                         symbol = s
@@ -213,6 +290,8 @@ private struct SpaceIconPicker: View {
                 }
             }
             .padding(10)
+            }
+            .frame(width: 8 * 28 + 7 * 4 + 20, height: 280)
         }
     }
 }

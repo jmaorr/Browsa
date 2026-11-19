@@ -64,16 +64,24 @@ struct BrowserWindow: View {
             ArchiveSheet().environment(browser)
         }
         .onChange(of: browser.selectedSpaceID) { browser.isSidebarPeeking = false }
+        // A space set to Light or Dark switches the window as you move to it, or as you change its theme.
+        .onChange(of: SpacePalette.appearance(for: browser.currentSpace)?.name) {
+            if let window = browser.nsWindow { configure(window) }
+        }
     }
 
-    /// The space's colour, lightly, over the window material. It tints the sidebar and the frame
+    /// The space's colour and shade over the window material. It tints the sidebar and the frame
     /// around the page, never the icons or the page itself.
+    private var surface: (color: NSColor, opacity: Double, isDark: Bool) {
+        SpacePalette.surface(for: browser.currentSpace, dark: colorScheme == .dark)
+    }
+
     private var background: some View {
         ZStack {
             WindowMaterial(material: .sidebar)
             // Neutral until the intro reaches the sidebar, then the tint comes in.
-            SpacePalette.color(for: browser.currentSpace)
-                .opacity(browser.isIntroHoldingSidebar ? 0 : SpacePalette.surfaceOpacity(colorScheme))
+            Color(nsColor: surface.color)
+                .opacity(browser.isIntroHoldingSidebar ? 0 : surface.opacity)
                 .animation(Motion.spring, value: browser.selectedSpaceID)
                 .animation(.easeInOut(duration: 0.5), value: browser.isIntroHoldingSidebar)
         }
@@ -93,11 +101,12 @@ struct BrowserWindow: View {
                 }
             if browser.isSidebarPeeking {
                 Sidebar(isFloating: true)
+                    .spaceContrast()
                     .frame(width: browser.sidebarWidth)
                     .background {
                         ZStack {
                             WindowMaterial(material: .popover)
-                            SpacePalette.color(for: browser.currentSpace).opacity(SpacePalette.surfaceOpacity(colorScheme))
+                            Color(nsColor: surface.color).opacity(surface.opacity)
                         }
                     }
                     .clipShape(.rect(cornerRadius: 12, style: .continuous))
@@ -171,6 +180,23 @@ struct BrowserWindow: View {
         }
         for button in browser.titleBarButtons where button.isHidden == fullScreen {
             button.isHidden = !fullScreen
+        }
+        // A space set to Light or Dark keeps the whole window that way, sites included (WebKit follows
+        // the view's appearance for prefers-color-scheme). Set on the content view, not the window: SwiftUI
+        // resets NSWindow.appearance on its next update, which left a space stuck in Dark after going back
+        // to Auto (the window read nil again, so nothing changed, while the views kept the dark scheme).
+        let appearance = SpacePalette.appearance(for: browser.currentSpace)
+        guard let content = window.contentView else { return }
+        if content.appearance?.name != appearance?.name {
+            // Cross-fade rather than snap, moving between a light space and a dark one.
+            if window.isVisible, let layer = window.contentView?.superview?.layer ?? window.contentView?.layer {
+                let fade = CATransition()
+                fade.type = .fade
+                fade.duration = 0.3
+                fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                layer.add(fade, forKey: "appearance")
+            }
+            content.appearance = appearance
         }
     }
 

@@ -85,6 +85,10 @@ final class Library {
     @ObservationIgnored var closeGuard: ((BrowserTab) -> Bool)?
     /// Bumped when a tab's page moves to another engine, so views show the new page.
     private(set) var pageSwaps = 0
+    /// The call floating in its own window while you're on other tabs (`CallPiP`), and the calls you closed
+    /// that window for (the capsule leads back to them instead).
+    var pipTabID: UUID?
+    var pipClosedFor: Set<UUID> = []
     let history: HistoryStore
     @ObservationIgnored private(set) var suggest: SuggestEngine!
     /// Live pages, by tab. The least recently used are unloaded past `capacity`.
@@ -349,6 +353,7 @@ final class Library {
         if let old = controllers[tab.id] {
             old.page.close()
             controllers[tab.id] = nil
+            tab.call = nil
         }
         tab.interactionState = nil
         let c = TabController(tab: tab, library: self, engineID: target.info.id) { delegate in
@@ -393,6 +398,7 @@ final class Library {
         if let c = controllers[id] {
             c.freeze()
             c.page.close()
+            c.tab.call = nil
         }
         controllers[id] = nil
         lru.removeAll { $0 == id }
@@ -558,6 +564,25 @@ final class Library {
         spaces.insert(space, at: spaces.firstIndex { $0.isPrivate } ?? spaces.endIndex)
         scheduleSave()
         return space
+    }
+
+    /// Moves a space to where another one is, for dragging spaces into order in Settings. The Private space
+    /// stays last.
+    func moveSpace(_ id: UUID, to target: UUID) {
+        guard id != target, let from = spaces.firstIndex(where: { $0.id == id }), !spaces[from].isPrivate,
+              let to = spaces.firstIndex(where: { $0.id == target }), !spaces[to].isPrivate else { return }
+        let space = spaces.remove(at: from)
+        spaces.insert(space, at: to)
+        scheduleSave()
+    }
+
+    /// Reorders the regular spaces (as listed in Settings), leaving the Private space where it is.
+    func moveSpaces(fromOffsets source: IndexSet, toOffset destination: Int) {
+        var regular = regularSpaces
+        regular.move(fromOffsets: source, toOffset: destination)
+        var next = regular.makeIterator()
+        spaces = spaces.map { $0.isPrivate ? $0 : next.next()! }
+        scheduleSave()
     }
 
     func deleteSpace(_ space: Space) {

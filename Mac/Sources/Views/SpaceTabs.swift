@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import BrowserCore
 import BrowserEngine
 
@@ -283,6 +284,9 @@ struct TabRow: View {
     /// Drawn under the pointer while dragged.
     var isLifted = false
     @State private var hovering = false
+    /// Renaming in place: double-click the tab, or Rename Tab… in its menu.
+    @State private var draft: String?
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
         HStack(spacing: 10) {
@@ -294,10 +298,26 @@ struct TabRow: View {
                 }
             }
             .frame(width: 16, height: 16)
-            Text(tab.displayTitle)
-                .lineLimit(1)
-                .foregroundStyle(.primary)
+            if draft != nil {
+                TextField("Tab Name", text: Binding(get: { draft ?? "" }, set: { draft = $0 }),
+                          prompt: Text(tab.title.isEmpty ? "Tab Name" : tab.title))
+                    .textFieldStyle(.plain)
+                    .focused($nameFocused)
+                    .onSubmit(commitRename)
+                    .onExitCommand { draft = nil }
+                    .onChange(of: nameFocused) { if !nameFocused { commitRename() } }
+                    // Renaming a tab that isn't the selected one: switching to any tab keeps the name too.
+                    .onChange(of: browser.currentTab?.id) { commitRename() }
+            } else {
+                Text(tab.displayTitle)
+                    .lineLimit(1)
+                    .foregroundStyle(.primary)
+            }
             Spacer(minLength: 0)
+            if let call = tab.call {
+                CallBadge(call: call)
+                    .transition(.scale.combined(with: .opacity))
+            }
             let notes = openNoteCount(tab.url, in: browser.library)
             if notes > 0 {
                 // Stays put and slides left when the close button comes in on hover. A click opens
@@ -340,17 +360,87 @@ struct TabRow: View {
         }
         .contentShape(.rect)
         .onTapGesture { browser.select(tab) }
+        // Alongside the single click, so selecting a tab never waits to see if a second click follows.
+        .simultaneousGesture(TapGesture(count: 2).onEnded { startRename() })
+        // Moving to another tab, however it happens, finishes a rename left open (clicking a row
+        // doesn't take focus from the field, so its own focus change never comes).
+        .onChange(of: selected) { if !selected { commitRename() } }
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
-        .contextMenu { TabMenu(tab: tab) }
+        .contextMenu { TabMenu(tab: tab, rename: startRename) }
         .help(tab.url?.absoluteString ?? tab.displayTitle)
+    }
+
+    private func startRename() {
+        guard draft == nil else { return }
+        draft = tab.displayTitle
+        DispatchQueue.main.async {
+            nameFocused = true
+            // The whole name selected, so typing replaces it, as when renaming in Finder.
+            DispatchQueue.main.async { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
+        }
+    }
+
+    /// Keeps the new name, or goes back to the page's own title when the field is left empty.
+    private func commitRename() {
+        guard let name = draft?.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+        draft = nil
+        tab.customTitle = name.isEmpty || name == tab.title ? nil : name
+        browser.library.scheduleSave()
+    }
+}
+
+/// Marks a tab that's in a call, so it's easy to find your way back. Green while the camera is on and
+/// orange with just the microphone, the colours macOS uses for the same thing; grey when muted.
+struct CallBadge: View {
+    let call: TabCall
+    /// A round dot (on a favourite tile) instead of the row capsule.
+    var compact = false
+
+    private var symbol: String {
+        if call.camera { return "video.fill" }
+        return call.microphone ? "mic.fill" : "mic.slash.fill"
+    }
+
+    private var fill: Color {
+        if call.camera { return .green }
+        return call.microphone ? .orange : Color(nsColor: .systemGray)
+    }
+
+    private var label: String {
+        if call.camera { return "In a call, camera on" }
+        return call.microphone ? "In a call, microphone on" : "In a call, muted"
+    }
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: compact ? 7.5 : 9, weight: .bold))
+            .foregroundStyle(.black.opacity(0.75))
+            .frame(width: compact ? 15 : 22, height: compact ? 15 : 16)
+            .background(fill, in: .capsule)
+            .overlay { if compact { Capsule().strokeBorder(.background, lineWidth: 1.5) } }
+            .contentTransition(.symbolEffect(.replace))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(label)
+            .help(label)
     }
 }
 
 struct TabMenu: View {
     @Environment(Browser.self) private var browser
     let tab: BrowserTab
+    /// Starts renaming the tab in place, where the menu's row can.
+    var rename: (() -> Void)? = nil
 
     var body: some View {
+        if let rename {
+            Button("Rename Tab…", systemImage: "pencil", action: rename)
+        }
+        if tab.customTitle != nil {
+            Button("Use Page Title", systemImage: "arrow.uturn.backward") {
+                tab.customTitle = nil
+                browser.library.scheduleSave()
+            }
+        }
         if !tab.isPrivate {
             Button(tab.isPinned ? "Unpin Tab" : "Pin Tab", systemImage: tab.isPinned ? "pin.slash" : "pin") {
                 withAnimation(Motion.snappy) { browser.togglePinned(tab) }

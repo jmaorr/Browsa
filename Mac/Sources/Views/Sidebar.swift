@@ -641,8 +641,20 @@ struct FavoriteTile: View {
         return tab.favoriteID == favorite.id || tab.url.map(URLNormalizer.key(for:)) == URLNormalizer.key(for: favorite.url)
     }
 
+    /// This favourite's tab is in a call (whichever space it's open in).
+    private var call: TabCall? {
+        browser.library.allTabs.first { $0.favoriteID == favorite.id && $0.call != nil }?.call
+    }
+
     var body: some View {
         FaviconView(url: favorite.url, size: 26, chip: true, letter: favorite.customName ?? favorite.title)
+            .overlay(alignment: .topTrailing) {
+                if let call {
+                    CallBadge(call: call, compact: true)
+                        .offset(x: 6, y: -6)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
             .frame(maxWidth: .infinity, minHeight: 50)
             .background(isCurrent ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(hovering ? 0.09 : 0.05)),
                         in: .rect(cornerRadius: 12, style: .continuous))
@@ -653,7 +665,7 @@ struct FavoriteTile: View {
             .onTapGesture { browser.open(favorite) }
             // A tap gesture alone gives VoiceOver nothing to press.
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(favorite.displayName)
+            .accessibilityLabel(call == nil ? favorite.displayName : "\(favorite.displayName), in a call")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { browser.open(favorite) }
             .onHover { hovering = $0 }
@@ -685,6 +697,8 @@ struct FavoriteTile: View {
 struct SpaceSwitcher: View {
     @Environment(Browser.self) private var browser
     @Environment(SidebarDragging.self) private var dragging
+    /// The space whose theme popover is open, from its right-click menu.
+    @State private var theming: UUID?
 
     var body: some View {
         HStack(spacing: 2) {
@@ -717,12 +731,19 @@ struct SpaceSwitcher: View {
                 }
                 .onDisappear { dragging.spaceFrames[s.id] = nil }
                 .help(i < 9 ? "\(s.name) (⌃\(i + 1))" : s.name)
+                .popover(isPresented: Binding(get: { theming == s.id }, set: { if !$0 { theming = nil } }), arrowEdge: .bottom) {
+                    SpaceThemeEditor(space: s) { browser.scheduleSave() }
+                }
                 .contextMenu {
                     if s.isPrivate {
                         Button("Close Private Tabs", systemImage: "xmark", role: .destructive) {
                             withAnimation(Motion.spring) { browser.closePrivateSpace() }
                         }
                     } else {
+                        // After the menu has closed, so the popover has somewhere to anchor.
+                        Button("Colour and Appearance…", systemImage: "paintpalette") {
+                            DispatchQueue.main.async { theming = s.id }
+                        }
                         Button("Edit Spaces…", systemImage: "pencil") { browser.library.openSettings(pane: "spaces") }
                         if browser.regularSpaces.count > 1 {
                             Button("Delete \(s.name)", systemImage: "trash", role: .destructive) {

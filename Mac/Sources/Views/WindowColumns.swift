@@ -37,7 +37,7 @@ final class ColumnsController: NSSplitViewController {
         self.browser = browser
         startsDocked = sidebarDocked
         startsOpen = panelOpen
-        sidebarItem = NSSplitViewItem(viewController: Self.host(Sidebar(), browser))
+        sidebarItem = NSSplitViewItem(viewController: Self.host(Sidebar().spaceContrast(), browser))
         pageItem = NSSplitViewItem(viewController: Self.host(PageColumn(), browser))
         panelItem = NSSplitViewItem(viewController: Self.host(PanelColumn(), browser))
         super.init(nibName: nil, bundle: nil)
