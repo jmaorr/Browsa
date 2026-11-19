@@ -34,7 +34,8 @@ enum SpacePalette {
         let glass = space.isPrivate ? defaultGlass : (space.themeGlass ?? defaultGlass)
         let lightness = dark ? 0.30 - shade * 0.20 : 0.93 - shade * 0.68
         let color = hsl(hue(of: space), vivid, lightness)
-        let opacity = 1 - glass * 0.85
+        // Full Glass shows the bare glass, with no colour layer over it.
+        let opacity = 1 - glass
         // Roughly how light the sidebar ends up, over the material, to pick dark or light text on it.
         let material = dark ? 0.2 : 0.9
         let result = material * (1 - opacity) + luminance(color) * opacity
@@ -364,6 +365,18 @@ struct TabIcon: View {
 // MARK: - AppKit bridges
 
 /// The translucent window material behind the sidebar and around the page.
+/// Liquid Glass behind the whole window: clearer than the sidebar material, with the desktop showing through.
+struct WindowGlass: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSGlassEffectView {
+        let v = NSGlassEffectView()
+        v.style = .clear
+        v.cornerRadius = 0
+        return v
+    }
+
+    func updateNSView(_ v: NSGlassEffectView, context: Context) {}
+}
+
 struct WindowMaterial: NSViewRepresentable {
     var material: NSVisualEffectView.Material = .sidebar
 

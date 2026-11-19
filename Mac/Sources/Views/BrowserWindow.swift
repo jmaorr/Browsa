@@ -78,7 +78,7 @@ struct BrowserWindow: View {
 
     private var background: some View {
         ZStack {
-            WindowMaterial(material: .sidebar)
+            WindowGlass()
             // Neutral until the intro reaches the sidebar, then the tint comes in.
             Color(nsColor: surface.color)
                 .opacity(browser.isIntroHoldingSidebar ? 0 : surface.opacity)
@@ -169,6 +169,8 @@ struct BrowserWindow: View {
         if !window.titlebarAppearsTransparent { window.titlebarAppearsTransparent = true }
         if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
         if window.isMovableByWindowBackground { window.isMovableByWindowBackground = false }
+        // Clear behind the content, so the sidebar's Liquid Glass shows the desktop through it.
+        if window.isOpaque { window.isOpaque = false; window.backgroundColor = .clear }
         // The sidebar draws its own traffic lights (WindowButtons), which move with it, so in a window
         // the title bar's are hidden. In full screen the title bar's also drop down with the menu
         // bar, as in every app. AppKit rebuilds the title bar on the way in and out, so this runs then too.
