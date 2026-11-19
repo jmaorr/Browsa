@@ -62,15 +62,9 @@ struct SpaceThemeEditor: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 label("Appearance")
-                Picker("Appearance", selection: Binding(
+                GlassSwitcher.appearance(Binding(
                     get: { space.appearance ?? "" },
-                    set: { space.appearance = $0.isEmpty ? nil : $0; save() })) {
-                    Text("Auto").tag("")
-                    Text("Light").tag("light")
-                    Text("Dark").tag("dark")
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                    set: { space.appearance = $0.isEmpty ? nil : $0; save() }))
                 Text("Auto follows Browsa's appearance in Settings › General.")
                     .font(.caption).foregroundStyle(.secondary)
             }

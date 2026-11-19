@@ -6,10 +6,11 @@ import Suggest
 /// Space colours, the same six as the iPhone app.
 enum SpacePalette {
     static let colors: [Color] = [.indigo, .orange, .teal, .pink, .green, .purple]
-    static let names = ["Indigo", "Orange", "Teal", "Pink", "Green", "Purple"]
+    /// The Mac's names for the presets below (same order as the iPhone's colours).
+    static let names = ["Ocean", "Coral", "Sage", "Rose", "Moss", "Lavender"]
     static func color(_ i: Int) -> Color { colors[((i % colors.count) + colors.count) % colors.count] }
     /// The palette's colours as hues on the theme's colour strip, in the same order.
-    static let presetHues: [Double] = [235, 28, 180, 335, 135, 280]
+    static let presetHues: [Double] = [212, 14, 165, 342, 95, 262]
     /// How saturated a space's colour is: kept soft, so no hue on the strip turns loud.
     static let saturation = 0.55
     static let defaultShade = 0.3
