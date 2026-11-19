@@ -566,6 +566,16 @@ final class Library {
         return space
     }
 
+    /// Moves a space to where another one is, for dragging spaces into order in Settings. The Private space
+    /// stays last.
+    func moveSpace(_ id: UUID, to target: UUID) {
+        guard id != target, let from = spaces.firstIndex(where: { $0.id == id }), !spaces[from].isPrivate,
+              let to = spaces.firstIndex(where: { $0.id == target }), !spaces[to].isPrivate else { return }
+        let space = spaces.remove(at: from)
+        spaces.insert(space, at: to)
+        scheduleSave()
+    }
+
     func deleteSpace(_ space: Space) {
         if space.isPrivate { closePrivateSpace(); return }
         guard regularSpaces.count > 1, let i = spaces.firstIndex(where: { $0.id == space.id }) else { return }

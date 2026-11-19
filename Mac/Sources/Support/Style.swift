@@ -52,9 +52,28 @@ enum SpacePalette {
     }
 
     /// Symbols offered for a space.
-    static let symbols = ["house.fill", "briefcase.fill", "book.fill", "gamecontroller.fill", "cart.fill", "paintpalette.fill",
-                          "graduationcap.fill", "heart.fill", "star.fill", "leaf.fill", "airplane", "music.note",
-                          "film.fill", "hammer.fill", "chart.bar.fill", "circle.fill"]
+    static let symbols = [
+        // Places and everyday
+        "house.fill", "briefcase.fill", "building.2.fill", "cup.and.saucer.fill", "fork.knife", "cart.fill",
+        "bag.fill", "creditcard.fill", "gift.fill", "bed.double.fill", "sofa.fill", "tent.fill",
+        // Work and making
+        "hammer.fill", "wrench.and.screwdriver.fill", "chevron.left.forwardslash.chevron.right", "terminal.fill",
+        "cpu.fill", "server.rack", "chart.bar.fill", "chart.pie.fill", "doc.text.fill", "folder.fill",
+        "tray.full.fill", "paperplane.fill", "envelope.fill", "calendar", "checklist", "lightbulb.fill",
+        "pencil.and.ruler.fill", "paintpalette.fill", "paintbrush.pointed.fill", "camera.fill", "photo.fill", "scissors",
+        // Learning and play
+        "book.fill", "books.vertical.fill", "graduationcap.fill", "globe.americas.fill", "atom", "flask.fill",
+        "gamecontroller.fill", "puzzlepiece.fill", "dice.fill", "music.note", "headphones", "guitars.fill",
+        "film.fill", "tv.fill", "theatermasks.fill", "sportscourt.fill", "figure.run", "dumbbell.fill",
+        // Nature and travel
+        "leaf.fill", "tree.fill", "mountain.2.fill", "sun.max.fill", "moon.fill", "cloud.fill",
+        "snowflake", "flame.fill", "drop.fill", "pawprint.fill", "airplane", "car.fill",
+        "bicycle", "sailboat.fill", "map.fill", "location.fill",
+        // People and feelings
+        "person.fill", "person.2.fill", "figure.2.and.child.holdinghands", "heart.fill", "star.fill", "sparkles",
+        "bolt.fill", "crown.fill", "flag.fill", "bookmark.fill", "tag.fill", "bell.fill",
+        "lock.fill", "shield.fill", "eye.fill", "circle.fill", "square.fill", "triangle.fill",
+    ]
 }
 
 /// One motion vocabulary, shared with the iPhone app. Reduce Motion turns springs into short eases.

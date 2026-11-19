@@ -133,6 +133,12 @@ private struct SpacesSettings: View {
             Section {
                 ForEach(browser.regularSpaces) { space in
                     SpaceEditor(space: space)
+                        // Drag a space by its handle onto another to put it there.
+                        .dropDestination(for: String.self) { ids, _ in
+                            guard let id = ids.first.flatMap(UUID.init(uuidString:)) else { return false }
+                            withAnimation(Motion.snappy) { browser.moveSpace(id, to: space.id) }
+                            return true
+                        }
                 }
             } footer: {
                 HStack {
@@ -151,6 +157,14 @@ private struct SpaceEditor: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .frame(width: 16, height: 26)
+                .contentShape(.rect)
+                .help("Drag to reorder")
+                .accessibilityHidden(true)
+                .draggable(space.id.uuidString) { Label(space.name, systemImage: space.symbol).padding(6) }
             SpaceIconPicker(symbol: $space.symbol) { browser.scheduleSave() }
             TextField("Name", text: $space.name, prompt: Text("Name"))
                 .textFieldStyle(.roundedBorder)
@@ -187,7 +201,8 @@ private struct SpaceIconPicker: View {
         .onHover { hovering = $0 }
         .help("Change icon")
         .popover(isPresented: $open, arrowEdge: .bottom) {
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(28), spacing: 4), count: 6), spacing: 4) {
+            ScrollView {
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(28), spacing: 4), count: 8), spacing: 4) {
                 ForEach(SpacePalette.symbols, id: \.self) { s in
                     Button {
                         symbol = s
@@ -205,6 +220,8 @@ private struct SpaceIconPicker: View {
                 }
             }
             .padding(10)
+            }
+            .frame(width: 8 * 28 + 7 * 4 + 20, height: 280)
         }
     }
 }
