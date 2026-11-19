@@ -139,31 +139,90 @@ private struct GeneralSettings: View {
 
 private struct SpacesSettings: View {
     @Environment(Library.self) private var browser
+    /// The space being dragged by its handle, how far it has moved, and the slot it would drop into.
+    @State private var dragging: UUID?
+    @State private var dragOffset: CGFloat = 0
+    @State private var target: Int?
+    private static let rowHeight: CGFloat = 44
 
     var body: some View {
-        Form {
-            Section {
-                // Drag a row to reorder: the list moves the rows apart as you drag, like any Mac list.
-                ForEach(browser.regularSpaces) { space in
-                    SpaceEditor(space: space)
+        // Reordering is by the handle only, so a click in the name field focuses it straight away (a List
+        // makes the whole row draggable and holds every click while it decides). The dragged row lifts and
+        // follows the pointer; the rows it passes slide out of its way.
+        let spaces = browser.regularSpaces
+        ScrollView {
+            VStack(spacing: 14) {
+                VStack(spacing: 0) {
+                    ForEach(Array(spaces.enumerated()), id: \.element.id) { i, space in
+                        let lifted = dragging == space.id
+                        SpaceEditor(space: space,
+                                    onDrag: { drag(space.id, from: i, by: $0, count: spaces.count) },
+                                    onDrop: { drop(from: i) })
+                            .padding(.horizontal, 12)
+                            .frame(height: Self.rowHeight)
+                            .background {
+                                if lifted {
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(.background)
+                                        .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+                                }
+                            }
+                            .offset(y: lifted ? dragOffset : shift(for: i))
+                            .zIndex(lifted ? 1 : 0)
+                    }
                 }
-                .onMove { browser.moveSpaces(fromOffsets: $0, toOffset: $1) }
-            } footer: {
+                .padding(.vertical, 4)
+                .background(Color.primary.opacity(0.04), in: .rect(cornerRadius: 12, style: .continuous))
                 HStack {
                     Spacer()
-                    Button("Add Space") { browser.addSpace() }
+                    Button("Add Space", systemImage: "plus") { browser.addSpace() }
                         .buttonStyle(.glass)
                         .buttonBorderShape(.capsule)
                 }
             }
+            .padding(20)
         }
-        .formStyle(.grouped)
+    }
+
+    /// How far a row slides to make room for the dragged one.
+    private func shift(for i: Int) -> CGFloat {
+        guard let id = dragging, let target, let from = browser.regularSpaces.firstIndex(where: { $0.id == id })
+        else { return 0 }
+        if from < target, i > from, i <= target { return -Self.rowHeight }
+        if target < from, i >= target, i < from { return Self.rowHeight }
+        return 0
+    }
+
+    private func drag(_ id: UUID, from: Int, by y: CGFloat, count: Int) {
+        if dragging == nil { dragging = id }
+        dragOffset = y
+        let next = max(0, min(count - 1, from + Int((y / Self.rowHeight).rounded())))
+        if next != target { withAnimation(Motion.snappy) { target = next } }
+    }
+
+    private func drop(from: Int) {
+        let to = target ?? from
+        // Settle the lifted row into its slot, then reorder without animation so nothing jumps.
+        withAnimation(Motion.snappy) { dragOffset = CGFloat(to - from) * Self.rowHeight }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) {
+                if to != from { browser.moveSpaces(fromOffsets: [from], toOffset: to > from ? to + 1 : to) }
+                dragging = nil
+                dragOffset = 0
+                target = nil
+            }
+        }
     }
 }
 
 private struct SpaceEditor: View {
     @Environment(Library.self) private var browser
     @Bindable var space: Space
+    /// The handle's drag: how far it has moved down (negative is up), then the drop.
+    let onDrag: (CGFloat) -> Void
+    let onDrop: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -174,10 +233,12 @@ private struct SpaceEditor: View {
                 .contentShape(.rect)
                 .help("Drag to reorder")
                 .accessibilityHidden(true)
+                .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                    .onChanged { onDrag($0.translation.height) }
+                    .onEnded { _ in onDrop() })
             SpaceIconPicker(symbol: $space.symbol) { browser.scheduleSave() }
             TextField("Name", text: $space.name, prompt: Text("Name"))
                 .textFieldStyle(.roundedBorder)
-                // The grouped form would otherwise add a "Name" label and push the field right.
                 .labelsHidden()
                 .onSubmit { browser.scheduleSave() }
             SpaceThemeButton(space: space) { browser.scheduleSave() }
