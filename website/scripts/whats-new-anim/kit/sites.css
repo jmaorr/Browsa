@@ -1,0 +1,58 @@
+/* Drawn stand-ins for real sites, so the explainers show pages people know rather than grey blocks.
+   Each fills its container; add .dark to the container for the dark version. */
+.site { position:absolute; inset:0; overflow:hidden; font-family: Inter, -apple-system, sans-serif; --bg:#fff; --fg:#1f2023; --mut:#6b6f76; --ln:#e8e8ea; --chip:#f3f3f5; background:var(--bg); color:var(--fg); }
+.dark .site, .site.dark { --bg:#1b1c1f; --fg:#e6e6e8; --mut:#8a8f98; --ln:#2c2d31; --chip:#26272b; }
+.site img.fi { width:18px; height:18px; border-radius:4px; }
+
+/* Linear: My issues */
+.lin { display:flex; }
+.lin .nav { width:190px; flex:none; padding:18px 12px; box-sizing:border-box; border-right:1px solid var(--ln); font-size:14px; color:var(--mut); }
+.lin .nav b { display:flex; align-items:center; gap:8px; color:var(--fg); font-size:14px; margin-bottom:18px; }
+.lin .nav b i { width:20px; height:20px; border-radius:6px; background:#5e6ad2; }
+.lin .nav p { margin:0; height:30px; display:flex; align-items:center; padding:0 8px; border-radius:7px; }
+.lin .nav p.on { background:var(--chip); color:var(--fg); font-weight:500; }
+.lin .main { flex:1; min-width:0; }
+.lin .head { height:52px; display:flex; align-items:center; gap:10px; padding:0 22px; border-bottom:1px solid var(--ln); font-size:15px; font-weight:600; }
+.lin .head span { font-weight:500; font-size:13px; color:var(--mut); padding:4px 10px; border-radius:7px; }
+.lin .head span.on { background:var(--chip); color:var(--fg); }
+.lin .grp { height:36px; display:flex; align-items:center; gap:8px; padding:0 22px; background:var(--chip); font-size:13px; font-weight:600; }
+.lin .it { height:44px; display:flex; align-items:center; gap:12px; padding:0 22px; border-bottom:1px solid var(--ln); font-size:14px; white-space:nowrap; }
+.lin .it .id { width:62px; color:var(--mut); font-size:13px; }
+.lin .st { width:14px; height:14px; border-radius:50%; box-sizing:border-box; border:2px solid #e2a03f; flex:none; }
+.lin .st.todo { border-color:#b4b6bb; } .lin .st.done { background:#5e6ad2; border-color:#5e6ad2; }
+.lin .st.prog { background: conic-gradient(#e2a03f 0 50%, transparent 0); }
+.lin .lb { margin-left:auto; font-size:12px; color:var(--mut); border:1px solid var(--ln); border-radius:10px; padding:2px 9px; display:flex; align-items:center; gap:6px; }
+.lin .lb i { width:7px; height:7px; border-radius:50%; }
+.lin .av { width:20px; height:20px; border-radius:50%; flex:none; }
+
+/* GitHub: a pull request */
+.gh .top { height:56px; display:flex; align-items:center; gap:12px; padding:0 26px; background:#f6f8fa; border-bottom:1px solid #d1d9e0; font-size:15px; }
+.dark .gh .top { background:#151b23; border-color:#3d444d; }
+.gh .top svg { width:26px; height:26px; color:var(--fg); }
+.gh .top b { font-weight:600; }
+.gh .tabs { display:flex; gap:22px; padding:0 26px; height:46px; align-items:flex-end; border-bottom:1px solid var(--ln); font-size:14px; color:var(--mut); }
+.gh .tabs span { padding-bottom:12px; } .gh .tabs span.on { color:var(--fg); font-weight:600; box-shadow: inset 0 -2px 0 #fd8c73; }
+.gh .body { padding:22px 26px; }
+.gh h1 { margin:0 0 10px; font-size:26px; font-weight:400; letter-spacing:-.01em; } .gh h1 span { color:var(--mut); }
+.gh .state { display:flex; align-items:center; gap:10px; font-size:14px; color:var(--mut); margin-bottom:20px; }
+.gh .state b { display:inline-flex; align-items:center; gap:6px; color:#fff; background:#8250df; padding:5px 12px; border-radius:16px; font-weight:500; }
+.gh .state b.open { background:#1f883d; }
+.gh .cmt { border:1px solid #d1d9e0; border-radius:8px; overflow:hidden; font-size:14px; }
+.dark .gh .cmt { border-color:#3d444d; }
+.gh .cmt .h { padding:10px 14px; background:#f6f8fa; border-bottom:1px solid #d1d9e0; color:var(--mut); }
+.dark .gh .cmt .h { background:#151b23; border-color:#3d444d; }
+.gh .cmt .h b { color:var(--fg); }
+.gh .cmt .t { padding:14px; line-height:1.6; } .gh .cmt .t p { margin:0 0 8px; }
+.gh .chk { margin-top:16px; display:flex; align-items:center; gap:10px; font-size:14px; padding:12px 14px; border:1px solid #d1d9e0; border-radius:8px; }
+.gh .chk i { width:18px; height:18px; border-radius:50%; background:#1f883d; }
+
+/* Notion: a doc */
+.no { padding:0 90px; }
+.no .crumb { height:46px; display:flex; align-items:center; gap:8px; font-size:14px; color:var(--mut); margin:0 -70px; padding:0 16px; }
+.no .emo { font-size:54px; margin:34px 0 8px; line-height:1; }
+.no h1 { margin:0 0 16px; font-size:38px; font-weight:700; letter-spacing:-.02em; }
+.no .prop { display:flex; gap:24px; font-size:14px; color:var(--mut); margin-bottom:6px; } .no .prop span:last-child { color:var(--fg); }
+.no h3 { margin:24px 0 8px; font-size:20px; font-weight:600; }
+.no ul { margin:0; padding-left:22px; font-size:16px; line-height:1.75; }
+.no .todo { display:flex; align-items:center; gap:10px; font-size:16px; line-height:1.9; }
+.no .todo i { width:15px; height:15px; border:1.5px solid var(--mut); border-radius:3px; } .no .todo.done i { background:#2383e2; border-color:#2383e2; } .no .todo.done span { color:var(--mut); text-decoration:line-through; }

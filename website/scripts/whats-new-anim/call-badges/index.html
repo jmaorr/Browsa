@@ -1,5 +1,5 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><script src="../kit/kit.js"></script>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><link rel="stylesheet" href="../kit/sites.css"><script src="../kit/kit.js"></script><script src="../kit/sites.js"></script>
 <style>
   .win { left:200px; top:250px; width:1200px; height:640px; }
   .side { width:300px; }
@@ -9,7 +9,7 @@
   .article .hero { height:220px; border-radius:12px; background:linear-gradient(135deg,#e6ece4,#e9e3dc); margin-bottom:26px; }
   .article .bar { margin-bottom:16px; }
   .callv { background:#1c1d20; }
-  .tiles { position:absolute; inset:16px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .tiles { position:absolute; inset:16px 16px 84px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .tile { border-radius:12px; display:grid; place-items:center; color:#fff; font-size:34px; font-weight:600; position:relative; }
   .tile small { position:absolute; left:14px; bottom:12px; font-size:15px; font-weight:500; opacity:.85; }
   .badge { height:20px; border-radius:10px; display:grid; place-items:center; flex:none; }
@@ -28,7 +28,7 @@
       <div class="layer callv" id="callv"><div class="tiles">
         <div class="tile" style="background:#3b4a63">AL<small>Ada</small></div><div class="tile" style="background:#5b4636">GH<small>Grace</small></div>
         <div class="tile" style="background:#35524a">KJ<small>Katherine</small></div><div class="tile" style="background:#4a3b5c">You<small>You</small></div></div></div>
-      <div class="layer article" id="article"><div class="hero"></div><div class="bar" style="width:72%"></div><div class="bar" style="width:90%"></div><div class="bar" style="width:84%"></div><div class="bar" style="width:60%"></div></div>
+      <div class="layer" id="article"></div>
       <div class="capsule" id="capsule"><img id="cicon"><span>Weekly sync</span><span id="cbadge"></span></div>
     </div>
   </div>
@@ -48,6 +48,7 @@ document.getElementById("side").innerHTML = `
   <div class="row" id="r1"><div class="in"><img src="${fav("calendar.google.com")}"><span>Weekly sync</span><span id="sbadge" style="margin-left:auto"></span></div></div>
   <div class="row" id="r2"><div class="in"><img src="${fav("notion.so")}"><span>Standup notes</span></div></div>
   ${row(fav("linear.app"), "Inbox · Linear")}${row(fav("github.com"), "Pull requests · GitHub")}`;
+document.getElementById("article").innerHTML = site("notion");
 document.getElementById("cicon").src = fav("calendar.google.com");
 const $ = (id) => document.getElementById(id);
 const CAPS = [[0.4, 3.6, "Green with the camera on, orange for just the mic, grey when muted"], [4.0, 6.2, "Click the capsule to go straight back"]];

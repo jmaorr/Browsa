@@ -1,17 +1,15 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><script src="../kit/kit.js"></script>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><link rel="stylesheet" href="../kit/sites.css"><script src="../kit/kit.js"></script><script src="../kit/sites.js"></script>
 <style>
   .win { left:200px; top:250px; width:1200px; height:640px; }
   .side { width:300px; }
   .page { left:312px; }
-  .article { position:absolute; inset:0; padding:40px 44px; box-sizing:border-box; background:#fff; }
-  .article .hero { height:220px; border-radius:12px; background:linear-gradient(135deg,#e9e4da,#d9e2e6); margin-bottom:26px; }
-  .article .bar { margin-bottom:16px; }
+  .article { position:absolute; inset:0; }
   .call { position:absolute; background:#1c1d20; overflow:hidden; transform-origin:0 0; }
   .callin { position:absolute; left:0; top:0; width:876px; height:616px; transform-origin:0 0; }
   .badge { margin-left:auto; width:26px; height:18px; border-radius:9px; background:#34c759; display:grid; place-items:center; }
   .badge svg { width:13px; height:13px; color:rgb(0 0 0 / .75); }
-  .tiles { position:absolute; inset:16px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .tiles { position:absolute; inset:16px 16px 84px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .tile { border-radius:12px; display:grid; place-items:center; color:#fff; font-size:34px; font-weight:600; position:relative; }
   .tile small { position:absolute; left:14px; bottom:12px; font-size:15px; font-weight:500; opacity:.85; }
   .ctrl { position:absolute; left:50%; bottom:22px; transform:translateX(-50%); display:flex; gap:12px; }
@@ -33,7 +31,7 @@
   <div class="label">Your call comes with you</div>
   <div class="sub">Leave the call’s tab and it floats in a small window above everything.</div>
   <div class="win" style="--tint:#5856d6"><div class="side" id="side"></div>
-    <div class="page" id="page"><div class="article" id="article"><div class="hero"></div><div class="bar" style="width:72%"></div><div class="bar" style="width:90%"></div><div class="bar" style="width:84%"></div><div class="bar" style="width:60%"></div></div></div>
+    <div class="page" id="page"><div class="article" id="article"></div></div>
   </div>
   <div class="call" id="call"><div class="callin" id="callin"><div class="tiles">
       <div class="tile" style="background:#3b4a63">AL<small>Ada</small></div><div class="tile" style="background:#5b4636">GH<small>Grace</small></div>
@@ -56,17 +54,22 @@ document.getElementById("side").innerHTML = `
   <div class="row" id="r1"><div class="in"><img src="${fav("calendar.google.com")}"><span>Weekly sync</span>${live}</div></div>
   <div class="row" id="r2"><div class="in"><img src="${fav("notion.so")}"><span>Standup notes</span></div></div>
   ${row(fav("linear.app"), "Inbox · Linear")}${row(fav("github.com"), "Pull requests · GitHub")}`;
+document.getElementById("article").innerHTML = site("notion");
 document.getElementById("ticon").src = fav("calendar.google.com");
 document.getElementById("iicon").src = fav("calendar.google.com");
 const $ = (id) => document.getElementById(id);
 // The page card in stage coordinates, and the floating player's frame.
 const PAGE = { x: 512, y: 262, w: 876, h: 616 }, PIP = { x: 1030, y: 540, w: 438, h: 308 }, ICON = { x: 1440, y: 800 };
 const CAPS = [[0.4, 2.0, "On a call in Weekly sync"], [2.4, 5.2, "Switch tabs and the call floats over everything"], [5.6, 8.6, "Minimise it to a small glass icon"]];
+// The cursor's target: the middle of the Standup notes row, measured from the page.
+const r2 = $("r2").querySelector(".in").getBoundingClientRect(), R2 = { x: r2.left + 120, y: r2.top + r2.height / 2 - 4 };
 window.TOTAL = 9.4;
 window.render = (t) => {
   // Cursor: to Standup notes, click; later to the minimise button.
   const c1 = eio(ph(t, 1.0, 0.9)), c2 = eio(ph(t, 5.4, 0.9));
-  const cx = mix(mix(760, 400, c1), PIP.x + PIP.w - 30, c2), cy = mix(mix(560, 552, c1), PIP.y + 22, c2);
+  const cx = mix(mix(760, R2.x, c1), PIP.x + PIP.w - 30, c2), cy = mix(mix(560, R2.y, c1), PIP.y + 22, c2);
+  const click = Math.sin(Math.PI * ph(t, 1.85, 0.25));
+  $("r2").style.transform = `scale(${1 - 0.03 * click})`;
   $("cursor").style.transform = `translate(${cx}px, ${cy}px)`;
   const switched = t >= 2.0;
   $("r1").classList.toggle("sel", !switched); $("r2").classList.toggle("sel", switched);

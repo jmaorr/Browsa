@@ -2,7 +2,7 @@
 
 Explainers for features a screen recording can't show well. Each folder is a page with a
 `render(t)` function that draws the frame at `t` seconds, so every take is identical. They share
-`kit/` (styles, timing helpers, the renderer and the encoder) and use icons from `public/media/fav/`.
+`kit/` (styles, timing helpers, drawn stand-ins for real sites in `sites.js`/`sites.css`, the renderer and the encoder) and use icons from `public/media/fav/`.
 
 ```sh
 cd scripts/whats-new-anim

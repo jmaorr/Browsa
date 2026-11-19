@@ -1,19 +1,26 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><script src="../kit/kit.js"></script>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../kit/kit.css"><link rel="stylesheet" href="../kit/sites.css"><script src="../kit/kit.js"></script><script src="../kit/sites.js"></script>
 <style>
   .screen { position:absolute; left:160px; top:240px; width:1280px; height:650px; border-radius:22px; overflow:hidden; background:#fff;
     box-shadow: 0 0 0 1px rgb(22 21 19 / .1), 0 34px 70px -26px rgb(30 25 20 / .32); }
-  .pg { position:absolute; inset:0; padding:56px 70px; box-sizing:border-box; }
-  .pg .hero { height:240px; border-radius:14px; margin-bottom:28px; }
-  .pg .bar { margin-bottom:18px; }
+  .pg { position:absolute; inset:0; }
   .veil { position:absolute; inset:0; background: rgb(0 0 0 / .12); }
-  .cmd { position:absolute; left:340px; top:120px; width:600px; border-radius:24px; padding:18px; box-sizing:border-box; background: rgb(252 252 251 / .96);
-    box-shadow: 0 0 0 1px rgb(0 0 0 / .08), 0 30px 70px -20px rgb(0 0 0 / .4); transform-origin:50% 0; }
-  .favrow { display:flex; gap:12px; margin-bottom:14px; }
-  .favrow span { flex:1; height:64px; border-radius:14px; background: rgb(0 0 0 / .045); display:grid; place-items:center; }
-  .favrow img { width:30px; height:30px; border-radius:7px; }
-  .field { display:flex; align-items:center; gap:12px; height:48px; padding:0 14px; border-radius:14px; background:#fff; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .08); font-size:19px; color:#9a9894; }
-  .field svg { width:20px; height:20px; color:#9a9894; }
+  .cmd { position:absolute; left:330px; top:90px; width:620px; border-radius:20px; overflow:hidden; background:#fcfcfb;
+    box-shadow: 0 0 0 1px rgb(0 0 0 / .1), 0 30px 70px -20px rgb(0 0 0 / .4); transform-origin:50% 0; }
+  .field { display:flex; align-items:center; gap:12px; height:56px; padding:0 20px; font-size:19px; color:#9a9894; }
+  .field svg { width:21px; height:21px; color:#8a8884; }
+  .hr { height:1px; background: rgb(0 0 0 / .08); }
+  .favrow { display:flex; gap:8px; padding:12px 12px; }
+  .favrow span { width:84px; padding:6px 0; border-radius:12px; display:flex; flex-direction:column; align-items:center; gap:7px; font-size:13px; color:#3a3936; }
+  .favrow span i { width:48px; height:48px; border-radius:12px; background: rgb(0 0 0 / .06); display:grid; place-items:center; }
+  .favrow img { width:26px; height:26px; border-radius:6px; }
+  .recent { padding:8px; }
+  .recent h5 { margin:4px 12px 6px; font-size:13px; font-weight:600; color:#8a8884; }
+  .rr { display:flex; align-items:center; gap:14px; height:50px; padding:0 12px; border-radius:11px; font-size:16px; color:#1d1d1f; }
+  .rr img { width:20px; height:20px; border-radius:5px; }
+  .rr div { display:flex; flex-direction:column; gap:1px; min-width:0; } .rr small { font-size:13px; color:#8a8884; }
+  .rr em { margin-left:auto; font-style:normal; font-size:12px; color:#7a7874; background: rgb(0 0 0 / .06); padding:3px 9px; border-radius:10px; }
+  .rr.hi { background: rgb(0 0 0 / .07); }
   .keys { position:absolute; left:0; right:0; top:900px; display:flex; justify-content:center; }
   .cap { position:absolute; left:0; right:0; top:920px; text-align:center; font-size:24px; font-weight:500; }
   .cursor { position:absolute; width:22px; height:30px; }
@@ -22,20 +29,29 @@
   <div class="label">Your favourites in every new tab</div>
   <div class="sub">⌘T shows them across the top, so they’re one click away even in full screen.</div>
   <div class="screen">
-    <div class="pg" id="pgA"><div class="hero" style="background:linear-gradient(135deg,#e7e2d8,#dfe6ea)"></div><div class="bar" style="width:70%"></div><div class="bar" style="width:88%"></div><div class="bar" style="width:62%"></div></div>
-    <div class="pg" id="pgB"><div class="hero" style="background:linear-gradient(135deg,#d9e6dc,#e4e9f2)"></div><div class="bar" style="width:55%"></div><div class="bar" style="width:80%"></div><div class="bar" style="width:74%"></div></div>
+    <div class="pg" id="pgA"></div>
+    <div class="pg" id="pgB"></div>
     <div class="veil" id="veil"></div>
-    <div class="cmd" id="cmd"><div class="favrow" id="favrow"></div>
-      <div class="field"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M16 16l5 5"/></svg>Search or enter address</div></div>
+    <div class="cmd" id="cmd">
+      <div class="field"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M16 16l5 5"/><path d="M10.5 8v5M8 10.5h5"/></svg>Search or enter address</div>
+      <div class="hr"></div><div class="favrow" id="favrow"></div><div class="hr"></div>
+      <div class="recent"><h5>Jump back in</h5><div id="recent"></div></div></div>
   </div>
   <div class="keys" id="keys"><span class="key"><b id="k1">⌘</b><b id="k2">T</b></span></div>
   <svg class="cursor" id="cursor" viewBox="0 0 22 30"><path d="M2 2v22l6-6 4 9 4-2-4-9h8z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
   <div class="cap" id="cap"></div>
 </div>
 <script>
-const FAVS = ["mail.google.com","calendar.google.com","linear.app","notion.so","figma.com","github.com"];
-document.getElementById("favrow").innerHTML = FAVS.map((f, i) => `<span id="f${i}"><img src="${fav(f)}"></span>`).join("");
+const FAVS = [["mail.google.com", "Gmail"], ["calendar.google.com", "Calendar"], ["linear.app", "Linear"], ["notion.so", "Notion"], ["figma.com", "Figma"], ["github.com", "GitHub"]];
+const RECENT = [["github.com", "Mac 1.2 · Pull Request #88 · jmaorr/Browsa", "github.com/jmaorr/Browsa/pull/88", "Switch to Tab"],
+  ["figma.com", "Browsa site", "figma.com/design/browsa-site", ""], ["theverge.com", "The Verge", "theverge.com", ""], ["wikipedia.org", "Lofoten · Wikipedia", "en.wikipedia.org/wiki/Lofoten", ""]];
+document.getElementById("favrow").innerHTML = FAVS.map(([f, n], i) => `<span id="f${i}"><i><img src="${fav(f)}"></i>${n}</span>`).join("");
+document.getElementById("recent").innerHTML = RECENT.map(([f, t, u, b], i) => `<div class="rr${i === 0 ? " hi" : ""}"><img src="${fav(f)}"><div><span>${t}</span><small>${u}</small></div>${b ? `<em>${b}</em>` : ""}</div>`).join("");
+document.getElementById("pgA").innerHTML = site("github");
+document.getElementById("pgB").innerHTML = site("linear");
 const $ = (id) => document.getElementById(id);
+// The Linear favourite's middle, measured from the page.
+const fr = $("f2").getBoundingClientRect(), FX = fr.left + fr.width / 2 - 4, FY = fr.top + 28;
 window.TOTAL = 7.4;
 window.render = (t) => {
   const keysIn = eo(ph(t, 0.5, 0.3)), keysOut = ph(t, 1.9, 0.3);
@@ -46,17 +62,16 @@ window.render = (t) => {
   $("cmd").style.opacity = open * (1 - close);
   $("cmd").style.transform = `scale(${mix(0.97, 1, open)})`;
   $("veil").style.opacity = open * (1 - close);
-  // Cursor to the Figma favourite, hover, click.
+  // Cursor to the Linear favourite, hover, click.
   const m = eio(ph(t, 2.6, 0.9));
-  const tx = 160 + 340 + 18 + 4 * (84 + 12) + 40, ty = 240 + 120 + 18 + 32;
-  $("cursor").style.transform = `translate(${mix(1000, tx, m)}px, ${mix(760, ty, m)}px)`;
+  $("cursor").style.transform = `translate(${mix(1100, FX, m)}px, ${mix(800, FY, m)}px)`;
   const hover = ph(t, 3.3, 0.2);
-  for (let i = 0; i < FAVS.length; i++) $("f" + i).style.background = i === 4 ? `rgb(0 0 0 / ${0.045 + 0.08 * hover})` : "rgb(0 0 0 / .045)";
-  $("f4").style.transform = `scale(${1 - 0.05 * Math.sin(Math.PI * ph(t, 4.2, 0.3))})`;
+  $("f2").style.background = `rgb(0 0 0 / ${0.07 * hover})`;
+  $("f2").style.transform = `scale(${1 - 0.05 * Math.sin(Math.PI * ph(t, 4.2, 0.3))})`;
   $("pgB").style.opacity = eo(ph(t, 4.6, 0.4)); $("pgA").style.opacity = 1 - eo(ph(t, 4.6, 0.4));
   $("cursor").style.opacity = 1 - ph(t, 5.6, 0.3);
   const cap = $("cap"); const show = t > 2.3 && t < 6.6;
-  cap.textContent = "Click a favourite to jump straight to it";
+  cap.textContent = t < 1.2 ? "" : "Your favourites, then where you left off";
   cap.style.opacity = show ? Math.min(eo(ph(t, 2.3, 0.35)), 1 - ph(t, 6.3, 0.3)) : 0;
   $("stage").style.opacity = loopFade(t, TOTAL);
 };
