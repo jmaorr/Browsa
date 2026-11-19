@@ -13,10 +13,13 @@ final class CommandBarModel {
     private(set) var zero: ZeroState?
     private(set) var results: SuggestResults?
     private(set) var highlighted: Int?
-    /// ⌘K's row of tools, when the arrow keys are in it: which one. nil = not in the row.
+    /// The row across the top (⌘K's tools, or ⌘T's favourites), when the arrow keys are in it: which item.
+    /// nil = not in the row.
     private(set) var toolHighlighted: Int?
-    /// How many items ⌘K's tool row has (tools plus Get More), set by the view.
+    /// How many items that row has (⌘K: tools plus Get More; ⌘T: favourites), set by the view.
     var toolCount = 0
+    /// ⌘T shows the favourites in the row across the top, so the list doesn't repeat them.
+    var favouritesInRow = false
     /// What's in the field now, with any inline completion, so the arrows start from the row
     /// Return would open (the one already shown as selected).
     var fieldText = ""
@@ -35,7 +38,7 @@ final class CommandBarModel {
         guard let zero else { return [] }
         let rows = zero.recentTabs.map(Self.row(for:)) + zero.topSites
         // Nothing open or visited yet: offer the favourites, so the bar never opens empty.
-        return rows.isEmpty ? zero.favorites.map {
+        return rows.isEmpty && !favouritesInRow ? zero.favorites.map {
             Suggestion(kind: .favorite, title: $0.title.isEmpty ? $0.displayName : $0.title,
                        subtitle: URLNormalizer.displayHost($0.url), action: .open($0.url), score: 0)
         } : rows
@@ -117,8 +120,8 @@ final class CommandBarModel {
         return rows.firstIndex { $0.action == a }
     }
 
-    /// Whether ⌘K's tool row is showing, so ↓ from the field goes into it first.
-    var hasToolRow: Bool { commandSource != nil && !isTyping && toolCount > 0 }
+    /// Whether the row across the top is showing, so ↓ from the field goes into it first.
+    var hasToolRow: Bool { !isTyping && toolCount > 0 }
 
     /// ↓ and ↑. Order: field, then ⌘K's tool row (if showing), then the list. With nothing picked,
     /// they start from the row shown as selected, so the first ↓ moves off it rather than onto it.
@@ -256,6 +259,14 @@ struct CommandBar: View {
                 Divider().opacity(0.6)
                 ToolStrip(highlighted: model?.toolHighlighted) { close() }
                     .onAppear { model?.toolCount = browser.library.workbench.panelTools.count + 1 }
+            } else if mode == .newTab, model?.isTyping != true, !browser.library.favorites.isEmpty {
+                // Favourites across the top, so they're a keystroke away even in full screen with the sidebar hidden.
+                Divider().opacity(0.6)
+                FavouritesStrip(highlighted: model?.toolHighlighted) { close() }
+                    .onAppear {
+                        model?.toolCount = browser.library.favorites.count
+                        model?.favouritesInRow = true
+                    }
             }
 
             if let model, !model.rows.isEmpty {
@@ -317,6 +328,12 @@ struct CommandBar: View {
     }
 
     private func submit(_ text: String) {
+        if let t = model?.toolHighlighted, mode == .newTab {
+            let favourites = browser.library.sortedFavorites
+            close()
+            if favourites.indices.contains(t) { browser.open(favourites[t]) }
+            return
+        }
         if let t = model?.toolHighlighted {
             close()
             let tools = browser.library.workbench.panelTools
@@ -460,6 +477,48 @@ private struct ToolStrip: View {
             .padding(.vertical, 10)
         }
         .scrollIndicators(.never)
+    }
+}
+
+/// ⌘T's top row: your favourites, one click (or arrows and Return) to open one.
+private struct FavouritesStrip: View {
+    @Environment(Browser.self) private var browser
+    /// The favourite the arrow keys are on.
+    var highlighted: Int?
+    let done: () -> Void
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(Array(browser.library.sortedFavorites.enumerated()), id: \.element.id) { i, favorite in
+                        Button {
+                            done()
+                            browser.open(favorite)
+                        } label: {
+                            VStack(spacing: 6) {
+                                FaviconView(url: favorite.url, size: 22, chip: true, letter: favorite.customName ?? favorite.title)
+                                    .frame(width: 40, height: 40)
+                                    .background(.primary.opacity(0.06), in: .rect(cornerRadius: 10, style: .continuous))
+                                Text(favorite.displayName).font(.caption).lineLimit(1)
+                            }
+                            .frame(width: 72)
+                            .padding(.vertical, 4)
+                            .background(highlighted == i ? AnyShapeStyle(.primary.opacity(0.08)) : AnyShapeStyle(.clear),
+                                        in: .rect(cornerRadius: 10, style: .continuous))
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .help(favorite.displayName)
+                        .id(i)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 10)
+            }
+            .scrollIndicators(.never)
+            .onChange(of: highlighted) { _, i in if let i { withAnimation(Motion.snappy) { proxy.scrollTo(i) } } }
+        }
     }
 }
 
