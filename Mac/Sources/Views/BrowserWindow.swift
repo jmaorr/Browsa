@@ -182,9 +182,12 @@ struct BrowserWindow: View {
             button.isHidden = !fullScreen
         }
         // A space set to Light or Dark keeps the whole window that way, sites included (WebKit follows
-        // the window's appearance for prefers-color-scheme).
+        // the view's appearance for prefers-color-scheme). Set on the content view, not the window: SwiftUI
+        // resets NSWindow.appearance on its next update, which left a space stuck in Dark after going back
+        // to Auto (the window read nil again, so nothing changed, while the views kept the dark scheme).
         let appearance = SpacePalette.appearance(for: browser.currentSpace)
-        if window.appearance?.name != appearance?.name {
+        guard let content = window.contentView else { return }
+        if content.appearance?.name != appearance?.name {
             // Cross-fade rather than snap, moving between a light space and a dark one.
             if window.isVisible, let layer = window.contentView?.superview?.layer ?? window.contentView?.layer {
                 let fade = CATransition()
@@ -193,7 +196,7 @@ struct BrowserWindow: View {
                 fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 layer.add(fade, forKey: "appearance")
             }
-            window.appearance = appearance
+            content.appearance = appearance
         }
     }
 
