@@ -67,6 +67,8 @@ struct SpaceThemeEditor: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                // Large is the macOS 26 capsule with the sliding glass selection; regular is the older squared control.
+                .controlSize(.large)
                 Text("Auto follows Browsa's appearance in Settings › General.")
                     .font(.caption).foregroundStyle(.secondary)
             }
