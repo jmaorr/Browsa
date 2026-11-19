@@ -365,11 +365,11 @@ struct TabIcon: View {
 // MARK: - AppKit bridges
 
 /// The translucent window material behind the sidebar and around the page.
-/// Liquid Glass behind the whole window: clearer than the sidebar material, with the desktop showing through.
+/// Liquid Glass behind the whole window (regular, lightly frosted): clearer than the sidebar material.
 struct WindowGlass: NSViewRepresentable {
     func makeNSView(context: Context) -> NSGlassEffectView {
         let v = NSGlassEffectView()
-        v.style = .clear
+        v.style = .regular
         v.cornerRadius = 0
         return v
     }
@@ -384,7 +384,8 @@ struct WindowMaterial: NSViewRepresentable {
         let v = NSVisualEffectView()
         v.material = material
         v.blendingMode = .behindWindow
-        v.state = .followsWindowActiveState
+        // The same look whether or not the window is key, so it matches while you edit a theme in Settings.
+        v.state = .active
         return v
     }
 
