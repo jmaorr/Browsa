@@ -72,15 +72,13 @@ struct BrowserWindow: View {
 
     /// The space's colour and shade over the window material. It tints the sidebar and the frame
     /// around the page, never the icons or the page itself.
-    private var surface: (color: NSColor, opacity: Double, clear: Double, isDark: Bool) {
+    private var surface: (color: NSColor, opacity: Double, isDark: Bool) {
         SpacePalette.surface(for: browser.currentSpace, dark: colorScheme == .dark)
     }
 
     private var background: some View {
         ZStack {
-            // High Glass swaps the frosted sidebar material for a clearer one that shows more of the desktop.
-            if surface.clear < 1 { WindowMaterial(material: .sidebar).opacity(1 - surface.clear) }
-            if surface.clear > 0 { WindowMaterial(material: .underWindowBackground).opacity(surface.clear) }
+            WindowMaterial(material: .sidebar)
             // Neutral until the intro reaches the sidebar, then the tint comes in.
             Color(nsColor: surface.color)
                 .opacity(browser.isIntroHoldingSidebar ? 0 : surface.opacity)

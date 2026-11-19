@@ -28,22 +28,18 @@ enum SpacePalette {
     /// What a space lays over the sidebar's glass: its colour at its shade, and how opaque that layer is.
     /// Shade works inside the window's range: pale to rich in light (93% to 25% lightness), dark grey to
     /// near black in dark (30% to 10%), so a space on Auto keeps its character when the Mac switches.
-    /// `clear` is how far the window has moved from the frosted sidebar material to the clearer one, over
-    /// the top of the Glass slider.
-    @MainActor static func surface(for space: Space, dark: Bool) -> (color: NSColor, opacity: Double, clear: Double, isDark: Bool) {
+    @MainActor static func surface(for space: Space, dark: Bool) -> (color: NSColor, opacity: Double, isDark: Bool) {
         let vivid = space.isPrivate ? 0 : (space.themeVivid ?? defaultVivid)
         let shade = space.isPrivate ? defaultShade : (space.themeShade ?? defaultShade)
         let glass = space.isPrivate ? defaultGlass : (space.themeGlass ?? defaultGlass)
         let lightness = dark ? 0.30 - shade * 0.20 : 0.93 - shade * 0.68
         let color = hsl(hue(of: space), vivid, lightness)
-        // Up to 70% Glass the colour thins over the frosted material; past it the material itself turns
-        // clearer, and the colour thins a little more.
-        let clear = max(0, min(1, (glass - 0.7) / 0.3))
-        let opacity = glass <= 0.7 ? 1 - glass / 0.7 * 0.65 : 0.35 - clear * 0.2
+        // Even at full glass a third of the colour stays, so the ring and Shade always show.
+        let opacity = 1 - glass * 0.65
         // Roughly how light the sidebar ends up, over the material, to pick dark or light text on it.
         let material = dark ? 0.2 : 0.9
         let result = material * (1 - opacity) + luminance(color) * opacity
-        return (color, opacity, clear, result < 0.5)
+        return (color, opacity, result < 0.5)
     }
 
     /// The window appearance a space keeps to, or nil to follow Browsa's own setting.
