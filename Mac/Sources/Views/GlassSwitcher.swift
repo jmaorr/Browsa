@@ -40,13 +40,10 @@ struct GlassSwitcher<Value: Hashable>: View {
             .foregroundStyle(on ? .primary : .secondary)
             .frame(maxWidth: .infinity)
             .frame(height: 26)
-            .background {
-                if on {
-                    Color.clear
-                        .glassEffect(.regular.interactive(), in: .capsule)
-                        .matchedGeometryEffect(id: "lens", in: lens)
-                }
-            }
+            // The label is the glass's own content, so it draws on top of the lens rather than under it.
+            // The lens morphs from one choice to the next (glassEffectID in the shared container).
+            .glassEffect(on ? .regular.interactive() : .identity, in: .capsule)
+            .glassEffectID(on ? "lens" : "segment-\(option.title)", in: lens)
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
