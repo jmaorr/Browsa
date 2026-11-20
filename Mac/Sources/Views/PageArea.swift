@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import WebKit
 import BrowserCore
 import BrowserEngine
 import Extensibility
@@ -186,6 +187,81 @@ struct PageHost: NSViewRepresentable {
             }
             let frame = NSRect(x: 0, y: 0, width: width, height: bounds.height)
             if page.frame != frame { page.frame = frame }
+        }
+
+        // MARK: Hover while Browsa isn't in front
+
+        /// WebKit only follows the pointer in the key window of the active app, so in Safari a link doesn't light up
+        /// until you click into the window. Chrome and Arc show hover in any window, and so does Browsa: while this
+        /// window isn't the key window of the active app, its own tracking area passes the pointer to the page.
+        private var hoverArea: NSTrackingArea?
+        /// The page last told the pointer was over it, to tell when it leaves.
+        private weak var hoveredPage: WKWebView?
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let hoverArea { removeTrackingArea(hoverArea) }
+            let area = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                      owner: self, userInfo: nil)
+            addTrackingArea(area)
+            hoverArea = area
+        }
+
+        /// WebKit is following the pointer itself.
+        private var webKitTracks: Bool { NSApp.isActive && window?.isKeyWindow == true }
+
+        override func mouseMoved(with event: NSEvent) { forwardHover(event) }
+        override func mouseEntered(with event: NSEvent) { forwardHover(event) }
+        override func mouseExited(with event: NSEvent) { leaveHover() }
+
+        /// Set while handing an event to the page. A web view that doesn't take an event passes it back up the
+        /// responder chain to this view, which mustn't hand it on again.
+        private var isForwarding = false
+
+        /// Only moves are passed on: WebKit works out entering and leaving links from those itself.
+        private func forwardHover(_ event: NSEvent) {
+            guard !isForwarding, event.trackingArea === hoverArea else { return }
+            guard !webKitTracks else { hoveredPage = nil; return }
+            // Only the page that's actually under the pointer, not one covered by the find bar or a panel.
+            let page = pageUnderPointer(event)
+            if hoveredPage !== page { leaveHover() }
+            guard let page, let moved = Self.moveEvent(like: event) else { return }
+            hoveredPage = page
+            isForwarding = true
+            defer { isForwarding = false }
+            page.mouseMoved(with: moved)
+        }
+
+        /// When the pointer leaves, the page hears it left, so a link stops highlighting as with WebKit's own exit.
+        private func leaveHover() {
+            guard !isForwarding, let page = hoveredPage else { return }
+            hoveredPage = nil
+            guard !webKitTracks, let window = page.window,
+                  let exited = NSEvent.enterExitEvent(with: .mouseExited, location: window.mouseLocationOutsideOfEventStream,
+                                                      modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                      windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                                                      trackingNumber: 0, userData: nil) else { return }
+            isForwarding = true
+            defer { isForwarding = false }
+            page.mouseExited(with: exited)
+        }
+
+        /// Entered and exited events become a plain move at the same spot.
+        private static func moveEvent(like event: NSEvent) -> NSEvent? {
+            if event.type == .mouseMoved { return event }
+            return NSEvent.mouseEvent(with: .mouseMoved, location: event.locationInWindow, modifierFlags: event.modifierFlags,
+                                      timestamp: event.timestamp, windowNumber: event.windowNumber, context: nil,
+                                      eventNumber: 0, clickCount: 0, pressure: 0)
+        }
+
+        private func pageUnderPointer(_ event: NSEvent) -> WKWebView? {
+            guard let content = window?.contentView, let frame = content.superview ?? Optional(content) else { return nil }
+            var view = frame.hitTest(frame.convert(event.locationInWindow, from: nil))
+            while let v = view, v !== self {
+                if let web = v as? WKWebView { return web }
+                view = v.superview
+            }
+            return nil
         }
 
         /// Keys go to the page after a tab switch, so Space scrolls and arrows work straight away.

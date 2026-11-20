@@ -286,7 +286,17 @@ final class CallPiPPanel: NSPanel {
             if !isMinimised, !morphing { setChrome(visible: true) }
         } else {
             hideChrome(after: 1.2)
+            returnKeyToBrowser()
         }
+    }
+
+    /// A click on the call (mute, camera) makes this panel the key window without making Browsa's window stop being
+    /// main, and WebKit and SwiftUI only track the pointer in the key window. Left like that, links stop highlighting
+    /// and hover controls stop showing in the browser until you click it. So once the pointer leaves the call, the
+    /// browser window gets the keys back. (Typing in the call's chat means keeping the pointer over it.)
+    private func returnKeyToBrowser() {
+        guard isKeyWindow, NSApp.isActive, let main = NSApp.mainWindow, main !== self, main.isVisible else { return }
+        main.makeKey()
     }
 
     /// Hides the name and buttons after a moment, unless the pointer is over the window or VoiceOver is on.
@@ -330,6 +340,8 @@ final class CallPiPPanel: NSPanel {
             styleMask.remove(.resizable)
             minSize = NSSize(width: Self.miniSize, height: Self.miniSize)
             hideTimer?.invalidate()
+            // The icon can't take keys, so it mustn't keep them either.
+            returnKeyToBrowser()
         } else {
             // Grow out from where the icon is now, kept on its screen.
             var grown = fullFrame
