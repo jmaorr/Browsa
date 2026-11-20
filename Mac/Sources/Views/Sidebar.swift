@@ -44,6 +44,10 @@ struct Sidebar: View {
         #endif
     }
 
+    /// As narrow as the sidebar goes: the top row's own width (window buttons, five 28 pt buttons, spacing and
+    /// 12 pt edges). Any narrower and the row overflows, which shoved the window buttons off their spot.
+    static let minimumWidth: CGFloat = 12 + WindowButtons.width + 5 * 28 + 6 * 2 + 12
+
     /// Room for the traffic lights and the sidebar button on the left; back, forward and reload at
     /// the right edge, like Arc.
     private var topRow: some View {
@@ -64,6 +68,8 @@ struct Sidebar: View {
                 SidebarIconButton(symbol: "arrow.clockwise", help: Shortcuts.shared.help("Reload", .reload), enabled: browser.currentTab?.url != nil) { browser.reload() }
             }
         }
+        // If it's ever squeezed, the window buttons stay put and the far end gives way.
+        .frame(maxWidth: .infinity, alignment: .leading)
         // A little more room from the window's top and side edges than a title bar gives, like
         // other Mac apps with a sidebar. Floating, the card's 6 pt inset makes up part of it, so the
         // buttons sit in the same place docked or floating.

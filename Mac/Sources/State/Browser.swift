@@ -85,7 +85,7 @@ final class Browser {
         self.windowKey = windowKey
         self.isNewWindow = isNewWindow
         isSidebarDocked = Preferences.sidebarDocked
-        sidebarWidth = Preferences.sidebarWidth
+        sidebarWidth = max(Preferences.sidebarWidth, Sidebar.minimumWidth)
         panelWidth = Preferences.panelWidth
         let request = library.takeWindowRequest()
         let isFirst = library.windows.isEmpty
