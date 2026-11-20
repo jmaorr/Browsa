@@ -285,6 +285,7 @@ struct MarginPanel: View {
             var m: [String: Any] = ["n": i + 1, "selected": n.id == selected]
             if let q = n.anchor.quote { m["quote"] = q }
             if let s = n.anchor.selector { m["selector"] = s }
+            if let x = n.anchor.x, let y = n.anchor.y { m["x"] = x; m["y"] = y }
             return m
         }
         // The note being written shows too, as a pin with no number yet.
@@ -325,7 +326,7 @@ struct MarginPanel: View {
 
     private func reveal(_ n: Int) {
         guard let page = browser.currentController?.page else { return }
-        Task { _ = try? await page.evaluate("const p = document.querySelector('.__browsa-pin[data-n=\"\(n)\"]'); p && p.scrollIntoView({block: 'center', behavior: 'smooth'}); return !!p", inWorld: "browsa.margin") }
+        Task { _ = try? await page.evaluate("document.dispatchEvent(new CustomEvent('browsa-reveal', { detail: \(n) })); return true", inWorld: "browsa.margin") }
     }
 
     /// While the comment tool is on: outline what's under the pointer, and take the first click or
@@ -909,83 +910,159 @@ enum NotePicker {
     """#
 }
 
+/// Draws the open notes on the page: a numbered pin at each anchor, a highlight on quoted text, a box round a
+/// pinned element.
+///
+/// Pages change under the pins, so they're kept up to date rather than drawn once: they sit in their own layer on
+/// `<html>` (a page re-rendering its `<body>` can't wipe them), follow their anchors through scrolling (sticky
+/// headers and scrolling panels too) and resizing, and an anchor that wasn't on the page yet (a page still
+/// rendering, content loaded later) is looked for again as the page changes. Quotes match across links and bold
+/// text and ignore differences in spacing.
+///
+/// Every evaluate can start with fresh globals, so the drawing lives in listeners bound once per page, and each
+/// call hands them the marks through a data attribute and an event.
 enum MarginMarks {
     static let script = #"""
     if (!window.__browsaMarks) {
       window.__browsaMarks = (marks) => {
-        document.querySelectorAll('.__browsa-pin, .__browsa-box').forEach(e => e.remove());
-        if (window.CSS && CSS.highlights) { CSS.highlights.delete('browsa-note'); CSS.highlights.delete('browsa-note-selected'); }
-        if (!document.getElementById('__browsa-mark-style')) {
-          const st = document.createElement('style');
-          st.id = '__browsa-mark-style';
-          st.textContent = `
-            ::highlight(browsa-note) { background-color: rgba(250, 204, 21, .32); }
-            ::highlight(browsa-note-selected) { background-color: rgba(250, 204, 21, .62); }
-            .__browsa-pin { position: absolute; z-index: 2147483646; pointer-events: auto; cursor: pointer; width: 20px; height: 20px;
-              border-radius: 10px 10px 10px 2px; background: #f5b60b; color: #1d1600; font: 600 11px/20px -apple-system, system-ui;
-              text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.25); transform: translate(-4px, -22px); transition: transform .15s; }
-            .__browsa-pin.sel { transform: translate(-4px, -22px) scale(1.18); box-shadow: 0 0 0 3px rgba(245,182,11,.35), 0 1px 3px rgba(0,0,0,.25); }
-            .__browsa-box { position: absolute; z-index: 2147483645; pointer-events: none; border: 1.5px dashed rgba(245,182,11,.9);
-              border-radius: 6px; }
-            .__browsa-box.sel { border-style: solid; background: rgba(250, 204, 21, .10); }`;
-          document.documentElement.appendChild(st);
-        }
-        const plain = [], chosen = [];
-        const findText = (q) => {
-          const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-          for (let t = w.nextNode(); t; t = w.nextNode()) {
-            const i = t.data.indexOf(q);
-            if (i >= 0 && t.parentElement && !t.parentElement.closest('script,style')) {
-              const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + q.length); return r;
+        const root = document.documentElement;
+        root.dataset.browsaMarks = JSON.stringify(marks);
+        if (!root.dataset.browsaMarksBound) {
+          root.dataset.browsaMarksBound = '1';
+          let anchors = [], frame = 0, refind = 0, observer = null;
+          const layer = () => {
+            let l = document.getElementById('__browsa-marks');
+            if (!l) {
+              l = document.createElement('div');
+              l.id = '__browsa-marks';
+              l.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;overflow:visible;z-index:2147483646;pointer-events:none;contain:layout style;';
+              const st = document.createElement('style');
+              st.textContent = `
+                ::highlight(browsa-note) { background-color: rgba(250, 204, 21, .32); }
+                ::highlight(browsa-note-selected) { background-color: rgba(250, 204, 21, .62); }
+                .__browsa-pin { position: fixed; pointer-events: auto; cursor: pointer; width: 20px; height: 20px;
+                  border-radius: 10px 10px 10px 2px; background: #f5b60b; color: #1d1600; font: 600 11px/20px -apple-system, system-ui;
+                  text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.25); transform: translate(-4px, -22px); transition: transform .15s; }
+                .__browsa-pin.sel { transform: translate(-4px, -22px) scale(1.18); box-shadow: 0 0 0 3px rgba(245,182,11,.35), 0 1px 3px rgba(0,0,0,.25); }
+                .__browsa-box { position: fixed; pointer-events: none; border: 1.5px dashed rgba(245,182,11,.9); border-radius: 6px; }
+                .__browsa-box.sel { border-style: solid; background: rgba(250, 204, 21, .10); }`;
+              l.appendChild(st);
             }
-          }
-          return null;
-        };
-        for (const m of marks) {
-          let rect = null;
-          if (m.quote) {
-            const r = findText(m.quote.trim());
-            if (r) { (m.selected ? chosen : plain).push(r); rect = r.getBoundingClientRect(); }
-          }
-          if (!rect && m.selector) {
-            let el = null; try { el = document.querySelector(m.selector); } catch (e) {}
-            if (el) {
-              rect = el.getBoundingClientRect();
-              const b = document.createElement('div');
-              b.className = '__browsa-box' + (m.selected ? ' sel' : '');
-              Object.assign(b.style, { left: (rect.left + scrollX - 4) + 'px', top: (rect.top + scrollY - 4) + 'px',
-                width: (rect.width + 8) + 'px', height: (rect.height + 8) + 'px' });
-              document.body.appendChild(b);
+            if (l.parentNode !== root) root.appendChild(l);
+            return l;
+          };
+          // The page's text as one string with spacing collapsed, mapped back to text nodes, so a quote is
+          // found even when it runs across a link or bold text.
+          const findText = (quote) => {
+            const want = quote.replace(/\s+/g, ' ').trim();
+            if (!want || !document.body) return null;
+            const nodes = [], offsets = [], chars = [];
+            let lastSpace = true;
+            const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+              acceptNode: (t) => t.parentElement && !t.parentElement.closest('script,style,noscript,#__browsa-marks')
+                ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+            for (let t = w.nextNode(); t; t = w.nextNode()) {
+              const d = t.data;
+              for (let i = 0; i < d.length; i++) {
+                const c = d.charCodeAt(i), space = c <= 32 || c === 160;
+                if (space && lastSpace) continue;
+                lastSpace = space;
+                chars.push(space ? ' ' : d[i]); nodes.push(t); offsets.push(i);
+              }
             }
-          }
-          if (!rect) continue;
-          const p = document.createElement('div');
-          p.className = '__browsa-pin' + (m.selected ? ' sel' : '');
-          p.dataset.n = m.n; p.textContent = m.n;
-          if (typeof m.n === 'number') {
-            p.title = 'Show note ' + m.n;
-            // On mousedown, not click: picking a note redraws the pins, and a click on a pin
-            // that has been replaced in between would never arrive.
-            p.addEventListener('mousedown', (e) => {
-              e.preventDefault(); e.stopPropagation();
-              document.documentElement.dataset.browsaPinClicked = String(m.n);
-            }, true);
-            p.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
-          }
-          Object.assign(p.style, { left: (rect.left + scrollX) + 'px', top: (rect.top + scrollY) + 'px' });
-          document.body.appendChild(p);
+            const text = chars.join('');
+            let at = text.indexOf(want);
+            if (at < 0) at = text.toLowerCase().indexOf(want.toLowerCase());
+            if (at < 0) return null;
+            const last = at + want.length - 1;
+            const r = document.createRange();
+            r.setStart(nodes[at], offsets[at]); r.setEnd(nodes[last], offsets[last] + 1);
+            return r;
+          };
+          // A note whose quote or element isn't on the page keeps a pin where it was made, if that's known.
+          const connected = (a) => a.range ? a.range.startContainer.isConnected && !a.range.collapsed
+            : a.el ? a.el.isConnected : false;
+          const placed = (a) => connected(a) || a.point;
+          // Finds each mark's anchor, keeping ones already found that are still on the page.
+          const find = () => {
+            const marks = JSON.parse(root.dataset.browsaMarks || '[]');
+            const old = anchors;
+            anchors = marks.map((m, i) => {
+              const was = old[i];
+              if (was && was.key === JSON.stringify([m.quote, m.selector]) && connected(was)) return Object.assign(was, { m });
+              const a = { m, key: JSON.stringify([m.quote, m.selector]), range: null, el: null };
+              if (m.quote) a.range = findText(m.quote);
+              if (!a.range && m.selector) { try { a.el = document.querySelector(m.selector); } catch (e) {} }
+              if (!a.range && !a.el && typeof m.x === 'number' && typeof m.y === 'number') a.point = { x: m.x, y: m.y };
+              return a;
+            });
+            draw();
+          };
+          // Puts each pin (and box) on its anchor, in window coordinates, so they track sticky and scrolling content.
+          const draw = () => {
+            frame = 0;
+            const l = layer();
+            l.querySelectorAll('.__browsa-pin, .__browsa-box').forEach(e => e.remove());
+            const plain = [], chosen = [];
+            for (const a of anchors) {
+              const m = a.m;
+              if (!placed(a)) continue;
+              const rect = a.range ? a.range.getBoundingClientRect() : a.el ? a.el.getBoundingClientRect()
+                : { left: a.point.x - scrollX, top: a.point.y - scrollY, right: a.point.x - scrollX + 1,
+                    bottom: a.point.y - scrollY + 1, width: 1, height: 1 };
+              if (a.range) (m.selected ? chosen : plain).push(a.range);
+              if (rect.width === 0 && rect.height === 0) continue;
+              if (rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth) continue;
+              if (a.el) {
+                const b = document.createElement('div');
+                b.className = '__browsa-box' + (m.selected ? ' sel' : '');
+                Object.assign(b.style, { left: (rect.left - 4) + 'px', top: (rect.top - 4) + 'px',
+                  width: (rect.width + 8) + 'px', height: (rect.height + 8) + 'px' });
+                l.appendChild(b);
+              }
+              const p = document.createElement('div');
+              p.className = '__browsa-pin' + (m.selected ? ' sel' : '');
+              p.dataset.n = m.n; p.textContent = m.n;
+              if (typeof m.n === 'number') {
+                p.title = 'Show note ' + m.n;
+                // On mousedown, not click: picking a note redraws the pins, and a click on a pin
+                // that has been replaced in between would never arrive.
+                p.addEventListener('mousedown', (e) => {
+                  e.preventDefault(); e.stopPropagation();
+                  root.dataset.browsaPinClicked = String(m.n);
+                }, true);
+                p.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+              }
+              Object.assign(p.style, { left: rect.left + 'px', top: rect.top + 'px' });
+              l.appendChild(p);
+            }
+            if (window.CSS && CSS.highlights && window.Highlight) {
+              CSS.highlights.delete('browsa-note'); CSS.highlights.delete('browsa-note-selected');
+              if (plain.length) CSS.highlights.set('browsa-note', new Highlight(...plain));
+              if (chosen.length) CSS.highlights.set('browsa-note-selected', new Highlight(...chosen));
+            }
+          };
+          const soon = () => { if (!frame) frame = requestAnimationFrame(draw); };
+          addEventListener('scroll', soon, { capture: true, passive: true });
+          addEventListener('resize', soon);
+          // The page changing: anchors that went missing (or never showed) are looked for again, at most a few
+          // times a second, and only while some are missing; otherwise the pins just move with the layout.
+          observer = new MutationObserver((records) => {
+            if (records.every(r => r.target.closest && r.target.closest('#__browsa-marks'))) return;
+            if (!anchors.length) return;
+            if (anchors.some(a => !connected(a))) {
+              if (!refind) refind = setTimeout(() => { refind = 0; find(); }, 400);
+            } else soon();
+          });
+          observer.observe(root, { childList: true, subtree: true, characterData: true });
+          document.addEventListener('browsa-marks', find);
+          document.addEventListener('browsa-reveal', (e) => {
+            const a = anchors.find(x => x.m.n === e.detail);
+            const target = a && (a.el || (a.range && a.range.startContainer.parentElement));
+            if (target) target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          });
         }
-        if (window.CSS && CSS.highlights && window.Highlight) {
-          if (plain.length) CSS.highlights.set('browsa-note', new Highlight(...plain));
-          if (chosen.length) CSS.highlights.set('browsa-note-selected', new Highlight(...chosen));
-        }
-        // Globals don't outlive one evaluate, so the last marks and the bound flag live on <html>.
-        document.documentElement.dataset.browsaMarks = JSON.stringify(marks);
-        if (!document.documentElement.dataset.browsaResizeBound) {
-          document.documentElement.dataset.browsaResizeBound = '1';
-          const redraw = window.__browsaMarks;
-          addEventListener('resize', () => redraw(JSON.parse(document.documentElement.dataset.browsaMarks || '[]')));
-        }
+        document.dispatchEvent(new CustomEvent('browsa-marks'));
         return marks.length;
       };
     }
