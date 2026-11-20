@@ -34,6 +34,44 @@ enum BuiltInTools {
             ]))
 
         workbench.register(Tool(
+            id: "boosts", title: "Boost", symbol: "paintbrush.pointed",
+            summary: "Your own font, colours and fewer distractions on this site",
+            panel: { AnyView(BoostPanel()) },
+            commands: [
+                ToolCommand(id: "zap", title: "Zap an Element on This Page", symbol: "scope", keywords: ["boost", "hide", "remove", "distraction"]) { browser in
+                    guard browser.currentTab?.isPrivate != true else {
+                        browser.showToast("Boosts aren't saved from private tabs"); return
+                    }
+                    browser.showPanel("boosts")
+                    guard let url = browser.currentTab?.url, let page = browser.currentController?.page,
+                          let start = BoostStore.shared.boostOrNew(for: url) else { return }
+                    Task {
+                        guard let zap = await ZapPicker.pick(on: page) else { return }
+                        var boost = BoostStore.shared.boost(for: url) ?? start
+                        boost.zaps.append(zap)
+                        BoostStore.shared.save(boost)
+                        browser.showToast("Zapped. It stays hidden on \(boost.host)")
+                    }
+                },
+                ToolCommand(id: "toggle", title: "Turn Boost On or Off for This Site", symbol: "paintbrush.pointed", keywords: ["boost", "style"]) { browser in
+                    guard browser.currentTab?.isPrivate != true else {
+                        browser.showToast("Boosts aren't changed from private tabs"); return
+                    }
+                    guard var boost = BoostStore.shared.boost(for: browser.currentTab?.url) else {
+                        browser.showToast("This site has no Boost yet")
+                        return
+                    }
+                    boost.isOn.toggle()
+                    BoostStore.shared.save(boost)
+                    if let page = browser.currentController?.page {
+                        let updated = boost
+                        Task { await BoostStore.shared.preview(updated, on: page) }
+                    }
+                    browser.showToast(boost.isOn ? "Boost on" : "Boost off")
+                },
+            ]))
+
+        workbench.register(Tool(
             id: "downloads", title: "Downloads", symbol: "arrow.down.circle",
             summary: "Files you've downloaded, with Open and Show in Finder",
             panel: { AnyView(DownloadsPanel()) }))
