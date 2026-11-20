@@ -212,24 +212,46 @@ struct PageHost: NSViewRepresentable {
 
         override func mouseMoved(with event: NSEvent) { forwardHover(event) }
         override func mouseEntered(with event: NSEvent) { forwardHover(event) }
-        override func mouseExited(with event: NSEvent) { leaveHover(event) }
+        override func mouseExited(with event: NSEvent) { leaveHover() }
 
+        /// Set while handing an event to the page. A web view that doesn't take an event passes it back up the
+        /// responder chain to this view, which mustn't hand it on again.
+        private var isForwarding = false
+
+        /// Only moves are passed on: WebKit works out entering and leaving links from those itself.
         private func forwardHover(_ event: NSEvent) {
-            guard event.trackingArea == nil || event.trackingArea === hoverArea else { return }
+            guard !isForwarding, event.trackingArea === hoverArea else { return }
             guard !webKitTracks else { hoveredPage = nil; return }
             // Only the page that's actually under the pointer, not one covered by the find bar or a panel.
             let page = pageUnderPointer(event)
-            if hoveredPage !== page { leaveHover(event) }
-            guard let page else { return }
-            if hoveredPage == nil { page.mouseEntered(with: event) }
+            if hoveredPage !== page { leaveHover() }
+            guard let page, let moved = Self.moveEvent(like: event) else { return }
             hoveredPage = page
-            page.mouseMoved(with: event)
+            isForwarding = true
+            defer { isForwarding = false }
+            page.mouseMoved(with: moved)
         }
 
-        private func leaveHover(_ event: NSEvent) {
-            guard let page = hoveredPage else { return }
+        /// When the pointer leaves, the page hears it left, so a link stops highlighting as with WebKit's own exit.
+        private func leaveHover() {
+            guard !isForwarding, let page = hoveredPage else { return }
             hoveredPage = nil
-            if !webKitTracks { page.mouseExited(with: event) }
+            guard !webKitTracks, let window = page.window,
+                  let exited = NSEvent.enterExitEvent(with: .mouseExited, location: window.mouseLocationOutsideOfEventStream,
+                                                      modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                      windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                                                      trackingNumber: 0, userData: nil) else { return }
+            isForwarding = true
+            defer { isForwarding = false }
+            page.mouseExited(with: exited)
+        }
+
+        /// Entered and exited events become a plain move at the same spot.
+        private static func moveEvent(like event: NSEvent) -> NSEvent? {
+            if event.type == .mouseMoved { return event }
+            return NSEvent.mouseEvent(with: .mouseMoved, location: event.locationInWindow, modifierFlags: event.modifierFlags,
+                                      timestamp: event.timestamp, windowNumber: event.windowNumber, context: nil,
+                                      eventNumber: 0, clickCount: 0, pressure: 0)
         }
 
         private func pageUnderPointer(_ event: NSEvent) -> WKWebView? {
