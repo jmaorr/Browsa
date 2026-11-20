@@ -270,6 +270,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable {
                                                                stats: { [weak self] in self?.onCallAudioStats?($0) }),
                                               contentWorld: .page, name: CallAudioHandler.name)
         }
+        if let fixes = SiteOptimisations.script { controller.addUserScript(fixes) }
         if blocking.globalPrivacyControl {
             controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,
                                                   forMainFrameOnly: false, in: .page))
