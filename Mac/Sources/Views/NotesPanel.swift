@@ -936,17 +936,14 @@ enum MarginMarks {
               l = document.createElement('div');
               l.id = '__browsa-marks';
               l.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;overflow:visible;z-index:2147483646;pointer-events:none;contain:layout style;';
-              const st = document.createElement('style');
-              st.textContent = `
-                ::highlight(browsa-note) { background-color: rgba(250, 204, 21, .32); }
-                ::highlight(browsa-note-selected) { background-color: rgba(250, 204, 21, .62); }
-                .__browsa-pin { position: fixed; pointer-events: auto; cursor: pointer; width: 20px; height: 20px;
-                  border-radius: 10px 10px 10px 2px; background: #f5b60b; color: #1d1600; font: 600 11px/20px -apple-system, system-ui;
-                  text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.25); transform: translate(-4px, -22px); transition: transform .15s; }
-                .__browsa-pin.sel { transform: translate(-4px, -22px) scale(1.18); box-shadow: 0 0 0 3px rgba(245,182,11,.35), 0 1px 3px rgba(0,0,0,.25); }
-                .__browsa-box { position: fixed; pointer-events: none; border: 1.5px dashed rgba(245,182,11,.9); border-radius: 6px; }
-                .__browsa-box.sel { border-style: solid; background: rgba(250, 204, 21, .10); }`;
-              l.appendChild(st);
+              // Highlights need a style sheet. A constructed one, since many sites' Content Security Policy
+              // (browsa.app's own, for one) blocks a <style> element; everything else is styled inline.
+              try {
+                const sheet = new CSSStyleSheet();
+                sheet.replaceSync('::highlight(browsa-note) { background-color: rgba(250, 204, 21, .32); }' +
+                  '::highlight(browsa-note-selected) { background-color: rgba(250, 204, 21, .62); }');
+                document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+              } catch (e) {}
             }
             if (l.parentNode !== root) root.appendChild(l);
             return l;
@@ -1016,7 +1013,10 @@ enum MarginMarks {
               if (a.el) {
                 const b = document.createElement('div');
                 b.className = '__browsa-box' + (m.selected ? ' sel' : '');
-                Object.assign(b.style, { left: (rect.left - 4) + 'px', top: (rect.top - 4) + 'px',
+                Object.assign(b.style, { position: 'fixed', pointerEvents: 'none', borderRadius: '6px',
+                  border: '1.5px ' + (m.selected ? 'solid' : 'dashed') + ' rgba(245,182,11,.9)',
+                  background: m.selected ? 'rgba(250,204,21,.10)' : 'none',
+                  left: (rect.left - 4) + 'px', top: (rect.top - 4) + 'px',
                   width: (rect.width + 8) + 'px', height: (rect.height + 8) + 'px' });
                 l.appendChild(b);
               }
@@ -1033,7 +1033,12 @@ enum MarginMarks {
                 }, true);
                 p.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
               }
-              Object.assign(p.style, { left: rect.left + 'px', top: rect.top + 'px' });
+              Object.assign(p.style, { position: 'fixed', pointerEvents: 'auto', cursor: 'pointer', width: '20px', height: '20px',
+                boxSizing: 'border-box', margin: '0', padding: '0', borderRadius: '10px 10px 10px 2px', background: '#f5b60b',
+                color: '#1d1600', font: '600 11px/20px -apple-system, system-ui', textAlign: 'center',
+                transform: 'translate(-4px, -22px)' + (m.selected ? ' scale(1.18)' : ''),
+                boxShadow: (m.selected ? '0 0 0 3px rgba(245,182,11,.35), ' : '') + '0 1px 3px rgba(0,0,0,.25)',
+                left: rect.left + 'px', top: rect.top + 'px' });
               l.appendChild(p);
             }
             if (window.CSS && CSS.highlights && window.Highlight) {
