@@ -43,7 +43,7 @@ final class ColumnsController: NSSplitViewController {
         super.init(nibName: nil, bundle: nil)
 
         sidebarItem.canCollapse = true
-        sidebarItem.minimumThickness = 200
+        sidebarItem.minimumThickness = Sidebar.minimumWidth
         sidebarItem.maximumThickness = 420
         // The page takes up a window resize; the side columns keep their widths.
         sidebarItem.holdingPriority = .init(260)
