@@ -265,6 +265,46 @@ final class Library {
         windows.first { $0.currentTab?.id == tab.id }
     }
 
+    /// Bumped when a window is minimised or restored, goes behind or out of sight (another Space, the app hidden),
+    /// or gets its AppKit window, so checks of what's on screen (`window(visiblyShowing:)`) run again.
+    private(set) var windowVisibility = 0
+    @ObservationIgnored private var visibilityObservers: [NSObjectProtocol] = []
+
+    func windowVisibilityChanged() { windowVisibility &+= 1 }
+
+    /// The window showing a tab where you can see it: not minimised or hidden, and either the window you used last
+    /// or one on the Space you're on. A window on another Space (or minimised) that was left on a favourite or
+    /// pinned call tab doesn't count, so leaving the call in the window you're using still floats it (`CallPiP`).
+    func window(visiblyShowing tab: BrowserTab) -> Browser? {
+        _ = windowVisibility
+        let latest = windows.first
+        return windows.first { window in
+            guard window.currentTab?.id == tab.id, let ns = window.nsWindow, ns.isVisible, !ns.isMiniaturized else { return false }
+            return window === latest || ns.isOnActiveSpace
+        }
+    }
+
+    /// Listens for windows being minimised, covered, hidden or left on another Space; see `windowVisibility`.
+    func watchWindowVisibility() {
+        guard visibilityObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+        let names: [Notification.Name] = [NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification,
+                                          NSWindow.didChangeOcclusionStateNotification]
+        visibilityObservers = names.map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self, let window = note.object as? NSWindow,
+                          self.windows.contains(where: { $0.nsWindow === window }) else { return }
+                    self.windowVisibilityChanged()
+                }
+            }
+        }
+        visibilityObservers.append(NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.windowVisibilityChanged() }
+        })
+    }
+
     /// Opens a window through SwiftUI. Set by the first window that appears.
     @ObservationIgnored var openWindowAction: (() -> Void)?
     /// Opens (or brings forward) the Settings window. Set by the first browser window.

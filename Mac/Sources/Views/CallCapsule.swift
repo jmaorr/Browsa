@@ -10,11 +10,11 @@ struct CallCapsule: View {
     @State private var hiddenFor: UUID?
     @State private var hovering = false
 
-    /// The call to lead back to: a tab in a call that no window is showing right now.
+    /// The call to lead back to: a tab in a call that no window is showing where you can see it right now.
     private var call: BrowserTab? {
         let library = browser.library
         return library.allTabs
-            .filter { $0.call != nil && library.window(showing: $0) == nil }
+            .filter { $0.call != nil && library.window(visiblyShowing: $0) == nil }
             .max { $0.lastActive < $1.lastActive }
     }
 

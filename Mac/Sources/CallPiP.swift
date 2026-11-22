@@ -21,6 +21,7 @@ final class CallPiP {
 
     static func install(in library: Library) {
         UserDefaults.standard.register(defaults: ["callPiP": true])
+        library.watchWindowVisibility()
         let pip = CallPiP(library: library)
         shared = pip
         pip.track()
@@ -51,7 +52,7 @@ final class CallPiP {
             return (live ? 1 : 0, tab.lastActive)
         }
         return library.allTabs
-            .filter { $0.call != nil && !library.pipClosedFor.contains($0.id) && library.window(showing: $0) == nil }
+            .filter { $0.call != nil && !library.pipClosedFor.contains($0.id) && library.window(visiblyShowing: $0) == nil }
             .max { rank($0) < rank($1) }
     }
 

@@ -163,6 +163,8 @@ struct BrowserWindow: View {
             }
             let other = browser.library.windows.first { $0 !== browser }?.nsWindow
             WindowSizing.attach(window, isNew: browser.isNewWindow, like: other)
+            // After this update, so the change doesn't land in the middle of drawing the view.
+            DispatchQueue.main.async { [weak browser] in browser?.library.windowVisibilityChanged() }
         }
         // Only what changed: this runs on every update of the window's view, and resetting title bar
         // properties makes AppKit lay the title bar out again (in full screen, a visible flicker).
