@@ -2,6 +2,9 @@ import AppKit
 import SwiftUI
 import Observation
 import BrowserCore
+import os
+
+private let pipLog = Logger(subsystem: "com.orriginal.browsa", category: "callPiP")
 
 /// Picture in picture for calls. WebKit has no Document Picture-in-Picture (what Meet's own PiP button uses in
 /// Chrome), so Browsa does it itself: when you leave a call's tab, the call's live page moves into a small floating
@@ -66,17 +69,26 @@ final class CallPiP {
         if !library.pipClosedFor.isSubset(of: ongoing) {
             library.pipClosedFor.formIntersection(ongoing)
         }
+        // A call that ended: the next call in that tab (a Meet favourite, say) starts full size again.
+        if let last = lastTabID, !ongoing.contains(last), floating?.tab.id != last { lastTabID = nil }
         if floating?.tab.id == tab?.id { return }
         putBack()
         if let tab { float(tab) }
     }
 
     private func float(_ tab: BrowserTab) {
-        guard let controller = library.existingController(for: tab) else { return }
-        guard let page = controller.page else { return }
+        guard let controller = library.existingController(for: tab), let page = controller.page else {
+            pipLog.notice("Call tab has no live page to float")
+            return
+        }
         let panel = self.panel ?? makePanel()
         // A new call starts full size; the same call keeps the size you left it at.
         if lastTabID != tab.id { panel.setMinimised(false, animated: false) }
+        // The screen it was on may be gone (a display unplugged since), which would float the call out of sight.
+        if !panel.isOnScreen {
+            pipLog.notice("Call window was off screen; moving it back")
+            panel.moveTo(Self.defaultFrame(on: NSScreen.main))
+        }
         lastTabID = tab.id
         floating = (tab, page.zoom)
         page.zoom = Self.scale
@@ -118,15 +130,20 @@ final class CallPiP {
 
     private func makePanel() -> CallPiPPanel {
         var frame = NSRectFromString(UserDefaults.standard.string(forKey: Self.frameKey) ?? "")
-        let screen = NSScreen.screens.first { $0.visibleFrame.intersects(frame) } ?? NSScreen.main
-        if frame.width < 200 || screen == nil {
-            let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-            frame = NSRect(x: visible.maxX - Self.defaultSize.width - 16, y: visible.minY + 16,
-                           width: Self.defaultSize.width, height: Self.defaultSize.height)
+        // The saved place only counts if a screen connected now shows enough of it.
+        if frame.width < 200 || !CallPiPPanel.showsEnough(of: frame) {
+            frame = Self.defaultFrame(on: NSScreen.main)
         }
         let panel = CallPiPPanel(frame: frame, scale: Self.scale)
         self.panel = panel
         return panel
+    }
+
+    /// The bottom-right corner of a screen, where picture in picture usually sits.
+    private static func defaultFrame(on screen: NSScreen?) -> NSRect {
+        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        return NSRect(x: visible.maxX - defaultSize.width - 16, y: visible.minY + 16,
+                      width: defaultSize.width, height: defaultSize.height)
     }
 }
 
@@ -252,6 +269,26 @@ final class CallPiPPanel: NSPanel {
             setChrome(visible: true, animated: false)
             hideChrome(after: 3)
         }
+    }
+
+    /// Whether enough of a frame is on a screen that's connected now to see and grab it.
+    static func showsEnough(of frame: NSRect) -> Bool {
+        NSScreen.screens.contains {
+            let shown = $0.visibleFrame.intersection(frame)
+            return shown.width >= 40 && shown.height >= 40
+        }
+    }
+
+    /// Whether the window (or the icon, while it's shrunk) can be seen on a screen.
+    var isOnScreen: Bool { Self.showsEnough(of: frame) }
+
+    /// Puts the full window at `full`, or the icon in that frame's bottom-right corner while it's shrunk.
+    func moveTo(_ full: NSRect) {
+        fullFrame = full
+        let target = isMinimised
+            ? NSRect(x: full.maxX - Self.miniSize, y: full.minY, width: Self.miniSize, height: Self.miniSize)
+            : full
+        setFrame(target, display: isVisible)
     }
 
     /// Lets the page go, unless a window has already taken it back.
