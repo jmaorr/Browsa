@@ -17,11 +17,7 @@ struct PageArea: View {
                 LibraryView()
             } else if let tab = browser.currentTab {
                 let focuses = browser.commandBar == nil && browser.find == nil && browser.glance == nil
-                if browser.library.pipTabID == tab.id {
-                    // The call is floating in its own window (this window is minimised or on another Space);
-                    // taking its page back here would pull it out of that window.
-                    Color(nsColor: .textBackgroundColor)
-                } else if browser.isReaderShowing, let reader = browser.reader {
+                if browser.isReaderShowing, let reader = browser.reader {
                     PageHost(view: reader.page.view, focusesPage: focuses, holdsWidth: browser.isSidebarMoving)
                 } else {
                     PageHost(view: browser.controller(for: tab).page.view, focusesPage: focuses,
