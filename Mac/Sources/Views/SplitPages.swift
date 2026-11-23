@@ -13,26 +13,37 @@ struct SplitPages: View {
     let tabs: [BrowserTab]
     /// The pane widths when a divider drag started.
     @State private var dragStart: [Double]?
+    /// The widths while a divider is dragged. Kept here and saved once when the drag ends, so the
+    /// sidebar and everything else watching splits doesn't redraw on every frame of the drag.
+    @State private var liveWidths: [Double]?
     @State private var liveWebViews: [NSView] = []
 
     private static let minimumPane: CGFloat = 240
+    /// How far the divider's grab zone reaches over each pane, past the visible gap.
+    static let grabOverhang: CGFloat = 5
 
     var body: some View {
         GeometryReader { geo in
             let gap = PageCard.inset
             let available = max(1, geo.size.width - gap * CGFloat(tabs.count - 1))
-            let widths = browser.splitWidths(tabs)
+            let widths = liveWidths.flatMap { $0.count == tabs.count ? $0 : nil } ?? browser.splitWidths(tabs)
             HStack(spacing: 0) {
                 ForEach(Array(tabs.enumerated()), id: \.element.id) { i, tab in
                     SplitPane(tab: tab, index: i, count: tabs.count, isFront: tab.id == browser.currentTab?.id)
                         .frame(width: max(0, available * widths[i]))
                     if i < tabs.count - 1 {
-                        SplitDivider()
+                        // The gap is only 6pt, so the grab zone reaches a few points over each
+                        // pane's edge, and sits above the pages so they can't take the cursor.
+                        Color.clear
                             .frame(width: gap)
-                            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                                .onChanged { drag(i, by: $0.translation.width, available: available) }
-                                .onEnded { _ in endDrag() })
-                            .onTapGesture(count: 2) { withAnimation(Motion.snappy) { browser.evenSplit(tabs) } }
+                            .overlay {
+                                SplitDivider(
+                                    onDrag: { drag(i, by: $0, available: available) },
+                                    onEnd: endDrag,
+                                    onDoubleClick: { withAnimation(Motion.snappy) { browser.evenSplit(tabs) } })
+                                    .frame(width: gap + Self.grabOverhang * 2)
+                            }
+                            .zIndex(1)
                     }
                 }
             }
@@ -53,25 +64,33 @@ struct SplitPages: View {
         let left = min(max(widths[i] + Double(dx / available), least), pair - least)
         widths[i] = left
         widths[i + 1] = pair - left
-        browser.setSplitWidths(widths, for: tabs)
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { liveWidths = widths }
     }
 
     private func endDrag() {
+        if let liveWidths { browser.setSplitWidths(liveWidths, for: tabs) }
+        liveWidths = nil
         dragStart = nil
         liveWebViews.forEach { $0.viewDidEndLiveResize() }
         liveWebViews = []
     }
 }
 
-/// One pane: a page card that comes to the front when clicked, with a small glass capsule of pane
-/// actions while the pointer is over it.
+/// One pane: a page card that comes to the front when clicked. Its actions sit behind a small
+/// handle that only shows while the pointer is near the pane's top edge, so it's out of the way
+/// the rest of the time.
 private struct SplitPane: View {
     @Environment(Browser.self) private var browser
     let tab: BrowserTab
     let index: Int
     let count: Int
     let isFront: Bool
-    @State private var hovering = false
+    @State private var nearTop = false
+
+    /// How far down from the pane's top edge the handle appears.
+    private static let revealDepth: CGFloat = 44
 
     var body: some View {
         PageCardView(tab: tab, isFront: isFront, inSplit: true)
@@ -82,70 +101,154 @@ private struct SplitPane: View {
                     .allowsHitTesting(false)
             }
             .overlay(alignment: .top) {
-                if hovering {
-                    PaneControls(tab: tab, index: index, count: count)
-                        .padding(.top, 8)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                if nearTop {
+                    PaneHandle(tab: tab, index: index, count: count)
+                        .padding(.top, 6)
+                        .transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .top)))
                 }
             }
             .background(PaneClickWatcher { if !isFront { browser.select(tab) } })
-            .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
+            .onContinuousHover { phase in
+                let near: Bool
+                if case .active(let point) = phase { near = point.y < Self.revealDepth } else { near = false }
+                if near != nearTop { withAnimation(Motion.snappy) { nearTop = near } }
+            }
             .animation(Motion.snappy, value: isFront)
     }
 }
 
-/// What a pane can do: move left or right, leave the split, close.
-private struct PaneControls: View {
+/// A pane's handle: a small glass capsule that opens the pane's menu (move left or right, leave
+/// the split, close). The same items are in the tab's right-click menu in the sidebar.
+private struct PaneHandle: View {
     @Environment(Browser.self) private var browser
     let tab: BrowserTab
     let index: Int
     let count: Int
 
     var body: some View {
-        HStack(spacing: 2) {
+        Menu {
             if index > 0 {
-                button("arrow.left", "Move Left") { browser.shiftPane(tab, by: -1) }
+                Button("Move Left", systemImage: "arrow.left") { act { browser.shiftPane(tab, by: -1) } }
             }
             if index < count - 1 {
-                button("arrow.right", "Move Right") { browser.shiftPane(tab, by: 1) }
+                Button("Move Right", systemImage: "arrow.right") { act { browser.shiftPane(tab, by: 1) } }
             }
-            button("rectangle.portrait.and.arrow.right", "Remove from Split View") { browser.removeFromSplit(tab) }
-            button(tab.isPinned ? "minus" : "xmark", tab.isPinned ? "Unload Tab" : "Close Tab") { browser.close(tab) }
+            Button("Even Up Panes", systemImage: "equal") { act { browser.evenSplit(browser.rowTabs(tab)) } }
+            Divider()
+            Button("Remove from Split View", systemImage: "rectangle.portrait.and.arrow.right") { act { browser.removeFromSplit(tab) } }
+            Button(tab.isPinned ? "Unload Tab" : "Close Tab", systemImage: tab.isPinned ? "minus" : "xmark") { act { browser.close(tab) } }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.secondary)
+                .frame(width: 34, height: 18)
+                .contentShape(.capsule)
         }
-        .padding(.horizontal, 4)
-        .frame(height: 28)
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
+        .fixedSize()
         .background(PanelFill(), in: .capsule)
         .overlay(Capsule().strokeBorder(.primary.opacity(0.1)))
         .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+        .help("Split View options")
     }
 
-    private func button(_ symbol: String, _ help: String, action: @escaping () -> Void) -> some View {
-        Button { withAnimation(Motion.snappy) { action() } } label: {
-            Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
-                .frame(width: 24, height: 22)
-                .contentShape(.capsule)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .help(help)
+    private func act(_ action: () -> Void) {
+        withAnimation(Motion.snappy) { action() }
     }
 }
 
-/// The gap between two panes: clear, with the resize cursor.
-private struct SplitDivider: View {
-    @State private var hovering = false
+/// The gap between two panes, as an AppKit view on top of the pages: it owns the resize cursor
+/// (a page under the pointer can't reset it) and the drag, so the drag stays steady while the
+/// panes reflow. A thin grabber shows in the gap while the pointer is on it.
+private struct SplitDivider: NSViewRepresentable {
+    let onDrag: (CGFloat) -> Void
+    let onEnd: () -> Void
+    let onDoubleClick: () -> Void
 
-    var body: some View {
-        Color.clear
-            .contentShape(.rect)
-            .onHover { h in
-                guard h != hovering else { return }
-                hovering = h
-                if h { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-            }
-            .onDisappear { if hovering { NSCursor.pop(); hovering = false } }
-            .help("Drag to resize. Double-click to even up.")
+    func makeNSView(context: Context) -> Handle {
+        let view = Handle()
+        update(view)
+        return view
+    }
+
+    func updateNSView(_ view: Handle, context: Context) { update(view) }
+
+    private func update(_ view: Handle) {
+        view.onDrag = onDrag
+        view.onEnd = onEnd
+        view.onDoubleClick = onDoubleClick
+    }
+
+    final class Handle: NSView {
+        var onDrag: (CGFloat) -> Void = { _ in }
+        var onEnd: () -> Void = {}
+        var onDoubleClick: () -> Void = {}
+        private var startX: CGFloat?
+        private let grabber = CALayer()
+        private var hovering = false { didSet { updateGrabber() } }
+        private var dragging = false { didSet { updateGrabber() } }
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            grabber.cornerRadius = 1.5
+            grabber.opacity = 0
+            layer?.addSublayer(grabber)
+            toolTip = "Drag to resize. Double-click to even up."
+        }
+
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func layout() {
+            super.layout()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            let height = min(44, bounds.height / 3)
+            grabber.frame = CGRect(x: bounds.midX - 1.5, y: bounds.midY - height / 2, width: 3, height: height)
+            CATransaction.commit()
+        }
+
+        override func updateLayer() {
+            grabber.backgroundColor = NSColor.secondaryLabelColor.cgColor
+        }
+
+        private func updateGrabber() {
+            grabber.opacity = (hovering || dragging) ? (dragging ? 0.8 : 0.5) : 0
+        }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .cursorUpdate, .activeInKeyWindow, .inVisibleRect], owner: self))
+        }
+
+        override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeLeftRight) }
+        override func cursorUpdate(with event: NSEvent) { NSCursor.resizeLeftRight.set() }
+        override func mouseEntered(with event: NSEvent) { hovering = true }
+        override func mouseExited(with event: NSEvent) { hovering = false }
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        override var mouseDownCanMoveWindow: Bool { false }
+
+        override func mouseDown(with event: NSEvent) {
+            if event.clickCount == 2 { onDoubleClick(); return }
+            startX = event.locationInWindow.x
+            dragging = true
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let startX else { return }
+            NSCursor.resizeLeftRight.set()
+            onDrag(event.locationInWindow.x - startX)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            guard startX != nil else { return }
+            startX = nil
+            dragging = false
+            onEnd()
+        }
     }
 }
 

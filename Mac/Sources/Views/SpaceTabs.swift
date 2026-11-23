@@ -300,7 +300,7 @@ private struct DraggableFolderRow: View {
 
     private func toggle() {
         guard draft == nil else { return }
-        withAnimation(Motion.spring) { browser.library.setPinnedFolder(folder.id, open: !folder.isOpen, in: space) }
+        withAnimation(Motion.quick) { browser.library.setPinnedFolder(folder.id, open: !folder.isOpen, in: space) }
     }
 
     private func startRename() {
@@ -362,10 +362,12 @@ private struct FolderIcon: View {
     let isOpen: Bool
 
     var body: some View {
-        Image(systemName: isOpen ? "folder" : "folder.fill")
+        // One icon whether open or closed (the chevron and the rows say which); it gives a small
+        // bounce as it opens or closes.
+        Image(systemName: "folder")
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(.secondary)
-            .contentTransition(.symbolEffect(.replace))
+            .symbolEffect(.bounce.down, options: .speed(1.6), value: isOpen)
             .frame(width: 16, height: 16)
     }
 }

@@ -108,6 +108,8 @@ enum Motion {
 
     @MainActor static var spring: Animation { reduced ? calm : .interpolatingSpring(mass: 1, stiffness: 320, damping: 30) }
     @MainActor static var snappy: Animation { reduced ? calm : .snappy(duration: 0.26) }
+    /// Quick and light, for opening and closing things in the sidebar (pinned folders).
+    @MainActor static var quick: Animation { reduced ? calm : .snappy(duration: 0.2) }
     @MainActor static var bouncy: Animation { reduced ? calm : .bouncy(duration: 0.35, extraBounce: 0.08) }
     /// The sidebar docking or hiding. No overshoot: the page edge follows it and must not bounce.
     static let dockDuration = 0.3
