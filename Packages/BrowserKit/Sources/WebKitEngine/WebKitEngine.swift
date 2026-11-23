@@ -17,7 +17,9 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
     public var downloadsDirectory: URL
     public var developerToolsEnabled = false {
         didSet {
-            for c in [standardConfiguration, ephemeralConfiguration] { Self.setDeveloperExtras(developerToolsEnabled, on: c) }
+            for c in [standardConfiguration, ephemeralConfiguration] + profileConfigurations.values {
+                Self.setDeveloperExtras(developerToolsEnabled, on: c)
+            }
             for page in livePages.values.compactMap(\.page) {
                 Self.setDeveloperExtras(developerToolsEnabled, on: page.webView.configuration)
             }
@@ -65,6 +67,10 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
 
     private let standardConfiguration: WKWebViewConfiguration
     private var ephemeralConfiguration: WKWebViewConfiguration
+    /// One per `.persistent` profile, made on first use: the standard configuration with the
+    /// profile's own data store. Copies share the content controller and extension controller, so
+    /// rules, scripts and extensions reach every profile.
+    private var profileConfigurations: [UUID: WKWebViewConfiguration] = [:]
     /// For pages the app renders (Reader): no storage, no JavaScript, no rules or scripts.
     private let staticConfiguration: WKWebViewConfiguration
     private var ruleLists: [WKContentRuleList] = []
@@ -150,7 +156,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
             if let url = options.url { page.load(url) }
             return page
         }
-        var configuration = options.profile == .ephemeral ? ephemeralConfiguration : standardConfiguration
+        var configuration = self.configuration(for: options.profile)
         if #available(macOS 15.4, *), let url = options.url, let own = webExtensions?.configuration(for: url) {
             configuration = own
         }
@@ -168,6 +174,22 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
             }
         }
         return page
+    }
+
+    private func configuration(for profile: BrowsingProfile) -> WKWebViewConfiguration {
+        switch profile {
+        case .standard: return standardConfiguration
+        case .ephemeral: return ephemeralConfiguration
+        case .persistent(let id):
+            if let c = profileConfigurations[id] { return c }
+            let c = standardConfiguration.copy() as! WKWebViewConfiguration
+            c.websiteDataStore = WKWebsiteDataStore(forIdentifier: id)
+            if #available(macOS 15.4, *) { c.webExtensionController = webExtensions?.controller }
+            Self.setDeveloperExtras(developerToolsEnabled, on: c)
+            profileConfigurations[id] = c
+            install(on: c.userContentController)
+            return c
+        }
     }
 
     /// A popup WebKit asked for. It must be built from WebKit's own configuration.
@@ -270,6 +292,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
     private var allContentControllers: [WKUserContentController] {
         var seen = Set<ObjectIdentifier>()
         return ([standardConfiguration.userContentController, ephemeralConfiguration.userContentController]
+            + profileConfigurations.values.map(\.userContentController)
             + livePages.values.compactMap { $0.page?.webView.configuration.userContentController })
             .filter { seen.insert(ObjectIdentifier($0)).inserted }
     }
@@ -358,9 +381,15 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
     // MARK: Data
 
     public func clearWebsiteData(for profile: BrowsingProfile) async {
-        let store = profile == .ephemeral ? ephemeralConfiguration.websiteDataStore : standardConfiguration.websiteDataStore
+        let store = configuration(for: profile).websiteDataStore
         await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
         if profile == .standard { HTTPCookieStorage.shared.removeCookies(since: .distantPast) }
+    }
+
+    public func deleteProfile(_ id: UUID) async {
+        profileConfigurations[id] = nil
+        // WebKit refuses while a web view still uses the store; the caller closes the pages first.
+        try? await WKWebsiteDataStore.remove(forIdentifier: id)
     }
 
     public func resetEphemeralProfile() {

@@ -14,7 +14,9 @@ final class GlanceSession: Identifiable, EnginePageDelegate {
     init(url: URL, isPrivate: Bool, browser: Browser) {
         self.isPrivate = isPrivate
         self.browser = browser
-        page = browser.engine.makePage(options: PageOptions(profile: isPrivate ? .ephemeral : .standard, url: url),
+        // The space's profile, so the Glance is signed in the same way and can become a tab there.
+        let profile = isPrivate ? BrowsingProfile.ephemeral : browser.library.profile(for: browser.currentSpace)
+        page = browser.engine.makePage(options: PageOptions(profile: profile, url: url),
                                        delegate: GlanceSession.placeholder)
         page.delegate = self
     }
