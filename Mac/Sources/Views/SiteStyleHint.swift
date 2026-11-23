@@ -76,7 +76,8 @@ struct SiteStyleHint: View {
             .frame(maxWidth: 240, alignment: .leading)
             Button("Turn On") { answer(style, turnOn: true) }
                 .buttonStyle(.glassProminent)
-                .controlSize(.regular)
+                .buttonBorderShape(.capsule)
+                .controlSize(.large)
             Button { answer(style, turnOn: false) } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 10, weight: .bold))
@@ -84,6 +85,7 @@ struct SiteStyleHint: View {
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
+            .controlSize(.large)
             .help("Not now. It stays under the site icon.")
             .accessibilityLabel("Dismiss")
         }
