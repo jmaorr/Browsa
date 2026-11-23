@@ -779,7 +779,7 @@ struct FavoriteTile: View {
                 if !now, dragging.isLiftedFavourite(favorite.id) { dragging.ended(favorite, in: browser.currentSpace, browser: browser) }
             }
             .contextMenu {
-                Button("Open in New Tab", systemImage: "plus.square.on.square") { browser.newTab(url: favorite.url, source: .bookmark) }
+                Button("Open in New Tab", systemImage: "plus.square.on.square") { browser.newTab(url: favorite.url, in: browser.currentSpace, source: .bookmark) }
                 Button("Copy Link", systemImage: "link") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(favorite.url.absoluteString, forType: .string)

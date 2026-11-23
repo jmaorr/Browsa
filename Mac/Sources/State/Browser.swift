@@ -482,6 +482,7 @@ final class Browser {
 
     /// Favourites behave like Arc's: the tile holds its own tab, kept out of the Today list. One
     /// click goes back to that tab, or to a tab already showing the site, or opens one.
+    /// Favourites belong to every Space, so they open where you are: Space Routing never moves them.
     func open(_ favorite: Favorite) {
         if let owned = currentSpace.today.first(where: { $0.favoriteID == favorite.id }) {
             select(owned)
@@ -491,7 +492,7 @@ final class Browser {
         if let existing = currentSpace.allTabs.first(where: { lists($0) && $0.url.map(URLNormalizer.key(for:)) == key }) {
             select(existing)
         } else {
-            let tab = newTab(url: favorite.url, source: .bookmark)
+            let tab = newTab(url: favorite.url, in: currentSpace, source: .bookmark)
             tab.favoriteID = favorite.id
             scheduleSave()
         }
