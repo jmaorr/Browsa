@@ -55,6 +55,8 @@ extension Browser {
             if !tab.isPrivate {
                 out.append(BrowserCommand(id: "new-folder", title: tab.isPinned ? "New Folder with Tab" : "New Folder",
                                           keywords: ["pinned", "group", "tabs"]))
+                out.append(BrowserCommand(id: "new-live-folder", title: "New Live Folder…",
+                                          keywords: ["rss", "feed", "atom", "github", "pull requests", "issues", "auto"]))
             }
             if let url = tab.url {
                 out.append(BrowserCommand(id: "copy-link", title: "Copy Link", subtitle: url.absoluteString, keywords: ["url", "share"]))
@@ -166,6 +168,7 @@ extension Browser {
         switch id {
         case "panel": togglePanel()
         case "pin": if let t = currentTab { togglePinned(t) }
+        case "new-live-folder": newLiveFolder()
         case "new-folder": withAnimation(Motion.snappy) { newPinnedFolder(holding: currentTab?.isPinned == true ? currentTab : nil) }
         case "favourite": if let t = currentTab, let url = t.url { addFavorite(url: url, title: t.displayTitle) }
         case "close": if let t = currentTab { close(t) }

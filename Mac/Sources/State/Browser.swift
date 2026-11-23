@@ -63,6 +63,8 @@ final class Browser {
     var isArchivePresented = false
     /// The pinned folder being named in this window's sidebar, after New Folder.
     var renamingFolderID: UUID?
+    /// The New Live Folder (or edit) sheet, when it's showing.
+    var liveFolderSheet: LiveFolderDraft?
     /// A page to show in the Library (a plugin, pack or extension id), from a browsa://library/… link.
     var libraryTarget: String?
     /// Bumped with each request, so asking for the same page twice still opens it.
@@ -223,6 +225,18 @@ final class Browser {
         let space = tab.flatMap(space(containing:)) ?? currentSpace
         guard !space.isPrivate, let id = library.newPinnedFolder(in: space, holding: tab) else { return }
         renamingFolderID = id
+    }
+
+    /// Opens the New Live Folder sheet, offering the current page's feed.
+    func newLiveFolder() {
+        guard !currentSpace.isPrivate else { return }
+        liveFolderSheet = LiveFolderDraft(spaceID: currentSpace.id, pageURL: currentTab?.url)
+    }
+
+    /// Opens the sheet to change a live folder's source or name.
+    func editLiveFolder(_ folder: PinnedFolder, in space: Space) {
+        guard let live = folder.live else { return }
+        liveFolderSheet = LiveFolderDraft(spaceID: space.id, editing: folder.id, name: folder.name, kind: live.kind)
     }
 
     /// This window's Today tabs in a space, favourite tabs included.

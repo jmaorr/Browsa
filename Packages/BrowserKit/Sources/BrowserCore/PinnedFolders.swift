@@ -12,12 +12,16 @@ public struct PinnedFolder: Codable, Equatable, Sendable, Identifiable {
     /// Showing its contents in the sidebar.
     public var isOpen: Bool
     public var children: [PinnedNode]
+    /// Set for a Live Folder, which fills itself from a feed or a GitHub search (`LiveFolders`).
+    public var live: LiveSource?
 
-    public init(id: UUID = UUID(), name: String, isOpen: Bool = true, children: [PinnedNode] = []) {
+    public init(id: UUID = UUID(), name: String, isOpen: Bool = true, children: [PinnedNode] = [],
+                live: LiveSource? = nil) {
         self.id = id
         self.name = name
         self.isOpen = isOpen
         self.children = children
+        self.live = live
     }
 }
 

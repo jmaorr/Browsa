@@ -96,6 +96,11 @@ final class Library {
     @ObservationIgnored private var popupWindows: [PopupWindow] = []
     /// The open windows, most recently active first.
     private(set) var windows: [Browser] = []
+    /// Live folders checking their source right now, by folder id.
+    var liveRefreshing: Set<UUID> = []
+    /// Pinned tabs a live folder filled in that haven't been opened yet: they show a dot.
+    var liveUnread: Set<UUID> = []
+    @ObservationIgnored var liveTask: Task<Void, Never>?
     /// Open windows, oldest first. The oldest one lists Today tabs that no open window owns.
     private(set) var windowsByAge: [Browser] = []
     /// Set once quitting is under way, so the windows going away keep their tabs for next time.
@@ -179,6 +184,7 @@ final class Library {
         BuiltInTools.register(in: workbench)
         SpaceRouter.register(in: workbench, library: self)
         NotesUI.installPageMenu(library: self)
+        startLiveFolders()
         #if !SPIKE
         // SpikeBrowsa sets mock servers instead. Radar only looks at this Mac's ports while it's on
         // (it's in the Agent Pack, off for new installs).
@@ -435,7 +441,7 @@ final class Library {
     }
 
     /// Saves a page's back/forward list onto its tab and lets the page go.
-    private func unload(_ id: UUID) {
+    func unload(_ id: UUID) {
         if let c = controllers[id] {
             c.freeze()
             c.page.close()
@@ -485,6 +491,7 @@ final class Library {
     /// A window moved to another tab: a run of links from the old one is over.
     func selectionChanged(to tab: BrowserTab?) {
         if let run = linkRun, run.opener != tab?.id { linkRun = nil }
+        if let tab { markLiveItemRead(tab) }
     }
 
     /// Cmd-click on a link: a new today tab just under the one it came from.
