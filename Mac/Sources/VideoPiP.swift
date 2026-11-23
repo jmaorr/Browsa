@@ -65,22 +65,23 @@ final class VideoPiP {
 
     // MARK: The video window's own buttons
 
-    /// A tab's video came back from picture in picture. macOS's window has two ways back: its close button,
-    /// which pauses the video, and its "back to tab" button, which keeps it playing. For the second, bring the
-    /// tab forward, wherever it is.
+    /// A video in picture in picture came back on its own (its window's close button, the page, or `bringBack`).
     func didLeavePictureInPicture(_ tab: BrowserTab) {
         poppedOut.remove(tab.id)
-        guard library.window(showing: tab) == nil else { return }
-        // The page says it paused a moment after it says the video came back, so wait for that.
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(400))
-            guard let self, tab.media.isPlaying, !tab.media.isPictureInPicture,
-                  self.library.window(showing: tab) == nil,
-                  self.library.space(containing: tab) != nil,
-                  let window = self.library.owner(of: tab) ?? self.library.activeWindow else { return }
-            window.select(tab)
-            window.nsWindow?.makeKeyAndOrderFront(nil)
-            NSApp.activate()
+    }
+
+    /// The video window's "back to tab" button: show the tab, wherever it is. WebKit puts the video back in the
+    /// page as soon as the page is on screen.
+    func bringBack(_ tab: BrowserTab) {
+        poppedOut.remove(tab.id)
+        NSApp.activate()
+        if let showing = library.window(showing: tab) {
+            showing.nsWindow?.makeKeyAndOrderFront(nil)
+            return
         }
+        guard library.space(containing: tab) != nil,
+              let window = library.owner(of: tab) ?? library.activeWindow else { return }
+        window.select(tab)
+        window.nsWindow?.makeKeyAndOrderFront(nil)
     }
 }
