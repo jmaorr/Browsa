@@ -13,6 +13,15 @@ import Testing
                 == "chrome-extension://ldgfbffkinooeloadekpmfoklnobpien/panel/side.html#top")
     }
 
+    @Test func recognisesChromeSignInRedirects() {
+        guard #available(macOS 15.4, *) else { return }
+        let id = "kbfnbcaeplbcioakkpcpgfkobkghlhen"
+        #expect(ExtensionAuth.redirectOwner(URL(string: "https://\(id).chromiumapp.org/?code=x&state=y")) == id)
+        #expect(ExtensionAuth.redirectOwner(URL(string: "https://evil.example/\(id).chromiumapp.org/")) == nil)
+        #expect(ExtensionAuth.redirectOwner(URL(string: "http://\(id).chromiumapp.org/")) == nil)
+        #expect(ExtensionAuth.redirectOwner(URL(string: "https://notanid.chromiumapp.org/")) == nil)
+    }
+
     /// 1Password's helper refuses a browser whose host isn't in the browser's process group.
     @Test func hostStaysInBrowsersProcessGroup() throws {
         guard #available(macOS 15.4, *) else { return }

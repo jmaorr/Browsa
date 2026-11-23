@@ -407,6 +407,12 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             ExtensionOffscreen.writeClipboard(message, for: extensionContext, reply: replyHandler)
             return
         }
+        if applicationIdentifier == ExtensionAuth.bridgeName {
+            let id = catalogID(for: extensionContext)
+            ExtensionAuth.handle(message as? [String: Any] ?? [:], storeID: id.hasPrefix("chrome:") ? String(id.dropFirst(7)) : nil,
+                                 host: host, reply: replyHandler)
+            return
+        }
         if let name = applicationIdentifier, ExtensionBridges.names.contains(name) {
             ExtensionBridges.handle(name, message: message, extensionID: catalogID(for: extensionContext),
                                     displayName: extensionContext.webExtension.displayName ?? "An extension",

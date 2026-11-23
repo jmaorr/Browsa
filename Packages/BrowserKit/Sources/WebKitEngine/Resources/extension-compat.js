@@ -148,7 +148,14 @@
       sendCommand: unsupported('debugger.sendCommand'), getTargets: resolves([]),
       onEvent: event(), onDetach: event(),
     }),
-    identity: () => ({ launchWebAuthFlow: unsupported('identity.launchWebAuthFlow'), getRedirectURL: (p = '') => `https://${chrome.runtime.id}.chromiumapp.org/${p}`, onSignInChanged: event() }),
+    // Sign-in through Browsa (ExtensionAuth.swift): the provider in a tab, or quietly in a hidden view;
+    // the answer is the https://<id>.chromiumapp.org/ address the provider redirects to.
+    identity: () => ({ launchWebAuthFlow: (details = {}, cb) => {
+      const p = bridge('browsa.identity', { url: String(details.url || ''), interactive: !!details.interactive,
+        timeout: details.timeoutMsForNonInteractive || 5000 });
+      if (cb) p.then(cb, (e) => { try { chrome.runtime.lastError = e; } catch (x) {} cb(undefined); });
+      return p;
+    }, getRedirectURL: (p = '') => `https://${chrome.runtime.id}.chromiumapp.org/${p}`, onSignInChanged: event() }),
     contentSettings: () => ({}),
   };
   // Events missing from namespaces WebKit does have.

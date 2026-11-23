@@ -292,6 +292,11 @@ extension WebKitPage: WKNavigationDelegate {
         }
         if navigationAction.shouldPerformDownload { return (.download, preferences) }
         guard let url = navigationAction.request.url else { return (.allow, preferences) }
+        // Chrome's sign-in redirect for extensions (https://<id>.chromiumapp.org/…), which never loads.
+        if #available(macOS 15.4, *), ExtensionAuth.redirectOwner(url) != nil, navigationAction.targetFrame?.isMainFrame ?? true {
+            if ExtensionAuth.isSimulated(url) { return (.allow, preferences) }
+            if ExtensionAuth.intercept(url, in: webView, page: self, host: engine?.webExtensions?.host) { return (.cancel, preferences) }
+        }
         let kind: NavigationRequest.Kind = switch navigationAction.navigationType {
         case .linkActivated: .link
         case .formSubmitted, .formResubmitted: .formSubmit
