@@ -93,11 +93,13 @@ enum SiteOptimisations {
       return remove.call(this, n);
     };
     """#)
+
     /// LinkedIn: a calmer, roomier home feed. Drops the right-hand column (news, puzzles, ads) so the feed can be
     /// about 40% wider, softens the cards, sets post text a little larger, and hides promoted posts. Nothing about
     /// how the site works changes. LinkedIn's class names are generated and change often, so this only hooks onto
     /// things that are steadier: landmark labels ("Sidebar", "Primary content", "Aside"), test ids ("mainFeed",
-    /// "expandable-text-box") and list roles. The layout changes only apply on pages that have the main feed.
+    /// "expandable-text-box"), list roles and post keys ("update-card-focus…", so rows like "Sort by" keep their
+    /// look). The layout changes only apply on pages that have the main feed.
     static let linkedInTidy = Fix(name: "LinkedIn tidy feed", hosts: ["linkedin.com"], source: stylesheet(id: "browsa-linkedin", #"""
     main#workspace:has([data-testid="mainFeed"]) aside[aria-label="Aside"] { display: none !important; }
     main#workspace:has([data-testid="mainFeed"]) :has(> aside[aria-label="Sidebar"]) {
@@ -114,13 +116,14 @@ enum SiteOptimisations {
         grid-template-columns: minmax(0, 1fr) !important; max-width: 720px !important;
       }
     }
-    main#workspace section[aria-label="Primary content"] [role="listitem"],
+    main#workspace [data-testid="mainFeed"] [role="listitem"][componentkey^="update-card-focus"],
+    main#workspace [data-testid="mainFeed"] [role="listitem"]:has([componentkey="shareboxProfilePictureComponentRef"]),
     main#workspace [componentkey="feed-tab-host_tab-bar"],
     main#workspace [data-browsa-card] {
       border-radius: 14px !important; overflow: hidden;
       box-shadow: 0 0 0 1px rgba(127, 127, 127, .14), 0 1px 3px rgba(0, 0, 0, .04) !important;
     }
-    main#workspace [data-testid="mainFeed"] [role="listitem"] { margin-bottom: 6px !important; }
+    main#workspace [data-testid="mainFeed"] [role="listitem"][componentkey^="update-card-focus"] { margin-bottom: 6px !important; }
     main#workspace [data-testid="expandable-text-box"] { font-size: 15px !important; line-height: 1.55 !important; }
     [data-browsa-promoted] { display: none !important; }
     """#) + #"""
