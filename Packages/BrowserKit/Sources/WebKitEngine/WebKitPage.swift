@@ -396,7 +396,11 @@ extension WebKitPage: WKUIDelegate {
                         for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         guard let engine, let delegate else { return nil }
         let popup = engine.makePopup(configuration: configuration, opener: self)
-        guard let popupDelegate = delegate.page(self, openedPopup: popup, url: navigationAction.request.url) else {
+        let features = PopupFeatures(width: windowFeatures.width?.doubleValue,
+                                     height: windowFeatures.height?.doubleValue,
+                                     hidesToolbars: windowFeatures.toolbarsVisibility?.boolValue == false)
+        guard let popupDelegate = delegate.page(self, openedPopup: popup, url: navigationAction.request.url,
+                                                features: features) else {
             popup.close()
             return nil
         }

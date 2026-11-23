@@ -36,7 +36,7 @@ extension Browser {
             if isReaderShowing { closeReader() }
             controller(for: tab).load(url, source: source)
         } else {
-            newTab(url: url, source: source)
+            newTab(url: url, source: source, asNewTab: true)
         }
     }
 

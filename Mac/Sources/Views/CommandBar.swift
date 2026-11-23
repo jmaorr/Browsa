@@ -345,7 +345,7 @@ struct CommandBar: View {
         } else if text.isEmpty, mode == .newTab {
             // Return on an empty field opens a blank tab, like Arc.
             browser.commandBar = nil
-            browser.newTab(url: nil)
+            browser.newTab(url: nil, asNewTab: true)
         }
     }
 
