@@ -22,6 +22,9 @@ public final class BrowserTab: Identifiable {
     public var windowKey: UUID?
     /// A name you gave the tab (double-click it in the sidebar). Shown instead of the page's title.
     public var customTitle: String?
+    /// The tab whose link or popup opened this one, while this session lasts (not saved). Closing this
+    /// tab goes back there, if you came straight from it, like Chrome and Firefox.
+    public var openerID: UUID?
 
     // Live state mirrored from the web view (not persisted).
     public var estimatedProgress: Double = 0
@@ -155,6 +158,8 @@ public struct BrowserSettings: Codable, Equatable, Sendable {
     /// Open sites on the local network (192.168.x.x, .local names) even when their certificate
     /// isn't trusted, as routers and Home Assistant often use their own.
     public var allowLocalCertificateErrors = false
+    /// Mac: new tabs (⌘T) open just below the current tab instead of at the top of Today.
+    public var newTabsBelowCurrent = false
 
     public init() {}
 
@@ -181,6 +186,7 @@ public struct BrowserSettings: Codable, Equatable, Sendable {
         blockingDisabledHosts = try c.decodeIfPresent(Set<String>.self, forKey: .blockingDisabledHosts) ?? []
         certificateExceptions = try c.decodeIfPresent([String: String].self, forKey: .certificateExceptions) ?? [:]
         allowLocalCertificateErrors = try c.decodeIfPresent(Bool.self, forKey: .allowLocalCertificateErrors) ?? false
+        newTabsBelowCurrent = try c.decodeIfPresent(Bool.self, forKey: .newTabsBelowCurrent) ?? false
     }
 }
 

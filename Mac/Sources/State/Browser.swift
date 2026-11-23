@@ -22,6 +22,8 @@ final class Browser {
     var selectedSpaceID: UUID
     /// The tab this window shows in each space it has visited. Two windows never show the same tab.
     private var tabSelection: [UUID: UUID] = [:]
+    /// The tab each space showed before the current one, so closing a popup or link tab can go back to its opener.
+    @ObservationIgnored private var previousSelection: [UUID: UUID] = [:]
     /// The AppKit window, for focusing and for matching key events to this browser.
     @ObservationIgnored weak var nsWindow: NSWindow?
     /// The window's own traffic lights, hidden while the sidebar shows its copies, and shown in the
@@ -243,14 +245,17 @@ final class Browser {
     }
 
     private func setSelection(_ tab: BrowserTab?, in space: Space) {
+        if let old = tabSelection[space.id], old != tab?.id { previousSelection[space.id] = old }
         tabSelection[space.id] = tab?.id
+        library.selectionChanged(to: tab)
         // Remembered with the space, for the next launch.
         space.selectedTabID = tab?.id
         if let tab, let c = library.existingController(for: tab) { engine.pageDidBecomeActive(c.page) }
     }
 
     /// `tab` is going away from this window (closed, moved, or opened in another window).
-    /// Arc moves to the tab below, then above.
+    /// A tab you came to straight from the one that opened it (a sign-in popup, a link) goes back to
+    /// that tab, like Chrome and Firefox. Otherwise Arc's rule: the tab below, then above.
     func moveOff(_ tab: BrowserTab, in space: Space) {
         guard tabSelection[space.id] == tab.id else { return }
         if selectedSpaceID == space.id { dismissFind(); reader = nil }
@@ -262,6 +267,11 @@ final class Browser {
         }
         let elsewhere = Set(library.windows.filter { $0 !== self }.compactMap { $0.currentTab?.id })
         let free = { (t: BrowserTab) in !elsewhere.contains(t.id) && t.id != tab.id }
+        if let openerID = tab.openerID, previousSelection[space.id] == openerID,
+           let opener = space.allTabs.first(where: { $0.id == openerID }), free(opener), lists(opener) {
+            setSelection(opener, in: space)
+            return
+        }
         let next = list[(i + 1)...].first(where: free)
             ?? list[..<i].reversed().first(where: free)
             ?? space.pinned.last(where: free)
@@ -325,9 +335,12 @@ final class Browser {
 
     // MARK: Opening tabs
 
+    /// `asNewTab` is for tabs you ask for yourself (⌘T): with "New tabs open: Below the current tab"
+    /// they go just under the tab you're on, instead of the top of Today.
     @discardableResult
     func newTab(url: URL?, in space: Space? = nil, isPrivate: Bool = false,
-                source: Frecency.VisitSource = .typed, select shouldSelect: Bool = true) -> BrowserTab {
+                source: Frecency.VisitSource = .typed, select shouldSelect: Bool = true,
+                asNewTab: Bool = false) -> BrowserTab {
         // Space Routing: a site with a rule opens in its Space, unless a Space was asked for or the tab is private.
         var target = space ?? currentSpace
         var routed: SpaceRouter.Match?
@@ -337,7 +350,14 @@ final class Browser {
             routed = match
         }
         let from = currentSpace
-        let tab = library.insertTab(url: url, in: target, isPrivate: isPrivate, source: source, for: self)
+        let tab: BrowserTab
+        if asNewTab, settings.newTabsBelowCurrent, routed == nil, !isPrivate, target.id == currentSpace.id,
+           let current = currentTab {
+            tab = library.insertTab(url: url, in: target, source: source,
+                                    at: library.indexForChild(of: current, in: target), opener: current, for: self)
+        } else {
+            tab = library.insertTab(url: url, in: target, isPrivate: isPrivate, source: source, for: self)
+        }
         if shouldSelect { select(tab) }
         if let routed { announceRoute(routed, tab: tab, from: from, quiet: shouldSelect) }
         return tab
@@ -403,11 +423,14 @@ final class Browser {
     }
 
     func reopenClosedTab() {
-        guard let tab = library.popRecentlyClosed() else { return }
+        guard let closed = library.popRecentlyClosed() else { return }
+        let tab = closed.tab
         tab.lastActive = .now
+        tab.openerID = nil
         let target = currentSpace.isPrivate ? regularSpaces[0] : currentSpace
         tab.windowKey = windowKey
-        target.today.insert(tab, at: 0)
+        // Back where it was, like Chrome and Firefox, when it closed in this space.
+        target.today.insert(tab, at: library.reopenIndex(for: closed.place, in: target))
         select(tab)
     }
 
