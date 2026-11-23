@@ -21,16 +21,47 @@ final class SiteNotifications: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// Asks macOS for permission the first time a site is allowed, so its question comes up straight away
-    /// rather than with the site's first message.
-    func requestAuthorization() {
+    /// rather than with the site's first message. If notifications are off for Browsa in System Settings,
+    /// says so, with a button to go there: macOS never asks twice.
+    func requestAuthorization(in window: Browser?) {
         Task {
-            let settings = await center.notificationSettings()
-            guard settings.authorizationStatus == .notDetermined else { return }
-            _ = try? await center.requestAuthorization(options: [.alert, .sound])
+            if await !systemAllows() { tellOff(in: window, force: true) }
         }
     }
 
-    func show(_ notification: WebNotification, from tab: BrowserTab) {
+    /// Whether macOS lets Browsa show notifications, asking the first time.
+    private func systemAllows() async -> Bool {
+        let settings = await center.notificationSettings()
+        switch settings.authorizationStatus {
+        case .notDetermined:
+            return (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+        case .denied:
+            return false
+        default:
+            return true
+        }
+    }
+
+    /// Set once Browsa has said notifications are off, so a busy site doesn't repeat it with every message.
+    private var toldOff = false
+
+    private func tellOff(in window: Browser?, force: Bool = false) {
+        guard force || !toldOff, let window else { return }
+        toldOff = true
+        window.showToast("Notifications are off for Browsa in System Settings", actions: [
+            ToastAction(title: "Open Settings") { Self.openSystemSettings() }
+        ])
+    }
+
+    static func openSystemSettings() {
+        let id = Bundle.main.bundleIdentifier ?? "com.orriginal.browsa"
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// Posts a site's notification. False if macOS won't show it.
+    func show(_ notification: WebNotification, from tab: BrowserTab, in window: Browser?) async -> Bool {
         let content = UNMutableNotificationContent()
         content.title = notification.title.isEmpty ? notification.host : notification.title
         content.subtitle = notification.title.isEmpty ? "" : notification.host
@@ -39,15 +70,18 @@ final class SiteNotifications: NSObject, UNUserNotificationCenterDelegate {
         content.sound = notification.silent ? nil : .default
         content.userInfo = [Key.tab: tab.id.uuidString, Key.id: notification.id]
         let identifier = Self.identifier(tab: tab.id, id: notification.id, tag: notification.tag)
-        Task {
-            if let icon = notification.icon, let attachment = await Self.attachment(for: icon) {
-                content.attachments = [attachment]
-            }
-            let settings = await center.notificationSettings()
-            if settings.authorizationStatus == .notDetermined {
-                _ = try? await center.requestAuthorization(options: [.alert, .sound])
-            }
-            try? await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+        guard await systemAllows() else {
+            tellOff(in: window)
+            return false
+        }
+        if let icon = notification.icon, let attachment = await Self.attachment(for: icon) {
+            content.attachments = [attachment]
+        }
+        do {
+            try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+            return true
+        } catch {
+            return false
         }
     }
 
