@@ -138,7 +138,8 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
         let c = WKWebViewConfiguration()
         c.websiteDataStore = store
         c.upgradeKnownHostsToHTTPS = true
-        c.mediaTypesRequiringUserActionForPlayback = AudioBench.isEnabled ? [] : .all
+        // Sound waits for a click, as in Safari; muted video (previews, GIF-like loops) plays on its own.
+        c.mediaTypesRequiringUserActionForPlayback = AudioBench.isEnabled ? [] : .audio
         c.defaultWebpagePreferences.preferredContentMode = .desktop
         // Sites' own fullscreen buttons (YouTube, Netflix) work on the Mac.
         c.preferences.isElementFullscreenEnabled = true
