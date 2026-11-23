@@ -479,6 +479,31 @@
     };
   }
 
+  // Claude's side panel shows claude.ai/cic in a frame, signed in by claude.ai's SameSite=Lax cookies,
+  // which WebKit doesn't send to a frame inside an extension's page: the frame stays empty. claude.ai
+  // has its own answer for a panel it can't fill (cic_sidepanel_cowork_unavailable), and the panel
+  // then shows its built-in chat on the extension's own sign-in. That message is given here as the
+  // frame appears. From Search (Office Commun, MIT, SidePanel.swift PanelFrameFallback); drop once
+  // WebKit sends those cookies.
+  if (!isWorker && typeof MutationObserver === 'function' && globalThis.document) {
+    const isClaudeFrame = (el) => {
+      try { const u = new URL(el.src || '', location.href); return u.protocol === 'https:' && ['claude.ai', 'preview.claude.ai'].includes(u.hostname) && (u.pathname === '/cic' || u.pathname.startsWith('/cic/')); } catch (e) { return false; }
+    };
+    const told = new WeakSet();
+    const check = (el) => {
+      if (!el || el.tagName !== 'IFRAME' || told.has(el) || !isClaudeFrame(el)) return;
+      told.add(el);
+      setTimeout(() => window.dispatchEvent(new MessageEvent('message', { origin: 'https://claude.ai', data: { type: 'cic_sidepanel_cowork_unavailable' } })), 0);
+    };
+    const watch = () => new MutationObserver((records) => {
+      for (const r of records) {
+        if (r.type === 'attributes') check(r.target);
+        for (const n of r.addedNodes || []) { check(n); if (n.querySelectorAll) n.querySelectorAll('iframe').forEach(check); }
+      }
+    }).observe(document.documentElement || document, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+    if (document.documentElement) watch(); else document.addEventListener('DOMContentLoaded', watch, { once: true });
+  }
+
   if (!isWorker) return;
 
   // Native messaging ports, inside the worker. WebKit unloads a worker that hasn't posted on an open
