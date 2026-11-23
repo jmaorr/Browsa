@@ -83,6 +83,8 @@ enum ExtensionBridges {
                 panelPages[extensionID] = url
             }
             reply(true, nil)
+        case "contexts":
+            reply((host?.openExtensionPanels(extensionID: extensionID) ?? []).map(\.absoluteString), nil)
         case "open":
             let shown = host?.showExtensionPanel(extensionID: extensionID, url: panelPages[extensionID]) ?? false
             shown ? reply(true, nil) : reply(nil, error("This extension has no side panel"))

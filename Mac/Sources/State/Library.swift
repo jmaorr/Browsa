@@ -67,6 +67,8 @@ final class Library {
     private(set) var extensions: [EngineExtension] = []
     /// Side panel pages extensions set at run time (chrome.sidePanel.setOptions), shown instead of the manifest's.
     var extensionPanelPages: [String: URL] = [:]
+    /// Extension side panel pages on screen now, by extension (ExtensionPanelView), for runtime.getContexts.
+    var shownExtensionPanels: [String: URL] = [:]
     /// Bumped when pins change or an extension updates its action, so the address pill redraws.
     var extensionPinsRevision = 0
     var extensionActionsRevision = 0
@@ -899,6 +901,10 @@ extension Library: EngineExtensionHost {
         guard workbench.tool(id) != nil, let window = activeWindow else { return false }
         window.showPanel(id)
         return true
+    }
+
+    func openExtensionPanels(extensionID: String) -> [URL] {
+        shownExtensionPanels[extensionID].map { [$0] } ?? []
     }
 
     func focusExtensionWindow(_ id: UUID) {

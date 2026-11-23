@@ -181,11 +181,22 @@
   // them at startup (chrome.offscreen.Reason.CLIPBOARD, chrome.scripting.ExecutionWorld.MAIN).
   const extras = {
     // Only the offscreen document is reported; other contexts aren't tracked.
+    // The offscreen document and side panel pages; other contexts aren't tracked.
     runtime: { getContexts: (filter = {}) => {
       const types = filter.contextTypes;
-      if (types && !types.includes('OFFSCREEN_DOCUMENT')) return Promise.resolve([]);
-      return offscreenCall('has').then((url) => url ? [{ contextType: 'OFFSCREEN_DOCUMENT', documentUrl: url, documentOrigin: new URL(url).origin,
-        contextId: 'browsa-offscreen', tabId: -1, windowId: -1, frameId: -1, incognito: false }] : [], () => []);
+      const wants = (t) => !types || types.includes(t);
+      const context = (type, url, id) => ({ contextType: type, documentUrl: url, documentOrigin: new URL(url).origin,
+        contextId: id, tabId: -1, windowId: -1, frameId: -1, incognito: false });
+      const offscreen = wants('OFFSCREEN_DOCUMENT')
+        ? offscreenCall('has').then((url) => url ? [context('OFFSCREEN_DOCUMENT', url, 'browsa-offscreen')] : [], () => []) : Promise.resolve([]);
+      const panels = wants('SIDE_PANEL')
+        ? bridge('browsa.sidepanel', { action: 'contexts' }).then((urls) => (urls || []).map((u, i) => context('SIDE_PANEL', u, 'browsa-panel-' + i)), () => [])
+        : Promise.resolve([]);
+      return Promise.all([offscreen, panels]).then(([a, b]) => {
+        let all = a.concat(b);
+        if (filter.documentUrls) all = all.filter((c) => filter.documentUrls.includes(c.documentUrl));
+        return all;
+      });
     } },
     scripting: { ExecutionWorld: { ISOLATED: 'ISOLATED', MAIN: 'MAIN' } },
     tabs: { TAB_ID_NONE: -1, TAB_INDEX_NONE: -1 },

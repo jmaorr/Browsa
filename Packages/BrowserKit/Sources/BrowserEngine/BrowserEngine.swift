@@ -159,11 +159,15 @@ public protocol EngineExtensionHost: AnyObject {
     /// side panel page, `url` when the extension set one with `sidePanel.setOptions` (Claude has none in
     /// its manifest), else its manifest's. False if it has none.
     func showExtensionPanel(extensionID: String, url: URL?) -> Bool
+    /// The extension's side panel pages showing now, for `runtime.getContexts` (Claude checks it is in
+    /// a side panel before it starts).
+    func openExtensionPanels(extensionID: String) -> [URL]
 }
 
 public extension EngineExtensionHost {
     func extensionActionsDidChange() {}
     func showExtensionPanel(extensionID: String, url: URL?) -> Bool { false }
+    func openExtensionPanels(extensionID: String) -> [URL] { [] }
     func showExtensionPanel(extensionID: String) -> Bool { showExtensionPanel(extensionID: extensionID, url: nil) }
 }
 
