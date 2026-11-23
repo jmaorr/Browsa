@@ -11,7 +11,7 @@ import BrowserCore
 /// Off until you turn it on (Settings › Routing), or until you add a rule from ⌘K. Then your routing
 /// sets apply (Browsa adds its Work and Personal ones the first time), plus your custom rules.
 /// Only new tabs and links from other apps are routed. Following a link inside a tab never moves it,
-/// private tabs never move, and sign-in and checkout pages stay next to the tab that opened them.
+/// private tabs and Favourites never move, and sign-in and checkout pages stay next to the tab that opened them.
 struct RouteRule: Codable, Identifiable, Equatable {
     var id = UUID()
     /// "github.com" (and its subdomains), optionally with a path: "github.com/acme".
@@ -414,7 +414,7 @@ struct SpaceRoutingSettings: View {
             Section {
                 Toggle(isOn: $router.isEnabled) {
                     Text("Open sites in their Space")
-                    Text("New tabs for a site go to its Space, wherever you are. Links you follow inside a tab stay put, and private tabs never move.")
+                    Text("New tabs for a site go to its Space, wherever you are. Links you follow inside a tab stay put, and private tabs and Favourites never move.")
                 }
             }
             if router.isEnabled {
