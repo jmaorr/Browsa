@@ -131,6 +131,15 @@ struct SpaceTabs: View {
                 }
                 .padding(.horizontal, 10)
             }
+            // Right-click the sidebar's empty space for new folders; rows have their own menus.
+            .contextMenu {
+                if !space.isPrivate {
+                    Button("New Folder", systemImage: "folder.badge.plus") {
+                        withAnimation(Motion.snappy) { browser.newPinnedFolder() }
+                    }
+                    Button("New Live Folder…", systemImage: "folder.badge.gearshape") { browser.newLiveFolder() }
+                }
+            }
             .scrollIndicators(.never)
             .scrollPosition($scroll)
             .onScrollGeometryChange(for: [CGFloat].self) { g in
@@ -777,6 +786,9 @@ private struct FolderMenu: View {
         let path = tab.isPinned ? PinnedOutline.path(of: tab.id, in: tree) ?? [] : []
         Button("New Folder with Tab", systemImage: "folder.badge.plus") {
             withAnimation(Motion.snappy) { browser.newPinnedFolder(holding: tab) }
+        }
+        Button("New Live Folder…", systemImage: "folder.badge.gearshape") {
+            browser.liveFolderSheet = LiveFolderDraft(spaceID: space.id, pageURL: tab.url)
         }
         if !folders.isEmpty {
             Menu(tab.isPinned ? "Move to Folder" : "Pin to Folder", systemImage: "folder") {
