@@ -127,10 +127,28 @@ private struct GeneralSettings: View {
                         }
                     }
                 }
+                ForEach(BoostStore.shared.boosts) { boost in
+                    Toggle(isOn: Binding(
+                        get: { boost.isOn },
+                        set: { BoostStore.shared.setOn(boost.id, $0) })) {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(boost.host)
+                                Text(boost.summary).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Delete", systemImage: "trash") { BoostStore.shared.remove(boost.id) }
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.glass)
+                                .buttonBorderShape(.circle)
+                                .help("Delete this Boost")
+                        }
+                    }
+                }
             } header: {
                 Text("Boosts")
             } footer: {
-                Text("Boosts give some sites a new look. They change how a site looks, never what it does. You can also turn one on from the site icon in the address bar.")
+                Text("Boosts give sites a new look. Turn on a ready-made one, or make your own from the site icon in the address bar: a font, a tint, things zapped away, or your own CSS. They change how a site looks, never what it does, and stay on this Mac.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if Updates.isEnabled {

@@ -675,6 +675,64 @@ public struct CallAudioStats: Sendable, Equatable {
 public protocol BoostsConfigurable: AnyObject {
     /// The ids of the styles turned on. Changes apply to open pages straight away, without a reload.
     var enabledBoosts: Set<String> { get set }
+    /// Boosts people made themselves, one per site, that are on. Pages loaded from now on get them; a page
+    /// open now gets a changed style straight away (`PageBoost.previewSource`), its script on the next load.
+    var userBoosts: [PageBoost] { get set }
+}
+
+/// A Boost someone made for one site: their own CSS and script. The script runs in its own world
+/// (`world`), so it sees the page's DOM but never the page's JavaScript.
+public struct PageBoost: Sendable, Equatable {
+    /// "example.com" also covers its subdomains.
+    public var host: String
+    public var css: String
+    public var script: String
+
+    public init(host: String, css: String, script: String) {
+        self.host = host
+        self.css = css
+        self.script = script
+    }
+
+    /// The world Boost styles and scripts run in.
+    public static let world = "browsa.boost"
+
+    /// Defines `__browsaBoostCSS(css)` in the Boost world: replaces the Boost's style sheet. A constructed
+    /// sheet isn't inline style, so sites' Content Security Policies don't block it; a <style> element is
+    /// the fallback.
+    public static let applyCSSFunction = """
+    globalThis.__browsaBoostCSS = globalThis.__browsaBoostCSS || ((css) => {
+      try {
+        let sheet = globalThis.__browsaBoostSheet;
+        if (!sheet) {
+          sheet = new CSSStyleSheet();
+          globalThis.__browsaBoostSheet = sheet;
+          document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+        }
+        sheet.replaceSync(css);
+      } catch (e) {
+        const put = () => {
+          let s = document.getElementById('__browsa_boost');
+          if (!s) { s = document.createElement('style'); s.id = '__browsa_boost'; (document.head || document.documentElement).appendChild(s); }
+          s.textContent = css;
+        };
+        if (document.documentElement) put(); else document.addEventListener('DOMContentLoaded', put, { once: true });
+      }
+    });
+    """
+
+    /// Shows `css` on a page that's open now, replacing what its Boost showed before. Run in `world`.
+    public static func previewSource(css: String) -> String {
+        applyCSSFunction + "\n__browsaBoostCSS(\(jsString(css))); return true;"
+    }
+
+    /// A Swift string as a JavaScript string literal.
+    public static func jsString(_ s: String) -> String {
+        let data = (try? JSONSerialization.data(withJSONObject: [s])) ?? Data("[\"\"]".utf8)
+        return String(String(decoding: data, as: UTF8.self).dropFirst().dropLast())
+    }
+
+    public func matches(_ host: String) -> Bool { host == self.host || host.hasSuffix("." + self.host) }
 }
 
 /// Engines that can run Browsa's call audio.

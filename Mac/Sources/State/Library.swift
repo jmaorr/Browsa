@@ -165,6 +165,7 @@ final class Library {
             calls.onCallAudioStats = { [weak self] in self?.callAudioStats = $0 }
         }
         (engine as? BoostsConfigurable)?.enabledBoosts = boosts
+        BoostStore.shared.attach(engine: engine as? BoostsConfigurable)
         applyBlocking()
         shareNotificationPermissions()
         archiveStaleTabs()

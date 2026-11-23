@@ -92,7 +92,7 @@ struct SpaceThemeEditor: View {
 }
 
 /// Every hue along a soft strip; drag or click to pick one.
-private struct HueStrip: View {
+struct HueStrip: View {
     @Binding var hue: Double
     let save: () -> Void
 
