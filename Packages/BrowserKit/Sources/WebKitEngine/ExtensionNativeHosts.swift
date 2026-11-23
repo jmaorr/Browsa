@@ -179,6 +179,7 @@ struct NativeMessage: @unchecked Sendable {
 }
 
 /// One host program and the framing Chrome uses to talk to it.
+@available(macOS 15.4, *)
 final class HostPipe: @unchecked Sendable {
     /// How long a host that has exited may leave its output open (a child still holding it).
     static let exitGrace: TimeInterval = 1.5
