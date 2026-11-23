@@ -162,6 +162,18 @@ struct BrowserCommands: Commands {
                 .keyboardShortcut(keys.shortcut(.clearToday))
                 .disabled(browser.map { b in b.listedToday(in: b.currentSpace).contains { $0.id != tab?.id } } != true)
             Divider()
+            Button(browser?.isSplit == true ? "Add Tab to Split View" : "New Split View") { browser?.newSplitPane() }
+                .keyboardShortcut(keys.shortcut(.splitView))
+                .disabled(tab == nil || (browser?.shownTabs.count ?? 0) >= SplitStore.maxPanes)
+            Button("Separate Split View") { if let browser, let tab { withAnimation(Motion.snappy) { browser.separateSplit(containing: tab) } } }
+                .disabled(browser?.isSplit != true)
+            Button("Next Pane") { browser?.focusAdjacentPane(1) }
+                .keyboardShortcut(.rightArrow, modifiers: [.control, .option, .command])
+                .disabled(browser?.isSplit != true)
+            Button("Previous Pane") { browser?.focusAdjacentPane(-1) }
+                .keyboardShortcut(.leftArrow, modifiers: [.control, .option, .command])
+                .disabled(browser?.isSplit != true)
+            Divider()
             ForEach(1...9, id: \.self) { n in
                 Button(n == 9 ? "Last Tab" : "Tab \(n)") { browser?.selectTab(number: n) }
                     .keyboardShortcut(KeyEquivalent(Character("\(n)")))

@@ -11,9 +11,9 @@ final class SidebarDragging {
     /// The window whose sidebar this is, for its own Today tabs. Set as a drag starts.
     @ObservationIgnored private weak var browser: Browser?
 
-    /// The Today rows this window's sidebar shows.
+    /// The Today rows this window's sidebar shows. A split is one row.
     private func listedToday(in space: Space) -> [BrowserTab] {
-        browser?.listedToday(in: space) ?? space.listedToday
+        browser?.todayRows(in: space) ?? space.listedToday
     }
 
     /// Where a dragged tab would land: a slot among the other tabs of a section, or among the
@@ -262,7 +262,7 @@ final class SidebarDragging {
                 ?? browser.newTab(url: fav.url, in: space, source: .bookmark, select: false)
             browser.removeFavorite(fav)
             if let place {
-                browser.library.pin(tab, in: space, at: place)
+                browser.pin(tab, in: space, at: place)
             } else {
                 browser.move(tab, before: before, pinned: false)
             }
@@ -443,7 +443,7 @@ final class SidebarDragging {
             return
         }
         if let place = pinnedPlace(for: target, hiding: tab.id, in: space, browser: browser) {
-            withTransaction(quiet) { browser.library.pin(tab, in: space, at: place) }
+            withTransaction(quiet) { browser.pin(tab, in: space, at: place) }
             return
         }
         let others = listedToday(in: space).filter { $0.id != tab.id }
@@ -540,7 +540,7 @@ struct LiftedTabRow: View {
             // Raised on a card while it moves; settles back to how the row really looks as it lands.
             let selected = tab.id == browser.selectedTabID(in: browser.currentSpace)
             ZStack {
-                TabRow(tab: tab, selected: selected || !dragging.settling, isLifted: true)
+                SidebarRow(tab: tab, selected: selected || !dragging.settling, isLifted: true)
                     .frame(width: lift.size.width, height: lift.size.height)
                     .opacity(asTile ? 0 : 1)
                 if let url = tab.url {

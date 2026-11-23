@@ -78,6 +78,13 @@ extension Browser {
                 out.append(BrowserCommand(id: "move:" + s.id.uuidString, title: "Move Tab to \(s.name)", subtitle: "Space", keywords: ["space"]))
             }
         }
+        if let tab = currentTab, !Welcome.isWelcome(tab.url), shownTabs.count < SplitStore.maxPanes {
+            out.append(BrowserCommand(id: "split-view", title: isSplit ? "Add Tab to Split View" : "New Split View",
+                                      keywords: ["split", "side by side", "two pages", "tile"]))
+        }
+        if isSplit {
+            out.append(BrowserCommand(id: "separate-split", title: "Separate Split View", keywords: ["split", "unsplit"]))
+        }
         if today(in: currentSpace).count > 1 {
             out.append(BrowserCommand(id: "close-others", title: "Close Other Tabs", keywords: ["tabs", "clean"]))
         }
@@ -140,7 +147,7 @@ extension Browser {
         "panel": "sidebar.right", "private": "eye.slash", "close-private": "eye.slash", "new-space": "plus.rectangle.on.rectangle",
         "downloads": "arrow.down.circle", "archive": "archivebox", "settings": "gearshape", "library": "square.grid.2x2", "space": "square.stack",
         "move": "arrow.right.square", "restore": "archivebox", "ext": "puzzlepiece.extension",
-        "copy-markdown": "link.badge.plus", "clear-today": "xmark.circle", "inspector": "hammer",
+        "copy-markdown": "link.badge.plus", "split-view": "rectangle.split.2x1", "separate-split": "rectangle", "clear-today": "xmark.circle", "inspector": "hammer",
     ]
 
     func run(command id: String) {
@@ -177,6 +184,8 @@ extension Browser {
         case "blockers": toggleBlockingForCurrentSite()
         case "share": shareCurrentPage()
         case "close-others": if let t = currentTab { closeOtherTabs(than: t) }
+        case "split-view": newSplitPane()
+        case "separate-split": if let t = currentTab { withAnimation(Motion.snappy) { separateSplit(containing: t) } }
         case "reopen": reopenClosedTab()
         case "sidebar": toggleSidebar()
         case "private": newTab(url: nil, isPrivate: true); showCommandBar(.editCurrent)
@@ -282,6 +291,7 @@ extension Browser {
         case .favourite: toggleFavoriteForCurrentTab()
         case .archive: isArchivePresented = true
         case .newFolder: withAnimation(Motion.snappy) { newPinnedFolder() }
+        case .splitView: newSplitPane()
         case .nextSpace: selectAdjacentSpace(1)
         case .previousSpace: selectAdjacentSpace(-1)
         case .sidebar: toggleSidebar()

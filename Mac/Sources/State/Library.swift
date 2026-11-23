@@ -18,6 +18,8 @@ final class Library {
     /// Shared across spaces, like Arc's favourites row.
     var favorites: [Favorite]
     var archive: [BrowserTab] = []
+    /// Tabs shown side by side (Split View). Mac only, so kept apart from the state the iPhone shares.
+    let splits = SplitStore()
     var settings = BrowserSettings() {
         didSet {
             guard settings != oldValue else { return }
@@ -291,7 +293,7 @@ final class Library {
 
     /// The window showing a tab right now, if any. A tab is on screen in one window at most.
     func window(showing tab: BrowserTab) -> Browser? {
-        windows.first { $0.currentTab?.id == tab.id }
+        windows.first { $0.shownTabIDs.contains(tab.id) }
     }
 
     /// Opens a window through SwiftUI. Set by the first window that appears.
@@ -419,7 +421,7 @@ final class Library {
     /// that's busy: a call, music or a half-written message would be lost, so those stay loaded
     /// even if that means more than `capacity` live pages for a while.
     private func evictIfNeeded(keeping id: UUID) {
-        let onScreen = Set(windows.compactMap { $0.currentTab?.id })
+        let onScreen = Set(windows.flatMap { $0.shownTabIDs })
         // Never unloaded: pages on another engine (call tabs, on Chromium), which would end a call,
         // and busy pages (a call, playing audio, a half-written message).
         let evictable = { (t: UUID) in
@@ -786,7 +788,7 @@ final class Library {
 
     /// Today tabs left alone for longer than the setting go to the archive, like Arc.
     func archiveStaleTabs(now: Date = .now) {
-        let onScreen = Set(windows.compactMap { $0.currentTab?.id })
+        let onScreen = Set(windows.flatMap { $0.shownTabIDs })
         for space in spaces where !space.isPrivate {
             let stale = space.today.filter {
                 !onScreen.contains($0.id) && $0.id != space.selectedTabID
@@ -921,6 +923,7 @@ final class Library {
 
     func saveNow() {
         guard let snapshotURL else { return }
+        pruneSplits()
         for c in controllers.values { c.freeze() }
         // Next launch opens on the space the active window shows (never Private).
         let shown = activeWindow?.currentSpace

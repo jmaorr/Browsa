@@ -81,7 +81,7 @@ struct SpaceTabs: View {
         // Dragging with nothing else pinned: a zone to drop on stands in for the Pinned section.
         let pinZone = dragging.lift != nil && !space.isPrivate && browser.pinnedRows(in: space, hiding: dragging.liftedID).isEmpty
         let pinned = pinnedSlots(in: space, gapAllowed: !pinZone)
-        let today = todaySlots(browser.listedToday(in: space))
+        let today = todaySlots(browser.todayRows(in: space))
         // The whole list is the unit that slides: its id is the space, and a transition on the list
         // inside a ScrollView is ignored (it only cross-faded).
         ZStack {
@@ -195,7 +195,7 @@ private struct DraggableTabRow: View {
     @GestureState private var held = false
 
     var body: some View {
-        TabRow(tab: tab, selected: tab.id == browser.selectedTabID(in: space))
+        SidebarRow(tab: tab, selected: browser.rowTabs(tab).contains { $0.id == browser.selectedTabID(in: space) })
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
                 if !collapsed { dragging.rowFrames[tab.id] = $0 }
             }
@@ -657,6 +657,7 @@ struct TabMenu: View {
             }
         }
         Button("Open in New Window", systemImage: "macwindow.badge.plus") { browser.openInNewWindow(tab) }
+        SplitViewMenuItems(tab: tab)
         if !tab.isPrivate, browser.regularSpaces.count > 1 {
             Menu("Move to Space") {
                 ForEach(browser.regularSpaces.filter { $0.id != browser.space(containing: tab)?.id }) { s in
@@ -693,7 +694,7 @@ private struct FolderMenu: View {
                 ForEach(folders) { entry in
                     Button(String(repeating: "    ", count: entry.path.count) + entry.folder.name) {
                         withAnimation(Motion.snappy) {
-                            browser.library.pin(tab, in: space, at: PinnedPlace(parent: entry.folder.id, index: .max))
+                            browser.pin(tab, in: space, at: PinnedPlace(parent: entry.folder.id, index: .max))
                         }
                     }
                     .disabled(path.last == entry.folder.id)
@@ -705,7 +706,7 @@ private struct FolderMenu: View {
                 // Out to the top level, just under the folder it was in.
                 let at = PinnedOutline.place(of: outer, in: PinnedOutline.removing(tab.id, from: tree).0)
                 withAnimation(Motion.snappy) {
-                    browser.library.pin(tab, in: space, at: PinnedPlace(parent: nil, index: (at?.index ?? -1) + 1))
+                    browser.pin(tab, in: space, at: PinnedPlace(parent: nil, index: (at?.index ?? -1) + 1))
                 }
             }
         }
