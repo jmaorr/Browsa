@@ -131,7 +131,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
     case back, forward, reload, hardReload = "hard-reload", stop
     case find, findNext = "find-next", findPrevious = "find-previous"
     case copyLink = "copy-link", copyMarkdown = "copy-markdown"
-    case reader, inspector
+    case reader, inspector, pictureInPicture = "picture-in-picture"
 
     var id: String { rawValue }
 
@@ -185,6 +185,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case .copyMarkdown: "Copy Link as Markdown"
         case .reader: "Show or Hide Reader"
         case .inspector: "Web Inspector"
+        case .pictureInPicture: "Picture in Picture"
         }
     }
 
@@ -243,6 +244,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case (.reader, .chrome): return [k("r", optCmd)]
         case (.reader, _): return [k("r", shiftCmd)]
         case (.inspector, _): return [k("i", optCmd)]
+        case (.pictureInPicture, _): return [k("p", optCmd)]
         }
     }
 }

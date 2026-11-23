@@ -59,6 +59,7 @@ private struct GeneralSettings: View {
     @State private var isDefault = false
     @State private var importing = false
     @AppStorage(BrowsaAppearance.key) private var appearance = ""
+    @AppStorage(VideoPiP.autoKey) private var videoPiPOnTabSwitch = true
 
     var body: some View {
         @Bindable var browser = browser
@@ -114,6 +115,15 @@ private struct GeneralSettings: View {
                 Picker("Open links from other apps in", selection: $browser.settings.externalLinksSpaceID) {
                     Text("Current space").tag(UUID?.none)
                     ForEach(browser.regularSpaces) { s in Text(s.name).tag(UUID?.some(s.id)) }
+                }
+            }
+            Section {
+                Toggle(isOn: $videoPiPOnTabSwitch) {
+                    VStack(alignment: .leading) {
+                        Text("Pop out videos when you switch tabs")
+                        Text("A video playing with sound follows you in picture in picture, and goes back when you return to its tab. ⌥⌘P pops out any video.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
             Section {

@@ -29,6 +29,8 @@ struct Sidebar: View {
             ToolSections()
                 .padding(.horizontal, 10)
                 .introArrival(4)
+            NowPlaying()
+                .padding(.horizontal, 10)
             bottomRow
                 .padding(.horizontal, 10)
                 .padding(.bottom, 8)

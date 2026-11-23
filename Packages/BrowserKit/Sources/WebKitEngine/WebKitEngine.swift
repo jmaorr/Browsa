@@ -141,6 +141,11 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
         c.preferences.isElementFullscreenEnabled = true
         c.preferences.isTextInteractionEnabled = true
         c.allowsAirPlayForMediaPlayback = true
+        // Picture in picture for any video (Browsa's button, ⌥⌘P, popping out when you switch tabs). On by
+        // default in WebKit; set in case a build ships it off. Private API, so only where it answers.
+        if c.preferences.responds(to: NSSelectorFromString("_setAllowsPictureInPictureMediaPlayback:")) {
+            c.preferences.setValue(true, forKey: "allowsPictureInPictureMediaPlayback")
+        }
         // WKWebView's default user agent leaves out Safari's "Version/… Safari/…" tokens, and some
         // sites then serve older pages or call the browser unsupported.
         c.applicationNameForUserAgent = SafariUserAgent.applicationName

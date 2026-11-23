@@ -320,6 +320,9 @@ public protocol EnginePage: AnyObject {
     /// A picture of the visible page.
     func snapshot() async -> CGImage?
 
+    /// Plays, pauses or pops out the page's main video or audio. `state.media` says what there is.
+    func media(_ action: MediaAction)
+
     /// Stops everything and lets go of the engine's resources.
     func close()
 }
@@ -348,11 +351,45 @@ public final class PageState {
     public var isPlayingAudio = false
     /// Someone typed into a field on the page and it still holds text.
     public var hasUnsavedInput = false
+    /// The page's video and audio, for picture in picture and the sidebar's play button.
+    public var media = PageMedia()
 
     /// Unloading the page now would cut off a call, the music or a draft.
     public var isBusy: Bool { isCapturing || isPlayingAudio || hasUnsavedInput }
 
     public init() {}
+}
+
+/// What a page's video and audio are doing.
+public struct PageMedia: Equatable, Sendable {
+    /// A video big enough to pop out (not an icon-sized loop).
+    public var hasVideo = false
+    /// Something is playing, with sound or without.
+    public var isPlaying = false
+    /// Something played with sound since the page loaded, so a paused video still gets a play button.
+    public var hasPlayed = false
+    /// Something is playing with sound.
+    public var isAudible = false
+    /// A video with sound is playing: the one to pop out when you leave the tab.
+    public var isWatching = false
+    /// A video is in picture in picture.
+    public var isPictureInPicture = false
+
+    public init(hasVideo: Bool = false, isPlaying: Bool = false, hasPlayed: Bool = false, isAudible: Bool = false,
+                isWatching: Bool = false, isPictureInPicture: Bool = false) {
+        self.hasVideo = hasVideo
+        self.isPlaying = isPlaying
+        self.hasPlayed = hasPlayed
+        self.isAudible = isAudible
+        self.isWatching = isWatching
+        self.isPictureInPicture = isPictureInPicture
+    }
+}
+
+/// Something to do to a page's main video or audio.
+public enum MediaAction: Sendable {
+    case playPause
+    case togglePictureInPicture, enterPictureInPicture, exitPictureInPicture
 }
 
 /// A camera or microphone, as the page has it.
@@ -436,6 +473,7 @@ public struct FindMatches: Sendable, Equatable {
 
 public extension EnginePage {
     func findMatches(_ text: String) async -> FindMatches? { nil }
+    func media(_ action: MediaAction) {}
 }
 
 /// A site's notification (`new Notification(…)` or a service worker's `showNotification`).

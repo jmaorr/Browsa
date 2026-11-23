@@ -89,6 +89,11 @@ struct BrowserCommands: Commands {
             Button(browser?.isReaderShowing == true ? "Hide Reader" : "Show Reader") { browser?.toggleReader() }
                 .keyboardShortcut(keys.shortcut(.reader))
                 .disabled(!hasPage)
+            Button(browser?.pictureInPictureTab?.media.isPictureInPicture == true ? "Put Video Back in Page" : "Picture in Picture") {
+                browser?.togglePictureInPicture()
+            }
+            .keyboardShortcut(keys.shortcut(.pictureInPicture))
+            .disabled(browser?.pictureInPictureTab == nil)
             Divider()
             Button("Reload Page") { browser?.reload() }
                 .keyboardShortcut(keys.shortcut(.reload))
