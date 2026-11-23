@@ -83,6 +83,27 @@ enum ExtensionNativeHosts {
         throw Refused(why: "Specified native messaging host not found.")
     }
 
+    // MARK: Throttle
+
+    /// Recent starts per extension and host. A host that refuses at once (1Password's does, for a
+    /// browser it doesn't trust) gets started again and again by the extension's retries; past
+    /// `burst` starts in `window` seconds, further ones are refused until the window has passed.
+    private static var starts: [String: [Date]] = [:]
+    static let burst = 5
+    static let window: TimeInterval = 10
+
+    static func admit(_ name: String, origin: String, now: Date = Date()) throws {
+        let key = origin + " " + name
+        var recent = (starts[key] ?? []).filter { now.timeIntervalSince($0) < window }
+        guard recent.count < burst else {
+            starts[key] = recent
+            log.notice("host \(name, privacy: .public) started \(recent.count) times in \(Int(window))s; holding off")
+            throw Refused(why: "Native host is being started too often; try again shortly.")
+        }
+        recent.append(now)
+        starts[key] = recent
+    }
+
     // MARK: runtime.sendNativeMessage
 
     private static var replies: [ObjectIdentifier: (pipe: HostPipe, reply: (Any?, (any Error)?) -> Void)] = [:]
@@ -90,7 +111,11 @@ enum ExtensionNativeHosts {
     /// Run, send one message, hand back the first answer, stop.
     static func send(_ message: Any, to name: String, origin: String, reply: @escaping (Any?, (any Error)?) -> Void) {
         let pipe: HostPipe
-        do { pipe = HostPipe(program: try program(for: name, origin: origin), origin: origin) } catch { reply(nil, error); return }
+        do {
+            let program = try program(for: name, origin: origin)
+            try admit(name, origin: origin)
+            pipe = HostPipe(program: program, origin: origin)
+        } catch { reply(nil, error); return }
         let key = ObjectIdentifier(pipe)
         replies[key] = (pipe, reply)
         pipe.onMessage = { message in
@@ -121,6 +146,7 @@ enum ExtensionNativeHosts {
     static func connect(_ port: WKWebExtension.MessagePort, origin: String, extensionID: String) throws {
         guard let name = port.applicationIdentifier else { throw Refused(why: "No native messaging host named.") }
         let program = try program(for: name, origin: origin)
+        try admit(name, origin: origin)
         // A new port is often a worker starting over; the one before may have left its host running.
         stopOrphans()
         let pipe = HostPipe(program: program, origin: origin)
@@ -188,7 +214,7 @@ final class HostPipe: @unchecked Sendable {
     /// The most a host may send in one message, as in Chrome; messages to it are held to the same.
     static let frameCap = 1 << 20
 
-    private let process = Process()
+    private let process: SpawnedHost
     private let input = Pipe()
     private let output = Pipe()
     private var buffer = Data()
@@ -206,11 +232,10 @@ final class HostPipe: @unchecked Sendable {
     private var ending = false
 
     init(program: URL, origin: String) {
-        process.executableURL = program
-        process.arguments = [origin]
-        process.standardInput = input
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
+        // Not Foundation's Process: it puts the child in a process group of its own, and 1Password's
+        // helper refuses a browser whose host isn't in the browser's process group ("BrowserSupport
+        // was not part of the main browser's tree"). Chrome spawns hosts plainly; so does this.
+        process = SpawnedHost(program: program, arguments: [origin], input: input, output: output)
         // Writing to a host that has already gone would raise SIGPIPE and take Browsa with it.
         _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
     }
@@ -239,7 +264,7 @@ final class HostPipe: @unchecked Sendable {
             let now = self.stopped || self.outputClosed
             let first = self.stopped ? "stopped by Browsa" : self.outputClosed ? "its output closed first" : "exited on its own"
             self.lock.unlock()
-            let how = process.terminationReason == .uncaughtSignal ? "signal \(process.terminationStatus)" : "status \(process.terminationStatus)"
+            let how = process.signaled ? "signal \(process.terminationStatus)" : "status \(process.terminationStatus)"
             self.onTerminated?("\(how), \(first)")
             if now {
                 self.finish()
@@ -332,6 +357,99 @@ final class HostPipe: @unchecked Sendable {
         lock.unlock()
         output.fileHandleForReading.readabilityHandler = nil
         exit?()
+    }
+}
+/// A host program started with posix_spawn, as Chrome starts them: in Browsa's own process group
+/// (Foundation's Process gives each child a group of its own), with only stdin, stdout and stderr
+/// passed on. Enough of Process's surface for HostPipe.
+@available(macOS 15.4, *)
+final class SpawnedHost: @unchecked Sendable {
+    private let program: URL
+    private let arguments: [String]
+    private let input: Pipe
+    private let output: Pipe
+    private let lock = NSLock()
+    private var pid: pid_t = 0
+    private var running = false
+    private var source: (any DispatchSourceProcess)?
+    private(set) var terminationStatus: Int32 = 0
+    private(set) var signaled = false
+    /// Set before `run`. Called once, on a background queue, when the host has exited.
+    var terminationHandler: (@Sendable (SpawnedHost) -> Void)?
+
+    init(program: URL, arguments: [String], input: Pipe, output: Pipe) {
+        self.program = program
+        self.arguments = arguments
+        self.input = input
+        self.output = output
+    }
+
+    var processIdentifier: pid_t { lock.lock(); defer { lock.unlock() }; return pid }
+    var isRunning: Bool { lock.lock(); defer { lock.unlock() }; return running }
+
+    func run() throws {
+        let path = program.path(percentEncoded: false)
+        var actions = posix_spawn_file_actions_t(nil as OpaquePointer?)
+        posix_spawn_file_actions_init(&actions)
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        posix_spawn_file_actions_adddup2(&actions, input.fileHandleForReading.fileDescriptor, 0)
+        posix_spawn_file_actions_adddup2(&actions, output.fileHandleForWriting.fileDescriptor, 1)
+        posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0)
+        var attributes = posix_spawnattr_t(nil as OpaquePointer?)
+        posix_spawnattr_init(&attributes)
+        defer { posix_spawnattr_destroy(&attributes) }
+        // Only the three descriptors above reach the host, and its signals start out as a new
+        // program's would. No POSIX_SPAWN_SETPGROUP: it stays in Browsa's process group.
+        var none = sigset_t(), all = sigset_t()
+        sigemptyset(&none)
+        sigfillset(&all)
+        posix_spawnattr_setsigmask(&attributes, &none)
+        posix_spawnattr_setsigdefault(&attributes, &all)
+        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF))
+        let argv: [UnsafeMutablePointer<CChar>?] = ([path] + arguments).map { strdup($0) } + [nil]
+        defer { argv.forEach { free($0) } }
+        var child: pid_t = 0
+        let result = posix_spawn(&child, path, &actions, &attributes, argv, environ)
+        // The child's ends belong to the child now; holding them would keep its output from closing.
+        try? input.fileHandleForReading.close()
+        try? output.fileHandleForWriting.close()
+        guard result == 0 else {
+            throw ExtensionNativeHosts.Refused(why: "Couldn't start the native host (\(String(cString: strerror(result)))).")
+        }
+        lock.lock()
+        pid = child
+        running = true
+        let watch = DispatchSource.makeProcessSource(identifier: child, eventMask: .exit, queue: .global())
+        source = watch
+        lock.unlock()
+        watch.setEventHandler { [weak self] in self?.reap(blocking: true) }
+        watch.resume()
+        // It may have exited before the watch was in place.
+        reap(blocking: false)
+    }
+
+    private func reap(blocking: Bool) {
+        lock.lock()
+        guard running else { return lock.unlock() }
+        var status: Int32 = 0
+        let done = waitpid(pid, &status, blocking ? 0 : WNOHANG)
+        guard done == pid || (done == -1 && errno == ECHILD) else { return lock.unlock() }
+        running = false
+        // WIFSIGNALED / WTERMSIG / WEXITSTATUS, which Swift doesn't import.
+        let low = status & 0x7f
+        signaled = low != 0 && low != 0x7f
+        terminationStatus = signaled ? low : (status >> 8) & 0xff
+        source?.cancel()
+        source = nil
+        let handler = terminationHandler
+        lock.unlock()
+        handler?(self)
+    }
+
+    /// SIGTERM, as Process.terminate does.
+    func terminate() {
+        let target = processIdentifier
+        if target > 0, isRunning { kill(target, SIGTERM) }
     }
 }
 #endif
