@@ -60,7 +60,7 @@ struct SiteStyleHint: View {
 
     private func card(_ style: SiteStyle) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: "wand.and.sparkles")
+            Image(systemName: "paintbrush.fill")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Color.accentColor)
                 .frame(width: 32, height: 32)

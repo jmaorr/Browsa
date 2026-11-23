@@ -268,7 +268,7 @@ private struct SiteMenu: View {
                     let on = browser.library.siteStyles.contains(style.id)
                     let item = actions.item(style.name) { browser.setSiteStyle(style, on: !on) }
                     item.state = on ? .on : .off
-                    item.image = NSImage(systemSymbolName: "wand.and.sparkles", accessibilityDescription: nil)
+                    item.image = NSImage(systemSymbolName: "paintbrush.fill", accessibilityDescription: nil)
                     item.toolTip = style.summary
                     menu.addItem(item)
                 }
