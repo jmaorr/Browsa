@@ -266,12 +266,13 @@ private struct SiteMenu: View {
             }
             media.submenu = mediaMenu
             menu.addItem(media)
-            let styles = SiteStyle.available(for: url)
+            let styles = Boost.available(for: url)
             if !styles.isEmpty, browser.currentTab?.isPrivate != true {
                 menu.addItem(.separator())
+                menu.addItem(.sectionHeader(title: "Boosts"))
                 for style in styles {
-                    let on = browser.library.siteStyles.contains(style.id)
-                    let item = actions.item(style.name) { browser.setSiteStyle(style, on: !on) }
+                    let on = browser.library.boosts.contains(style.id)
+                    let item = actions.item(style.name) { browser.setBoost(style, on: !on) }
                     item.state = on ? .on : .off
                     item.image = NSImage(systemSymbolName: "paintbrush.fill", accessibilityDescription: nil)
                     item.toolTip = style.summary
@@ -322,7 +323,7 @@ private struct SiteIconAnchor: NSViewRepresentable {
     func updateNSView(_ view: NSView, context: Context) { browser.siteIconView = view }
 }
 
-/// When a Site Style lands in the site icon (`trigger` changes): the favicon pops away, a paintbrush pops in
+/// When a Boost lands in the site icon (`trigger` changes): the favicon pops away, a paintbrush pops in
 /// with a ring swelling out of it, then the brush pops away and the favicon comes back. Shows where the style
 /// went and that the icon opens it.
 private struct SiteIconSwap<Icon: View>: View {

@@ -4,35 +4,35 @@ import BrowserCore
 import BrowserEngine
 
 extension Browser {
-    /// Turns a Site Style on or off. Open pages on its site change straight away.
-    func setSiteStyle(_ style: SiteStyle, on: Bool) {
-        if on { library.siteStyles.insert(style.id) } else { library.siteStyles.remove(style.id) }
+    /// Turns a Boost on or off. Open pages on its site change straight away.
+    func setBoost(_ style: Boost, on: Bool) {
+        if on { library.boosts.insert(style.id) } else { library.boosts.remove(style.id) }
     }
 
     /// The style to suggest on the current page: one that can run here, is off, and hasn't been suggested
     /// and answered before. Never in private tabs.
-    var suggestedSiteStyle: SiteStyle? {
+    var suggestedBoost: Boost? {
         guard let tab = currentTab, !tab.isPrivate, !isReaderShowing else { return nil }
-        return SiteStyle.available(for: tab.url).first {
-            !library.siteStyles.contains($0.id) && !library.siteStyleHintsDone.contains($0.id)
+        return Boost.available(for: tab.url).first {
+            !library.boosts.contains($0.id) && !library.boostHintsDone.contains($0.id)
         }
     }
 }
 
-/// The first time you visit a site that has a Site Style, a small glass card offers it. Turning it on, or
+/// The first time you visit a site that has a Boost, a small glass card offers it. Turning it on, or
 /// closing the card, sends the card flying into the site icon in the address pill, which pulses: that's where
 /// the style lives from then on. It's suggested once per style.
-struct SiteStyleHint: View {
+struct BoostHint: View {
     @Environment(Browser.self) private var browser
     /// Shown after the page has had a moment to settle, rather than the instant the address changes.
-    @State private var shown: SiteStyle?
+    @State private var shown: Boost?
     @State private var flight: CGSize = .zero
     @State private var flying = false
     @State private var cardAnchor = PopupAnchor()
     @State private var appear: Task<Void, Never>?
 
     var body: some View {
-        let suggestion = browser.suggestedSiteStyle
+        let suggestion = browser.suggestedBoost
         ZStack(alignment: .topLeading) {
             if let style = shown {
                 card(style)
@@ -52,13 +52,13 @@ struct SiteStyleHint: View {
             }
             appear = Task { @MainActor in
                 try? await Task.sleep(for: .seconds(1.2))
-                guard !Task.isCancelled, browser.suggestedSiteStyle?.id == id else { return }
-                withAnimation(Motion.spring) { shown = browser.suggestedSiteStyle }
+                guard !Task.isCancelled, browser.suggestedBoost?.id == id else { return }
+                withAnimation(Motion.spring) { shown = browser.suggestedBoost }
             }
         }
     }
 
-    private func card(_ style: SiteStyle) -> some View {
+    private func card(_ style: Boost) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "paintbrush.fill")
                 .font(.system(size: 15, weight: .medium))
@@ -99,9 +99,9 @@ struct SiteStyleHint: View {
     }
 
     /// Either way, the card goes into the site icon so you know where to find the style later.
-    private func answer(_ style: SiteStyle, turnOn: Bool) {
-        if turnOn { browser.setSiteStyle(style, on: true) }
-        browser.library.siteStyleHintsDone.insert(style.id)
+    private func answer(_ style: Boost, turnOn: Bool) {
+        if turnOn { browser.setBoost(style, on: true) }
+        browser.library.boostHintsDone.insert(style.id)
         // With the sidebar hidden, slide it out so there's an icon to land on.
         let peeked = !browser.isSidebarDocked && !browser.isSidebarPeeking
         if peeked { withAnimation(Motion.peek) { browser.isSidebarPeeking = true } }

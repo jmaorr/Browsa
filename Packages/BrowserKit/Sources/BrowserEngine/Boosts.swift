@@ -1,9 +1,9 @@
 import Foundation
 
-/// Site Styles: optional new looks for particular sites, which you turn on yourself, site by site. They only
+/// Boosts (called Site Styles in 1.2.1): optional new looks for particular sites, which you turn on yourself, site by site. They only
 /// change how a site looks (layout, spacing, hiding clutter), never what it does. Unlike Site Optimisations,
 /// which fix a site quietly for everyone, these are off until you choose them.
-public struct SiteStyle: Identifiable, Sendable, Equatable {
+public struct Boost: Identifiable, Sendable, Equatable {
     public let id: String
     /// The site, as people know it: "LinkedIn".
     public let site: String
@@ -28,7 +28,7 @@ public struct SiteStyle: Identifiable, Sendable, Equatable {
         let literal = (try? JSONEncoder().encode(css)).flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
         return """
         (function () {
-          var id = 'browsa-style-\(id)', style = document.getElementById(id);
+          var id = 'browsa-boost-\(id)', style = document.getElementById(id);
           if (style) { style.disabled = false; return; }
           style = document.createElement('style');
           style.id = id; style.textContent = \(literal);
@@ -45,13 +45,13 @@ public struct SiteStyle: Identifiable, Sendable, Equatable {
 
     /// Turns the stylesheet off on a page that has it, without a reload.
     public var disableSource: String {
-        "(function () { var s = document.getElementById('browsa-style-\(id)'); if (s) s.disabled = true; })();"
+        "(function () { var s = document.getElementById('browsa-boost-\(id)'); if (s) s.disabled = true; })();"
     }
 
     /// The styles that can run on `url`.
-    public static func available(for url: URL?) -> [SiteStyle] { all.filter { $0.matches(url) } }
+    public static func available(for url: URL?) -> [Boost] { all.filter { $0.matches(url) } }
 
-    public static let all: [SiteStyle] = [linkedInTidy]
+    public static let all: [Boost] = [linkedInTidy]
 
     /// LinkedIn: a calmer, roomier home feed. Drops the right-hand column (news, puzzles, ads) so the feed can be
     /// about 40% wider, softens the cards, sets post text a little larger, and hides promoted posts.
@@ -60,7 +60,7 @@ public struct SiteStyle: Identifiable, Sendable, Equatable {
     /// landmark labels ("Sidebar", "Primary content", "Aside"), test ids ("mainFeed", "expandable-text-box"), list
     /// roles and post keys ("update-card-focus…", so rows like "Sort by" keep their look). The layout changes apply on
     /// pages built from LinkedIn's three columns (the feed, a single post, and others), and leave other layouts alone.
-    public static let linkedInTidy = SiteStyle(
+    public static let linkedInTidy = Boost(
         id: "linkedin-tidy",
         site: "LinkedIn",
         name: "Tidy Feed",

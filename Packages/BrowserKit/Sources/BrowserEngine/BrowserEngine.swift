@@ -670,11 +670,11 @@ public struct CallAudioStats: Sendable, Equatable {
     }
 }
 
-/// Engines that can run Site Styles (`SiteStyle`).
+/// Engines that can run Boosts (`Boost`).
 @MainActor
-public protocol SiteStylesConfigurable: AnyObject {
+public protocol BoostsConfigurable: AnyObject {
     /// The ids of the styles turned on. Changes apply to open pages straight away, without a reload.
-    var enabledSiteStyles: Set<String> { get set }
+    var enabledBoosts: Set<String> { get set }
 }
 
 /// Engines that can run Browsa's call audio.
