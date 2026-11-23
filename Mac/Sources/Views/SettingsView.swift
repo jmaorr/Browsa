@@ -323,12 +323,7 @@ private struct ProfilesSettings: View {
                 ForEach(browser.settings.profiles) { profile in
                     Divider().padding(.leading, 40)
                     row(icon: "person.crop.circle.fill", spaces: browser.spaces(using: profile.id)) {
-                        TextField("Name", text: Binding(get: { profile.name },
-                                                        set: { browser.renameProfile(profile.id, to: $0) }),
-                                  prompt: Text("Name"))
-                            .textFieldStyle(.roundedBorder)
-                            .labelsHidden()
-                            .frame(maxWidth: 180)
+                        ProfileNameField(profile: profile)
                     } trailing: {
                         Button("Delete", role: .destructive) { deleting = profile }
                             .buttonStyle(.glass)
@@ -374,6 +369,24 @@ private struct ProfilesSettings: View {
         }
         .padding(.horizontal, 12)
         .frame(minHeight: 44)
+    }
+}
+
+/// A profile's name, edited in place and saved as you type. Return leaves the field, so it's
+/// clear the name took.
+private struct ProfileNameField: View {
+    @Environment(Library.self) private var library
+    let profile: SpaceProfile
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("Name", text: Binding(get: { profile.name }, set: { library.renameProfile(profile.id, to: $0) }),
+                  prompt: Text("Name"))
+            .textFieldStyle(.roundedBorder)
+            .labelsHidden()
+            .frame(maxWidth: 180)
+            .focused($focused)
+            .onSubmit { focused = false }
     }
 }
 
