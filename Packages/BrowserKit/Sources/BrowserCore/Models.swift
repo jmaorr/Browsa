@@ -101,6 +101,9 @@ public final class Space: Identifiable {
     public var isSidebarOpen: Bool
     /// The Private space: shows in the spaces list only while it has tabs, and is never saved.
     public let isPrivate: Bool
+    /// The Mac profile (`BrowserSettings.profiles`) whose cookies and logins the space's pages use.
+    /// Nil is the default profile.
+    public var profileID: UUID?
 
     public init(id: UUID = UUID(), name: String, symbol: String = "circle.fill", colorIndex: Int = 0,
                 pinned: [BrowserTab] = [], today: [BrowserTab] = [], selectedTabID: UUID? = nil, isSidebarOpen: Bool = true,
@@ -160,6 +163,8 @@ public struct BrowserSettings: Codable, Equatable, Sendable {
     public var allowLocalCertificateErrors = false
     /// Mac: new tabs (⌘T) open just below the current tab instead of at the top of Today.
     public var newTabsBelowCurrent = false
+    /// Mac: profiles besides the default one. Each keeps its own cookies and logins, and spaces pick one.
+    public var profiles: [SpaceProfile] = []
 
     public init() {}
 
@@ -187,6 +192,19 @@ public struct BrowserSettings: Codable, Equatable, Sendable {
         certificateExceptions = try c.decodeIfPresent([String: String].self, forKey: .certificateExceptions) ?? [:]
         allowLocalCertificateErrors = try c.decodeIfPresent(Bool.self, forKey: .allowLocalCertificateErrors) ?? false
         newTabsBelowCurrent = try c.decodeIfPresent(Bool.self, forKey: .newTabsBelowCurrent) ?? false
+        profiles = try c.decodeIfPresent([SpaceProfile].self, forKey: .profiles) ?? []
+    }
+}
+
+/// A set of cookies, logins and site storage kept apart from the others. Spaces choose one; spaces
+/// that share a profile share logins. The default profile isn't listed and has no id.
+public struct SpaceProfile: Codable, Equatable, Hashable, Identifiable, Sendable {
+    public let id: UUID
+    public var name: String
+
+    public init(id: UUID = UUID(), name: String) {
+        self.id = id
+        self.name = name
     }
 }
 
@@ -353,6 +371,8 @@ public struct SpaceRecord: Codable, Sendable {
     public var themeHue: Double? = nil
     public var themeShade: Double? = nil
     public var appearance: String? = nil
+    /// Missing in state saved before Mac profiles.
+    public var profileID: UUID? = nil
 }
 
 public struct BrowserSnapshot: Codable, Sendable {
@@ -397,7 +417,7 @@ extension Space {
                     today: today.filter { !$0.isPrivate }.map(\.record),
                     selectedTabID: selectedTabID, isSidebarOpen: isSidebarOpen,
                     themeHue: themeHue, themeShade: themeShade,
-                    appearance: appearance)
+                    appearance: appearance, profileID: profileID)
     }
     public convenience init(_ r: SpaceRecord) {
         self.init(id: r.id, name: r.name, symbol: r.symbol, colorIndex: r.colorIndex,
@@ -406,5 +426,6 @@ extension Space {
         themeHue = r.themeHue
         themeShade = r.themeShade
         appearance = r.appearance
+        profileID = r.profileID
     }
 }

@@ -120,3 +120,25 @@ import Testing
         }
     }
 }
+
+@Suite struct ProfileCodingTests {
+    @Test func settingsKeepProfiles() throws {
+        var settings = BrowserSettings()
+        settings.profiles = [SpaceProfile(name: "Work")]
+        let back = try JSONDecoder().decode(BrowserSettings.self, from: JSONEncoder().encode(settings))
+        #expect(back.profiles == settings.profiles)
+    }
+
+    @Test func olderSettingsHaveNoProfiles() throws {
+        let back = try JSONDecoder().decode(BrowserSettings.self, from: Data("{}".utf8))
+        #expect(back.profiles.isEmpty)
+    }
+
+    @MainActor @Test func spaceKeepsItsProfile() {
+        let id = UUID()
+        let space = Space(name: "Work")
+        space.profileID = id
+        #expect(Space(space.record).profileID == id)
+        #expect(Space(Space(name: "Personal").record).profileID == nil)
+    }
+}

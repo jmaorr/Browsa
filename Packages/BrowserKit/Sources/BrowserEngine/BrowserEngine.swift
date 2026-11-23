@@ -39,6 +39,9 @@ public protocol BrowserEngine: AnyObject {
     /// Throws away everything the ephemeral (private) profile stored. Its pages must be closed first.
     func resetEphemeralProfile()
 
+    /// Deletes a `.persistent` profile's store for good. Its pages must be closed first.
+    func deleteProfile(_ id: UUID) async
+
     /// Where downloads are saved.
     var downloadsDirectory: URL { get set }
 
@@ -67,6 +70,7 @@ public protocol BrowserEngine: AnyObject {
 }
 
 public extension BrowserEngine {
+    func deleteProfile(_ id: UUID) async {}
     var extensions: [EngineExtension] { [] }
     var extensionHost: (any EngineExtensionHost)? { get { nil } set {} }
     func loadInstalledExtensions() async -> [String] { [] }
@@ -230,6 +234,9 @@ public enum BrowsingProfile: Hashable, Sendable {
     case standard
     /// In memory, shared by every private page, gone once they all close.
     case ephemeral
+    /// Saved between launches, in a store of its own: a profile a space uses, so its logins stay
+    /// apart from every other profile's.
+    case persistent(UUID)
 }
 
 public struct PageOptions: Sendable {

@@ -30,8 +30,9 @@ a shallow or grafted clone counts fewer commits.
    refactors, and anything that was added and taken out again before this release (a feature that came and
    went between releases was never in a release, so it isn't news). Fixes for bugs that never shipped aren't
    news either.
-3. Sort what's left into **New** (something you can now do, or a new behaviour worth learning about) and
-   **Fixes** (something that used to go wrong, or was rough, and now doesn't).
+3. Sort what's left into **New** (a headline feature worth its own heading), **Improvements** (a smaller
+   new option or better behaviour, one bullet each) and **Fixes** (something that used to go wrong, or was
+   rough, and now doesn't).
 4. Write them in the shape below, then check every setting or menu you name exists in that build, with the
    same words.
 
@@ -44,6 +45,9 @@ a shallow or grafted clone counts fewer commits.
 
 **New: <Name>**
 <One sentence.>
+
+**Improvements**
+- <One sentence: what you can do now, and where, if it's a setting.>
 
 **Fixes**
 - <Short bullet: what's better now, in the user's words.>

@@ -254,6 +254,27 @@ final class TabController: EnginePageDelegate {
         return granted
     }
 
+    func page(_ page: any EnginePage, trusts certificate: ServerCertificate) -> Bool {
+        guard let library else { return false }
+        if library.settings.allowLocalCertificateErrors, LocalNetwork.contains(host: certificate.host) { return true }
+        if tab.isPrivate, library.privateCertificateExceptions[certificate.site] == certificate.fingerprint { return true }
+        return library.settings.certificateExceptions[certificate.site] == certificate.fingerprint
+    }
+
+    /// "Visit Anyway" on a certificate error: trust the certificate the site showed, then load it again.
+    /// A private tab's exception lasts until the private space closes, and isn't saved.
+    func visitAnyway() {
+        guard let error = tab.loadError, let fingerprint = error.certificateFingerprint,
+              let url = error.url, let host = url.host(), let library else { return }
+        let site = ServerCertificate.site(host: host, port: url.port)
+        if tab.isPrivate {
+            library.privateCertificateExceptions[site] = fingerprint
+        } else {
+            library.settings.certificateExceptions[site] = fingerprint
+        }
+        load(url, source: .typed)
+    }
+
     func page(_ page: any EnginePage, showNotification notification: WebNotification) async -> Bool {
         guard !tab.isPrivate else { return false }
         return await SiteNotifications.shared.show(notification, from: tab, in: window ?? library?.activeWindow)

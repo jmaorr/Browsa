@@ -115,6 +115,9 @@ final class Library {
     @ObservationIgnored private(set) var suggest: SuggestEngine!
     /// Live pages, by tab. The least recently used are unloaded past `capacity`.
     @ObservationIgnored private(set) var controllers: [UUID: TabController] = [:]
+    /// The profile each live page was made in. A tab that moves to a space with another profile
+    /// gets a new page there.
+    @ObservationIgnored private var controllerProfiles: [UUID: BrowsingProfile] = [:]
     @ObservationIgnored private var lru: [UUID] = []
     @ObservationIgnored private let capacity = 24
     @ObservationIgnored private let snapshotURL: URL?
@@ -349,17 +352,24 @@ final class Library {
     func controller(for tab: BrowserTab) -> TabController {
         _ = pageSwaps
         touch(tab.id)
-        if let c = controllers[tab.id] { return c }
+        let profile = self.profile(for: tab)
+        if let c = controllers[tab.id] {
+            if controllerProfiles[tab.id] ?? profile == profile { return c }
+            // Its space uses another profile now: keep the back/forward list, reload with that profile's logins.
+            unload(tab.id)
+            touch(tab.id)
+        }
         let native = Welcome.isWelcome(tab.url) || LibraryPage.isLibrary(tab.url)
         let pageEngine = native ? engine : engine(for: tab, url: tab.url)
         let c = TabController(tab: tab, library: self, engineID: pageEngine.info.id) { delegate in
-            pageEngine.makePage(options: PageOptions(profile: tab.isPrivate ? .ephemeral : .standard,
+            pageEngine.makePage(options: PageOptions(profile: profile,
                                                  // The welcome tab is native; its page starts blank.
                                                  url: Welcome.isWelcome(tab.url) || LibraryPage.isLibrary(tab.url) ? nil : tab.url,
                                                  sessionState: tab.interactionState),
                             delegate: delegate)
         }
         controllers[tab.id] = c
+        controllerProfiles[tab.id] = profile
         evictIfNeeded(keeping: tab.id)
         return c
     }
@@ -382,10 +392,12 @@ final class Library {
             tab.call = nil
         }
         tab.interactionState = nil
+        let profile = self.profile(for: tab)
         let c = TabController(tab: tab, library: self, engineID: target.info.id) { delegate in
-            target.makePage(options: PageOptions(profile: tab.isPrivate ? .ephemeral : .standard), delegate: delegate)
+            target.makePage(options: PageOptions(profile: profile), delegate: delegate)
         }
         controllers[tab.id] = c
+        controllerProfiles[tab.id] = profile
         touch(tab.id)
         c.load(url, source: source)
         pageSwaps += 1
@@ -393,6 +405,7 @@ final class Library {
 
     private func adopt(_ controller: TabController) {
         controllers[controller.tab.id] = controller
+        controllerProfiles[controller.tab.id] = profile(for: controller.tab)
         touch(controller.tab.id)
         evictIfNeeded(keeping: controller.tab.id)
     }
@@ -427,6 +440,7 @@ final class Library {
             c.tab.call = nil
         }
         controllers[id] = nil
+        controllerProfiles[id] = nil
         lru.removeAll { $0 == id }
     }
 
@@ -588,6 +602,7 @@ final class Library {
             tab.windowKey = activeWindow?.windowKey ?? target?.windowKey
         }
         if from.id != to.id { for w in windows { w.tabLeft(tab, space: from) } }
+        reloadIfProfileChanged(tab)
         scheduleSave()
     }
 
@@ -600,6 +615,7 @@ final class Library {
         if tab.isPinned { tab.windowKey = activeWindow?.windowKey }
         tab.isPinned = false
         space.today.insert(tab, at: 0)
+        reloadIfProfileChanged(tab)
         scheduleSave()
     }
 
@@ -676,6 +692,72 @@ final class Library {
         for w in windows where w.selectedSpaceID == space.id { w.leaveSpace() }
         if settings.externalLinksSpaceID == space.id { settings.externalLinksSpaceID = nil }
         scheduleSave()
+    }
+
+    // MARK: Profiles
+
+    /// The cookies and logins a tab's page uses: its space's profile, or private.
+    func profile(for tab: BrowserTab) -> BrowsingProfile {
+        if tab.isPrivate { return .ephemeral }
+        return space(containing: tab).map(profile(for:)) ?? .standard
+    }
+
+    func profile(for space: Space) -> BrowsingProfile {
+        if space.isPrivate { return .ephemeral }
+        guard let id = space.profileID, settings.profiles.contains(where: { $0.id == id }) else { return .standard }
+        return .persistent(id)
+    }
+
+    /// The profile's name, for Settings and the sidebar. Nil id is the default profile.
+    func profileName(_ id: UUID?) -> String {
+        id.flatMap { id in settings.profiles.first { $0.id == id }?.name } ?? "Default"
+    }
+
+    @discardableResult
+    func addProfile(named name: String? = nil) -> SpaceProfile {
+        let profile = SpaceProfile(name: name ?? "Profile \(settings.profiles.count + 2)")
+        settings.profiles.append(profile)
+        scheduleSave()
+        return profile
+    }
+
+    func renameProfile(_ id: UUID, to name: String) {
+        guard let i = settings.profiles.firstIndex(where: { $0.id == id }) else { return }
+        settings.profiles[i].name = name
+        scheduleSave()
+    }
+
+    /// Moves a space to another profile. Its open pages reload signed in as that profile.
+    func setProfile(_ id: UUID?, for space: Space) {
+        guard !space.isPrivate, space.profileID != id else { return }
+        space.profileID = id
+        space.allTabs.forEach(reloadIfProfileChanged)
+        scheduleSave()
+    }
+
+    /// Deletes a profile and everything it stored. Spaces that used it go back to the default profile.
+    func deleteProfile(_ id: UUID) async {
+        for space in regularSpaces where space.profileID == id { setProfile(nil, for: space) }
+        for (tabID, profile) in controllerProfiles where profile == .persistent(id) { unload(tabID) }
+        settings.profiles.removeAll { $0.id == id }
+        scheduleSave()
+        await engine.deleteProfile(id)
+    }
+
+    /// Spaces using a profile, for Settings. Nil id is the default profile.
+    func spaces(using id: UUID?) -> [Space] {
+        let known = Set(settings.profiles.map(\.id))
+        return regularSpaces.filter { space in
+            guard let own = space.profileID, known.contains(own) else { return id == nil }
+            return own == id
+        }
+    }
+
+    /// A tab whose space changed profile drops its page; windows showing it make a new one.
+    private func reloadIfProfileChanged(_ tab: BrowserTab) {
+        guard let had = controllerProfiles[tab.id], had != profile(for: tab) else { return }
+        unload(tab.id)
+        pageSwaps += 1
     }
 
     func openPrivateSpace() -> Space {
@@ -778,6 +860,7 @@ final class Library {
 
     func clearWebsiteData() async {
         await engine.clearWebsiteData(for: .standard)
+        for profile in settings.profiles { await engine.clearWebsiteData(for: .persistent(profile.id)) }
         for w in windows where w.currentTab?.isPrivate == false { w.currentController?.page.reload() }
     }
 

@@ -201,6 +201,8 @@ private struct SpacesSettings: View {
                         .buttonStyle(.glass)
                         .buttonBorderShape(.capsule)
                 }
+                ProfilesSettings()
+                    .padding(.top, 10)
             }
             .padding(20)
         }
@@ -265,12 +267,113 @@ private struct SpaceEditor: View {
                 .onSubmit { browser.scheduleSave() }
             SpaceThemeButton(space: space) { browser.scheduleSave() }
                 .padding(.horizontal, 4)
+            SpaceProfileMenu(space: space)
             Button(role: .destructive) { browser.deleteSpace(space) } label: { Image(systemName: "trash") }
                 .buttonStyle(.borderless)
                 .disabled(browser.regularSpaces.count < 2)
                 .help("Delete space and its tabs")
         }
         .onChange(of: space.name) { browser.scheduleSave() }
+    }
+}
+
+/// Which profile's cookies and logins the space uses.
+private struct SpaceProfileMenu: View {
+    @Environment(Library.self) private var browser
+    let space: Space
+
+    var body: some View {
+        Menu {
+            Picker("Profile", selection: Binding(get: { space.profileID }, set: { browser.setProfile($0, for: space) })) {
+                Text("Default").tag(UUID?.none)
+                ForEach(browser.settings.profiles) { profile in
+                    Text(profile.name).tag(UUID?.some(profile.id))
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+            Divider()
+            Button("New Profile", systemImage: "plus") {
+                browser.setProfile(browser.addProfile().id, for: space)
+            }
+        } label: {
+            Label(browser.profileName(space.profileID), systemImage: "person.crop.circle")
+                .lineLimit(1)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.glass)
+        .buttonBorderShape(.capsule)
+        .fixedSize()
+        .help("Profile: which logins and cookies this space uses")
+    }
+}
+
+/// Profiles: separate cookies and logins. Spaces pick one; spaces sharing a profile share logins.
+private struct ProfilesSettings: View {
+    @Environment(Library.self) private var browser
+    @State private var deleting: SpaceProfile?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Profiles").font(.headline)
+            VStack(spacing: 0) {
+                row(icon: "person.crop.circle", spaces: browser.spaces(using: nil)) {
+                    Text("Default")
+                }
+                ForEach(browser.settings.profiles) { profile in
+                    Divider().padding(.leading, 40)
+                    row(icon: "person.crop.circle.fill", spaces: browser.spaces(using: profile.id)) {
+                        TextField("Name", text: Binding(get: { profile.name },
+                                                        set: { browser.renameProfile(profile.id, to: $0) }),
+                                  prompt: Text("Name"))
+                            .textFieldStyle(.roundedBorder)
+                            .labelsHidden()
+                            .frame(maxWidth: 180)
+                    } trailing: {
+                        Button("Delete", role: .destructive) { deleting = profile }
+                            .buttonStyle(.glass)
+                            .buttonBorderShape(.capsule)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+            .background(Color.primary.opacity(0.04), in: .rect(cornerRadius: 12, style: .continuous))
+            HStack(alignment: .top) {
+                Text("Each profile keeps its own cookies, logins and site data, so you can be signed in to different accounts in different spaces. History, favourites and extensions are shared.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button("Add Profile", systemImage: "plus") { browser.addProfile() }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+            }
+        }
+        .confirmationDialog("Delete \(deleting?.name ?? "profile")?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Delete Profile", role: .destructive) {
+                if let id = deleting?.id { Task { await browser.deleteProfile(id) } }
+                deleting = nil
+            }
+        } message: {
+            Text("Its cookies, logins and site data are deleted. Spaces using it switch to the Default profile.")
+        }
+    }
+
+    private func row<Name: View, Trailing: View>(icon: String, spaces: [Space], @ViewBuilder name: () -> Name,
+                                                  @ViewBuilder trailing: () -> Trailing = { EmptyView() }) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
+                .frame(width: 20)
+            name()
+            Spacer()
+            Text(spaces.isEmpty ? "No spaces" : spaces.map(\.name).joined(separator: ", "))
+                .font(.caption).foregroundStyle(.secondary)
+                .lineLimit(1)
+            trailing()
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 44)
     }
 }
 
