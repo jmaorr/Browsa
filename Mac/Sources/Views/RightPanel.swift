@@ -177,12 +177,13 @@ struct AgentsPanel: View {
             .confirmationDialog("Reset Browsa's agent token?", isPresented: $confirmingReset) {
                 Button("Reset Token", role: .destructive) {
                     Task {
-                        await agents.resetToken()
-                        browser.showToast("New token. Claude Code is updated; other agents need the new one.")
+                        let updated = await agents.resetToken()
+                        browser.showToast(updated.isEmpty ? "New token. Agents set up by hand need the new one."
+                                          : "New token. Updated \(updated.map(\.rawValue).formatted(.list(type: .and))).")
                     }
                 }
             } message: {
-                Text("Agents using the old token stop working at once. Claude Code is updated for you; Codex, Cursor and others need the new token pasted in.")
+                Text("Agents using the old token stop working at once. Claude Code, Codex, Cursor and VS Code are updated for you if Browsa is set up in them; anything you set up by hand needs the new token pasted in.")
             }
         }
     }
@@ -218,10 +219,14 @@ struct AgentsPanel: View {
                 Button("Show the Demo Prompt") { withAnimation(Motion.snappy) { promptDismissed = false } }
                 Button("Clear Activity") { agents.clearActivity() }
                 Divider()
-                Button("Remove from Claude Code") {
-                    Task {
-                        let ok = await agents.claudeCodeSetup.remove(name: AgentBridge.mcpName)
-                        browser.showToast(ok ? "Removed Browsa from Claude Code" : "Claude Code didn't have Browsa")
+                Menu("Remove From") {
+                    ForEach(AgentClient.allCases) { client in
+                        Button(client.rawValue) {
+                            Task {
+                                let ok = await agents.remove(client)
+                                browser.showToast(ok ? "Removed Browsa from \(client.rawValue)" : "\(client.rawValue) didn't have Browsa")
+                            }
+                        }
                     }
                 }
                 Button("Reset Token…") { confirmingReset = true }
@@ -241,24 +246,16 @@ struct AgentsPanel: View {
     }
 }
 
-/// Set up where you'll use it: pick the agent, copy its line, and the card waits until it connects.
+/// Set up where you'll use it: pick the agent, press Add, and the card waits until it connects.
+/// The exact text to paste is underneath, for anyone who'd rather do it by hand.
 private struct ConnectAgentCard: View {
-    enum Kind: String, CaseIterable { case claude = "Claude Code", codex = "Codex", cursor = "Cursor" }
-
     @Environment(Browser.self) private var browser
     let done: () -> Void
-    @State private var kind = Kind.claude
-    @State private var revealed = false
-    @State private var copied = false
-    @Namespace private var ns
+    @State private var client = AgentClient.claudeCode
     private var agents: AgentBridge { browser.library.agents }
 
-    private var connected: Bool {
-        agents.connectedAgents.contains { $0.lowercased().contains(kind.rawValue.lowercased().components(separatedBy: " ")[0]) }
-    }
-    private var url: String { agents.endpoint }
-
     var body: some View {
+        let status = AgentSetupStatus(client, agents)
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Connect an Agent").font(.system(size: 13, weight: .semibold))
@@ -266,114 +263,36 @@ private struct ConnectAgentCard: View {
                 Button(action: done) { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
                     .buttonStyle(.plain).foregroundStyle(.secondary).help("Close")
             }
-            // The same glass switch as Notes' This Page / This Site.
-            HStack(spacing: 0) {
-                ForEach(Kind.allCases, id: \.self) { k in
-                    Button { withAnimation(Motion.snappy) { kind = k } } label: {
-                        Text(k.rawValue)
-                            .font(.system(size: 11, weight: kind == k ? .semibold : .medium))
-                            .foregroundStyle(kind == k ? .primary : .secondary)
-                            .frame(maxWidth: .infinity).frame(height: 22)
-                            .background {
-                                if kind == k {
-                                    Capsule().fill(.background).shadow(color: .black.opacity(0.12), radius: 1.5, y: 0.5)
-                                        .matchedGeometryEffect(id: "kind", in: ns)
-                                }
-                            }
-                            .contentShape(.capsule)
-                    }
-                    .buttonStyle(.plain)
-                }
+            GlassTabs(selection: $client, options: AgentClient.allCases, size: .small) { $0.rawValue }
+                .frame(maxWidth: .infinity)
+            if let at = agents.lastRejected { AgentRejectedNote(at: at) }
+            HStack(spacing: 8) {
+                AgentAddButton(client: client, agents: agents)
+                Spacer(minLength: 0)
             }
-            .padding(2)
-            .glassEffect(.regular, in: .capsule)
-            if kind == .claude {
-                ClaudeCodeAddRow(connected: connected)
-                DisclosureGroup("Or run it yourself") { commandBlock.padding(.top, 6) }
-                    .font(.caption).foregroundStyle(.secondary)
-            } else {
-                Text(kind == .codex ? "Add this to ~/.codex/config.toml, then restart Codex:" : "Add this to ~/.cursor/mcp.json, then restart Cursor:")
-                    .font(.caption).foregroundStyle(.secondary)
-                commandBlock
-                HStack {
-                    Spacer()
-                    waiting
-                }
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                if status.tone == .waiting { ProgressView().controlSize(.mini) }
+                if status.tone == .good { Image(systemName: "checkmark.circle.fill") }
+                Text(status.text).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
             }
+            .font(.caption).foregroundStyle(status.color)
+            DisclosureGroup("Set it up by hand") { AgentManualSetup(client: client, agents: agents).padding(.top, 6) }
+                .font(.caption).foregroundStyle(.secondary)
             Divider().opacity(0.5)
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 Text("No agent handy?").foregroundStyle(.secondary)
                 Button("Watch a Demo") { agents.demo.start(bridge: agents, in: browser) }
-                    .buttonStyle(.link)
+                    .buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.small)
                     .disabled(agents.demo.isRunning)
             }
             .font(.caption)
         }
-        .animation(Motion.snappy, value: connected)
+        .animation(Motion.snappy, value: agents.isConnected(client))
         .padding(12)
         .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.primary.opacity(0.08)))
         .shadow(color: .black.opacity(0.05), radius: 3, y: 1)
-        .onChange(of: kind) { copied = false }
-    }
-
-    private var commandBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(revealed ? fullText : maskedText)
-                .font(.system(size: 11, design: .monospaced))
-                .textSelection(.enabled)
-                .lineLimit(revealed ? nil : 3)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(8)
-                .background(.primary.opacity(0.05), in: .rect(cornerRadius: 7))
-            HStack(spacing: 8) {
-                Button(copied ? "Copied" : "Copy") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(fullText, forType: .string)
-                    withAnimation(Motion.snappy) { copied = true }
-                }
-                .controlSize(.small)
-                Button(revealed ? "Hide Token" : "Show Token") { withAnimation(Motion.snappy) { revealed.toggle() } }
-                    .controlSize(.small)
-            }
-        }
-    }
-
-    @ViewBuilder private var waiting: some View {
-        if connected {
-            Label("Connected", systemImage: "checkmark.circle.fill").font(.caption.weight(.semibold)).foregroundStyle(.green)
-                .transition(.scale.combined(with: .opacity))
-        } else {
-            HStack(spacing: 5) {
-                ProgressView().controlSize(.mini)
-                Text("Waiting for \(kind.rawValue)…").font(.caption).foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var header: String { "Authorization: Bearer \(agents.token)" }
-    private var fullText: String {
-        switch kind {
-        case .claude: agents.claudeCodeCommand
-        case .codex: """
-            [mcp_servers.\(AgentBridge.mcpName)]
-            url = "\(url)"
-            http_headers = { Authorization = "Bearer \(agents.token)" }
-            """
-        case .cursor: """
-            {
-              "mcpServers": {
-                "\(AgentBridge.mcpName)": {
-                  "url": "\(url)",
-                  "headers": { "Authorization": "Bearer \(agents.token)" }
-                }
-              }
-            }
-            """
-        }
-    }
-    private var maskedText: String {
-        fullText.replacingOccurrences(of: agents.token, with: String(repeating: "•", count: 12))
+        .task { await agents.refreshSetup() }
     }
 }
 
@@ -473,57 +392,6 @@ private struct TryItCard: View {
         .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.primary.opacity(0.08)))
         .task { await AgentDemo.refresh(); prompt = AgentDemo.prompt }
-    }
-}
-
-/// Add to Claude Code: one click runs `claude mcp add` (user scope), then waits for it to connect.
-private struct ClaudeCodeAddRow: View {
-    @Environment(Browser.self) private var browser
-    let connected: Bool
-    private var agents: AgentBridge { browser.library.agents }
-    private var setup: ClaudeCodeSetup { agents.claudeCodeSetup }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                Button {
-                    Task { await setup.add(name: AgentBridge.mcpName, url: agents.endpoint, token: agents.token) }
-                } label: {
-                    Label(setup.state == .added ? "Added to Claude Code" : "Add to Claude Code",
-                          systemImage: setup.state == .added ? "checkmark" : "plus")
-                }
-                .buttonStyle(.glassProminent)
-                .controlSize(.regular)
-                .disabled(setup.state == .working || setup.state == .added)
-                if setup.state == .working { ProgressView().controlSize(.small) }
-                Spacer(minLength: 0)
-            }
-            Group {
-                switch setup.state {
-                case .idle:
-                    Text("Adds Browsa for every project. Your token stays on this Mac.")
-                case .working:
-                    Text("Adding…")
-                case .added:
-                    if connected {
-                        Label("Connected", systemImage: "checkmark.circle.fill").foregroundStyle(.green).fontWeight(.semibold)
-                    } else {
-                        HStack(spacing: 5) {
-                            ProgressView().controlSize(.mini)
-                            Text("Added. Start a new Claude Code session; it connects on its first call.")
-                        }
-                    }
-                case .notInstalled:
-                    Text("Claude Code isn't installed on this Mac. Install it, then try again, or run the command yourself.")
-                        .foregroundStyle(.orange)
-                case .failed(let why):
-                    Text(why).foregroundStyle(.red).textSelection(.enabled)
-                }
-            }
-            .font(.caption).foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-            .animation(Motion.snappy, value: setup.state)
-        }
     }
 }
 
