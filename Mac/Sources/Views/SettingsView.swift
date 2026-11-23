@@ -359,6 +359,14 @@ private struct PrivacySettings: View {
                     }
                 }
             }
+            Section {
+                SystemNotificationsRow()
+            } header: {
+                Text("Notifications")
+            } footer: {
+                Text("Sites ask before sending notifications. macOS also has to allow Browsa, and it only asks once.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if !browser.settings.sitePermissions.isEmpty {
                 Section("Site permissions") {
                     ForEach(browser.settings.sitePermissions.keys.sorted(), id: \.self) { host in
@@ -853,5 +861,62 @@ private struct FitsContent: ViewModifier {
                 if abs(next - (height ?? 0)) > 1 { height = next }
             }
             .frame(height: height ?? 420)
+    }
+}
+
+/// Whether macOS lets Browsa show notifications, with a way to turn them on: macOS asks only once, so someone
+/// who missed or skipped that question can't turn sites' notifications on from Browsa alone.
+private struct SystemNotificationsRow: View {
+    private enum Status { case checking, notAsked, on, off }
+    @State private var status = Status.checking
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading) {
+                Text("Notifications from Browsa")
+                Text(caption).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            switch status {
+            case .checking:
+                EmptyView()
+            case .notAsked:
+                Button("Turn On") {
+                    Task { _ = await SiteNotifications.shared.askSystem(); await refresh() }
+                }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.capsule)
+            case .off:
+                Button("Open System Settings") { SiteNotifications.openSystemSettings() }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+            case .on:
+                Button("System Settings") { SiteNotifications.openSystemSettings() }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+            }
+        }
+        .task { await refresh() }
+        // Back from System Settings: show the new answer.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await refresh() }
+        }
+    }
+
+    private var caption: String {
+        switch status {
+        case .checking: ""
+        case .notAsked: "Not turned on yet"
+        case .on: "On in macOS"
+        case .off: "Off in macOS, so sites you allow can't notify you"
+        }
+    }
+
+    private func refresh() async {
+        status = switch await SiteNotifications.shared.isAllowedBySystem() {
+        case nil: .notAsked
+        case true?: .on
+        case false?: .off
+        }
     }
 }

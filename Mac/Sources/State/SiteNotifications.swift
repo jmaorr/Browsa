@@ -42,6 +42,18 @@ final class SiteNotifications: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    /// Whether macOS lets Browsa show notifications. Nil if it hasn't asked yet.
+    func isAllowedBySystem() async -> Bool? {
+        switch await center.notificationSettings().authorizationStatus {
+        case .notDetermined: nil
+        case .denied: false
+        default: true
+        }
+    }
+
+    /// Asks macOS (it shows its question only the first time). True if allowed.
+    func askSystem() async -> Bool { await systemAllows() }
+
     /// Set once Browsa has said notifications are off, so a busy site doesn't repeat it with every message.
     private var toldOff = false
 
