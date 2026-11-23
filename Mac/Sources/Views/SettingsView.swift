@@ -294,7 +294,9 @@ private struct SpaceProfileMenu: View {
             .labelsHidden()
             Divider()
             Button("New Profile", systemImage: "plus") {
-                browser.setProfile(browser.addProfile().id, for: space)
+                let id = browser.addProfile().id
+                browser.setProfile(id, for: space)
+                browser.renamingProfileID = id
             }
         } label: {
             Label(browser.profileName(space.profileID), systemImage: "person.crop.circle")
@@ -338,7 +340,7 @@ private struct ProfilesSettings: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
-                Button("Add Profile", systemImage: "plus") { browser.addProfile() }
+                Button("Add Profile", systemImage: "plus") { browser.renamingProfileID = browser.addProfile().id }
                     .buttonStyle(.glass)
                     .buttonBorderShape(.capsule)
             }
@@ -387,6 +389,18 @@ private struct ProfileNameField: View {
             .frame(maxWidth: 180)
             .focused($focused)
             .onSubmit { focused = false }
+            // A profile just added starts with its name selected, to type over.
+            .onAppear { if library.renamingProfileID == profile.id { startEditing() } }
+            .onChange(of: library.renamingProfileID) { _, id in if id == profile.id { startEditing() } }
+    }
+
+    private func startEditing() {
+        library.renamingProfileID = nil
+        // After the row is on screen: focus the field, then select its text.
+        DispatchQueue.main.async {
+            focused = true
+            DispatchQueue.main.async { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
+        }
     }
 }
 
