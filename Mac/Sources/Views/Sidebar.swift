@@ -189,7 +189,7 @@ struct AddressPill: View {
             if inPanel {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(Color(nsColor: .controlBackgroundColor).opacity(hovering ? 0.9 : 0.75))
-                    .strokeBorder(.primary.opacity(0.1))
+                    .strokeBorder(.primary.opacity(0.045))
             } else {
                 RoundedRectangle(cornerRadius: 9, style: .continuous).fill(.primary.opacity(hovering ? 0.09 : 0.06))
             }

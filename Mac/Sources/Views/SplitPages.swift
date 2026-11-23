@@ -142,7 +142,7 @@ private struct SplitPane: View {
             // The pane in front gets a quiet outline, so it's clear which one the keys go to.
             .overlay {
                 RoundedRectangle(cornerRadius: PageCard.radius, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(isFront ? 0.28 : 0), lineWidth: 1.5)
+                    .strokeBorder(Color.primary.opacity(isFront ? 0.16 : 0), lineWidth: 1)
                     .allowsHitTesting(false)
             }
             .overlay(alignment: .top) {
@@ -206,7 +206,6 @@ private struct PaneControls: View {
 
     private var panel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            section("Page")
             HStack(spacing: 6) {
                 iconButton("chevron.left", "Back", enabled: tab.canGoBack) { browser.goBack() }
                 iconButton("chevron.right", "Forward", enabled: tab.canGoForward) { browser.goForward() }
@@ -216,19 +215,20 @@ private struct PaneControls: View {
                 }
             }
             AddressPill(inPanel: true)
-            section("Split View").padding(.top, 4)
-            VStack(spacing: 6) {
+                .padding(.bottom, 6)
+            HStack(spacing: 6) {
                 ForEach(SplitAction.all(for: tab, index: index, count: count)) { item in
                     Button { act { item.run(browser, tab) } } label: {
-                        Label(item.title, systemImage: item.symbol)
+                        Label(item.shortTitle, systemImage: item.symbol)
                             .font(.system(size: 12, weight: .medium))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 2)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.glass)
                     .buttonBorderShape(.capsule)
                     .background(Self.solidFill, in: .capsule)
-                    .overlay(Capsule().strokeBorder(.primary.opacity(0.1)))
+                    .overlay(Capsule().strokeBorder(Self.hairline))
+                    .help(item.title)
                 }
             }
         }
@@ -238,12 +238,8 @@ private struct PaneControls: View {
 
     /// Behind each button in the panel, so it holds its own against the glass.
     static let solidFill = Color(nsColor: .controlBackgroundColor).opacity(0.75)
-
-    private func section(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(.secondary)
-    }
+    /// A barely-there edge, just enough to keep a button's shape on light glass.
+    static let hairline = Color.primary.opacity(0.045)
 
     private func iconButton(_ symbol: String, _ help: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -254,7 +250,7 @@ private struct PaneControls: View {
         .buttonStyle(.glass)
         .buttonBorderShape(.capsule)
         .background(Self.solidFill, in: .capsule)
-        .overlay(Capsule().strokeBorder(.primary.opacity(0.1)))
+        .overlay(Capsule().strokeBorder(Self.hairline))
         .disabled(!enabled)
         .help(help)
     }
@@ -271,29 +267,32 @@ private struct PaneControls: View {
 /// tab's sidebar menu.
 struct SplitAction: Identifiable {
     let id: String
+    /// In the sidebar menu.
     let title: String
+    /// On the pane panel's buttons, all in one row.
+    let shortTitle: String
     let symbol: String
     let run: @MainActor (Browser, BrowserTab) -> Void
 
     @MainActor static func all(for tab: BrowserTab, index: Int, count: Int) -> [SplitAction] {
         var items: [SplitAction] = []
         if count == 2 {
-            items.append(SplitAction(id: "swap", title: "Swap Sides", symbol: "arrow.left.arrow.right") { b, t in
+            items.append(SplitAction(id: "swap", title: "Swap Sides", shortTitle: "Swap", symbol: "arrow.left.arrow.right") { b, t in
                 b.shiftPane(t, by: index == 0 ? 1 : -1)
             })
         } else {
             if index > 0 {
-                items.append(SplitAction(id: "left", title: "Move Left", symbol: "arrow.left") { b, t in b.shiftPane(t, by: -1) })
+                items.append(SplitAction(id: "left", title: "Move Left", shortTitle: "Left", symbol: "arrow.left") { b, t in b.shiftPane(t, by: -1) })
             }
             if index < count - 1 {
-                items.append(SplitAction(id: "right", title: "Move Right", symbol: "arrow.right") { b, t in b.shiftPane(t, by: 1) })
+                items.append(SplitAction(id: "right", title: "Move Right", shortTitle: "Right", symbol: "arrow.right") { b, t in b.shiftPane(t, by: 1) })
             }
         }
-        items.append(SplitAction(id: "separate", title: "Separate Tabs", symbol: "rectangle.split.2x1.slash") { b, t in
+        items.append(SplitAction(id: "separate", title: "Separate Tabs", shortTitle: "Separate", symbol: "rectangle.on.rectangle.angled") { b, t in
             b.separateSplit(containing: t)
         })
         items.append(SplitAction(id: "close", title: tab.isPinned ? "Unload This Tab" : "Close This Tab",
-                                 symbol: tab.isPinned ? "minus" : "xmark") { b, t in b.close(t) })
+                                 shortTitle: tab.isPinned ? "Unload this tab" : "Close this tab", symbol: tab.isPinned ? "minus" : "xmark") { b, t in b.close(t) })
         return items
     }
 }
