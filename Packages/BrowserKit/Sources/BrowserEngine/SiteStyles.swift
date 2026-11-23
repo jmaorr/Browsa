@@ -58,8 +58,8 @@ public struct SiteStyle: Identifiable, Sendable, Equatable {
     ///
     /// LinkedIn's class names are generated and change often, so this only hooks onto things that are steadier:
     /// landmark labels ("Sidebar", "Primary content", "Aside"), test ids ("mainFeed", "expandable-text-box"), list
-    /// roles and post keys ("update-card-focus…", so rows like "Sort by" keep their look). The layout changes only
-    /// apply on pages that have the main feed.
+    /// roles and post keys ("update-card-focus…", so rows like "Sort by" keep their look). The layout changes apply on
+    /// pages built from LinkedIn's three columns (the feed, a single post, and others), and leave other layouts alone.
     public static let linkedInTidy = SiteStyle(
         id: "linkedin-tidy",
         site: "LinkedIn",
@@ -67,18 +67,18 @@ public struct SiteStyle: Identifiable, Sendable, Equatable {
         summary: "A wider feed without the side column, softer cards and no promoted posts.",
         hosts: ["linkedin.com"],
         css: #"""
-        main#workspace:has([data-testid="mainFeed"]) aside[aria-label="Aside"] { display: none !important; }
-        main#workspace:has([data-testid="mainFeed"]) :has(> aside[aria-label="Sidebar"]) {
+        main#workspace:has(aside[aria-label="Sidebar"]):has(section[aria-label="Primary content"]) aside[aria-label="Aside"] { display: none !important; }
+        main#workspace:has(aside[aria-label="Sidebar"]):has(section[aria-label="Primary content"]) :has(> aside[aria-label="Sidebar"]) {
           display: grid !important; grid-template-columns: 232px minmax(0, 1fr) !important; column-gap: 32px !important;
           max-width: 1060px !important; width: 100% !important; margin-inline: auto !important;
         }
-        main#workspace:has([data-testid="mainFeed"]) :has(> aside[aria-label="Sidebar"]) > * {
+        main#workspace:has(aside[aria-label="Sidebar"]):has(section[aria-label="Primary content"]) :has(> aside[aria-label="Sidebar"]) > * {
           grid-column: auto !important; width: auto !important; max-width: none !important; min-width: 0 !important;
         }
-        main#workspace:has([data-testid="mainFeed"]) aside[aria-label="Sidebar"] { width: 232px !important; }
+        main#workspace:has(aside[aria-label="Sidebar"]):has(section[aria-label="Primary content"]) aside[aria-label="Sidebar"] { width: 232px !important; }
         @media (max-width: 900px) {
-          main#workspace:has([data-testid="mainFeed"]) aside[aria-label="Sidebar"] { display: none !important; }
-          main#workspace:has([data-testid="mainFeed"]) :has(> aside[aria-label="Sidebar"]) {
+          main#workspace:has(aside[aria-label="Sidebar"]):has(section[aria-label="Primary content"]) aside[aria-label="Sidebar"] { display: none !important; }
+          main#workspace:has(aside[aria-label="Sidebar"]):has(section[aria-label="Primary content"]) :has(> aside[aria-label="Sidebar"]) {
             grid-template-columns: minmax(0, 1fr) !important; max-width: 720px !important;
           }
         }
