@@ -105,6 +105,8 @@ public final class AgentToolbox {
     public var onActivity: @MainActor (AgentActivity) -> Void = { _ in }
     /// Told when the tool list changes, so the transport can send `notifications/tools/list_changed`.
     public var onToolsChanged: @MainActor () -> Void = {}
+    /// Told when an agent starts a session (its `initialize`), before it calls anything.
+    public var onConnect: @MainActor (AgentCaller) -> Void = { _ in }
     /// Callers seen, by session, from their `initialize`.
     private var callers: [String: AgentCaller] = [:]
     /// Calls that are running now, so Stop can end them.
@@ -157,7 +159,9 @@ public final class AgentToolbox {
         switch method {
         case "initialize":
             let info = params["clientInfo"]
-            callers[session] = AgentCaller(name: info?["name"]?.string ?? "An agent", version: info?["version"]?.string ?? "")
+            let caller = AgentCaller(name: info?["name"]?.string ?? "An agent", version: info?["version"]?.string ?? "")
+            callers[session] = caller
+            onConnect(caller)
             let requested = params["protocolVersion"]?.string
             return Self.result(id: id, [
                 "protocolVersion": .string(requested ?? Self.protocolVersion),

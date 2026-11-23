@@ -190,7 +190,7 @@
     <div class="split">
       <div>
         <h2 id="agents-title">Let agents use the real browser.</h2>
-        <p>Switch on the Agent Pack in the Library, or press Turn On Agents in the Agents panel, and Browsa listens on 127.0.0.1 for MCP. Add to Claude Code sets it up in one click, token and all. For Codex, Cursor or anything else that speaks MCP over HTTP, Connect an Agent gives you the lines to paste.</p>
+        <p>Switch on the Agent Pack in the Library, or press Turn On Agents in the Agents panel, and Browsa listens on 127.0.0.1 for MCP. Settings › Agents has an Add button for Claude Code, Codex, Cursor and VS Code that sets it up for you, token and all. <a href="#connect">Connecting an agent</a></p>
         <div class="tools" aria-label="Agent tools">
           <code>tabs_list</code><code>tab_open</code><code>page_navigate</code><code>page_read</code><code>page_screenshot</code><code>page_click</code><code>page_type</code><code class="lh">page_eval</code><code>notes_list</code><code>notes_add</code><code>notes_reply</code><code>notes_resolve</code>
         </div>
@@ -203,7 +203,7 @@
       </div>
       <div class="term" aria-label="Adding Browsa to Claude Code">
         <div class="term-bar"><i></i><i></i><i></i></div>
-<pre><span class="dim"># What Add to Claude Code runs for you</span>
+<pre><span class="dim"># What Add does for Claude Code</span>
 <span class="dim">$</span> claude mcp add --scope user --transport http browsa \
     <span class="key">http://127.0.0.1:47913/mcp</span> \
     --header <span class="key">"Authorization: Bearer &lt;your token&gt;"</span>
@@ -216,6 +216,54 @@
 <span class="ok">●</span> page_click    Continue</pre>
       </div>
     </div>
+  </section>
+
+  <section class="section" id="connect" aria-labelledby="connect-title">
+    <h2 id="connect-title">Connect your agent.</h2>
+    <p class="sub">Open Browsa › Settings › Agents, turn on agents, then press Add next to yours. It ticks Connected when the agent starts a session. Rather do it yourself? Copy the setup from the same place, or use these with your token.</p>
+
+    <div class="connect-grid">
+      <div class="connect-card">
+        <h3>Claude Code</h3>
+        <p>Paste into Terminal. <code>--scope user</code> makes it work in every project, not just the folder you're in.</p>
+<pre>claude mcp add --scope user --transport http browsa \
+  http://127.0.0.1:47913/mcp \
+  --header "Authorization: Bearer &lt;token&gt;"</pre>
+      </div>
+      <div class="connect-card">
+        <h3>Codex</h3>
+        <p>Add to <code>~/.codex/config.toml</code>, then restart Codex.</p>
+<pre>[mcp_servers.browsa]
+url = "http://127.0.0.1:47913/mcp"
+http_headers = { Authorization = "Bearer &lt;token&gt;" }</pre>
+      </div>
+      <div class="connect-card">
+        <h3>Cursor</h3>
+        <p>Add to <code>~/.cursor/mcp.json</code>, inside <code>"mcpServers"</code>.</p>
+<pre>"browsa": {
+  "url": "http://127.0.0.1:47913/mcp",
+  "headers": { "Authorization": "Bearer &lt;token&gt;" }
+}</pre>
+      </div>
+      <div class="connect-card">
+        <h3>VS Code</h3>
+        <p>Add to your user <code>mcp.json</code> (MCP: Open User Configuration), inside <code>"servers"</code>.</p>
+<pre>"browsa": {
+  "type": "http",
+  "url": "http://127.0.0.1:47913/mcp",
+  "headers": { "Authorization": "Bearer &lt;token&gt;" }
+}</pre>
+      </div>
+    </div>
+
+    <h3 class="lx-title">Not connecting?</h3>
+    <ul class="points">
+      <li><span><b>Connection refused.</b> Agents are off, or Browsa isn't open. Turn them on in Settings › Agents. Browsa has to be running for agents to reach it.</span></li>
+      <li><span><b>401 or "needs authentication".</b> The token is missing or old, usually after Reset Token. Press Update next to the agent in Settings › Agents. Browsa also notes when something tried an old token.</span></li>
+      <li><span><b>Claude Code only sees it in one folder.</b> It was added without <code>--scope user</code>. Press Add in Settings, which replaces it at user scope.</span></li>
+      <li><span><b>Added, but the agent doesn't list it.</b> Agents read their settings when they start. Start a new session, or restart the app.</span></li>
+      <li><span><b>Claude desktop app.</b> It starts local servers as a command, so it can't reach Browsa's HTTP server directly. Use Claude Code, or any agent above.</span></li>
+    </ul>
   </section>
 
   <section class="section" id="plugins" aria-labelledby="plugins-title">
