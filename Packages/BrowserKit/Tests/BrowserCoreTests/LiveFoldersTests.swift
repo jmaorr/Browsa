@@ -117,4 +117,25 @@ import Testing
         #expect(items.map(\.title) == ["Fix it · r#7"])
         #expect(items[0].key == "https://github.com/o/r/pull/7")
     }
+
+    @Test func readsGitHubDashboardJSON() throws {
+        let json = #"{"payload":{"pullsDashboardSurfaceContentRoute":{"results":[{"number":12,"title":"Add &amp; fix","permalink":"https://github.com/o/r/pull/12","repoNameWithOwner":"o/r","state":"OPEN","isDraft":false,"mergedAt":null,"updatedAt":"2026-11-23T01:02:03Z"},{"number":9,"title":"Old","permalink":"https://github.com/o/r/pull/9","state":"MERGED","mergedAt":"2026-11-20T00:00:00Z"}]}}}"#
+        let result = GitHubPulls.read(Data(json.utf8), status: 200, finalURL: URL(string: "https://github.com/pulls"))
+        let items = try result.get()
+        #expect(items.map(\.title) == ["Add & fix · r#12"])
+        #expect(items[0].key == "https://github.com/o/r/pull/12")
+    }
+
+    @Test func gitHubSignedOutReadsAsSuch() {
+        let notJSON = #"{"error":"Couldn’t authenticate you"}"#
+        #expect(GitHubPulls.read(Data(notJSON.utf8), status: 404, finalURL: URL(string: "https://github.com/pulls")) == .failure(.notSignedIn))
+        #expect(GitHubPulls.read(Data("<html>".utf8), status: 200, finalURL: URL(string: "https://github.com/login")) == .failure(.notSignedIn))
+        #expect(GitHubPulls.read(Data("slow down".utf8), status: 429, finalURL: nil) == .failure(.rateLimited))
+    }
+
+    @Test func readsGitHubClassicList() throws {
+        let html = #"<html><meta name="user-login" content="josh"><div class="js-issue-row"><svg class="octicon octicon-git-pull-request"></svg><a href="/o/r/pull/3" data-hovercard-type="pull_request" class="markdown-title">Tidy <code>x</code></a></div></html>"#
+        let items = try GitHubPulls.read(Data(html.utf8), status: 200, finalURL: URL(string: "https://github.com/pulls")).get()
+        #expect(items.map(\.title) == ["Tidy x · r#3"])
+    }
 }

@@ -417,6 +417,19 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
         if profile == .standard { HTTPCookieStorage.shared.removeCookies(since: .distantPast) }
     }
 
+    public func cookies(for profile: BrowsingProfile, url: URL) async -> [HTTPCookie] {
+        guard let host = url.host()?.lowercased() else { return [] }
+        let all = await configuration(for: profile).websiteDataStore.httpCookieStore.allCookies()
+        let now = Date.now
+        return all.filter { c in
+            let domain = c.domain.lowercased()
+            let bare = domain.hasPrefix(".") ? String(domain.dropFirst()) : domain
+            let hostMatches = host == bare || (domain.hasPrefix(".") && host.hasSuffix(domain)) || host.hasSuffix("." + bare)
+            return hostMatches && url.path().hasPrefix(c.path) && (c.expiresDate.map { $0 > now } ?? true)
+                && (!c.isSecure || url.scheme == "https")
+        }
+    }
+
     public func deleteProfile(_ id: UUID) async {
         profileConfigurations[id] = nil
         // WebKit refuses while a web view still uses the store; the caller closes the pages first.

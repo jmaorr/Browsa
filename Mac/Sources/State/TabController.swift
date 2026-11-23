@@ -270,6 +270,7 @@ final class TabController: EnginePageDelegate {
 
     func page(_ page: any EnginePage, didFinish url: URL, title: String) {
         library?.scheduleSave()
+        library?.liveFolderPageFinished(url, in: tab)
         guard !tab.isPrivate, let history = library?.history else { pendingSource = nil; return }
         let source = pendingSource ?? .link
         pendingSource = nil

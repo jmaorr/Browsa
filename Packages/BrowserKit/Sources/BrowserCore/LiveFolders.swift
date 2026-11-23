@@ -17,18 +17,30 @@ public enum LiveSourceKind: Codable, Equatable, Hashable, Sendable {
     case feed(url: URL)
     /// A GitHub search for issues and pull requests (`is:open is:pr review-requested:@me`).
     case github(query: String)
+    /// Arc's GitHub folder: your open pull requests and the reviews asked of you and your teams,
+    /// read with the space's own GitHub login.
+    case githubPullRequests
 
     /// The GitHub searches offered when making a folder.
     public static let githubPresets: [(name: String, query: String)] = [
         ("Review requests", "is:open is:pr review-requested:@me archived:false"),
         ("My pull requests", "is:open is:pr author:@me archived:false"),
-        ("Assigned to me", "is:open assignee:@me archived:false"),
+        ("Assigned to me", "is:open is:pr assignee:@me archived:false"),
     ]
+
+    /// Read with the space's github.com login.
+    public var usesGitHubLogin: Bool {
+        switch self {
+        case .feed: false
+        case .github, .githubPullRequests: true
+        }
+    }
 
     /// A short line saying where items come from, for menus and the edit sheet.
     public var summary: String {
         switch self {
         case .feed(let url): url.host() ?? url.absoluteString
+        case .githubPullRequests: "GitHub · your pull requests and review requests"
         case .github(let query):
             Self.githubPresets.first { $0.query == query }.map { "GitHub · \($0.name)" } ?? "GitHub · \(query)"
         }
@@ -379,5 +391,173 @@ public enum GitHubSearch {
     public static func message(from data: Data) -> String? {
         struct E: Decodable { let message: String }
         return (try? JSONDecoder().decode(E.self, from: data))?.message
+    }
+}
+
+// MARK: GitHub, signed in as you
+
+/// Reads your pull requests from github.com itself, with the space's own GitHub login, the way Arc
+/// and Dia did: no token, no sign-in of Browsa's own. GitHub answers `/pulls?q=…` with JSON when
+/// asked for it, and the search page as a fallback; the reader also takes the page's embedded data
+/// and the classic list, since GitHub changes these. Ported from Cra's GitHub live folder plugin
+/// (github.com/VictorKildahl/cra, resources/live-folder-plugins/github/main.js, MIT, © 2026 Victor Kildahl).
+public enum GitHubPulls {
+    public enum Failure: Error, Equatable, Sendable {
+        case notSignedIn, rateLimited, unexpectedPage
+        public var message: String {
+            switch self {
+            case .notSignedIn: "Sign in to GitHub in this space to fill this folder."
+            case .rateLimited: "GitHub asked Browsa to slow down. It'll try again shortly."
+            case .unexpectedPage: "GitHub answered in a way Browsa didn't understand."
+            }
+        }
+    }
+
+    /// Arc's three: pull requests you opened, reviews asked of you, and of your teams.
+    public static let arcQueries = [
+        "is:pr is:open archived:false author:@me sort:updated-desc",
+        "is:pr is:open archived:false user-review-requested:@me sort:updated-desc",
+        "is:pr is:open archived:false review-requested:@me sort:updated-desc",
+    ]
+
+    /// The requests for one search: the pulls dashboard first, then the search page.
+    public static func requests(query: String) -> [URLRequest] {
+        let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "+&=#"))) ?? query
+        return ["https://github.com/pulls?q=\(q)", "https://github.com/search?q=\(q)&type=pullrequests"].compactMap { s in
+            guard let url = URL(string: s) else { return nil }
+            var r = URLRequest(url: url)
+            r.setValue("application/json", forHTTPHeaderField: "Accept")
+            r.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+            r.setValue("true", forHTTPHeaderField: "GitHub-Verified-Fetch")
+            return r
+        }
+    }
+
+    /// Reads one answer. `finalURL` is where redirects ended (a sign-in page means signed out).
+    public static func read(_ data: Data, status: Int, finalURL: URL?) -> Result<[FetchedItem], Failure> {
+        let body = String(decoding: data, as: UTF8.self)
+        let path = finalURL?.path() ?? ""
+        if path == "/login" || path.hasPrefix("/session") || path.hasSuffix("/sso") { return .failure(.notSignedIn) }
+        if status == 429 || (status == 403 && body.range(of: "rate limit", options: .caseInsensitive) != nil) { return .failure(.rateLimited) }
+        if status == 401 || (body.count < 2000 && body.range(of: "authenticate you", options: .caseInsensitive) != nil)
+            || body.contains("\"logged_in\":false") { return .failure(.notSignedIn) }
+        guard (200..<300).contains(status) else { return .failure(.unexpectedPage) }
+        var items: [FetchedItem] = []
+        let trimmed = body.drop { $0.isWhitespace }
+        if trimmed.first == "{" || trimmed.first == "[" {
+            guard let json = try? JSONSerialization.jsonObject(with: data) else { return .failure(.unexpectedPage) }
+            items = parse(json)
+        } else {
+            // Signed-out pages name no one.
+            if body.contains("name=\"user-login\" content=\"\"") { return .failure(.notSignedIn) }
+            for script in matches("<script[^>]*type=\"application/json\"[^>]*>([\\s\\S]*?)</script>", in: body) {
+                if let json = try? JSONSerialization.jsonObject(with: Data(script[1].utf8)) { items += parse(json) }
+            }
+            if items.isEmpty { items = parseClassic(body) }
+            if items.isEmpty, !body.contains("blankslate") { return .failure(.unexpectedPage) }
+        }
+        return .success(unique(items))
+    }
+
+    /// Pull requests found anywhere in GitHub's JSON, open ones only (drafts too).
+    static func parse(_ root: Any) -> [FetchedItem] {
+        var out: [FetchedItem] = []
+        func walk(_ value: Any, depth: Int) {
+            guard depth < 40 else { return }
+            if let d = value as? [String: Any] {
+                if let item = item(d) {
+                    if isOpen(d) { out.append(item) }
+                    return
+                }
+                for v in d.values { walk(v, depth: depth + 1) }
+            } else if let a = value as? [Any] {
+                for v in a { walk(v, depth: depth + 1) }
+            }
+        }
+        walk(root, depth: 0)
+        return out
+    }
+
+    private static func item(_ d: [String: Any]) -> FetchedItem? {
+        let type = (d["__typename"] as? String) ?? (d["type"] as? String) ?? ""
+        if !type.isEmpty, type != "PullRequest", !type.lowercased().contains("pull") { return nil }
+        guard let number = (d["number"] as? Int) ?? (d["num"] as? Int),
+              let rawTitle = (d["title"] as? String) ?? (d["hl_title"] as? String) ?? (d["titleHTML"] as? String) else { return nil }
+        let link = ["url", "permalink", "html_url", "resourcePath", "path", "href"].lazy.compactMap { d[$0] as? String }.first
+        let fromLink = link.flatMap(pullPath)
+        let repo = fromLink?.number == number ? fromLink?.repo : repository(d["repository"] ?? d["repo"] ?? d["repoNameWithOwner"] ?? d["repository_nwo"])
+        guard let repo else { return nil }
+        let looksLikePR = link?.contains("/pull/") == true || type == "PullRequest" || d["isDraft"] != nil || d["is_draft"] != nil
+            || d["reviewDecision"] != nil || d["pull_request"] != nil || d["merged"] != nil || d["num"] != nil
+            || ((d["issue"] as? [String: Any])?["issue"] as? [String: Any])?["pull_request_id"] != nil
+        guard looksLikePR, let url = URL(string: "https://github.com/\(repo)/pull/\(number)") else { return nil }
+        let name = repo.split(separator: "/").last.map(String.init) ?? repo
+        let date = ["updatedAt", "updated_at", "updated", "createdAt", "created_at", "created"].lazy
+            .compactMap { (d[$0] as? String).flatMap { try? Date($0, strategy: .iso8601) } }.first
+        return FetchedItem(key: url.absoluteString, title: "\(plain(rawTitle)) · \(name)#\(number)", url: url, date: date)
+    }
+
+    private static func isOpen(_ d: [String: Any]) -> Bool {
+        let state = ((d["state"] as? String) ?? "").lowercased()
+        let set = { (k: String) in d[k] != nil && !(d[k] is NSNull) }
+        return state != "merged" && state != "closed" && (d["merged"] as? Bool) != true && (d["closed"] as? Bool) != true
+            && !set("mergedAt") && !set("merged_at") && !set("closedAt") && !set("closed_at")
+    }
+
+    private static func repository(_ value: Any?) -> String? {
+        if let s = value as? String { return s.split(separator: "/").count == 2 ? s : nil }
+        guard let d = value as? [String: Any] else { return nil }
+        if let inner = d["repository"] { return repository(inner) }
+        if let nwo = (d["nameWithOwner"] ?? d["name_with_owner"] ?? d["full_name"]) as? String { return repository(nwo) }
+        let owner = ((d["owner"] as? [String: Any]).flatMap { ($0["login"] ?? $0["displayLogin"]) as? String })
+            ?? (d["owner"] as? String) ?? (d["owner_login"] as? String) ?? (d["ownerLogin"] as? String)
+        guard let owner, let name = d["name"] as? String else { return nil }
+        return "\(owner)/\(name)"
+    }
+
+    public static func pullPath(_ link: String) -> (repo: String, number: Int)? {
+        guard let m = matches("(?:^|github\\.com)/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/pull/(\\d+)", in: link).first,
+              let n = Int(m[3]) else { return nil }
+        return ("\(m[1])/\(m[2])", n)
+    }
+
+    /// The list GitHub drew before its React dashboard.
+    static func parseClassic(_ html: String) -> [FetchedItem] {
+        let chunks = html.components(separatedBy: "js-issue-row").dropFirst()
+        return chunks.compactMap { chunk -> FetchedItem? in
+            if chunk.range(of: "octicon-git-(merge|pull-request-closed)(?![\\w-])", options: .regularExpression) != nil { return nil }
+            for a in matches("<a\\b([^>]*)>([\\s\\S]*?)</a>", in: chunk) {
+                guard let href = matches("href=\"([^\"]*)\"", in: a[1]).first?[1], let p = pullPath(href),
+                      href.hasSuffix("/pull/\(p.number)"),
+                      a[1].contains("data-hovercard-type=\"pull_request\"") || a[1].contains("js-navigation-open") || a[1].contains("markdown-title")
+                else { continue }
+                let title = plain(a[2])
+                guard !title.isEmpty, let url = URL(string: "https://github.com/\(p.repo)/pull/\(p.number)") else { continue }
+                let name = p.repo.split(separator: "/").last.map(String.init) ?? p.repo
+                return FetchedItem(key: url.absoluteString, title: "\(title) · \(name)#\(p.number)", url: url)
+            }
+            return nil
+        }
+    }
+
+    public static func unique(_ items: [FetchedItem]) -> [FetchedItem] {
+        var seen = Set<String>()
+        return items.filter { seen.insert($0.key.lowercased()).inserted }
+    }
+
+    private static func plain(_ s: String) -> String {
+        var out = s.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        for (e, c) in [("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&apos;", "'"), ("&#39;", "'"), ("&nbsp;", " "), ("&amp;", "&")] {
+            out = out.replacingOccurrences(of: e, with: c)
+        }
+        return out.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+    }
+
+    private static func matches(_ pattern: String, in text: String) -> [[String]] {
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let ns = text as NSString
+        return re.matches(in: text, range: NSRange(location: 0, length: ns.length)).map { m in
+            (0..<m.numberOfRanges).map { i in m.range(at: i).location == NSNotFound ? "" : ns.substring(with: m.range(at: i)) }
+        }
     }
 }

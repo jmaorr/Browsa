@@ -131,6 +131,15 @@ struct SpaceTabs: View {
                 }
                 .padding(.horizontal, 10)
             }
+            // Right-click the sidebar's empty space for new folders; rows have their own menus.
+            .contextMenu {
+                if !space.isPrivate {
+                    Button("New Folder", systemImage: "folder.badge.plus") {
+                        withAnimation(Motion.snappy) { browser.newPinnedFolder() }
+                    }
+                    LiveFoldersMenu(space: space)
+                }
+            }
             .scrollIndicators(.never)
             .scrollPosition($scroll)
             .onScrollGeometryChange(for: [CGFloat].self) { g in
@@ -304,9 +313,7 @@ private struct DraggableFolderRow: View {
                 browser.renamingFolderID = browser.library.newPinnedFolder(in: space, at: PinnedPlace(parent: folder.id, index: 0))
             }
         }
-        if folder.live == nil {
-            Button("New Live Folder…", systemImage: "folder.badge.gearshape") { browser.newLiveFolder() }
-        }
+        LiveFoldersMenu(space: space)
         Divider()
         if folder.live != nil {
             Button("Stop Updating", systemImage: "pause.circle") {
@@ -409,6 +416,28 @@ struct FolderRowLabel: View {
     }
 }
 
+/// Live Folders ›, as Arc's sidebar menu has it: the space's GitHub folder ticks on and off, and the
+/// rest open the sheet.
+struct LiveFoldersMenu: View {
+    @Environment(Browser.self) private var browser
+    let space: Space
+
+    var body: some View {
+        Menu("Live Folders", systemImage: "folder.badge.gearshape") {
+            Toggle("GitHub Pull Requests", isOn: Binding(
+                get: { browser.library.gitHubFolder(in: space) != nil },
+                set: { _ in withAnimation(Motion.snappy) { browser.library.toggleGitHubFolder(in: space) } }))
+            Divider()
+            Button("Website or Feed…") {
+                browser.liveFolderSheet = LiveFolderDraft(spaceID: space.id, kind: nil, pageURL: browser.currentTab?.url, startOnFeed: true)
+            }
+            Button("GitHub Search…") {
+                browser.liveFolderSheet = LiveFolderDraft(spaceID: space.id, kind: .github(query: ""))
+            }
+        }
+    }
+}
+
 /// A live folder's icon: its source's site icon, so a GitHub folder and a blog's folder tell apart
 /// at a glance, with the same small bounce as it opens and closes.
 private struct LiveFolderIcon: View {
@@ -418,7 +447,7 @@ private struct LiveFolderIcon: View {
     private var site: URL? {
         switch kind {
         case .feed(let url): URL(string: "https://\(url.host() ?? "")")
-        case .github: URL(string: "https://github.com")
+        case .github, .githubPullRequests: URL(string: "https://github.com")
         }
     }
 
@@ -781,6 +810,7 @@ private struct FolderMenu: View {
         Button("New Folder with Tab", systemImage: "folder.badge.plus") {
             withAnimation(Motion.snappy) { browser.newPinnedFolder(holding: tab) }
         }
+        LiveFoldersMenu(space: space)
         if !folders.isEmpty {
             Menu(tab.isPinned ? "Move to Folder" : "Pin to Folder", systemImage: "folder") {
                 ForEach(folders) { entry in
