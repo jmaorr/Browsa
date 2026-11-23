@@ -17,6 +17,10 @@ struct SplitPages: View {
     /// sidebar and everything else watching splits doesn't redraw on every frame of the drag.
     @State private var liveWidths: [Double]?
     @State private var liveWebViews: [NSView] = []
+    /// The pane whose handle shows: the one the pointer is near the top of. One at a time.
+    @State private var handlePane: Int?
+    /// The pane whose control panel is open. Its handle stays out whatever the pointer does.
+    @State private var panelPane: Int?
 
     private static let minimumPane: CGFloat = 240
     /// How far the divider's grab zone reaches over each pane, past the visible gap.
@@ -29,7 +33,13 @@ struct SplitPages: View {
             let widths = liveWidths.flatMap { $0.count == tabs.count ? $0 : nil } ?? browser.splitWidths(tabs)
             HStack(spacing: 0) {
                 ForEach(Array(tabs.enumerated()), id: \.element.id) { i, tab in
-                    SplitPane(tab: tab, index: i, count: tabs.count, isFront: tab.id == browser.currentTab?.id)
+                    SplitPane(tab: tab, index: i, count: tabs.count, isFront: tab.id == browser.currentTab?.id,
+                              showsHandle: handlePane == i || panelPane == i,
+                              panelOpen: Binding(get: { panelPane == i }, set: { open in
+                                  withAnimation(Motion.snappy) {
+                                      if open { panelPane = i } else if panelPane == i { panelPane = nil }
+                                  }
+                              }))
                         .frame(width: max(0, available * widths[i]))
                     if i < tabs.count - 1 {
                         // The gap is only 6pt, so the grab zone reaches a few points over each
@@ -47,7 +57,32 @@ struct SplitPages: View {
                     }
                 }
             }
+            // One watcher for the whole split decides which handle shows. Hover tracking per pane
+            // over the web views misses moves and sticks; an AppKit tracking area doesn't.
+            .overlay {
+                SplitHoverTracker { point in
+                    let pane = point.flatMap { p in
+                        p.y < Self.handleDepth ? paneIndex(atX: p.x, widths: widths, available: available, gap: gap) : nil
+                    }
+                    if pane != handlePane { withAnimation(Motion.snappy) { handlePane = pane } }
+                }
+            }
+            .onChange(of: tabs.map(\.id)) { panelPane = nil; handlePane = nil }
         }
+    }
+
+    /// How far down from a pane's top edge its handle appears.
+    private static let handleDepth: CGFloat = 44
+
+    /// The pane under `x`, or nil over a gap.
+    private func paneIndex(atX x: CGFloat, widths: [Double], available: CGFloat, gap: CGFloat) -> Int? {
+        var left: CGFloat = 0
+        for (i, w) in widths.enumerated() {
+            let right = left + available * w
+            if x >= left && x < right { return i }
+            left = right + gap
+        }
+        return nil
     }
 
     /// Moves the line between pane `i` and the next: one grows as much as the other shrinks.
@@ -78,19 +113,17 @@ struct SplitPages: View {
     }
 }
 
-/// One pane: a page card that comes to the front when clicked. Its actions sit behind a small
-/// handle that only shows while the pointer is near the pane's top edge, so it's out of the way
-/// the rest of the time.
+/// One pane: a page card that comes to the front when clicked. Its controls sit behind a small
+/// handle that shows while the pointer is near the pane's top edge (SplitPages decides), and open
+/// into a glass panel when it's clicked.
 private struct SplitPane: View {
     @Environment(Browser.self) private var browser
     let tab: BrowserTab
     let index: Int
     let count: Int
     let isFront: Bool
-    @State private var nearTop = false
-
-    /// How far down from the pane's top edge the handle appears.
-    private static let revealDepth: CGFloat = 44
+    let showsHandle: Bool
+    @Binding var panelOpen: Bool
 
     var body: some View {
         PageCardView(tab: tab, isFront: isFront, inSplit: true)
@@ -101,61 +134,212 @@ private struct SplitPane: View {
                     .allowsHitTesting(false)
             }
             .overlay(alignment: .top) {
-                if nearTop {
-                    PaneHandle(tab: tab, index: index, count: count)
+                if showsHandle {
+                    PaneControls(tab: tab, index: index, count: count, open: $panelOpen)
                         .padding(.top, 6)
                         .transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .top)))
                 }
             }
             .background(PaneClickWatcher { if !isFront { browser.select(tab) } })
-            .onContinuousHover { phase in
-                let near: Bool
-                if case .active(let point) = phase { near = point.y < Self.revealDepth } else { near = false }
-                if near != nearTop { withAnimation(Motion.snappy) { nearTop = near } }
-            }
             .animation(Motion.snappy, value: isFront)
     }
 }
 
-/// A pane's handle: a small glass capsule that opens the pane's menu (move left or right, leave
-/// the split, close). The same items are in the tab's right-click menu in the sidebar.
-private struct PaneHandle: View {
+/// A pane's controls: a small glass grip that morphs into a glass panel hanging from the top of
+/// the pane. The panel has the page's controls (back, forward, reload, and the address with its
+/// copy link, site menu and extensions) and the pane's Split View actions. Escape or a click
+/// outside it morphs it back.
+private struct PaneControls: View {
     @Environment(Browser.self) private var browser
     let tab: BrowserTab
     let index: Int
     let count: Int
+    @Binding var open: Bool
+    @Namespace private var glass
+
+    static let panelWidth: CGFloat = 340
 
     var body: some View {
-        Menu {
-            if index > 0 {
-                Button("Move Left", systemImage: "arrow.left") { act { browser.shiftPane(tab, by: -1) } }
+        GlassEffectContainer(spacing: 12) {
+            if open {
+                panel
+                    .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
+                    .glassEffectID("controls", in: glass)
+                    .background(OutsideClickWatcher { open = false })
+            } else {
+                Button {
+                    // The panel's address and page buttons act on the tab in front.
+                    if !isFront { browser.select(tab) }
+                    open = true
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 34, height: 18)
+                        .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .glassEffectID("controls", in: glass)
+                .help("Page and Split View controls")
             }
-            if index < count - 1 {
-                Button("Move Right", systemImage: "arrow.right") { act { browser.shiftPane(tab, by: 1) } }
-            }
-            Button("Even Up Panes", systemImage: "equal") { act { browser.evenSplit(browser.rowTabs(tab)) } }
-            Divider()
-            Button("Remove from Split View", systemImage: "rectangle.portrait.and.arrow.right") { act { browser.removeFromSplit(tab) } }
-            Button(tab.isPinned ? "Unload Tab" : "Close Tab", systemImage: tab.isPinned ? "minus" : "xmark") { act { browser.close(tab) } }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.secondary)
-                .frame(width: 34, height: 18)
-                .contentShape(.capsule)
         }
-        .menuStyle(.button)
-        .menuIndicator(.hidden)
-        .buttonStyle(.plain)
-        .fixedSize()
-        .background(PanelFill(), in: .capsule)
-        .overlay(Capsule().strokeBorder(.primary.opacity(0.1)))
-        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
-        .help("Split View options")
+        // Whatever takes the front pane away from this tab closes the panel: its address would
+        // show another page.
+        .onChange(of: browser.currentTab?.id) { _, id in if open, id != tab.id { open = false } }
+        .onChange(of: browser.commandBar != nil) { _, showing in if showing { open = false } }
+    }
+
+    private var isFront: Bool { browser.currentTab?.id == tab.id }
+
+    private var panel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            section("Page")
+            HStack(spacing: 6) {
+                glassButton("chevron.left", "Back", enabled: tab.canGoBack) { browser.goBack() }
+                glassButton("chevron.right", "Forward", enabled: tab.canGoForward) { browser.goForward() }
+                glassButton(tab.isLoading ? "xmark" : "arrow.clockwise", tab.isLoading ? "Stop" : "Reload") {
+                    if tab.isLoading { browser.stopLoading() } else { browser.reload() }
+                }
+                Spacer(minLength: 0)
+            }
+            AddressPill()
+            section("Split View").padding(.top, 4)
+            HStack(spacing: 6) {
+                glassButton("arrow.left", "Move Left", enabled: index > 0) { act { browser.shiftPane(tab, by: -1) } }
+                glassButton("arrow.right", "Move Right", enabled: index < count - 1) { act { browser.shiftPane(tab, by: 1) } }
+                glassButton("equal", "Even Up Panes") { act { browser.evenSplit(browser.rowTabs(tab)) } }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 6) {
+                labeledButton("rectangle.portrait.and.arrow.right", "Remove from Split") { act { browser.removeFromSplit(tab) } }
+                labeledButton(tab.isPinned ? "minus" : "xmark", tab.isPinned ? "Unload Tab" : "Close Tab") { act { browser.close(tab) } }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(14)
+        .frame(width: Self.panelWidth, alignment: .leading)
+    }
+
+    private func section(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+    }
+
+    private func glassButton(_ symbol: String, _ help: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 18, height: 16)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.capsule)
+        .disabled(!enabled)
+        .help(help)
+    }
+
+    private func labeledButton(_ symbol: String, _ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(.system(size: 12, weight: .medium))
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.capsule)
     }
 
     private func act(_ action: () -> Void) {
-        withAnimation(Motion.snappy) { action() }
+        withAnimation(Motion.snappy) {
+            open = false
+            action()
+        }
+    }
+}
+
+/// Tells SplitPages where the pointer is over the split (top-left origin), or nil once it leaves.
+/// A tracking area reaches its owner wherever the pointer is in its rect, whatever view is on
+/// top, so the pages can't swallow the moves. Never takes a click.
+private struct SplitHoverTracker: NSViewRepresentable {
+    let onMove: (CGPoint?) -> Void
+
+    func makeNSView(context: Context) -> Tracker {
+        let view = Tracker()
+        view.onMove = onMove
+        return view
+    }
+
+    func updateNSView(_ view: Tracker, context: Context) { view.onMove = onMove }
+
+    final class Tracker: NSView {
+        var onMove: (CGPoint?) -> Void = { _ in }
+
+        override var isFlipped: Bool { true }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+        }
+
+        override func mouseEntered(with event: NSEvent) { report(event) }
+        override func mouseMoved(with event: NSEvent) { report(event) }
+        override func mouseDragged(with event: NSEvent) { report(event) }
+        override func mouseExited(with event: NSEvent) { onMove(nil) }
+
+        private func report(_ event: NSEvent) {
+            let point = convert(event.locationInWindow, from: nil)
+            onMove(bounds.contains(point) ? point : nil)
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+}
+
+/// Calls back on Escape, or a click anywhere outside this view's frame, while it's on screen.
+/// The click still goes where it was headed.
+private struct OutsideClickWatcher: NSViewRepresentable {
+    let onOutside: () -> Void
+
+    func makeNSView(context: Context) -> Watcher {
+        let view = Watcher()
+        view.onOutside = onOutside
+        return view
+    }
+
+    func updateNSView(_ view: Watcher, context: Context) { view.onOutside = onOutside }
+
+    static func dismantleNSView(_ view: Watcher, coordinator: ()) { view.stop() }
+
+    final class Watcher: NSView {
+        var onOutside: () -> Void = {}
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            stop()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) { [weak self] event in
+                let isEscape = event.type == .keyDown && event.keyCode == 53
+                if event.type == .keyDown && !isEscape { return event }
+                let location = event.locationInWindow
+                let eventWindow = event.window
+                // A click in a menu or popup window from inside the panel isn't outside it.
+                let swallow = MainActor.assumeIsolated { () -> Bool in
+                    guard let self, let window = self.window, eventWindow === window else { return false }
+                    if isEscape { self.onOutside(); return true }
+                    if !self.bounds.contains(self.convert(location, from: nil)) { self.onOutside() }
+                    return false
+                }
+                return swallow ? nil : event
+            }
+        }
+
+        func stop() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 }
 
@@ -315,8 +499,9 @@ struct SidebarRow: View {
     }
 }
 
-/// A split in the sidebar: its tabs side by side in one row, like the panes. Click a tab to bring
-/// its pane to the front; each tab keeps its own menu.
+/// A split in the sidebar: a box holding one smaller box per tab, side by side like the panes.
+/// Click a tab's box to bring its pane to the front; each has its own close and menu. A little
+/// taller than a tab row, so the box in a box reads.
 struct SplitTabRow: View {
     @Environment(Browser.self) private var browser
     let tabs: [BrowserTab]
@@ -324,37 +509,22 @@ struct SplitTabRow: View {
     var isLifted = false
     @State private var hovering = false
 
+    static let height: CGFloat = 40
+    static let padding: CGFloat = 3
+
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(tabs.enumerated()), id: \.element.id) { i, tab in
-                if i > 0 {
-                    Rectangle()
-                        .fill(.primary.opacity(0.14))
-                        .frame(width: 1, height: 16)
-                }
-                SplitTabSegment(tab: tab, isFront: selected && browser.currentTab?.id == tab.id, rowSelected: selected)
-            }
-            if hovering, !isLifted {
-                Button { withAnimation(Motion.snappy) { browser.closeSplit(containing: tabs[0]) } } label: {
-                    Image(systemName: tabs[0].isPinned ? "minus" : "xmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .frame(width: 18, height: 18)
-                        .background(.primary.opacity(0.08), in: .rect(cornerRadius: 5, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .padding(.trailing, 6)
-                .help(tabs[0].isPinned ? "Unload Split View" : "Close Split View")
-                .transition(.move(edge: .trailing).combined(with: .opacity))
+        HStack(spacing: Self.padding) {
+            ForEach(tabs) { tab in
+                SplitTabSegment(tab: tab, isFront: selected && browser.currentTab?.id == tab.id,
+                                rowSelected: selected, canClose: !isLifted)
             }
         }
         .font(.system(size: 13))
-        .padding(.horizontal, 2)
-        .frame(height: 34)
+        .padding(Self.padding)
+        .frame(height: Self.height)
         .background {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(selected ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(hovering ? 0.06 : 0)))
-                .shadow(color: .black.opacity(selected ? 0.08 : 0), radius: 1.5, y: 1)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(.primary.opacity(selected ? 0.09 : (hovering ? 0.07 : 0.045)))
         }
         .contentShape(.rect)
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
@@ -363,11 +533,14 @@ struct SplitTabRow: View {
     }
 }
 
+/// One tab's box in a split's sidebar row. The pane in front gets the strongest fill.
 private struct SplitTabSegment: View {
     @Environment(Browser.self) private var browser
     let tab: BrowserTab
     let isFront: Bool
     let rowSelected: Bool
+    var canClose = true
+    @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 6) {
@@ -381,12 +554,32 @@ private struct SplitTabSegment: View {
                 .lineLimit(1)
                 // In the selected row, the tab in front reads a little stronger than the others.
                 .foregroundStyle(rowSelected && !isFront ? HierarchicalShapeStyle.secondary : HierarchicalShapeStyle.primary)
+            Spacer(minLength: 0)
             if let call = tab.call { CallBadge(call: call) }
+            if hovering, canClose {
+                Button { withAnimation(Motion.snappy) { browser.close(tab) } } label: {
+                    Image(systemName: tab.isPinned ? "minus" : "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .frame(width: 16, height: 16)
+                        .background(.primary.opacity(0.08), in: .rect(cornerRadius: 4, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(Shortcuts.shared.help(tab.isPinned ? "Unload Tab" : "Close Tab", .close))
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
-        .padding(.horizontal, 6)
+        .padding(.leading, 7)
+        .padding(.trailing, 5)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isFront ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(hovering ? 0.07 : 0.035)))
+                .shadow(color: .black.opacity(isFront ? 0.1 : 0), radius: 1.5, y: 1)
+        }
         .contentShape(.rect)
         .onTapGesture { browser.select(tab) }
+        .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
         .contextMenu { TabMenu(tab: tab) }
         .help(tab.url?.absoluteString ?? tab.displayTitle)
     }
