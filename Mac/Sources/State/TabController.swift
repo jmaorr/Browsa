@@ -213,6 +213,15 @@ final class TabController: EnginePageDelegate {
         library?.openPopup(from: tab, page: popup, url: url)
     }
 
+    /// A sized popup (a sign-in, usually) gets a small window of its own, as in Safari and Chrome, so the
+    /// tab list stays as it was. Anything else becomes a tab under this one.
+    func page(_ page: any EnginePage, openedPopup popup: any EnginePage, url: URL?,
+              features: PopupFeatures) -> (any EnginePageDelegate)? {
+        guard let library else { return nil }
+        if features.wantsWindow { return library.openPopupWindow(from: tab, page: popup, features: features) }
+        return library.openPopup(from: tab, page: popup, url: url)
+    }
+
     func pageDidRequestClose(_ page: any EnginePage) {
         library?.close(tab)
     }

@@ -371,6 +371,10 @@ public protocol EnginePageDelegate: AnyObject {
     /// The page opened a window (target=_blank, window.open). Return a delegate to keep the new
     /// page, which keeps `window.opener` working, or nil to block it. The host must hold on to `popup`.
     func page(_ page: any EnginePage, openedPopup popup: any EnginePage, url: URL?) -> (any EnginePageDelegate)?
+    /// The same, with what the page asked for in `window.open`'s features (a size, usually for a sign-in).
+    /// Hosts that don't care can leave this alone: it calls the version without features.
+    func page(_ page: any EnginePage, openedPopup popup: any EnginePage, url: URL?,
+              features: PopupFeatures) -> (any EnginePageDelegate)?
     /// The page called window.close().
     func pageDidRequestClose(_ page: any EnginePage)
 
@@ -384,6 +388,24 @@ public protocol EnginePageDelegate: AnyObject {
     func page(_ page: any EnginePage, didStartDownload download: EngineDownload)
     /// The cookie-banner script declined a banner on this page.
     func pageDidDeclineCookieBanner(_ page: any EnginePage)
+}
+
+/// What a page asked for when it opened a window. A plain `target=_blank` or `window.open(url)` asks
+/// for nothing; sign-in flows (Google, Apple, Microsoft, Okta) ask for a size.
+public struct PopupFeatures: Sendable, Equatable {
+    public var width: Double?
+    public var height: Double?
+    /// The page asked for a window without toolbars (`popup` in the features string, or toolbar=no).
+    public var hidesToolbars: Bool
+
+    public init(width: Double? = nil, height: Double? = nil, hidesToolbars: Bool = false) {
+        self.width = width
+        self.height = height
+        self.hidesToolbars = hidesToolbars
+    }
+
+    /// The page wants a small window of its own rather than a tab, as Safari and Chrome give it.
+    public var wantsWindow: Bool { width != nil || height != nil || hidesToolbars }
 }
 
 /// Find on page progress: the current match (1-based, 0 if unknown) and how many there are.
@@ -411,6 +433,10 @@ public extension EnginePageDelegate {
     func page(_ page: any EnginePage, didFailWith error: NSError) {}
     func pageContentProcessDidTerminate(_ page: any EnginePage) { page.reload() }
     func page(_ page: any EnginePage, openedPopup popup: any EnginePage, url: URL?) -> (any EnginePageDelegate)? { nil }
+    func page(_ page: any EnginePage, openedPopup popup: any EnginePage, url: URL?,
+              features: PopupFeatures) -> (any EnginePageDelegate)? {
+        self.page(page, openedPopup: popup, url: url)
+    }
     func pageDidRequestClose(_ page: any EnginePage) {}
     func page(_ page: any EnginePage, show dialog: EngineDialog) async -> EngineDialogResponse { .cancel }
     func page(_ page: any EnginePage, requestPermission permission: EnginePermission, host: String) async -> Bool { false }

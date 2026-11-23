@@ -107,6 +107,10 @@ private struct GeneralSettings: View {
                     Text("7 days").tag(168.0)
                     Text("30 days").tag(720.0)
                 }
+                Picker("New tabs open", selection: $browser.settings.newTabsBelowCurrent) {
+                    Text("At the top").tag(false)
+                    Text("Below the current tab").tag(true)
+                }
                 Picker("Open links from other apps in", selection: $browser.settings.externalLinksSpaceID) {
                     Text("Current space").tag(UUID?.none)
                     ForEach(browser.regularSpaces) { s in Text(s.name).tag(UUID?.some(s.id)) }

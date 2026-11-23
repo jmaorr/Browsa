@@ -72,6 +72,13 @@ final class Library {
     var filterStatus = FilterStatus()
     /// Tabs closed this session, newest last, for Shift-Cmd-T. Never private tabs.
     private(set) var recentlyClosed: [BrowserTab] = []
+    /// Where each recently closed tab sat, so Shift-Cmd-T can put it back there.
+    @ObservationIgnored private var closedPlaces: [UUID: ClosedPlace] = [:]
+    /// The tab a run of links last opened from `opener`, so the next one goes after it and a run of
+    /// Cmd-clicks keeps its order. Forgotten once you move to another tab, as in Chrome and Firefox.
+    @ObservationIgnored private var linkRun: (opener: UUID, last: UUID)?
+    /// Sign-in and other sized popups, each in a small window of its own.
+    @ObservationIgnored private var popupWindows: [PopupWindow] = []
     /// The open windows, most recently active first.
     private(set) var windows: [Browser] = []
     /// Open windows, oldest first. The oldest one lists Today tabs that no open window owns.
@@ -408,26 +415,51 @@ final class Library {
 
     // MARK: Opening tabs
 
-    /// A new today tab at the top of a space. Opening into Private makes the Private space.
+    /// A new today tab at the top of a space, or at `index`. Opening into Private makes the Private space.
+    /// With an `opener`, the tab remembers it (closing goes back there) and joins its run of links.
     @discardableResult
     func insertTab(url: URL?, in space: Space, isPrivate: Bool = false, source: Frecency.VisitSource = .typed,
-                   at index: Int = 0, for window: Browser? = nil) -> BrowserTab {
+                   at index: Int = 0, opener: BrowserTab? = nil, for window: Browser? = nil) -> BrowserTab {
         let wantsPrivate = isPrivate || space.isPrivate
         let target = wantsPrivate ? openPrivateSpace() : space
         let tab = BrowserTab(url: nil, isPrivate: wantsPrivate)
         tab.windowKey = (window ?? activeWindow)?.windowKey
-        target.today.insert(tab, at: min(index, target.today.count))
+        place(tab, in: target, at: index, opener: opener)
         if let url { controller(for: tab).load(url, source: source) }
         scheduleSave()
         return tab
     }
 
+    private func place(_ tab: BrowserTab, in space: Space, at index: Int, opener: BrowserTab?) {
+        space.today.insert(tab, at: min(index, space.today.count))
+        if let opener {
+            tab.openerID = opener.id
+            linkRun = (opener.id, tab.id)
+        }
+    }
+
+    /// Where a tab opened from `opener` goes in Today: just after the opener, or after the last tab
+    /// it opened while you stayed on it, so links keep the order you opened them in. Pinned tabs and
+    /// favourite tiles aren't in the Today list, so their links start at the top of it.
+    func indexForChild(of opener: BrowserTab, in space: Space) -> Int {
+        if let run = linkRun, run.opener == opener.id,
+           let i = space.today.firstIndex(where: { $0.id == run.last }) { return i + 1 }
+        if !opener.isPinned, opener.favoriteID == nil,
+           let i = space.today.firstIndex(where: { $0.id == opener.id }) { return i + 1 }
+        return 0
+    }
+
+    /// A window moved to another tab: a run of links from the old one is over.
+    func selectionChanged(to tab: BrowserTab?) {
+        if let run = linkRun, run.opener != tab?.id { linkRun = nil }
+    }
+
     /// Cmd-click on a link: a new today tab just under the one it came from.
     func openInNewTab(_ url: URL, from opener: BrowserTab, foreground: Bool) {
         let space = space(containing: opener) ?? regularSpaces[0]
-        let after = space.today.firstIndex { $0.id == opener.id }.map { $0 + 1 } ?? 0
         let window = window(showing: opener)
-        let tab = insertTab(url: url, in: space, isPrivate: opener.isPrivate, source: .link, at: after,
+        let tab = insertTab(url: url, in: space, isPrivate: opener.isPrivate, source: .link,
+                            at: indexForChild(of: opener, in: space), opener: opener,
                             for: window ?? owner(of: opener))
         if foreground { window?.select(tab) } else { window?.showToast("Opened in background") }
     }
@@ -436,10 +468,9 @@ final class Library {
     func openPopup(from opener: BrowserTab, page: any EnginePage, url: URL?) -> TabController {
         let space = space(containing: opener) ?? regularSpaces[0]
         let tab = BrowserTab(url: url, isPrivate: opener.isPrivate)
-        let after = space.today.firstIndex { $0.id == opener.id }.map { $0 + 1 } ?? 0
         let window = window(showing: opener) ?? activeWindow
         tab.windowKey = window?.windowKey
-        space.today.insert(tab, at: after)
+        place(tab, in: space, at: indexForChild(of: opener, in: space), opener: opener)
         let c = TabController(tab: tab, library: self) { _ in page }
         adopt(c)
         window?.select(tab)
@@ -447,18 +478,40 @@ final class Library {
         return c
     }
 
+    /// A page asked for a sized window (a sign-in, usually). It gets a small window over its opener's,
+    /// and the tab list doesn't change.
+    func openPopupWindow(from opener: BrowserTab, page: any EnginePage, features: PopupFeatures) -> PopupWindow {
+        let parent = (window(showing: opener) ?? activeWindow)?.nsWindow
+        let popup = PopupWindow(page: page, opener: opener, library: self, features: features, over: parent)
+        popupWindows.append(popup)
+        return popup
+    }
+
+    /// A popup window closed: let it go, and bring back the tab that opened it.
+    func popupWindowClosed(_ popup: PopupWindow) {
+        popupWindows.removeAll { $0 === popup }
+        guard let opener = tab(id: popup.openerID), let w = window(showing: opener) ?? owner(of: opener) else { return }
+        w.select(opener)
+        w.nsWindow?.makeKeyAndOrderFront(nil)
+    }
+
     // MARK: Closing
 
     func close(_ tab: BrowserTab) {
         if let closeGuard, !closeGuard(tab) { return }
         for w in windows { w.cancelPrompts(for: tab.id) }
+        let space = space(containing: tab)
+        let index = space?.today.firstIndex { $0.id == tab.id }
         if !tab.isPrivate, !tab.isPinned, tab.url != nil {
             controllers[tab.id]?.freeze()
             recentlyClosed.append(tab)
-            if recentlyClosed.count > 30 { recentlyClosed.removeFirst() }
+            if let space, let index {
+                closedPlaces[tab.id] = ClosedPlace(spaceID: space.id, index: index,
+                                                   after: index > 0 ? space.today[index - 1].id : nil)
+            }
+            if recentlyClosed.count > 30 { closedPlaces[recentlyClosed.removeFirst().id] = nil }
         }
-        guard let space = space(containing: tab) else { return }
-        let index = space.today.firstIndex { $0.id == tab.id }
+        guard let space else { return }
         // Windows showing it move on first, while it's still in the list to measure from.
         for w in windows where w.currentTab?.id == tab.id { w.moveOff(tab, in: space) }
         space.today.removeAll { $0.id == tab.id }
@@ -471,7 +524,18 @@ final class Library {
         scheduleSave()
     }
 
-    func popRecentlyClosed() -> BrowserTab? { recentlyClosed.popLast() }
+    /// The last closed tab, and where it sat in Today.
+    func popRecentlyClosed() -> (tab: BrowserTab, place: ClosedPlace?)? {
+        guard let tab = recentlyClosed.popLast() else { return nil }
+        return (tab, closedPlaces.removeValue(forKey: tab.id))
+    }
+
+    /// Where a closed tab goes back to in `space`: after the tab that was above it, or its old position.
+    func reopenIndex(for place: ClosedPlace?, in space: Space) -> Int {
+        guard let place, place.spaceID == space.id else { return 0 }
+        if let after = place.after, let i = space.today.firstIndex(where: { $0.id == after }) { return i + 1 }
+        return place.after == nil ? 0 : min(place.index, space.today.count)
+    }
 
     // MARK: Organising
 
@@ -698,6 +762,7 @@ final class Library {
         await history.clearAll()
         archive.removeAll()
         recentlyClosed.removeAll()
+        closedPlaces.removeAll()
         scheduleSave()
     }
 
@@ -819,4 +884,12 @@ extension Library: EngineExtensionHost {
     private func tab(showing page: any EnginePage) -> BrowserTab? {
         controllers.values.first { $0.page === page }?.tab
     }
+}
+
+/// Where a closed tab sat in its space's Today list.
+struct ClosedPlace {
+    let spaceID: UUID
+    let index: Int
+    /// The tab just above it, if any.
+    let after: UUID?
 }
