@@ -293,17 +293,36 @@ private struct SiteMenu: View {
                 openItem.submenu = openMenu
                 menu.addItem(openItem)
             }
-            let styles = SiteStyle.available(for: url)
-            if !styles.isEmpty, browser.currentTab?.isPrivate != true {
+            if browser.currentTab?.isPrivate != true, SiteBoost.key(for: url) != nil {
                 menu.addItem(.separator())
-                for style in styles {
-                    let on = browser.library.siteStyles.contains(style.id)
-                    let item = actions.item(style.name) { browser.setSiteStyle(style, on: !on) }
+                menu.addItem(.sectionHeader(title: "Boosts"))
+                for style in Boost.available(for: url) {
+                    let on = browser.library.boosts.contains(style.id)
+                    let item = actions.item(style.name) { browser.setBoost(style, on: !on) }
                     item.state = on ? .on : .off
                     item.image = NSImage(systemSymbolName: "paintbrush.fill", accessibilityDescription: nil)
                     item.toolTip = style.summary
                     menu.addItem(item)
                 }
+                let own = BoostStore.shared.boost(for: url)
+                if let own {
+                    let item = actions.item("My Boost") {
+                        BoostStore.shared.setOn(own.id, !own.isOn)
+                        var updated = own
+                        updated.isOn.toggle()
+                        if let page { Task { await BoostStore.shared.preview(updated, on: page) } }
+                    }
+                    item.state = own.isOn ? .on : .off
+                    item.image = NSImage(systemSymbolName: "paintbrush.pointed.fill", accessibilityDescription: nil)
+                    item.toolTip = own.summary
+                    menu.addItem(item)
+                }
+                let edit = actions.item(own == nil ? "Boost This Site…" : "Edit Boost…") { browser.showPanel("boosts") }
+                edit.image = NSImage(systemSymbolName: "paintbrush.pointed", accessibilityDescription: nil)
+                menu.addItem(edit)
+                let zap = actions.item("Zap Something…") { ZapPicker.zapOnCurrentPage(in: browser) }
+                zap.image = NSImage(systemSymbolName: "scope", accessibilityDescription: nil)
+                menu.addItem(zap)
             }
         }
         let exts = browser.library.actionExtensions
@@ -349,7 +368,7 @@ private struct SiteIconAnchor: NSViewRepresentable {
     func updateNSView(_ view: NSView, context: Context) { browser.siteIconView = view }
 }
 
-/// When a Site Style lands in the site icon (`trigger` changes): the favicon pops away, a paintbrush pops in
+/// When a Boost lands in the site icon (`trigger` changes): the favicon pops away, a paintbrush pops in
 /// with a ring swelling out of it, then the brush pops away and the favicon comes back. Shows where the style
 /// went and that the icon opens it.
 private struct SiteIconSwap<Icon: View>: View {

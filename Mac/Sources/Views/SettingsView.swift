@@ -127,20 +127,38 @@ private struct GeneralSettings: View {
                 }
             }
             Section {
-                ForEach(SiteStyle.all) { style in
+                ForEach(Boost.all) { style in
                     Toggle(isOn: Binding(
-                        get: { browser.siteStyles.contains(style.id) },
-                        set: { on in if on { browser.siteStyles.insert(style.id) } else { browser.siteStyles.remove(style.id) } })) {
+                        get: { browser.boosts.contains(style.id) },
+                        set: { on in if on { browser.boosts.insert(style.id) } else { browser.boosts.remove(style.id) } })) {
                         VStack(alignment: .leading) {
                             Text("\(style.site): \(style.name)")
                             Text(style.summary).font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }
+                ForEach(BoostStore.shared.boosts) { boost in
+                    Toggle(isOn: Binding(
+                        get: { boost.isOn },
+                        set: { BoostStore.shared.setOn(boost.id, $0) })) {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(boost.host)
+                                Text(boost.summary).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Delete", systemImage: "trash") { BoostStore.shared.remove(boost.id) }
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.glass)
+                                .buttonBorderShape(.circle)
+                                .help("Delete this Boost")
+                        }
+                    }
+                }
             } header: {
-                Text("Site styles")
+                Text("Boosts")
             } footer: {
-                Text("New looks for some sites. They change how a site looks, never what it does. You can also turn one on from the site icon in the address bar.")
+                Text("Boosts give sites a new look. Turn on a ready-made one, or make your own from the site icon in the address bar: a font, a tint, things zapped away, or your own CSS. They change how a site looks, never what it does, and stay on this Mac.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if Updates.isEnabled {

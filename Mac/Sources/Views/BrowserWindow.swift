@@ -21,7 +21,7 @@ struct BrowserWindow: View {
         }
         // Over the page's top-left corner, near the site icon it flies into.
         .overlay(alignment: .topLeading) {
-            SiteStyleHint()
+            BoostHint()
                 .padding(.leading, (docked ? browser.sidebarWidth : 0) + PageCard.inset + 12)
                 .padding(.top, PageCard.inset + 12)
         }

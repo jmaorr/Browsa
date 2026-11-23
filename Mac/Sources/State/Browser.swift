@@ -88,7 +88,7 @@ final class Browser {
     @ObservationIgnored var promptQueue: [(Prompt, CheckedContinuation<EngineDialogResponse, Never>)] = []
     @ObservationIgnored private var spaceBeforePrivate: UUID?
     @ObservationIgnored var lastCookieToastURL: URL?
-    /// The site icon in the address pill, so a Site Style suggestion can fly into it. The sidebar and the page
+    /// The site icon in the address pill, so a Boost suggestion can fly into it. The sidebar and the page
     /// are separate hosting views, so positions are compared in window coordinates, through AppKit.
     @ObservationIgnored weak var siteIconView: NSView?
     /// Bumped to make the site icon pulse once, showing where something went.
@@ -657,14 +657,14 @@ enum Preferences {
         set { d.set(newValue.map { Array($0).sorted() }, forKey: "pinnedExtensions") }
     }
 
-    /// Site Styles turned on, by id (`SiteStyle`).
-    static var siteStyles: Set<String> {
+    /// Boosts turned on, by id (`Boost`). Stored under the old Site Styles key so choices made in 1.2.1 carry over.
+    static var boosts: Set<String> {
         get { Set(d.stringArray(forKey: "siteStyles") ?? []) }
         set { d.set(Array(newValue).sorted(), forKey: "siteStyles") }
     }
 
-    /// Site Styles whose suggestion has been shown and answered, so it doesn't come back.
-    static var siteStyleHintsDone: Set<String> {
+    /// Boosts whose suggestion has been shown and answered, so it doesn't come back.
+    static var boostHintsDone: Set<String> {
         get { Set(d.stringArray(forKey: "siteStyleHintsDone") ?? []) }
         set { d.set(Array(newValue).sorted(), forKey: "siteStyleHintsDone") }
     }

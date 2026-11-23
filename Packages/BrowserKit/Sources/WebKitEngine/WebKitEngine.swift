@@ -12,7 +12,7 @@ let engineLog = Logger(subsystem: "com.orriginal.browsa", category: "webkit")
 /// Blocking uses BrowserCore's AdGuard-derived content rule lists and DuckDuckGo's autoconsent,
 /// exactly like the iOS app.
 @MainActor
-public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStylesConfigurable, WebNotificationsConfigurable {
+public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsConfigurable, WebNotificationsConfigurable {
     public let info: EngineInfo
     public var downloadsDirectory: URL
     public var developerToolsEnabled = false {
@@ -44,19 +44,26 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
         didSet { callAudioProcessing = callAudio.processing == .browsa }
     }
     public var onCallAudioStats: ((CallAudioStats) -> Void)?
-    /// Site Styles turned on, by id. Pages loaded later get them from their user scripts; pages open now on
+    /// Boosts turned on, by id. Pages loaded later get them from their user scripts; pages open now on
     /// a style's site get it added or taken away in place.
-    public var enabledSiteStyles: Set<String> = [] {
+    public var enabledBoosts: Set<String> = [] {
         didSet {
-            guard enabledSiteStyles != oldValue else { return }
+            guard enabledBoosts != oldValue else { return }
             for controller in allContentControllers { install(on: controller) }
-            let changed = enabledSiteStyles.symmetricDifference(oldValue)
+            let changed = enabledBoosts.symmetricDifference(oldValue)
             for page in livePages.values.compactMap(\.page) {
-                for style in SiteStyle.all where changed.contains(style.id) && style.matches(page.webView.url) {
-                    let source = enabledSiteStyles.contains(style.id) ? style.enableSource : style.disableSource
+                for style in Boost.all where changed.contains(style.id) && style.matches(page.webView.url) {
+                    let source = enabledBoosts.contains(style.id) ? style.enableSource : style.disableSource
                     page.webView.evaluateJavaScript(source, completionHandler: nil)
                 }
             }
+        }
+    }
+    /// Boosts people made, that are on. See `BoostsConfigurable.userBoosts`.
+    public var userBoosts: [PageBoost] = [] {
+        didSet {
+            guard userBoosts != oldValue else { return }
+            for controller in allContentControllers { install(on: controller) }
         }
     }
     private static let callAudioScript: WKUserScript? = {
@@ -329,7 +336,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
                                               contentWorld: .page, name: CallAudioHandler.name)
         }
         if let fixes = SiteOptimisations.script { controller.addUserScript(fixes) }
-        for style in SiteStyle.all where enabledSiteStyles.contains(style.id) {
+        for style in Boost.all where enabledBoosts.contains(style.id) {
             let hosts = (try? JSONEncoder().encode(style.hosts)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             let source = """
             if (\(hosts).some(function (d) { var h = location.hostname; return h === d || h.endsWith('.' + d); })) {
@@ -338,6 +345,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
             """
             controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .page))
         }
+        for boost in userBoosts { Self.boostScripts(boost).forEach(controller.addUserScript) }
         controller.addUserScript(WebNotifications.script(saved: notificationPermissions))
         // Added once per controller and never swapped: a page keeps talking to the handler it started with.
         if !notificationControllers.contains(controller) {
@@ -350,6 +358,24 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
             controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,
                                                   forMainFrameOnly: false, in: .page))
         }
+    }
+
+    /// Two scripts per Boost someone made, both checking the host first: the style goes in as early as the
+    /// page has an element to hold it, the script once the document has loaded.
+    static func boostScripts(_ boost: PageBoost) -> [WKUserScript] {
+        let world = WKContentWorld.world(name: PageBoost.world)
+        let host = PageBoost.jsString(boost.host.lowercased())
+        let guardHost = "const h = location.hostname.toLowerCase(), H = \(host); if (!(h === H || h.endsWith('.' + H))) return;"
+        var scripts: [WKUserScript] = []
+        if !boost.css.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let source = "(() => { \(guardHost)\n\(PageBoost.applyCSSFunction)\n__browsaBoostCSS(\(PageBoost.jsString(boost.css))); })();"
+            scripts.append(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: world))
+        }
+        if !boost.script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let source = "(() => { \(guardHost)\n try {\n\(boost.script)\n} catch (e) { console.error('Browsa Boost:', e); } })();"
+            scripts.append(WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: world))
+        }
+        return scripts
     }
 
     /// Global Privacy Control: sites that honour it treat the visitor as opted out of the sale or

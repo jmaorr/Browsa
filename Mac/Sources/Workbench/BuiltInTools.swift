@@ -34,6 +34,32 @@ enum BuiltInTools {
             ]))
 
         workbench.register(Tool(
+            id: "boosts", title: "Boosts", symbol: "paintbrush.pointed",
+            summary: "Your own font, colour and fewer distractions on this site",
+            panel: { AnyView(BoostPanel()) },
+            commands: [
+                ToolCommand(id: "zap", title: "Zap Something on This Page", symbol: "scope", keywords: ["boost", "hide", "remove", "distraction"]) { browser in
+                    ZapPicker.zapOnCurrentPage(in: browser)
+                },
+                ToolCommand(id: "toggle", title: "Turn Boost On or Off for This Site", symbol: "paintbrush.pointed", keywords: ["boost", "style"]) { browser in
+                    guard browser.currentTab?.isPrivate != true else {
+                        browser.showToast("Boosts aren't changed from private tabs"); return
+                    }
+                    guard var boost = BoostStore.shared.boost(for: browser.currentTab?.url) else {
+                        browser.showToast("This site has no Boost yet")
+                        return
+                    }
+                    boost.isOn.toggle()
+                    BoostStore.shared.setOn(boost.id, boost.isOn)
+                    if let page = browser.currentController?.page {
+                        let updated = boost
+                        Task { await BoostStore.shared.preview(updated, on: page) }
+                    }
+                    browser.showToast(boost.isOn ? "Boost on" : "Boost off")
+                },
+            ]))
+
+        workbench.register(Tool(
             id: "downloads", title: "Downloads", symbol: "arrow.down.circle",
             summary: "Files you've downloaded, with Open and Show in Finder",
             panel: { AnyView(DownloadsPanel()) }))
