@@ -60,7 +60,9 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
     private static let callAudioScript: WKUserScript? = {
         guard let url = Bundle.module.url(forResource: "call-audio", withExtension: "js"),
               let source = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-        return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page)
+        // In a block with the bridge helper, which the script reaches Browsa through (PageBridge).
+        return WKUserScript(source: "{\n" + PageBridge.pageHelper + "\n" + source + "\n}", injectionTime: .atDocumentStart,
+                            forMainFrameOnly: false, in: .page)
     }()
 
     private let standardConfiguration: WKWebViewConfiguration
@@ -310,12 +312,15 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
         controller.add(PageActivity.Handler { [weak self] webView, report in
             self?.page(for: webView)?.activityChanged(report)
         }, contentWorld: PageActivity.world, name: PageActivity.messageName)
+        // Browsa's handlers for page-world scripts live in its own world, behind the relay (PageBridge).
+        controller.addUserScript(PageBridge.relay)
         controller.removeScriptMessageHandler(forName: CallAudioHandler.name, contentWorld: .page)
+        controller.removeScriptMessageHandler(forName: CallAudioHandler.name, contentWorld: PageBridge.world)
         if callAudioProcessing, let script = Self.callAudioScript {
             controller.addUserScript(script)
             controller.addScriptMessageHandler(CallAudioHandler(tuning: { [weak self] in self?.callAudio ?? CallAudioTuning() },
                                                                stats: { [weak self] in self?.onCallAudioStats?($0) }),
-                                              contentWorld: .page, name: CallAudioHandler.name)
+                                              contentWorld: PageBridge.world, name: CallAudioHandler.name)
         }
         if let fixes = SiteOptimisations.script { controller.addUserScript(fixes) }
         for style in SiteStyle.all where enabledSiteStyles.contains(style.id) {
@@ -333,7 +338,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
             notificationControllers.add(controller)
             controller.addScriptMessageHandler(WebNotifications.Handler(page: { [weak self] in self?.page(for: $0) },
                                                                         saved: { [weak self] in self?.notificationPermissions ?? [:] }),
-                                              contentWorld: .page, name: WebNotifications.messageName)
+                                              contentWorld: PageBridge.world, name: WebNotifications.messageName)
         }
         if #available(macOS 15.4, *), let listings = webExtensions?.externalListings, let external = ExtensionExternal.script(listings) {
             controller.addUserScript(external)
