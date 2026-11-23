@@ -93,20 +93,16 @@ enum SiteOptimisations {
       return remove.call(this, n);
     };
     """#)
-    /// LinkedIn: a calmer, roomier home feed. Drops the right-hand column (news, puzzles, ads) and lets the feed
-    /// fill the rest of the window beside the profile sidebar, keeps photos and videos within the screen, softens the cards, sets post text a little larger, and hides promoted posts. Nothing about
+    /// LinkedIn: a calmer, roomier home feed. Drops the right-hand column (news, puzzles, ads) so the feed can be
+    /// about 40% wider, softens the cards, sets post text a little larger, and hides promoted posts. Nothing about
     /// how the site works changes. LinkedIn's class names are generated and change often, so this only hooks onto
     /// things that are steadier: landmark labels ("Sidebar", "Primary content", "Aside"), test ids ("mainFeed",
     /// "expandable-text-box") and list roles. The layout changes only apply on pages that have the main feed.
     static let linkedInTidy = Fix(name: "LinkedIn tidy feed", hosts: ["linkedin.com"], source: stylesheet(id: "browsa-linkedin", #"""
     main#workspace:has([data-testid="mainFeed"]) aside[aria-label="Aside"] { display: none !important; }
-    main#workspace:has([data-testid="mainFeed"]) > div:has(aside[aria-label="Sidebar"]) {
-      max-width: none !important; width: 100% !important; margin-inline: 0 !important;
-    }
     main#workspace:has([data-testid="mainFeed"]) :has(> aside[aria-label="Sidebar"]) {
-      display: grid !important; grid-template-columns: 232px minmax(0, 1fr) !important; column-gap: 24px !important;
-      max-width: none !important; width: 100% !important; margin-inline: 0 !important;
-      padding-inline: 24px !important; box-sizing: border-box !important;
+      display: grid !important; grid-template-columns: 232px minmax(0, 1fr) !important; column-gap: 32px !important;
+      max-width: 1060px !important; width: 100% !important; margin-inline: auto !important;
     }
     main#workspace:has([data-testid="mainFeed"]) :has(> aside[aria-label="Sidebar"]) > * {
       grid-column: auto !important; width: auto !important; max-width: none !important; min-width: 0 !important;
@@ -115,7 +111,7 @@ enum SiteOptimisations {
     @media (max-width: 900px) {
       main#workspace:has([data-testid="mainFeed"]) aside[aria-label="Sidebar"] { display: none !important; }
       main#workspace:has([data-testid="mainFeed"]) :has(> aside[aria-label="Sidebar"]) {
-        grid-template-columns: minmax(0, 1fr) !important;
+        grid-template-columns: minmax(0, 1fr) !important; max-width: 720px !important;
       }
     }
     main#workspace section[aria-label="Primary content"] [role="listitem"],
@@ -127,13 +123,6 @@ enum SiteOptimisations {
     main#workspace [data-testid="mainFeed"] [role="listitem"] { margin-bottom: 6px !important; }
     main#workspace [data-testid="expandable-text-box"] { font-size: 15px !important; line-height: 1.55 !important; }
     [data-browsa-promoted] { display: none !important; }
-    /* With the feed this wide, a photo would fill the screen: keep media within about three quarters of it. */
-    main#workspace [data-testid="mainFeed"] [style*="aspect-ratio"] { max-height: 72vh !important; aspect-ratio: auto !important; }
-    main#workspace [data-testid="mainFeed"] figure[style*="aspect-ratio"] { background: rgba(127, 127, 127, .08) !important; }
-    main#workspace [data-testid="mainFeed"] [style*="aspect-ratio"] img {
-      max-height: 72vh !important; width: 100% !important; height: 100% !important; object-fit: contain !important;
-    }
-    main#workspace [data-testid="mainFeed"] video { max-height: 72vh !important; object-fit: contain !important; }
     """#) + #"""
 
     // Two things CSS can't find on its own: promoted posts (only their "Promoted" label marks them) and the
