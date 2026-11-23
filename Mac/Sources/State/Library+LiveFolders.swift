@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import SwiftUI
 import BrowserCore
 
 /// Live Folders: pinned folders that fill themselves from a feed or a GitHub search (see
@@ -91,7 +92,13 @@ extension Library {
         guard !liveRefreshing.contains(id), let kind = PinnedOutline.folder(id, in: space.pinnedTree)?.live?.kind else { return }
         liveRefreshing.insert(id)
         defer { liveRefreshing.remove(id) }
-        let result = await Self.fetchLive(kind)
+        // GitHub is read as you: the space's own github.com login goes along, as in a tab.
+        var cookies: [String: String] = [:]
+        if kind.usesGitHubLogin {
+            let jar = await engine.cookies(for: profile(for: space), url: URL(string: "https://github.com/pulls")!)
+            cookies = HTTPCookie.requestHeaderFields(with: jar)
+        }
+        let result = await Self.fetchLive(kind, cookies: cookies)
         // The folder may have changed (or gone) while that was in flight.
         guard let folder = PinnedOutline.folder(id, in: space.pinnedTree), let live = folder.live, live.kind == kind else { return }
         switch result {
@@ -158,6 +165,60 @@ extension Library {
         scheduleSave()
     }
 
+    // MARK: GitHub folder
+
+    /// The space's GitHub pull requests folder, if it has one.
+    func gitHubFolder(in space: Space) -> PinnedFolder? {
+        LiveFolders.liveFolders(in: space.pinnedTree).first { $0.live?.kind == .githubPullRequests }
+    }
+
+    /// Adds the space's GitHub folder (Arc's "Pull Requests"), or takes it away with its items.
+    func toggleGitHubFolder(in space: Space) {
+        if let folder = gitHubFolder(in: space) {
+            removeLiveFolder(folder.id, in: space)
+        } else {
+            newLiveFolder(.githubPullRequests, name: "Pull Requests", in: space)
+        }
+    }
+
+    /// A page finished loading. On github.com: offer the GitHub folder once, and check the space's
+    /// GitHub folders soon after you open or review a pull request (as Dia does), so it shows up
+    /// without waiting for the next check.
+    func liveFolderPageFinished(_ url: URL, in tab: BrowserTab) {
+        guard !tab.isPrivate, url.host()?.lowercased() == "github.com", let space = space(containing: tab), !space.isPrivate else { return }
+        let path = url.path()
+        let isPull = GitHubPulls.pullPath(path) != nil
+        if isPull, url.fragment()?.hasPrefix("pullrequestreview-") == true || lastGitHubPage[tab.id]?.contains("/compare") == true {
+            for folder in LiveFolders.liveFolders(in: space.pinnedTree) where folder.live?.kind.usesGitHubLogin == true {
+                Task {
+                    try? await Task.sleep(for: .seconds(5))
+                    await refreshLiveFolder(folder.id, in: space)
+                }
+            }
+        }
+        lastGitHubPage[tab.id] = path
+        offerGitHubFolder(in: space, from: tab)
+    }
+
+    private static let gitHubOfferedKey = "liveFolders.gitHubFolderOffered"
+
+    /// Once ever: signed in on github.com and no GitHub folder yet, a toast offers one.
+    private func offerGitHubFolder(in space: Space, from tab: BrowserTab) {
+        guard !UserDefaults.standard.bool(forKey: Self.gitHubOfferedKey), gitHubFolder(in: space) == nil,
+              let window = window(showing: tab) else { return }
+        Task {
+            let jar = await engine.cookies(for: profile(for: space), url: URL(string: "https://github.com/pulls")!)
+            guard jar.contains(where: { $0.name == "user_session" }),
+                  !UserDefaults.standard.bool(forKey: Self.gitHubOfferedKey) else { return }
+            UserDefaults.standard.set(true, forKey: Self.gitHubOfferedKey)
+            window.showToast("Keep your pull requests in the sidebar?", actions: [
+                ToastAction(title: "Add GitHub Folder") { [weak self] in
+                    withAnimation(Motion.snappy) { self?.toggleGitHubFolder(in: space) }
+                },
+            ])
+        }
+    }
+
     /// Keeps `liveUnread` (the tabs that show a "new" dot) in step with the folders.
     func updateLiveUnread() {
         let ids = Set(regularSpaces.flatMap { space in
@@ -172,22 +233,69 @@ extension Library {
         let message: String
     }
 
-    nonisolated static func fetchLive(_ kind: LiveSourceKind) async -> Result<[FetchedItem], LiveError> {
+    /// A session that keeps no cookies of its own: the space's are handed in per request.
+    nonisolated static let liveSession: URLSession = {
+        let c = URLSessionConfiguration.ephemeral
+        c.httpCookieStorage = nil
+        c.httpShouldSetCookies = false
+        c.httpCookieAcceptPolicy = .never
+        c.timeoutIntervalForRequest = 20
+        return URLSession(configuration: c)
+    }()
+
+    /// Searches github.com as the signed-in person. Each search tries the pulls dashboard, then
+    /// the search page; results from all searches are merged.
+    nonisolated static func fetchGitHubPulls(_ queries: [String], cookies: [String: String]) async throws -> Result<[FetchedItem], GitHubPulls.Failure> {
+        guard cookies["Cookie"]?.contains("user_session=") == true else { return .failure(.notSignedIn) }
+        let header = cookies
+        var items: [FetchedItem] = []
+        var failure: GitHubPulls.Failure?
+        for query in queries {
+            var answered = false
+            for var request in GitHubPulls.requests(query: query) {
+                for (k, v) in header { request.setValue(v, forHTTPHeaderField: k) }
+                let (data, response) = try await liveSession.data(for: request)
+                let http = response as? HTTPURLResponse
+                switch GitHubPulls.read(data, status: http?.statusCode ?? 0, finalURL: http?.url) {
+                case .success(let found):
+                    items += found
+                    answered = true
+                case .failure(let f):
+                    if f != .unexpectedPage { return .failure(f) }
+                    failure = f
+                }
+                if answered { break }
+            }
+            if !answered, let failure { return .failure(failure) }
+        }
+        return .success(GitHubPulls.unique(items))
+    }
+
+    nonisolated static func fetchLive(_ kind: LiveSourceKind, cookies: [String: String] = [:]) async -> Result<[FetchedItem], LiveError> {
         do {
             switch kind {
+            case .githubPullRequests:
+                switch try await fetchGitHubPulls(GitHubPulls.arcQueries, cookies: cookies) {
+                case .success(let items): return .success(items)
+                case .failure(let f): return .failure(LiveError(message: f.message))
+                }
             case .feed(let url):
                 guard let feed = try await fetchFeed(url) else {
                     return .failure(LiveError(message: "This address isn't a feed any more."))
                 }
                 return .success(feed.items)
             case .github(let query):
+                // Signed in on github.com in this space: no token needed. Otherwise the token, if any.
+                if query.contains("is:pr"), case .success(let items)? = try? await fetchGitHubPulls([query], cookies: cookies) {
+                    return .success(items)
+                }
                 let token = await GitHubToken.value
                 let (data, response) = try await URLSession.shared.data(for: GitHubSearch.request(query: query, token: token))
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 guard status == 200 else {
                     if status == 401 { return .failure(LiveError(message: "GitHub didn't accept the token. Add a new one.")) }
                     if status == 422, token == nil, query.contains("@me") {
-                        return .failure(LiveError(message: "Add a GitHub token to search for your own pull requests."))
+                        return .failure(LiveError(message: "Sign in to GitHub in this space (or add a token) to see your own pull requests."))
                     }
                     return .failure(LiveError(message: GitHubSearch.message(from: data) ?? "GitHub said \(status)."))
                 }

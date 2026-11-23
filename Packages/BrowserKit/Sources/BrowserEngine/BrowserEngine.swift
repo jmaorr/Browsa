@@ -36,6 +36,10 @@ public protocol BrowserEngine: AnyObject {
     /// Forgets cookies and site storage for a profile.
     func clearWebsiteData(for profile: BrowsingProfile) async
 
+    /// The profile's cookies a request to `url` would carry, so the app can fetch as the signed-in
+    /// person (Live Folders read github.com this way, as Arc did).
+    func cookies(for profile: BrowsingProfile, url: URL) async -> [HTTPCookie]
+
     /// Throws away everything the ephemeral (private) profile stored. Its pages must be closed first.
     func resetEphemeralProfile()
 
@@ -71,6 +75,7 @@ public protocol BrowserEngine: AnyObject {
 
 public extension BrowserEngine {
     func deleteProfile(_ id: UUID) async {}
+    func cookies(for profile: BrowsingProfile, url: URL) async -> [HTTPCookie] { [] }
     var extensions: [EngineExtension] { [] }
     var extensionHost: (any EngineExtensionHost)? { get { nil } set {} }
     func loadInstalledExtensions() async -> [String] { [] }

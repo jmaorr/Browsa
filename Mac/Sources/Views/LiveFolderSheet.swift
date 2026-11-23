@@ -11,6 +11,8 @@ struct LiveFolderDraft: Identifiable {
     var name = ""
     var kind: LiveSourceKind?
     var pageURL: URL?
+    /// Opened from Live Folders › Website or Feed…: the feed tab, even on a GitHub page.
+    var startOnFeed = false
 }
 
 /// Makes or changes a Live Folder: a pinned folder that fills itself from a site's feed or a GitHub
@@ -28,7 +30,7 @@ struct LiveFolderSheet: View {
 
     @State private var source: Source = .feed
     @State private var address = ""
-    @State private var preset = LiveSourceKind.githubPresets[0].query
+    @State private var preset = LiveFolderSheet.yours
     @State private var customQuery = ""
     @State private var token = ""
     @State private var hasToken = false
@@ -39,6 +41,9 @@ struct LiveFolderSheet: View {
     @State private var problem: String?
 
     private static let custom = "custom"
+    /// Arc's folder: your pull requests and review requests, read with this space's GitHub login.
+    private static let yours = "yours"
+    @State private var showsToken = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -110,15 +115,20 @@ struct LiveFolderSheet: View {
     private var githubFields: some View {
         VStack(alignment: .leading, spacing: 12) {
             Picker("Show", selection: $preset) {
-                ForEach(LiveSourceKind.githubPresets, id: \.query) { p in Text(p.name).tag(p.query) }
+                Text("Your pull requests and review requests").tag(Self.yours)
+                ForEach(LiveSourceKind.githubPresets.dropFirst(), id: \.query) { p in Text(p.name).tag(p.query) }
                 Text("A search of your own").tag(Self.custom)
             }
             .pickerStyle(.radioGroup)
+            Text("Browsa reads GitHub with the account you're signed in to in this space, like a tab does. Nothing to set up.")
+                .font(.system(size: 11.5)).foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
             if preset == Self.custom {
                 TextField("Search", text: $customQuery, prompt: Text("is:open is:pr repo:owner/name"))
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 12, design: .monospaced))
             }
+            DisclosureGroup("Use a token instead", isExpanded: $showsToken) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("GitHub token").font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
@@ -129,10 +139,13 @@ struct LiveFolderSheet: View {
                 }
                 SecureField("Token", text: $token, prompt: Text(hasToken ? "Saved in your Keychain" : "ghp_…"))
                     .textFieldStyle(.roundedBorder)
-                Text("Needed for your own pull requests and private repositories. Kept in your Mac's Keychain, and only sent to GitHub.")
+                Text("Only needed when you're not signed in to GitHub in this space. Kept in your Mac's Keychain, and only sent to GitHub.")
                     .font(.system(size: 11.5)).foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(.top, 6)
+            }
+            .font(.system(size: 12))
         }
     }
 
@@ -154,7 +167,11 @@ struct LiveFolderSheet: View {
     }
 
     private var query: String {
-        preset == Self.custom ? customQuery.trimmingCharacters(in: .whitespacesAndNewlines) : preset
+        switch preset {
+        case Self.custom: customQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        case Self.yours: "yours"
+        default: preset
+        }
     }
 
     private var canSave: Bool {
@@ -169,7 +186,7 @@ struct LiveFolderSheet: View {
         case .feed:
             URLNormalizer.urlIfNavigable(address).map { URLNormalizer.displayHost($0) } ?? "Feed"
         case .github:
-            LiveSourceKind.githubPresets.first { $0.query == preset }?.name ?? "GitHub"
+            preset == Self.yours ? "Pull Requests" : (LiveSourceKind.githubPresets.first { $0.query == preset }?.name ?? "GitHub")
         }
     }
 
@@ -184,9 +201,12 @@ struct LiveFolderSheet: View {
         case .github(let q)?:
             source = .github
             if LiveSourceKind.githubPresets.contains(where: { $0.query == q }) { preset = q } else { preset = Self.custom; customQuery = q }
+        case .githubPullRequests?:
+            source = .github
+            preset = Self.yours
         case nil:
             if let url = draft.pageURL, url.scheme?.hasPrefix("http") == true {
-                if url.host()?.hasSuffix("github.com") == true { source = .github } else { address = url.absoluteString }
+                if url.host()?.hasSuffix("github.com") == true, !draft.startOnFeed { source = .github } else { address = url.absoluteString }
             }
         }
     }
@@ -197,11 +217,7 @@ struct LiveFolderSheet: View {
         switch source {
         case .github:
             if !token.isEmpty { GitHubToken.set(token) }
-            if query.contains("@me"), GitHubToken.value == nil {
-                problem = "Searches for your own pull requests (@me) need a GitHub token."
-                return
-            }
-            finish(.github(query: query), fallbackName: suggestedName, in: space)
+            finish(preset == Self.yours ? .githubPullRequests : .github(query: query), fallbackName: suggestedName, in: space)
         case .feed:
             guard let url = URLNormalizer.urlIfNavigable(address) else {
                 problem = "That doesn't look like an address."
