@@ -99,6 +99,15 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
         if #available(macOS 15.4, *) { return webExtensions?.debugPopups() ?? [] }
         return []
     }
+
+    /// Debug checks: the extension popup popover's window while one is up, and closing it.
+    public func debugPopupWindow() -> NSWindow? {
+        if #available(macOS 15.4, *) { return ExtensionPopup.shared.debugWindow }
+        return nil
+    }
+    public func debugClosePopup() {
+        if #available(macOS 15.4, *) { ExtensionPopup.shared.close() }
+    }
     #endif
 
     public init(downloadsDirectory: URL = URL.downloadsDirectory) {

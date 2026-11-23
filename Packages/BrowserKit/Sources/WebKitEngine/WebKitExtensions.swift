@@ -317,6 +317,9 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
 
     // MARK: Tabs and windows
 
+    /// The window in front, as extensions see it.
+    func frontWindow() -> ExtensionWindow? { host?.extensionWindows.first.map { window($0.id) } }
+
     func window(_ id: UUID) -> ExtensionWindow {
         if let w = windows[id] { return w }
         let w = ExtensionWindow(id: id, extensions: self)
@@ -496,7 +499,7 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         let declared = ((manifest["action"] as? [String: Any]) ?? (manifest["browser_action"] as? [String: Any]))?["default_popup"] as? String
         if let url = action.popupWebView?.url ?? declared.flatMap({ Self.page($0, in: context.baseURL) }) {
             action.closePopup()
-            ExtensionPopup.shared.show(url, for: context, from: anchor, host: host)
+            ExtensionPopup.shared.show(url, for: context, from: anchor, host: host, extensions: self)
         } else if let popover = action.popupPopover {
             popover.behavior = .transient
             popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
