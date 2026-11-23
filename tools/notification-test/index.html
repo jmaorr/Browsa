@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notification test</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f6f6f7; --card: #fff; --text: #1d1d1f; --muted: #6e6e73; --line: #e3e3e6; --accent: #0a84ff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #161618; --card: #232326; --text: #f5f5f7; --muted: #a1a1a6; --line: #3a3a3d; } }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; }
+  main { max-width: 640px; margin: 40px auto; padding: 0 16px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  p { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; padding-top: 0; }
+  .row b { display: block; font-weight: 600; }
+  .row span { color: var(--muted); font-size: 13px; }
+  button { flex: none; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; font-weight: 500;
+           padding: 7px 16px; border-radius: 999px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #state { font-weight: 600; }
+  #log { font: 12px/1.6 ui-monospace, Menlo, monospace; color: var(--muted); white-space: pre-wrap; min-height: 3em; }
+  .flash { animation: flash 1.2s ease-out; }
+  @keyframes flash { from { background: color-mix(in srgb, var(--accent) 25%, var(--card)); } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Notification test</h1>
+  <p>Permission: <span id="state">…</span></p>
+
+  <div class="card">
+    <div class="row"><div><b>1. Allow notifications</b><span>Browsa asks first, then macOS the first time.</span></div>
+      <button class="primary" id="allow">Allow</button></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><div><b>Plain</b><span>Title and text.</span></div><button data-t="plain">Send</button></div>
+    <div class="row"><div><b>With an icon</b><span>Shows a picture on the right.</span></div><button data-t="icon">Send</button></div>
+    <div class="row"><div><b>Click to come back</b><span>Sent in 5 seconds. Switch to another app or tab, then click it.</span></div><button data-t="click">Send in 5s</button></div>
+    <div class="row"><div><b>Three in a row</b><span>Like a busy chat. Starts in 5 seconds.</span></div><button data-t="burst">Send in 5s</button></div>
+    <div class="row"><div><b>Replace by tag</b><span>"Uploading 1 of 3" updates in place instead of stacking.</span></div><button data-t="tag">Send</button></div>
+    <div class="row"><div><b>Silent</b><span>No sound.</span></div><button data-t="silent">Send</button></div>
+    <div class="row"><div><b>From a service worker</b><span>The way Slack and Teams send them.</span></div><button data-t="sw">Send</button></div>
+  </div>
+
+  <div class="card" id="logcard"><div id="log"></div></div>
+</main>
+<script>
+const state = document.getElementById('state'), log = document.getElementById('log'), logcard = document.getElementById('logcard');
+const icon = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><defs><linearGradient id="g" x2="1" y2="1"><stop offset="0" stop-color="#5e5ce6"/><stop offset="1" stop-color="#0a84ff"/></linearGradient></defs><rect width="128" height="128" rx="28" fill="url(#g)"/><path d="M64 30a22 22 0 0 0-22 22v14l-8 12h60l-8-12V52a22 22 0 0 0-22-22zm-9 54a9 9 0 0 0 18 0z" fill="#fff"/></svg>');
+function note(s) { log.textContent = new Date().toLocaleTimeString() + '  ' + s + '\n' + log.textContent; }
+function show() { state.textContent = 'Notification' in window ? Notification.permission : 'not supported'; }
+show();
+setInterval(show, 1000);
+document.getElementById('allow').onclick = async () => { note('Asked: ' + await Notification.requestPermission()); show(); };
+const wait = ms => new Promise(r => setTimeout(r, ms));
+function send(title, options) {
+  const n = new Notification(title, options);
+  n.onshow = () => note('Shown: ' + title);
+  n.onerror = () => note('Not shown (no permission?): ' + title);
+  n.onclick = () => { note('Clicked: ' + title); logcard.classList.remove('flash'); void logcard.offsetWidth; logcard.classList.add('flash'); };
+  return n;
+}
+const tests = {
+  plain: () => send('Hello from Browsa', { body: 'This is a plain notification.' }),
+  icon: () => send('Alex sent a photo', { body: 'Look at this view!', icon }),
+  click: async () => { note('Sending in 5 seconds…'); await wait(5000); send('Click me', { body: 'Clicking brings this tab back.', icon }); },
+  burst: async () => {
+    note('Sending three in 5 seconds…'); await wait(5000);
+    send('Sam', { body: 'Are you around?', icon }); await wait(1200);
+    send('Sam', { body: 'Got a minute for a call?', icon }); await wait(1200);
+    send('Jordan', { body: 'Meeting moved to 3pm', icon });
+  },
+  tag: async () => { for (const i of [1, 2, 3]) { send('Uploading', { body: i + ' of 3', tag: 'upload', silent: i > 1 }); await wait(1500); } },
+  silent: () => send('Quiet one', { body: 'This one makes no sound.', silent: true }),
+  sw: async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready;
+      await reg.showNotification('From the service worker', { body: 'Sent with registration.showNotification().', icon });
+      note('Shown: service worker notification');
+    } catch (e) { note('Service worker notification failed: ' + e.message); }
+  },
+};
+document.querySelectorAll('[data-t]').forEach(b => b.onclick = () => tests[b.dataset.t]());
+</script>
+</body>
+</html>
