@@ -103,6 +103,9 @@ final class Library {
     @ObservationIgnored var liveTask: Task<Void, Never>?
     /// The last github.com page each tab showed, to notice a pull request just opened from its compare page.
     @ObservationIgnored var lastGitHubPage: [UUID: String] = [:]
+    @ObservationIgnored var gitHubAutoChecking = false
+    @ObservationIgnored var gitHubAutoLastCheck: [UUID: Date] = [:]
+    @ObservationIgnored var liveFocusObserver: (any NSObjectProtocol)?
     /// Open windows, oldest first. The oldest one lists Today tabs that no open window owns.
     private(set) var windowsByAge: [Browser] = []
     /// Set once quitting is under way, so the windows going away keep their tabs for next time.
