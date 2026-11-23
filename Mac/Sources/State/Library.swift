@@ -29,6 +29,7 @@ final class Library {
                 || settings.blockingDisabledHosts != oldValue.blockingDisabledHosts {
                 applyBlocking()
             }
+            if settings.sitePermissions != oldValue.sitePermissions { shareNotificationPermissions() }
             scheduleSave()
         }
     }
@@ -165,6 +166,7 @@ final class Library {
         }
         (engine as? SiteStylesConfigurable)?.enabledSiteStyles = siteStyles
         applyBlocking()
+        shareNotificationPermissions()
         archiveStaleTabs()
         engine.extensionHost = self
         reloadExtensions()
@@ -731,6 +733,12 @@ final class Library {
     }
 
     // MARK: Blocking and privacy
+
+    /// Tells the engine which sites may send notifications, so their pages know before they ask.
+    func shareNotificationPermissions() {
+        let key = EnginePermission.notifications.rawValue
+        (engine as? WebNotificationsConfigurable)?.notificationPermissions = settings.sitePermissions.compactMapValues { $0[key] }
+    }
 
     func applyBlocking() {
         let s = settings
