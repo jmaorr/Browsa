@@ -1,0 +1,10 @@
+---
+title: Site Styles
+date: 2026-11-23
+platform: Mac
+version: 1.2.1
+order: 2
+---
+Turn on a tidier look for sites you use every day, starting with a LinkedIn feed without the clutter down the side.
+
+*Find it in the site icon menu in the address bar, or in Settings › General › Site styles.*
