@@ -153,12 +153,20 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         return head.trimmingCharacters(in: .whitespaces).lowercased()
     }
 
+    /// An extension page named in its manifest, under its base URL. The name may carry a query or a
+    /// fragment (Raindrop's popup is "index.html?action"), which appending it as a path would escape
+    /// into a file that doesn't exist.
+    nonisolated static func page(_ name: String, in base: URL) -> URL? {
+        let relative = name.hasPrefix("/") ? String(name.dropFirst()) : name
+        return URL(string: relative, relativeTo: base)?.absoluteURL
+    }
+
     private func describe(_ ext: WKWebExtension, context: WKWebExtensionContext, id: String) -> EngineExtension {
         let icon = ext.icon(for: CGSize(width: 32, height: 32))?.cgImage(forProposedRect: nil, context: nil, hints: nil)
         let manifest = ext.manifest
         let panelPath = ((manifest["side_panel"] as? [String: Any])?["default_path"] as? String)
             ?? ((manifest["sidebar_action"] as? [String: Any])?["default_panel"] as? String)
-        let panelURL = panelPath.map { context.baseURL.appending(path: $0.hasPrefix("/") ? String($0.dropFirst()) : $0) }
+        let panelURL = panelPath.flatMap { Self.page($0, in: context.baseURL) }
         return EngineExtension(id: id, name: ext.displayName ?? id, version: ext.version ?? "",
                                icon: icon, hasAction: context.action(for: nil) != nil, panelURL: panelURL,
                                optionsURL: context.optionsPageURL)
@@ -170,7 +178,7 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         contexts.map { id, context in
             let m = context.webExtension.manifest
             let action = (m["action"] as? [String: Any]) ?? (m["browser_action"] as? [String: Any])
-            let popup = (action?["default_popup"] as? String).map { context.baseURL.appending(path: $0.hasPrefix("/") ? String($0.dropFirst()) : $0) }
+            let popup = (action?["default_popup"] as? String).flatMap { Self.page($0, in: context.baseURL) }
             let errors = (context.webExtension.errors + context.errors).map { "\($0.localizedDescription) \((($0 as NSError).userInfo[NSDebugDescriptionErrorKey] as? String) ?? "")" }
             return (id, context.webExtension.displayName ?? id, popup, m, errors)
         }
