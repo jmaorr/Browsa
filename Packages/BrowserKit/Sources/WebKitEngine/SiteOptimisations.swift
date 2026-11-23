@@ -6,8 +6,7 @@ import WebKit
 /// way Safari quietly carries its own per-site quirks. Each one runs only on the sites it names, in the page's
 /// own world, and is meant to leave the site working exactly as before, only faster.
 ///
-/// Set `siteOptimisations` to false in the defaults to turn them all off. Style-only fixes (like LinkedIn's) can
-/// also be turned off on their own with `siteOptimisations.styles`.
+/// Set `siteOptimisations` to false in the defaults to turn them all off.
 enum SiteOptimisations {
     struct Fix {
         /// What it fixes, for logs and a future Settings list.
@@ -15,39 +14,18 @@ enum SiteOptimisations {
         /// Runs on these hosts and their subdomains.
         let hosts: [String]
         let source: String
-        /// Only changes how the site looks (layout, spacing, hiding clutter), never what it does.
-        var isStyle = false
-    }
-
-    /// Adds `css` to the page as early as possible and keeps it there. Goes on `<html>` because `<head>` doesn't
-    /// exist yet at document start; a `<style>` there still applies.
-    static func stylesheet(id: String, _ css: String) -> String {
-        let literal = (try? JSONEncoder().encode(css)).flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
-        return """
-        var css = \(literal), style = document.createElement('style');
-        style.id = '\(id)'; style.textContent = css;
-        (document.head || document.documentElement).appendChild(style);
-        new MutationObserver(function () {
-          if (!style.isConnected) (document.head || document.documentElement).appendChild(style);
-        }).observe(document.documentElement, { childList: true });
-        """
     }
 
     static var isEnabled: Bool {
         UserDefaults.standard.object(forKey: "siteOptimisations") as? Bool ?? true
     }
 
-    static var stylesEnabled: Bool {
-        UserDefaults.standard.object(forKey: "siteOptimisations.styles") as? Bool ?? true
-    }
-
-    static let all: [Fix] = [elevenLabsDictationCursor, linkedInTidy]
+    static let all: [Fix] = [elevenLabsDictationCursor]
 
     /// One script for every fix, each gated on its hosts. Main frames only: none of the fixes are for iframes.
     static var script: WKUserScript? {
-        let fixes = all.filter { !$0.isStyle || stylesEnabled }
-        guard isEnabled, !fixes.isEmpty else { return nil }
-        let body = fixes.map { fix -> String in
+        guard isEnabled, !all.isEmpty else { return nil }
+        let body = all.map { fix -> String in
             let hosts = (try? JSONEncoder().encode(fix.hosts)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             return """
             // \(fix.name)
@@ -93,72 +71,5 @@ enum SiteOptimisations {
       return remove.call(this, n);
     };
     """#)
-
-    /// LinkedIn: a calmer, roomier home feed. Drops the right-hand column (news, puzzles, ads) so the feed can be
-    /// about 40% wider, softens the cards, sets post text a little larger, and hides promoted posts. Nothing about
-    /// how the site works changes. LinkedIn's class names are generated and change often, so this only hooks onto
-    /// things that are steadier: landmark labels ("Sidebar", "Primary content", "Aside"), test ids ("mainFeed",
-    /// "expandable-text-box"), list roles and post keys ("update-card-focus…", so rows like "Sort by" keep their
-    /// look). The layout changes only apply on pages that have the main feed.
-    static let linkedInTidy = Fix(name: "LinkedIn tidy feed", hosts: ["linkedin.com"], source: stylesheet(id: "browsa-linkedin", #"""
-    main#workspace:has([data-testid="mainFeed"]) aside[aria-label="Aside"] { display: none !important; }
-    main#workspace:has([data-testid="mainFeed"]) :has(> aside[aria-label="Sidebar"]) {
-      display: grid !important; grid-template-columns: 232px minmax(0, 1fr) !important; column-gap: 32px !important;
-      max-width: 1060px !important; width: 100% !important; margin-inline: auto !important;
-    }
-    main#workspace:has([data-testid="mainFeed"]) :has(> aside[aria-label="Sidebar"]) > * {
-      grid-column: auto !important; width: auto !important; max-width: none !important; min-width: 0 !important;
-    }
-    main#workspace:has([data-testid="mainFeed"]) aside[aria-label="Sidebar"] { width: 232px !important; }
-    @media (max-width: 900px) {
-      main#workspace:has([data-testid="mainFeed"]) aside[aria-label="Sidebar"] { display: none !important; }
-      main#workspace:has([data-testid="mainFeed"]) :has(> aside[aria-label="Sidebar"]) {
-        grid-template-columns: minmax(0, 1fr) !important; max-width: 720px !important;
-      }
-    }
-    main#workspace [data-testid="mainFeed"] [role="listitem"][componentkey^="update-card-focus"],
-    main#workspace [data-testid="mainFeed"] [role="listitem"]:has([componentkey="shareboxProfilePictureComponentRef"]),
-    main#workspace [componentkey="feed-tab-host_tab-bar"],
-    main#workspace [data-browsa-card] {
-      border-radius: 14px !important; overflow: hidden;
-      box-shadow: 0 0 0 1px rgba(127, 127, 127, .14), 0 1px 3px rgba(0, 0, 0, .04) !important;
-    }
-    main#workspace [data-testid="mainFeed"] [role="listitem"][componentkey^="update-card-focus"] { margin-bottom: 6px !important; }
-    main#workspace [data-testid="expandable-text-box"] { font-size: 15px !important; line-height: 1.55 !important; }
-    [data-browsa-promoted] { display: none !important; }
-    """#) + #"""
-
-    // Two things CSS can't find on its own: promoted posts (only their "Promoted" label marks them) and the
-    // sidebar's cards (plain divs). Mark them with attributes the stylesheet above hides or rounds.
-    var pending = 0;
-    function mark() {
-      pending = 0;
-      var cards = document.querySelectorAll('[data-testid="mainFeed"] [role="listitem"]:not([data-browsa-seen])');
-      for (var i = 0; i < cards.length; i++) {
-        var card = cards[i];
-        if (!card.querySelector('button[aria-label^="Open control menu"]')) continue; // not drawn yet
-        card.setAttribute('data-browsa-seen', '');
-        var labels = card.querySelectorAll('p, span');
-        for (var j = 0; j < labels.length; j++) {
-          if (!labels[j].firstElementChild && labels[j].textContent.trim() === 'Promoted') {
-            card.setAttribute('data-browsa-promoted', ''); break;
-          }
-        }
-      }
-      var side = document.querySelector('main#workspace aside[aria-label="Sidebar"]');
-      if (side && !side.querySelector('[data-browsa-card]')) {
-        var boxes = side.querySelectorAll('div');
-        for (var k = 0; k < boxes.length; k++) {
-          var s = getComputedStyle(boxes[k]);
-          if (boxes[k].offsetWidth > 150 && s.borderRadius === '8px' && s.boxShadow !== 'none') {
-            boxes[k].setAttribute('data-browsa-card', '');
-          }
-        }
-      }
-    }
-    new MutationObserver(function () {
-      if (!pending) pending = setTimeout(mark, 150);
-    }).observe(document, { childList: true, subtree: true });
-    """#, isStyle: true)
 }
 #endif

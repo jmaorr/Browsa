@@ -111,6 +111,23 @@ private struct GeneralSettings: View {
                     ForEach(browser.regularSpaces) { s in Text(s.name).tag(UUID?.some(s.id)) }
                 }
             }
+            Section {
+                ForEach(SiteStyle.all) { style in
+                    Toggle(isOn: Binding(
+                        get: { browser.siteStyles.contains(style.id) },
+                        set: { on in if on { browser.siteStyles.insert(style.id) } else { browser.siteStyles.remove(style.id) } })) {
+                        VStack(alignment: .leading) {
+                            Text("\(style.site): \(style.name)")
+                            Text(style.summary).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } header: {
+                Text("Site styles")
+            } footer: {
+                Text("New looks for some sites. They change how a site looks, never what it does. You can also turn one on from the site icon in the address bar.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if Updates.isEnabled {
                 @Bindable var updates = updates
                 Section {

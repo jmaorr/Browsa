@@ -226,6 +226,8 @@ private struct SiteMenu: View {
         }
         .buttonStyle(.plain)
         .background(AnchorView(anchor: anchor))
+        .background(SiteIconAnchor(browser: browser))
+        .overlay { SiteIconPulse(trigger: browser.siteIconPulse) }
         .help("Site settings and extensions")
     }
 
@@ -259,6 +261,18 @@ private struct SiteMenu: View {
             }
             media.submenu = mediaMenu
             menu.addItem(media)
+            let styles = SiteStyle.available(for: url)
+            if !styles.isEmpty, browser.currentTab?.isPrivate != true {
+                menu.addItem(.separator())
+                for style in styles {
+                    let on = browser.library.siteStyles.contains(style.id)
+                    let item = actions.item(style.name) { browser.setSiteStyle(style, on: !on) }
+                    item.state = on ? .on : .off
+                    item.image = NSImage(systemSymbolName: "wand.and.sparkles", accessibilityDescription: nil)
+                    item.toolTip = style.summary
+                    menu.addItem(item)
+                }
+            }
         }
         let exts = browser.library.actionExtensions
         if !exts.isEmpty {
@@ -295,6 +309,39 @@ private struct SiteMenu: View {
             browser.library.settings.sitePermissions[host, default: [:]][p.rawValue] = value
         }
     }
+}
+
+private struct SiteIconAnchor: NSViewRepresentable {
+    let browser: Browser
+    func makeNSView(context: Context) -> NSView { let v = NSView(); browser.siteIconView = v; return v }
+    func updateNSView(_ view: NSView, context: Context) { browser.siteIconView = view }
+}
+
+/// A ring that swells out of the site icon and fades, once each time `trigger` changes.
+private struct SiteIconPulse: View {
+    let trigger: Int
+
+    var body: some View {
+        Circle()
+            .strokeBorder(Color.accentColor, lineWidth: 2)
+            .frame(width: 26, height: 26)
+            .keyframeAnimator(initialValue: PulseFrame(), trigger: trigger) { ring, frame in
+                ring.scaleEffect(frame.scale).opacity(frame.opacity)
+            } keyframes: { _ in
+                KeyframeTrack(\.scale) {
+                    LinearKeyframe(0.5, duration: 0.01)
+                    SpringKeyframe(1.35, duration: 0.6, spring: .smooth)
+                }
+                KeyframeTrack(\.opacity) {
+                    LinearKeyframe(0.9, duration: 0.01)
+                    LinearKeyframe(0.9, duration: 0.2)
+                    LinearKeyframe(0, duration: 0.5)
+                }
+            }
+            .allowsHitTesting(false)
+    }
+
+    private struct PulseFrame { var scale = 1.0; var opacity = 0.0 }
 }
 
 /// Closures behind NSMenu items.
