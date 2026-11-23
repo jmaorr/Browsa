@@ -41,6 +41,14 @@ import JavaScriptCore
         #expect(failure == nil)
     }
 
+    @Test func extensionFetchOnlyForSitesTheExtensionMayReach() {
+        guard #available(macOS 15.4, *) else { return }
+        let granted: (URL) -> Bool = { $0.host() == "claude.ai" }
+        #expect(ExtensionFetch.allowed(URL(string: "https://claude.ai/api/account")!, hasAccess: granted))
+        #expect(!ExtensionFetch.allowed(URL(string: "https://bank.example/api")!, hasAccess: granted))
+        #expect(!ExtensionFetch.allowed(URL(string: "file:///etc/hosts")!, hasAccess: { _ in true }))
+    }
+
     @Test func extensionFetchSendsTheSitesCookies() throws {
         guard #available(macOS 15.4, *) else { return }
         let url = URL(string: "https://claude.ai/api/account")!

@@ -426,7 +426,16 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             return
         }
         if applicationIdentifier == ExtensionFetch.bridgeName {
-            ExtensionFetch.handle(message as? [String: Any] ?? [:], reply: replyHandler)
+            // Only for a site the extension has been given access to, as Chrome sends cookies only there.
+            // (Native messages come from the extension's own background and pages, never content scripts.)
+            let body = message as? [String: Any] ?? [:]
+            guard let target = (body["url"] as? String).flatMap(URL.init(string:)),
+                  ExtensionFetch.allowed(target, hasAccess: { extensionContext.hasAccess(to: $0) }) else {
+                replyHandler(nil, NSError(domain: "Browsa.Fetch", code: 2,
+                                          userInfo: [NSLocalizedDescriptionKey: "This extension doesn't have access to that site"]))
+                return
+            }
+            ExtensionFetch.handle(body, reply: replyHandler)
             return
         }
         if applicationIdentifier == ExtensionAuth.bridgeName {

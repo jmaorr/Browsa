@@ -52,6 +52,13 @@ enum ExtensionFetch {
         }
     }
 
+    /// Whether an extension may make a credentialed request to `url`: http(s) only, and only to a
+    /// site it has been given access to.
+    nonisolated static func allowed(_ url: URL, hasAccess: (URL) -> Bool) -> Bool {
+        guard let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" else { return false }
+        return hasAccess(url)
+    }
+
     /// The cookies a browser would send with a request to `url`.
     nonisolated static func matches(_ cookie: HTTPCookie, _ url: URL) -> Bool {
         guard let host = url.host()?.lowercased() else { return false }
