@@ -103,6 +103,7 @@ private struct GeneralSettings: View {
                 Picker("Archive Today tabs after", selection: $browser.settings.archiveAfterHours) {
                     Text("12 hours").tag(12.0)
                     Text("24 hours").tag(24.0)
+                    Text("48 hours").tag(48.0)
                     Text("7 days").tag(168.0)
                     Text("30 days").tag(720.0)
                 }
