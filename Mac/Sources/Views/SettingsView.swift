@@ -294,7 +294,9 @@ private struct SpaceProfileMenu: View {
             .labelsHidden()
             Divider()
             Button("New Profile", systemImage: "plus") {
-                browser.setProfile(browser.addProfile().id, for: space)
+                let id = browser.addProfile().id
+                browser.setProfile(id, for: space)
+                browser.renamingProfileID = id
             }
         } label: {
             Label(browser.profileName(space.profileID), systemImage: "person.crop.circle")
@@ -323,12 +325,7 @@ private struct ProfilesSettings: View {
                 ForEach(browser.settings.profiles) { profile in
                     Divider().padding(.leading, 40)
                     row(icon: "person.crop.circle.fill", spaces: browser.spaces(using: profile.id)) {
-                        TextField("Name", text: Binding(get: { profile.name },
-                                                        set: { browser.renameProfile(profile.id, to: $0) }),
-                                  prompt: Text("Name"))
-                            .textFieldStyle(.roundedBorder)
-                            .labelsHidden()
-                            .frame(maxWidth: 180)
+                        ProfileNameField(profile: profile)
                     } trailing: {
                         Button("Delete", role: .destructive) { deleting = profile }
                             .buttonStyle(.glass)
@@ -343,7 +340,7 @@ private struct ProfilesSettings: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
-                Button("Add Profile", systemImage: "plus") { browser.addProfile() }
+                Button("Add Profile", systemImage: "plus") { browser.renamingProfileID = browser.addProfile().id }
                     .buttonStyle(.glass)
                     .buttonBorderShape(.capsule)
             }
@@ -374,6 +371,36 @@ private struct ProfilesSettings: View {
         }
         .padding(.horizontal, 12)
         .frame(minHeight: 44)
+    }
+}
+
+/// A profile's name, edited in place and saved as you type. Return leaves the field, so it's
+/// clear the name took.
+private struct ProfileNameField: View {
+    @Environment(Library.self) private var library
+    let profile: SpaceProfile
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("Name", text: Binding(get: { profile.name }, set: { library.renameProfile(profile.id, to: $0) }),
+                  prompt: Text("Name"))
+            .textFieldStyle(.roundedBorder)
+            .labelsHidden()
+            .frame(maxWidth: 180)
+            .focused($focused)
+            .onSubmit { focused = false }
+            // A profile just added starts with its name selected, to type over.
+            .onAppear { if library.renamingProfileID == profile.id { startEditing() } }
+            .onChange(of: library.renamingProfileID) { _, id in if id == profile.id { startEditing() } }
+    }
+
+    private func startEditing() {
+        library.renamingProfileID = nil
+        // After the row is on screen: focus the field, then select its text.
+        DispatchQueue.main.async {
+            focused = true
+            DispatchQueue.main.async { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
+        }
     }
 }
 
