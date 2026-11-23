@@ -17,6 +17,9 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         // pause it mid-task. Extension web views are never paused (see also startKeepAlive).
         let configuration = WKWebExtensionController.Configuration.default()
         configuration.webViewConfiguration?.preferences.inactiveSchedulingPolicy = .none
+        // The same user agent as tabs: a background whose user agent differs from the pages' can be
+        // stopped for good by WebKit (found by Search).
+        configuration.webViewConfiguration?.applicationNameForUserAgent = SafariUserAgent.applicationName
         return WKWebExtensionController(configuration: configuration)
     }()
     weak var host: (any EngineExtensionHost)?

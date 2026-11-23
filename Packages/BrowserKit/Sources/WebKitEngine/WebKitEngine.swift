@@ -395,9 +395,20 @@ private struct WeakPage {
 
 /// User agent tokens that match Safari on this Mac.
 enum SafariUserAgent {
-    static var applicationName: String {
-        let v = ProcessInfo.processInfo.operatingSystemVersion
-        return "Version/\(v.majorVersion).\(v.minorVersion) Safari/605.1.15"
+    /// "Version/<the installed Safari's version> Safari/605.1.15", as Safari itself sends: tabs and
+    /// extension backgrounds alike. The macOS version alone under-claims on macOS 14 and 15 (Safari
+    /// there is 17 and 18), and sites then serve older pages. From Search (Office Commun, MIT, Tab.swift).
+    static let applicationName = "Version/\(safariVersion) Safari/605.1.15"
+
+    static var safariVersion: String {
+        for path in ["/System/Cryptexes/App/System/Applications/Safari.app", "/Applications/Safari.app"] {
+            if let version = Bundle(path: path)?.infoDictionary?["CFBundleShortVersionString"] as? String { return version }
+        }
+        // Safari can't be read: the Safari this macOS shipped with. From macOS 26 Safari shares its
+        // number; before, it was 3 ahead (14 -> 17, 15 -> 18). Under-claiming gets older pages that
+        // still run; over-claiming sends what the engine can't.
+        let os = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+        return os >= 26 ? "\(os).0" : "\(os + 3).0"
     }
 }
 /// Hands the call audio script WebRTC's audio processing (WebAssembly, about a megabyte) when a page
