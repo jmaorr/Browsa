@@ -140,9 +140,11 @@ final class TabController: EnginePageDelegate {
     }
 
     /// Hands a link to the app that opens it, asking first, as Safari and Chrome do: a page could
-    /// otherwise launch Zoom, FaceTime or the App Store by itself. The answer is kept per site and
-    /// per kind of link, like camera and microphone. A frame inside the page (an ad, an embed) only
-    /// gets to ask when it was a click on a link. Email links open straight away.
+    /// otherwise launch Zoom, FaceTime or the App Store by itself. "Always Open" is kept per site and
+    /// per kind of link (Slite documents from slite.com, say), so those links go straight to the app
+    /// from then on. "Open Once" and "Not Now" aren't kept, so the site asks again next time. A frame
+    /// inside the page (an ad, an embed) only gets to ask when it was a click on a link. Email links
+    /// open straight away.
     private func openInApp(_ request: NavigationRequest) async {
         let url = request.url
         let scheme = url.scheme?.lowercased() ?? ""
@@ -157,22 +159,52 @@ final class TabController: EnginePageDelegate {
             return
         }
         let key = Self.openAppKey(scheme)
-        if let saved = library.settings.sitePermissions[host]?[key] {
-            if saved { NSWorkspace.shared.open(url) }
+        let app = FileManager.default.displayName(atPath: appURL.path).replacingOccurrences(of: ".app", with: "")
+        // Only "always" is kept. A "no" saved by an older version (an Esc counted as one) asks again.
+        if library.settings.sitePermissions[host]?[key] == true {
+            NSWorkspace.shared.open(url)
+            window?.showToast("Opened in \(app)", actions: [
+                ToastAction(title: "Stop Always Opening") { [weak library] in
+                    library?.settings.sitePermissions[host]?[key] = nil
+                    if library?.settings.sitePermissions[host]?.isEmpty == true { library?.settings.sitePermissions[host] = nil }
+                }
+            ])
             return
         }
-        guard let window else { return }
-        let app = FileManager.default.displayName(atPath: appURL.path).replacingOccurrences(of: ".app", with: "")
-        let answer = await window.ask(.openApp(app: app, host: host), from: tab)
-        // Cancelled because the tab went away: don't remember a "no" the user never gave.
-        guard answer != .cancel || window.currentTab?.id == tab.id else { return }
-        let allowed = answer == .ok
-        library.settings.sitePermissions[host, default: [:]][key] = allowed
-        if allowed { NSWorkspace.shared.open(url) }
+        // A page that fires its app link by itself on every load (Zoom's join page) asks once per tab
+        // after "Not Now". A click on a link always asks.
+        let declineKey = host + " " + key
+        if request.kind != .link, declinedApps.contains(declineKey) { return }
+        // One question at a time: a page firing the link again while it's asking doesn't stack another.
+        guard !askingApps.contains(declineKey), let window else { return }
+        askingApps.insert(declineKey)
+        let answer = await window.ask(.openApp(app: app, appURL: appURL, host: host), from: tab)
+        askingApps.remove(declineKey)
+        switch answer {
+        case Prompt.alwaysOpen:
+            library.settings.sitePermissions[host, default: [:]][key] = true
+            NSWorkspace.shared.open(url)
+        case .ok:
+            NSWorkspace.shared.open(url)
+        default:
+            declinedApps.insert(declineKey)
+        }
     }
+
+    /// "Not Now" answers in this tab, as "host app:scheme", so a page can't ask again by itself.
+    private var declinedApps: Set<String> = []
+    /// Open-in-app questions showing now, as "host app:scheme".
+    private var askingApps: Set<String> = []
 
     /// The saved-answer key for opening one kind of link in its app, such as "app:zoommtg".
     static func openAppKey(_ scheme: String) -> String { "app:" + scheme }
+
+    /// The app that opens links saved under `key` ("app:slite" is Slite), or the kind of link when no app does now.
+    static func appName(forKey key: String) -> String {
+        let scheme = String(key.dropFirst(4))
+        guard let url = URL(string: scheme + "://"), let app = NSWorkspace.shared.urlForApplication(toOpen: url) else { return scheme + ": links" }
+        return FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
+    }
 
     func page(_ page: any EnginePage, didCommit url: URL?) {
         tab.loadError = nil

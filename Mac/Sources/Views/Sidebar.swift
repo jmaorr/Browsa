@@ -266,6 +266,14 @@ private struct SiteMenu: View {
             }
             media.submenu = mediaMenu
             menu.addItem(media)
+            // Apps this site's links always open in ("Always Open" on the open-in-app question). Untick to be asked again.
+            for key in (browser.library.settings.sitePermissions[host] ?? [:]).filter({ $0.key.hasPrefix("app:") && $0.value }).keys.sorted() {
+                let item = actions.item("Always Open in \(TabController.appName(forKey: key))") {
+                    browser.library.settings.sitePermissions[host]?[key] = nil
+                }
+                item.state = .on
+                menu.addItem(item)
+            }
             let styles = SiteStyle.available(for: url)
             if !styles.isEmpty, browser.currentTab?.isPrivate != true {
                 menu.addItem(.separator())

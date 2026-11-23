@@ -469,11 +469,13 @@ private struct PrivacySettings: View {
                 perms[single.rawValue] = nil
             }
         }
-        return perms.sorted { $0.key < $1.key }.map { k, v in
-            let name = EnginePermission(rawValue: k).map(Self.title)
-                ?? (k.hasPrefix("app:") ? "Open in \(k.dropFirst(4))" : k)
+        let parts: [String] = perms.sorted { $0.key < $1.key }.compactMap { k, v in
+            // Open-in-app keeps only "Always Open". A "no" from an older version means Browsa asks, so it isn't listed.
+            if k.hasPrefix("app:") { return v ? "Always opens in \(TabController.appName(forKey: k))" : nil }
+            let name = EnginePermission(rawValue: k).map(Self.title) ?? k
             return "\(name): \(v ? "Allowed" : "Denied")"
-        }.joined(separator: ", ")
+        }
+        return parts.isEmpty ? "Asks before opening apps" : parts.joined(separator: ", ")
     }
 }
 
