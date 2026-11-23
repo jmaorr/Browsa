@@ -74,6 +74,9 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, WebNotifi
 
     // MARK: Notifications
 
+    /// Content controllers that already have the notifications handler.
+    private let notificationControllers = NSHashTable<WKUserContentController>.weakObjects()
+
     public var notificationPermissions: [String: Bool] = [:] {
         didSet { if notificationPermissions != oldValue { for controller in allContentControllers { install(on: controller) } } }
     }
@@ -299,10 +302,13 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, WebNotifi
         }
         if let fixes = SiteOptimisations.script { controller.addUserScript(fixes) }
         controller.addUserScript(WebNotifications.script(saved: notificationPermissions))
-        controller.removeScriptMessageHandler(forName: WebNotifications.messageName, contentWorld: .page)
-        controller.addScriptMessageHandler(WebNotifications.Handler(page: { [weak self] in self?.page(for: $0) },
-                                                                    saved: { [weak self] in self?.notificationPermissions ?? [:] }),
-                                          contentWorld: .page, name: WebNotifications.messageName)
+        // Added once per controller and never swapped: a page keeps talking to the handler it started with.
+        if !notificationControllers.contains(controller) {
+            notificationControllers.add(controller)
+            controller.addScriptMessageHandler(WebNotifications.Handler(page: { [weak self] in self?.page(for: $0) },
+                                                                        saved: { [weak self] in self?.notificationPermissions ?? [:] }),
+                                              contentWorld: .page, name: WebNotifications.messageName)
+        }
         for style in SiteStyle.all where enabledSiteStyles.contains(style.id) {
             let hosts = (try? JSONEncoder().encode(style.hosts)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             let source = """
