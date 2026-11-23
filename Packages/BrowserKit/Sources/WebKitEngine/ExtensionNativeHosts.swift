@@ -141,6 +141,10 @@ enum ExtensionNativeHosts {
     // MARK: runtime.connectNative
 
     private static var live: [ObjectIdentifier: (pipe: HostPipe, port: WKWebExtension.MessagePort, extensionID: String)] = [:]
+    private static var alive: [ObjectIdentifier: Timer] = [:]
+    /// The compat script's own messages on a port to an app (extension-compat.js), never passed on.
+    static let beatKey = "__browsaNative"
+    static let aliveInterval: TimeInterval = 25
 
     /// Run, and pass messages both ways until either end lets go.
     static func connect(_ port: WKWebExtension.MessagePort, origin: String, extensionID: String) throws {
@@ -163,6 +167,7 @@ enum ExtensionNativeHosts {
         pipe.onExit = {
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
+                    alive.removeValue(forKey: key)?.invalidate()
                     guard let ended = live.removeValue(forKey: key) else { return }
                     if !ended.port.isDisconnected { ended.port.disconnect() }
                 }
@@ -172,11 +177,22 @@ enum ExtensionNativeHosts {
         do { try pipe.start() } catch { live[key] = nil; pipe.stop(); throw error }
         port.messageHandler = { message, _ in
             guard let message else { return }
+            // The compat script's beat is for WebKit's sake, not the host's.
+            if (message as? [String: Any])?[beatKey] != nil { return }
             try? pipe.write(message)
         }
         port.disconnectHandler = { _ in
             log.info("port to \(name, privacy: .public) closed")
+            MainActor.assumeIsolated { alive.removeValue(forKey: key)?.invalidate() }
             pipe.stop()
+        }
+        // WebKit unloads a worker that hasn't posted on an open port for two minutes, even with an app
+        // attached. The compat script answers this with a beat, which keeps the worker as Chrome would.
+        alive[key] = Timer.scheduledTimer(withTimeInterval: aliveInterval, repeats: true) { _ in
+            MainActor.assumeIsolated {
+                guard let item = live[key], !item.port.isDisconnected else { alive.removeValue(forKey: key)?.invalidate(); return }
+                item.port.sendMessage([beatKey: "alive"], completionHandler: nil)
+            }
         }
         log.info("connected \(extensionID, privacy: .public) to host \(name, privacy: .public)")
     }

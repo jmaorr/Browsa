@@ -243,6 +243,61 @@
 
   if (!isWorker) return;
 
+  // Native messaging ports, inside the worker. WebKit unloads a worker that hasn't posted on an open
+  // port for two minutes, even with an app attached (1Password's helper, which then drops the
+  // session). Browsa says {__browsaNative: 'alive'} every 25 s on each port to an app and the worker
+  // answers 'beat'; neither word reaches the extension or the app (ExtensionNativeHosts.swift). The
+  // idea is Search's (Office Commun, MIT, ExtensionShims.swift); the port handed to the extension is
+  // a plain object, as WebKit's ports can't be proxied.
+  for (const root of roots) {
+    const runtime = root && root.runtime;
+    const connectNative = runtime && runtime.connectNative;
+    if (typeof connectNative !== 'function' || connectNative.__browsaBeat) continue;
+    const ours = (m) => !!m && typeof m === 'object' && !Array.isArray(m) && '__browsaNative' in m;
+    const beating = function (application) {
+      const name = String(application);
+      const port = connectNative.call(runtime, name);
+      // Browsa's own in-process names know nothing of the beat.
+      if (/^browsa\./.test(name)) return port;
+      const fire = (set, ...args) => { for (const fn of [...set]) { try { fn(...args); } catch (e) { setTimeout(() => { throw e; }); } } };
+      const listeners = () => {
+        const set = new Set();
+        return { set, event: {
+          addListener(fn) { if (typeof fn === 'function') set.add(fn); },
+          removeListener(fn) { set.delete(fn); },
+          hasListener(fn) { return set.has(fn); },
+          hasListeners() { return set.size > 0; },
+        } };
+      };
+      const onMessage = listeners(), onDisconnect = listeners();
+      let gone = false;
+      const facade = keep({
+        name,
+        sender: undefined,
+        onMessage: onMessage.event,
+        onDisconnect: onDisconnect.event,
+        postMessage(message) {
+          if (gone) throw new Error('Attempting to use a disconnected port object');
+          port.postMessage(message);
+        },
+        disconnect() { if (gone) return; gone = true; try { port.disconnect(); } catch (e) {} },
+      });
+      port.onMessage.addListener((m) => {
+        if (ours(m)) {
+          if (m.__browsaNative === 'alive') { try { port.postMessage({ __browsaNative: 'beat' }); } catch (e) {} }
+          return;
+        }
+        fire(onMessage.set, m, facade);
+      });
+      port.onDisconnect.addListener(() => { if (gone) return; gone = true; fire(onDisconnect.set, facade); });
+      return facade;
+    };
+    beating.__browsaBeat = true;
+    keep(runtime);
+    try { Object.defineProperty(runtime, 'connectNative', { value: beating, configurable: true, writable: true }); }
+    catch (e) { try { runtime.connectNative = beating; } catch (e2) {} }
+  }
+
   // navigator.locks, inside the worker. WebKit's own goes over IPC to a lock registry that can reject
   // a service worker's requests ("Received an invalid message") and leave them pending for ever.
   // Locks only need to coordinate this extension's own code, so a local implementation is enough.
