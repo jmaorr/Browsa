@@ -525,6 +525,13 @@
 .term .dim { color: #8f8c86; } .term .ok { color: #6fdc8c; } .term .key { color: #8ab4ff; }
 .agent-visual { display: grid; }
 
+/* Connect your agent: one card per agent with its setup. */
+.connect-grid { margin-top: clamp(28px, 4vw, 44px); display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 14px; }
+.connect-card { padding: 20px; border-radius: 18px; background: var(--raised); box-shadow: 0 0 0 1px var(--line); min-width: 0; }
+.connect-card h3 { font-size: 1.0625rem; font-weight: 600; letter-spacing: -.01em; }
+.connect-card p { margin-top: 6px; color: var(--ink-2); font-size: .9375rem; }
+.connect-card pre { margin: 14px 0 0; padding: 14px 16px; border-radius: 12px; background: #141413; color: #e9e7e2; font: .8125rem/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
+
 /* The film. */
 .film { position: relative; margin-top: clamp(32px, 4vw, 48px); aspect-ratio: 16 / 9; border-radius: 22px; overflow: hidden; display: grid; place-items: center; background: radial-gradient(70% 90% at 30% 30%, #3a2a1f 0, transparent 70%), radial-gradient(60% 80% at 75% 70%, #2a2346 0, transparent 70%), #0d0d0c; color: #f2f1ee; box-shadow: 0 0 0 1px var(--line), var(--shadow); }
 .film video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #0d0d0c; }

@@ -69,13 +69,26 @@ final class AgentBridge {
     var endpoint: String { "http://127.0.0.1:\(Self.port)/mcp" }
     /// Watch a Demo, in the Agents panel.
     @ObservationIgnored let demo = AgentDemo()
-    /// "Add to Claude Code" in the Agents panel.
-    @ObservationIgnored let claudeCodeSetup = ClaudeCodeSetup()
+    /// One-click Add for Claude Code, Codex, Cursor and VS Code, in Settings and the Agents panel.
+    @ObservationIgnored let setup = AgentSetup()
+    /// When something last called with a missing or old token: usually an agent set up before a
+    /// Reset Token, or pasted with the token cut off. Settings and the Agents panel say so.
+    private(set) var lastRejected: Date?
 
-    var claudeCodeCommand: String {
-        // User scope: Browsa is there in every project, not just the folder it was added from.
-        "claude mcp add --scope user --transport http \(Self.mcpName) \(endpoint) --header \"Authorization: Bearer \(token)\""
+    var claudeCodeCommand: String { setupText(for: .claudeCode) }
+
+    /// The exact setup text for an agent, token included.
+    func setupText(for client: AgentClient) -> String {
+        client.setupText(name: Self.mcpName, url: endpoint, token: token)
     }
+
+    func isConnected(_ client: AgentClient) -> Bool {
+        connectedAgents.contains { $0 != AgentDemo.agentName && client.matches($0) }
+    }
+
+    func add(_ client: AgentClient) async { await setup.add(client, name: Self.mcpName, url: endpoint, token: token) }
+    @discardableResult func remove(_ client: AgentClient) async -> Bool { await setup.remove(client, name: Self.mcpName) }
+    func refreshSetup() async { await setup.refresh(name: Self.mcpName, token: token) }
 
     init(library: Library) {
         self.library = library
@@ -87,6 +100,12 @@ final class AgentBridge {
             await self?.authorize(tool, args: args, caller: caller) ?? .deny("Browsa is closing.")
         }
         toolbox.onActivity = { [weak self] entry in self?.record(entry) }
+        // Connected as soon as it starts a session, so setup can tick before the first task.
+        toolbox.onConnect = { [weak self] caller in
+            guard let self else { return }
+            if !connectedAgents.contains(caller.name) { connectedAgents.append(caller.name) }
+            lastRejected = nil
+        }
         BrowserAgentTools.register(in: toolbox, bridge: self)
         if isEnabled { start() }
         idleTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
@@ -100,19 +119,24 @@ final class AgentBridge {
         let server = AgentServer(port: Self.port, token: token) { body, session in
             await toolbox.handle(body, session: session)
         }
+        server.onRejected = { [weak self] in self?.lastRejected = .now }
         server.start()
         self.server = server
     }
 
-    /// A new token: the old one stops working at once. If Claude Code has Browsa, it's updated too.
-    func resetToken() async {
+    /// A new token: the old one stops working at once. Every agent Browsa can set up that has it
+    /// (Claude Code, Codex, Cursor, VS Code) gets the new one. Returns those it updated.
+    @discardableResult
+    func resetToken() async -> [AgentClient] {
+        let old = token
         UserDefaults.standard.removeObject(forKey: "agentToken")
         token = Preferences.agentToken
         // The listener keeps running; only the token it checks changes.
         server?.token = token
-        if await ClaudeCodeSetup.isAdded(Self.mcpName) {
-            await claudeCodeSetup.add(name: Self.mcpName, url: endpoint, token: token)
-        }
+        lastRejected = nil
+        let updated = await setup.updateAll(name: Self.mcpName, url: endpoint, oldToken: old, token: token)
+        await refreshSetup()
+        return updated
     }
 
     /// Why the endpoint isn't up, in words a person can act on.

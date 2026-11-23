@@ -50,11 +50,22 @@ elsewhere.
 
 ## Agents
 
-Turn on Settings > Agents, then for Claude Code:
+Turn on Settings > Agents, then press Add next to Claude Code, Codex, Cursor or VS Code. Claude
+Code is added with its own `claude mcp add --scope user`; the others get Browsa's entry written
+into their settings file (`~/.codex/config.toml`, `~/.cursor/mcp.json`, VS Code's user `mcp.json`),
+leaving everything else in it as it was. Each row says whether the agent has Browsa, whether its
+token is current, and ticks Connected when the agent starts a session. Reset Token updates every
+agent Browsa set up.
+
+By hand, for Claude Code:
 
 ```sh
-claude mcp add --transport http browsa http://127.0.0.1:47913/mcp --header "Authorization: Bearer <token from Settings>"
+claude mcp add --scope user --transport http browsa http://127.0.0.1:47913/mcp --header "Authorization: Bearer <token from Settings>"
 ```
+
+Without `--scope user`, Claude Code only has Browsa in the folder it was added from. Setup for the
+other agents, and what to check when one won't connect, is at
+[browsa.app/mac/developers/#connect](https://browsa.app/mac/developers/#connect).
 
 Tools: `tabs_list`, `tab_open`, `page_navigate`, `page_read`, `page_screenshot`, `page_click`,
 `page_type`, `page_eval` (localhost only), `notes_list`, `notes_add`, `notes_reply`,

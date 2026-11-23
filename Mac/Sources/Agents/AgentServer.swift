@@ -16,6 +16,8 @@ final class AgentServer {
     private(set) var isRunning = false
     /// Why it isn't running, for Settings.
     private(set) var problem: String?
+    /// Something on this Mac called with a missing or wrong token.
+    var onRejected: (() -> Void)?
 
     init(port: UInt16, token: String, handler: @escaping Handler) {
         self.port = port
@@ -91,7 +93,12 @@ final class AgentServer {
             return send(Self.demoFile(request.path), on: connection)
         }
         guard request.headers["authorization"] == "Bearer \(token)" else {
-            return send(.init(status: 401, body: "Add the token from Browsa's Settings"), on: connection)
+            // Only MCP calls count: a page someone opens at this port isn't an agent.
+            if request.path == "/mcp" { onRejected?() }
+            let why = request.headers["authorization"] == nil
+                ? "Browsa needs its token. Open Browsa › Settings › Agents and press Add next to your agent, or copy the setup from there."
+                : "That isn't Browsa's current token (it was probably reset). Open Browsa › Settings › Agents and press Update next to your agent."
+            return send(.init(status: 401, body: why), on: connection)
         }
         guard request.path == "/mcp" else { return send(.init(status: 404, body: "Not found"), on: connection) }
         switch request.method {

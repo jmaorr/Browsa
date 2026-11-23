@@ -644,6 +644,7 @@ struct VerifiedTag: View {
 /// Coding agents over MCP: on or off, how to connect, which sites they may act on.
 private struct AgentSettings: View {
     @Environment(Library.self) private var library
+    @State private var revealToken = false
     private var agents: AgentBridge { library.agents }
 
     var body: some View {
@@ -651,30 +652,51 @@ private struct AgentSettings: View {
             Section {
                 Toggle("Let coding agents use Browsa", isOn: Bindable(agents).isEnabled)
                 if agents.isEnabled {
-                    LabeledContent("Status", value: agents.problem ?? (agents.isRunning ? "Ready on port \(AgentBridge.port)" : "Starting…"))
+                    LabeledContent("Status", value: agents.problemDescription ?? (agents.isRunning ? "Ready on port \(AgentBridge.port)" : "Starting…"))
                 }
             } footer: {
                 Text("Agents such as Claude Code, Codex and Cursor connect over MCP from this Mac only. They open pages in an Agent space you can watch, read and resolve your notes, and ask in the Agents panel before they touch one of your own tabs.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if agents.isEnabled {
-                Section("Connect Claude Code") {
-                    Text(agents.claudeCodeCommand).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
-                    Button("Copy Command") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(agents.claudeCodeCommand, forType: .string)
-                    }
+                Section {
+                    if let at = agents.lastRejected { AgentRejectedNote(at: at) }
+                    ForEach(AgentClient.allCases) { AgentSettingsRow(client: $0, agents: agents) }
+                } header: {
+                    Text("Connect your agent")
+                } footer: {
+                    Text("Add sets Browsa up in that agent for you, token and all. It ticks Connected once the agent starts a session.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
-                Section("Other agents") {
-                    LabeledContent("URL", value: "http://127.0.0.1:\(AgentBridge.port)/mcp")
-                    LabeledContent("Header") {
-                        Text("Authorization: Bearer \(agents.token)").font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                Section {
+                    LabeledContent("URL") {
+                        HStack(spacing: 8) {
+                            Text(agents.endpoint).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                            CopyCapsule(title: "Copy", text: agents.endpoint).controlSize(.small)
+                        }
                     }
+                    LabeledContent("Header") {
+                        HStack(spacing: 8) {
+                            Text("Authorization: Bearer " + (revealToken ? agents.token : String(repeating: "•", count: 12)))
+                                .font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                            Button(revealToken ? "Hide" : "Show") { revealToken.toggle() }
+                                .buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.small)
+                            CopyCapsule(title: "Copy", text: "Authorization: Bearer \(agents.token)").controlSize(.small)
+                        }
+                    }
+                } header: {
+                    Text("Any other agent")
+                } footer: {
+                    HStack(spacing: 4) {
+                        Text("Anything that speaks MCP over HTTP works, from this Mac only.")
+                        Link("Help connecting", destination: URL(string: "https://browsa.app/mac/developers/#connect")!)
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
                 }
                 Section {
                     Text(agents.allowedTabCount == 0 ? "None of your tabs" : agents.allowedTabCount == 1 ? "1 of your tabs" : "\(agents.allowedTabCount) of your tabs")
                     if agents.grants.contains(.yourTabs) { Text("The list of your open tabs") }
-                    if !agents.grants.isEmpty { Button("Forget All") { agents.forgetGrants() } }
+                    if !agents.grants.isEmpty { Button("Forget All") { agents.forgetGrants() }.buttonStyle(.glass).buttonBorderShape(.capsule) }
                 } header: {
                     Text("Allowed until you quit")
                 } footer: {
@@ -684,6 +706,8 @@ private struct AgentSettings: View {
             }
         }
         .formStyle(.grouped)
+        // What each agent has: added, with which token. Again when agents are turned on.
+        .task(id: agents.isEnabled) { if agents.isEnabled { await agents.refreshSetup() } }
     }
 }
 
