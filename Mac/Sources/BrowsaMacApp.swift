@@ -164,6 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         BrowsaAppearance.apply()
+        SiteNotifications.shared.start(library: library)
         // tools/audio-bench opens its page at launch (test builds only; see AudioBench).
         if let url = AudioBench.launchURL { openAudioBenchPage(url, attempt: 0) }
         if let every = AudioBench.tabSwitchSeconds { scheduleAudioBenchTabSwitch(every: every) }
