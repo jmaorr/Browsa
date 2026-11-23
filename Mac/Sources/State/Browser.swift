@@ -24,6 +24,9 @@ final class Browser {
     private var tabSelection: [UUID: UUID] = [:]
     /// The tab each space showed before the current one, so closing a popup or link tab can go back to its opener.
     @ObservationIgnored private var previousSelection: [UUID: UUID] = [:]
+    /// The tab shown before a change to the selection started, while it runs (see `changingShownTab`).
+    @ObservationIgnored private var tabBeforeChange: BrowserTab?
+    @ObservationIgnored private var shownChangeDepth = 0
     /// The AppKit window, for focusing and for matching key events to this browser.
     @ObservationIgnored weak var nsWindow: NSWindow?
     /// The window's own traffic lights, hidden while the sidebar shows its copies, and shown in the
@@ -206,8 +209,10 @@ final class Browser {
         guard let space = space(containing: tab) else { return }
         // A Today tab no open window owns becomes this window's.
         if !tab.isPinned, tab.favoriteID == nil, tab.windowKey != windowKey { tab.windowKey = windowKey }
-        if space.id != selectedSpaceID { selectSpace(space, resolving: false) }
-        setSelection(tab, in: space)
+        changingShownTab {
+            if space.id != selectedSpaceID { selectSpace(space, resolving: false) }
+            setSelection(tab, in: space)
+        }
         tab.lastActive = .now
         dismissFind()
         reader = nil
@@ -224,8 +229,10 @@ final class Browser {
            let to = spaces.firstIndex(where: { $0.id == space.id }) {
             lastSpaceSwitch = SpaceSwitch(at: .now, forward: to > from)
         }
-        selectedSpaceID = space.id
-        if resolving { resolveSelection(in: space) }
+        changingShownTab {
+            selectedSpaceID = space.id
+            if resolving { resolveSelection(in: space) }
+        }
         dismissFind()
         reader = nil
         toast = nil
@@ -244,7 +251,25 @@ final class Browser {
         tabSelection[space.id] = tab.id
     }
 
+    /// Runs a change to what this window shows, then tells picture in picture which tab it left and which it
+    /// came to, once, however many steps the change took.
+    private func changingShownTab(_ change: () -> Void) {
+        if shownChangeDepth == 0 { tabBeforeChange = currentTab }
+        shownChangeDepth += 1
+        change()
+        shownChangeDepth -= 1
+        guard shownChangeDepth == 0 else { return }
+        let before = tabBeforeChange
+        tabBeforeChange = nil
+        let after = currentTab
+        if before?.id != after?.id { library.videoPiP.shownTabChanged(from: before, to: after) }
+    }
+
     private func setSelection(_ tab: BrowserTab?, in space: Space) {
+        changingShownTab { applySelection(tab, in: space) }
+    }
+
+    private func applySelection(_ tab: BrowserTab?, in space: Space) {
         if let old = tabSelection[space.id], old != tab?.id { previousSelection[space.id] = old }
         tabSelection[space.id] = tab?.id
         library.selectionChanged(to: tab)
@@ -287,13 +312,15 @@ final class Browser {
 
     /// The space this window shows was deleted or closed.
     func leaveSpace() {
-        tabSelection[selectedSpaceID] = nil
         let back = regularSpaces.first { $0.id == spaceBeforePrivate && $0.id != selectedSpaceID }
             ?? regularSpaces.first { $0.id != selectedSpaceID } ?? regularSpaces[0]
         lastSpaceSwitch = SpaceSwitch(at: .now, forward: false)
-        selectedSpaceID = back.id
+        changingShownTab {
+            tabSelection[selectedSpaceID] = nil
+            selectedSpaceID = back.id
+            resolveSelection(in: back)
+        }
         spaceBeforePrivate = nil
-        resolveSelection(in: back)
         dismissFind()
         reader = nil
     }

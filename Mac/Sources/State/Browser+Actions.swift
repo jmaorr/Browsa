@@ -60,6 +60,11 @@ extension Browser {
                 out.append(BrowserCommand(id: "reader", title: isReaderShowing ? "Hide Reader" : "Show Reader",
                                           keywords: ["article", "reading", "clean"]))
                 out.append(BrowserCommand(id: "tab-window", title: "Move Tab to New Window", keywords: ["window", "detach"]))
+                if tab.media.hasVideo || tab.media.isPictureInPicture {
+                    out.append(BrowserCommand(id: "picture-in-picture",
+                                              title: tab.media.isPictureInPicture ? "Put Video Back in Page" : "Picture in Picture",
+                                              keywords: ["pip", "video", "float", "pop out", "mini player"]))
+                }
                 out.append(BrowserCommand(id: "zoom-in", title: "Zoom In", keywords: ["bigger", "larger", "text size"]))
                 out.append(BrowserCommand(id: "zoom-out", title: "Zoom Out", keywords: ["smaller", "text size"]))
                 out.append(BrowserCommand(id: "zoom-reset", title: "Actual Size", keywords: ["zoom", "reset"]))
@@ -129,7 +134,7 @@ extension Browser {
 
     private static let commandSymbols: [String: String] = [
         "pin": "pin", "favourite": "star", "close": "xmark", "copy-link": "link", "copy-text": "equal.circle", "reload": "arrow.clockwise",
-        "find": "text.magnifyingglass", "reader": "doc.plaintext", "tab-window": "macwindow.badge.plus",
+        "find": "text.magnifyingglass", "reader": "doc.plaintext", "picture-in-picture": "pip.enter", "tab-window": "macwindow.badge.plus",
         "new-window": "macwindow", "zoom-in": "plus.magnifyingglass", "zoom-out": "minus.magnifyingglass",
         "zoom-reset": "1.magnifyingglass", "blockers": "shield", "share": "square.and.arrow.up",
         "close-others": "xmark.square", "reopen": "arrow.uturn.backward", "sidebar": "sidebar.left",
@@ -164,6 +169,7 @@ extension Browser {
         case "reload": reload()
         case "find": showFind()
         case "reader": toggleReader()
+        case "picture-in-picture": togglePictureInPicture()
         case "tab-window": if let t = currentTab { openInNewWindow(t) }
         case "new-window": library.openWindow()
         case "zoom-in": zoom(1)
@@ -294,7 +300,26 @@ extension Browser {
         case .copyMarkdown: copyCurrentLinkAsMarkdown()
         case .reader: toggleReader()
         case .inspector: showWebInspector()
+        case .pictureInPicture: togglePictureInPicture()
         }
+    }
+
+    // MARK: Picture in picture
+
+    /// The tab ⌥⌘P acts on: this one if it has a video, else a video that's out already (to put it back),
+    /// else a video playing in another tab.
+    var pictureInPictureTab: BrowserTab? {
+        if let tab = currentTab, tab.media.hasVideo || tab.media.isPictureInPicture { return tab }
+        let tabs = library.allTabs
+        return tabs.first { $0.media.isPictureInPicture } ?? tabs.first { $0.media.isWatching }
+    }
+
+    func togglePictureInPicture() {
+        guard let tab = pictureInPictureTab else {
+            showToast("No video to pop out")
+            return
+        }
+        library.videoPiP.toggle(tab)
     }
 
     func shareCurrentPage() {

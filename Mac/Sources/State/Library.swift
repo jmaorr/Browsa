@@ -111,6 +111,16 @@ final class Library {
     /// that window for (the capsule leads back to them instead).
     var pipTabID: UUID?
     var pipClosedFor: Set<UUID> = []
+    /// Videos in picture in picture: popping out when you leave a tab, and back when you return (`VideoPiP`).
+    var videoPiP: VideoPiP {
+        if let made = madeVideoPiP { return made }
+        let made = VideoPiP(library: self)
+        madeVideoPiP = made
+        return made
+    }
+    @ObservationIgnored private var madeVideoPiP: VideoPiP?
+    /// The tab `close` is taking away right now, so leaving it doesn't pop its video out.
+    @ObservationIgnored private(set) var closingTabID: UUID?
     let history: HistoryStore
     @ObservationIgnored private(set) var suggest: SuggestEngine!
     /// Live pages, by tab. The least recently used are unloaded past `capacity`.
@@ -380,6 +390,7 @@ final class Library {
             old.page.close()
             controllers[tab.id] = nil
             tab.call = nil
+            tab.media = TabMedia()
         }
         tab.interactionState = nil
         let c = TabController(tab: tab, library: self, engineID: target.info.id) { delegate in
@@ -425,6 +436,7 @@ final class Library {
             c.freeze()
             c.page.close()
             c.tab.call = nil
+            c.tab.media = TabMedia()
         }
         controllers[id] = nil
         lru.removeAll { $0 == id }
@@ -530,7 +542,9 @@ final class Library {
         }
         guard let space else { return }
         // Windows showing it move on first, while it's still in the list to measure from.
+        closingTabID = tab.id
         for w in windows where w.currentTab?.id == tab.id { w.moveOff(tab, in: space) }
+        closingTabID = nil
         space.today.removeAll { $0.id == tab.id }
         if space.selectedTabID == tab.id { space.selectedTabID = nil }
         if index == nil, tab.isPinned {

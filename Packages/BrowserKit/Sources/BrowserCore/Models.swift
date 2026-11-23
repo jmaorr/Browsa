@@ -43,6 +43,8 @@ public final class BrowserTab: Identifiable {
     public var isAwaitingFirstPaint = false
     /// The page has the camera or microphone on: the tab is in a call. Nil otherwise.
     public var call: TabCall?
+    /// The page's video and audio: what the sidebar's play button and picture in picture work with.
+    public var media = TabMedia()
     /// The page's zoom (1 = actual size), for the address bar's zoom badge. The engine's own value
     /// can't be observed, so the Mac app keeps this one in step whenever it zooms.
     public var pageZoom: Double = 1
@@ -77,6 +79,34 @@ public struct TabCall: Equatable, Sendable {
         self.camera = camera
         self.microphone = microphone
     }
+}
+
+/// What a tab's video and audio are doing (the Mac mirrors the engine's `PageMedia` here).
+public struct TabMedia: Equatable, Sendable {
+    /// A video big enough to pop out.
+    public var hasVideo = false
+    public var isPlaying = false
+    /// Something played with sound since the page loaded, so a paused video keeps its play button.
+    public var hasPlayed = false
+    /// Something is playing with sound.
+    public var isAudible = false
+    /// A video with sound is playing.
+    public var isWatching = false
+    public var isPictureInPicture = false
+
+    public init(hasVideo: Bool = false, isPlaying: Bool = false, hasPlayed: Bool = false, isAudible: Bool = false,
+                isWatching: Bool = false, isPictureInPicture: Bool = false) {
+        self.hasVideo = hasVideo
+        self.isPlaying = isPlaying
+        self.hasPlayed = hasPlayed
+        self.isAudible = isAudible
+        self.isWatching = isWatching
+        self.isPictureInPicture = isPictureInPicture
+    }
+
+    /// Worth a play/pause button: something played with sound (playing now or paused since), or a video is out.
+    /// Muted autoplay (feeds, backgrounds) doesn't count.
+    public var showsControls: Bool { isAudible || hasPlayed || isPictureInPicture }
 }
 
 @MainActor @Observable

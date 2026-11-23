@@ -317,6 +317,9 @@ struct TabRow: View {
             if let call = tab.call {
                 CallBadge(call: call)
                     .transition(.scale.combined(with: .opacity))
+            } else if tab.media.showsControls, !isLifted {
+                TabMediaControls(tab: tab, hovering: hovering)
+                    .transition(.scale.combined(with: .opacity))
             }
             let notes = openNoteCount(tab.url, in: browser.library)
             if notes > 0 {

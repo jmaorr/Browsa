@@ -36,7 +36,7 @@ final class TabController: EnginePageDelegate {
         guard let page else { return }
         withObservationTracking {
             let s = page.state
-            _ = (s.url, s.title, s.progress, s.isLoading, s.canGoBack, s.canGoForward, s.isSecure, s.camera, s.microphone)
+            _ = (s.url, s.title, s.progress, s.isLoading, s.canGoBack, s.canGoForward, s.isSecure, s.camera, s.microphone, s.media)
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.sync()
@@ -57,6 +57,14 @@ final class TabController: EnginePageDelegate {
         if tab.canGoForward != s.canGoForward { tab.canGoForward = s.canGoForward }
         let call = s.camera == .off && s.microphone == .off ? nil : TabCall(camera: s.camera == .on, microphone: s.microphone == .on)
         if tab.call != call { tab.call = call }
+        let m = s.media
+        let media = TabMedia(hasVideo: m.hasVideo, isPlaying: m.isPlaying, hasPlayed: m.hasPlayed,
+                             isAudible: m.isAudible, isWatching: m.isWatching, isPictureInPicture: m.isPictureInPicture)
+        if tab.media != media {
+            let wasOut = tab.media.isPictureInPicture
+            tab.media = media
+            if wasOut, !media.isPictureInPicture { library?.videoPiP.didLeavePictureInPicture(tab) }
+        }
     }
 
     func load(_ url: URL, source: Frecency.VisitSource) {
