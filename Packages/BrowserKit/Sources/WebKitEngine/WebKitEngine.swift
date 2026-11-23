@@ -59,6 +59,9 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, WebNotifi
 
     // MARK: Notifications
 
+    /// Content controllers that already have the notifications handler.
+    private let notificationControllers = NSHashTable<WKUserContentController>.weakObjects()
+
     public var notificationPermissions: [String: Bool] = [:] {
         didSet { if notificationPermissions != oldValue { for controller in allContentControllers { install(on: controller) } } }
     }
@@ -284,10 +287,13 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, WebNotifi
         }
         if let fixes = SiteOptimisations.script { controller.addUserScript(fixes) }
         controller.addUserScript(WebNotifications.script(saved: notificationPermissions))
-        controller.removeScriptMessageHandler(forName: WebNotifications.messageName, contentWorld: .page)
-        controller.addScriptMessageHandler(WebNotifications.Handler(page: { [weak self] in self?.page(for: $0) },
-                                                                    saved: { [weak self] in self?.notificationPermissions ?? [:] }),
-                                          contentWorld: .page, name: WebNotifications.messageName)
+        // Added once per controller and never swapped: a page keeps talking to the handler it started with.
+        if !notificationControllers.contains(controller) {
+            notificationControllers.add(controller)
+            controller.addScriptMessageHandler(WebNotifications.Handler(page: { [weak self] in self?.page(for: $0) },
+                                                                        saved: { [weak self] in self?.notificationPermissions ?? [:] }),
+                                              contentWorld: .page, name: WebNotifications.messageName)
+        }
         if blocking.globalPrivacyControl {
             controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,
                                                   forMainFrameOnly: false, in: .page))

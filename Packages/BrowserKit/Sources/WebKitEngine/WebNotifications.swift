@@ -96,10 +96,16 @@ enum WebNotifications {
     private static let shim = #"""
     (function () {
       if (window.top !== window || !window.isSecureContext) return;
-      var handlers = window.webkit && window.webkit.messageHandlers;
-      var handler = handlers && handlers.browsaNotifications;
-      if (!handler) return;
-      var post = handler.postMessage.bind(handler);
+      function bridge() {
+        var handlers = window.webkit && window.webkit.messageHandlers;
+        return handlers && handlers.browsaNotifications;
+      }
+      if (!bridge()) return;
+      // Looked up each time: the app can swap the handler while the page is open, and an old one goes dead.
+      function post(m) {
+        var h = bridge();
+        return h ? h.postMessage(m) : Promise.reject(new Error('Notifications unavailable'));
+      }
       var saved = __SAVED__;
       var host = location.hostname;
       var permission = Object.prototype.hasOwnProperty.call(saved, host) ? (saved[host] ? 'granted' : 'denied') : 'default';
