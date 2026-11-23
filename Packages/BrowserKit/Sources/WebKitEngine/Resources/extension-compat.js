@@ -13,6 +13,43 @@
   const keep = (o) => { kept.push(o); return o; };
   globalThis.__browsaCompatKept = kept;
 
+  // From Search (Office Commun, MIT, ExtensionShims.swift): small gaps and one trap.
+  // Symbol.dispose / asyncDispose, which bundled TypeScript (Bitwarden) uses as class keys.
+  for (const name of ['dispose', 'asyncDispose']) {
+    if (Symbol[name] === undefined) { try { Object.defineProperty(Symbol, name, { value: Symbol.for('Symbol.' + name) }); } catch (e) {} }
+  }
+  // requestIdleCallback, which WebKit took back out (bug 287681) and Proton Pass relies on.
+  if (typeof globalThis.requestIdleCallback !== 'function') {
+    const idle = new Map();
+    let idleId = 0;
+    globalThis.requestIdleCallback = (callback) => {
+      const id = ++idleId;
+      idle.set(id, setTimeout(() => {
+        if (!idle.delete(id)) return;
+        const start = Date.now();
+        callback({ didTimeout: false, timeRemaining: () => Math.max(0, 50 - (Date.now() - start)) });
+      }, 1));
+      return id;
+    };
+    globalThis.cancelIdleCallback = (id) => { const t = idle.get(id); if (t !== undefined) { idle.delete(id); clearTimeout(t); } };
+  }
+  // WebKit finds a page's extension APIs through the chrome and browser globals when it delivers an
+  // event. An extension that puts its own object there, one that hides the APIs (Proton Pass wraps
+  // chrome in a Proxy), cuts itself off: nothing arrives any more. Made accessors, they keep WebKit's
+  // object unless a replacement still carries runtime.id. browser stays configurable (a page may
+  // declare its own), and in the worker keeps WebKit's own (webextension-polyfill would replace it).
+  for (const key of ['chrome', 'browser']) {
+    const d = Object.getOwnPropertyDescriptor(globalThis, key);
+    if (!d || !d.configurable || !d.hasOwnProperty('value')) continue;
+    let value = globalThis[key];
+    const carries = (v) => { try { return !!(v && v.runtime && v.runtime.id); } catch (e) { return false; } };
+    const ownBrowser = key === 'browser' && isWorker;
+    try {
+      Object.defineProperty(globalThis, key, { configurable: key === 'browser', enumerable: d.enumerable,
+        get: () => value, set: (v) => { if (!ownBrowser && carries(v)) value = v; } });
+    } catch (e) {}
+  }
+
   const event = () => {
     const listeners = new Set();
     return {
@@ -96,6 +133,21 @@
       getPanelBehavior: () => bridge('browsa.sidepanel', { action: 'getBehavior' }),
       open: () => bridge('browsa.sidepanel', { action: 'open' }).then(() => undefined),
     }),
+    // Tab groups: Browsa has none to report. Constants are read at startup (Claude reads
+    // TAB_GROUP_ID_NONE and Color); queries find nothing and changes are refused.
+    tabGroups: () => ({
+      TAB_GROUP_ID_NONE: -1,
+      Color: Object.fromEntries(['GREY', 'BLUE', 'RED', 'YELLOW', 'GREEN', 'PINK', 'PURPLE', 'CYAN', 'ORANGE'].map(c => [c, c.toLowerCase()])),
+      query: resolves([]), get: unsupported('tabGroups.get'), update: unsupported('tabGroups.update'), move: unsupported('tabGroups.move'),
+      onCreated: event(), onUpdated: event(), onMoved: event(), onRemoved: event(),
+    }),
+    // The DevTools protocol, which Browsa doesn't offer extensions. Listeners can be added (Claude adds
+    // them at startup); attaching is refused, so features built on it say they can't run.
+    debugger: () => ({
+      attach: unsupported('debugger.attach'), detach: unsupported('debugger.detach'),
+      sendCommand: unsupported('debugger.sendCommand'), getTargets: resolves([]),
+      onEvent: event(), onDetach: event(),
+    }),
     identity: () => ({ launchWebAuthFlow: unsupported('identity.launchWebAuthFlow'), getRedirectURL: (p = '') => `https://${chrome.runtime.id}.chromiumapp.org/${p}`, onSignInChanged: event() }),
     contentSettings: () => ({}),
   };
@@ -162,6 +214,29 @@
         if (target[name] === undefined) {
           try { target[name] = value; missing.push(`${ns}.${name}`); } catch (e) {}
         }
+      }
+    }
+    // Each storage area's own onChanged (chrome.storage.session.onChanged…), which Chrome has and
+    // WebKit doesn't: fed from chrome.storage.onChanged for that area. Claude's background adds a
+    // listener to storage.session.onChanged at startup and stopped there.
+    if (root.storage && root.storage.onChanged && typeof root.storage.onChanged.addListener === 'function') {
+      for (const area of ['local', 'sync', 'session']) {
+        const target = root.storage[area];
+        if (!target || target.onChanged !== undefined) continue;
+        const listeners = new Set();
+        try {
+          keep(target).onChanged = {
+            addListener(fn) { if (typeof fn === 'function') listeners.add(fn); },
+            removeListener(fn) { listeners.delete(fn); },
+            hasListener(fn) { return listeners.has(fn); },
+            hasListeners() { return listeners.size > 0; },
+          };
+          root.storage.onChanged.addListener((changes, areaName) => {
+            if (areaName !== area) return;
+            for (const fn of [...listeners]) { try { fn(changes); } catch (e) { setTimeout(() => { throw e; }); } }
+          });
+          missing.push(`storage.${area}.onChanged`);
+        } catch (e) {}
       }
     }
     if (root.storage && root.storage.managed === undefined) {
