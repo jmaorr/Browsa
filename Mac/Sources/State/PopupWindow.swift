@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import BrowserCore
 import BrowserEngine
 
 /// A page asked for a sized window (`window.open` with a width or height): nearly always a sign-in
