@@ -161,7 +161,7 @@ private struct SplitPane: View {
 /// the pane. The panel has the page's controls (back, forward, reload, and the address with its
 /// copy link, site menu and extensions) and the pane's Split View actions. Escape or a click
 /// outside it morphs it back.
-private struct PaneControls: View {
+struct PaneControls: View {
     @Environment(Browser.self) private var browser
     let tab: BrowserTab
     let index: Int
@@ -224,10 +224,7 @@ private struct PaneControls: View {
                             .lineLimit(1)
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.capsule)
-                    .background(Self.solidFill, in: .capsule)
-                    .overlay(Capsule().strokeBorder(Self.hairline))
+                    .buttonStyle(PanelButtonStyle())
                     .help(item.title)
                 }
             }
@@ -237,20 +234,20 @@ private struct PaneControls: View {
     }
 
     /// Behind each button in the panel, so it holds its own against the glass.
-    static let solidFill = Color(nsColor: .controlBackgroundColor).opacity(0.75)
-    /// A barely-there edge, just enough to keep a button's shape on light glass.
-    static let hairline = Color.primary.opacity(0.045)
-
+    /// Behind every button and the address in the panel, the same for each: near white in light
+    /// mode, a lifted grey in dark, so they stand out on the glass.
+    static let solidFill = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(white: 1, alpha: 0.14)
+            : NSColor(white: 1, alpha: 0.85)
+    })
     private func iconButton(_ symbol: String, _ help: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: .semibold))
                 .frame(width: 18, height: 16)
         }
-        .buttonStyle(.glass)
-        .buttonBorderShape(.capsule)
-        .background(Self.solidFill, in: .capsule)
-        .overlay(Capsule().strokeBorder(Self.hairline))
+        .buttonStyle(PanelButtonStyle())
         .disabled(!enabled)
         .help(help)
     }
@@ -288,12 +285,28 @@ struct SplitAction: Identifiable {
                 items.append(SplitAction(id: "right", title: "Move Right", shortTitle: "Right", symbol: "arrow.right") { b, t in b.shiftPane(t, by: 1) })
             }
         }
-        items.append(SplitAction(id: "separate", title: "Separate Tabs", shortTitle: "Separate", symbol: "rectangle.on.rectangle.angled") { b, t in
+        items.append(SplitAction(id: "separate", title: "Separate Tabs", shortTitle: "Separate", symbol: "arrow.trianglehead.branch") { b, t in
             b.separateSplit(containing: t)
         })
         items.append(SplitAction(id: "close", title: tab.isPinned ? "Unload This Tab" : "Close This Tab",
-                                 shortTitle: tab.isPinned ? "Unload this tab" : "Close this tab", symbol: tab.isPinned ? "minus" : "xmark") { b, t in b.close(t) })
+                                 shortTitle: tab.isPinned ? "Unload" : "Close", symbol: tab.isPinned ? "minus" : "xmark") { b, t in b.close(t) })
         return items
+    }
+}
+
+/// The panel's buttons: a solid capsule, the same fill for every one whatever its state; a press
+/// darkens it a touch and a disabled button only fades its label.
+private struct PanelButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 10)
+            .frame(minHeight: 26)
+            .foregroundStyle(isEnabled ? .primary : .tertiary)
+            .background(PaneControls.solidFill, in: .capsule)
+            .overlay(Capsule().fill(.black.opacity(configuration.isPressed ? 0.06 : 0)))
+            .contentShape(.capsule)
     }
 }
 
