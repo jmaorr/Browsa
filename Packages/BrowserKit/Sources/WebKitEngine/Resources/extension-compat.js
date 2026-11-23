@@ -382,7 +382,9 @@
         // Only messages for the extension itself (no other extension's id first).
         const own = !(typeof args[0] === 'string' && args.length > 1 && args[0] !== runtime0.id);
         const message = own ? (typeof args[0] === 'string' && args.length > 1 ? args[1] : args[0]) : undefined;
-        if (own) { const key = keyOf(message); if (key) channel.postMessage({ from: me, url: location.href, key, message }); }
+        // A message the channel can't copy (functions, DOM objects) simply isn't relayed: never an
+        // error for the extension's own sendMessage (Bitwarden's popup spun on one).
+        if (own) { try { const key = keyOf(message); if (key) channel.postMessage({ from: me, url: location.href, key, message }); } catch (e) {} }
         return send(...args);
       };
       keep(runtime0);

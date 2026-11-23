@@ -174,8 +174,10 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
     private func describe(_ ext: WKWebExtension, context: WKWebExtensionContext, id: String) -> EngineExtension {
         let icon = ext.icon(for: CGSize(width: 32, height: 32))?.cgImage(forProposedRect: nil, context: nil, hints: nil)
         let manifest = ext.manifest
-        let panelPath = ((manifest["side_panel"] as? [String: Any])?["default_path"] as? String)
-            ?? ((manifest["sidebar_action"] as? [String: Any])?["default_panel"] as? String)
+        let panelPath = (((manifest["side_panel"] as? [String: Any])?["default_path"] as? String)
+            ?? ((manifest["sidebar_action"] as? [String: Any])?["default_panel"] as? String))
+            // A placeholder for a panel the extension has switched off (Bitwarden's sidepanel-disabled.html).
+            .flatMap { $0.lowercased().contains("disabled") ? nil : $0 }
         let panelURL = panelPath.flatMap { Self.page($0, in: context.baseURL) }
         return EngineExtension(id: id, name: ext.displayName ?? id, version: ext.version ?? "",
                                icon: icon, hasAction: context.action(for: nil) != nil, panelURL: panelURL,
