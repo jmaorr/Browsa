@@ -127,7 +127,9 @@
     // The side panel is Browsa's right panel. open() shows it; openPanelOnActionClick makes the toolbar
     // button open it, as in Chrome.
     sidePanel: () => ({
-      setOptions: resolves(undefined),
+      // Browsa's panel isn't per tab: the latest page set is the one shown (Claude sets its page here,
+      // with none in its manifest).
+      setOptions: (o = {}) => bridge('browsa.sidepanel', { action: 'options', path: typeof o.path === 'string' ? o.path : null, enabled: o.enabled !== false }).then(() => undefined),
       getOptions: resolves({}),
       setPanelBehavior: (b = {}) => bridge('browsa.sidepanel', { action: 'behavior', openPanelOnActionClick: !!b.openPanelOnActionClick }).then(() => undefined),
       getPanelBehavior: () => bridge('browsa.sidepanel', { action: 'getBehavior' }),

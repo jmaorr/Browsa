@@ -63,11 +63,13 @@ enum BuiltInTools {
         for t in workbench.tools {
             if case .plugin(let id) = t.owner, !extensions.contains(where: { $0.id == id }) { workbench.unregister(owner: t.owner) }
         }
-        for ext in extensions where ext.panelURL != nil {
-            workbench.register(Tool(
-                id: "ext:" + ext.id, title: ext.name, symbol: "puzzlepiece.extension",
-                summary: "\(ext.name)'s side panel", owner: .plugin(ext.id),
-                panel: { AnyView(ExtensionPanelView(extensionID: ext.id)) }))
-        }
+        for ext in extensions where ext.panelURL != nil { registerPanel(for: ext, in: workbench) }
+    }
+
+    static func registerPanel(for ext: EngineExtension, in workbench: Workbench) {
+        workbench.register(Tool(
+            id: "ext:" + ext.id, title: ext.name, symbol: "puzzlepiece.extension",
+            summary: "\(ext.name)'s side panel", owner: .plugin(ext.id),
+            panel: { AnyView(ExtensionPanelView(extensionID: ext.id)) }))
     }
 }

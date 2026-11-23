@@ -156,13 +156,15 @@ public protocol EngineExtensionHost: AnyObject {
     /// An extension changed its toolbar action (badge, icon, label) for some page.
     func extensionActionsDidChange()
     /// `chrome.sidePanel.open`, or a toolbar click with `openPanelOnActionClick`: show the extension's
-    /// side panel page. False if it has none.
-    func showExtensionPanel(extensionID: String) -> Bool
+    /// side panel page, `url` when the extension set one with `sidePanel.setOptions` (Claude has none in
+    /// its manifest), else its manifest's. False if it has none.
+    func showExtensionPanel(extensionID: String, url: URL?) -> Bool
 }
 
 public extension EngineExtensionHost {
     func extensionActionsDidChange() {}
-    func showExtensionPanel(extensionID: String) -> Bool { false }
+    func showExtensionPanel(extensionID: String, url: URL?) -> Bool { false }
+    func showExtensionPanel(extensionID: String) -> Bool { showExtensionPanel(extensionID: extensionID, url: nil) }
 }
 
 /// An extension's toolbar action for one page.

@@ -292,7 +292,7 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             || (manifest["sidebar_action"] as? [String: Any])?["default_panel"] != nil
         let hasPopup = context.action(for: page)?.presentsPopup ?? false
         if ExtensionBridges.opensPanelOnAction(extensionID) || (hasPanel && !hasPopup),
-           host?.showExtensionPanel(extensionID: extensionID) == true { return }
+           host?.showExtensionPanel(extensionID: extensionID, url: ExtensionBridges.panelPages[extensionID]) == true { return }
         popupAnchor = anchor
         context.performAction(for: page)
     }
@@ -416,7 +416,7 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         if let name = applicationIdentifier, ExtensionBridges.names.contains(name) {
             ExtensionBridges.handle(name, message: message, extensionID: catalogID(for: extensionContext),
                                     displayName: extensionContext.webExtension.displayName ?? "An extension",
-                                    host: host, reply: replyHandler)
+                                    baseURL: extensionContext.baseURL, host: host, reply: replyHandler)
             return
         }
         // Anything else: an app on this Mac registered as a Chrome native messaging host.
