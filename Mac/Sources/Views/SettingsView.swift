@@ -376,6 +376,29 @@ private struct PrivacySettings: View {
                 }
             }
             Section {
+                Toggle(isOn: $browser.settings.allowLocalCertificateErrors) {
+                    VStack(alignment: .leading) {
+                        Text("Allow local network sites with certificate errors")
+                        Text("For devices like routers and Home Assistant that use their own certificates. Covers addresses like 192.168.x.x and names ending in .local.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                ForEach(browser.settings.certificateExceptions.keys.sorted(), id: \.self) { site in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(site.hasSuffix(":443") ? String(site.dropLast(4)) : site)
+                            Text("Certificate trusted with Visit Anyway").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Forget") { browser.settings.certificateExceptions[site] = nil }
+                            .buttonStyle(.glass)
+                            .buttonBorderShape(.capsule)
+                    }
+                }
+            } header: {
+                Text("Certificates")
+            }
+            Section {
                 Toggle("Clear history and website data when Browsa quits", isOn: $browser.clearDataOnQuit)
                 Button("Clear History", role: .destructive) {
                     Task { await browser.clearHistory(); browser.activeWindow?.showToast("History cleared") }
