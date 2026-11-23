@@ -243,6 +243,7 @@ final class TabController: EnginePageDelegate {
         guard answer != .cancel || window.currentTab?.id == tab.id else { return false }
         let granted = answer == .ok
         // A private tab's answer lasts until the private space closes, and isn't saved.
+        if permission == .notifications, granted { SiteNotifications.shared.requestAuthorization(in: window) }
         if remembers {
             if tab.isPrivate {
                 library.privatePermissions[host, default: [:]][permission.rawValue] = granted
@@ -272,6 +273,15 @@ final class TabController: EnginePageDelegate {
             library.settings.certificateExceptions[site] = fingerprint
         }
         load(url, source: .typed)
+    }
+
+    func page(_ page: any EnginePage, showNotification notification: WebNotification) async -> Bool {
+        guard !tab.isPrivate else { return false }
+        return await SiteNotifications.shared.show(notification, from: tab, in: window ?? library?.activeWindow)
+    }
+
+    func page(_ page: any EnginePage, closeNotification id: String, tag: String?) {
+        SiteNotifications.shared.close(tab: tab.id, id: id, tag: tag)
     }
 
     func page(_ page: any EnginePage, chooseFiles request: FileChooserRequest) async -> [URL]? {
