@@ -49,18 +49,18 @@ final class Library {
     var callAudio: CallAudioTuning {
         didSet { Preferences.callAudio = callAudio; (engine as? CallAudioConfigurable)?.callAudio = callAudio }
     }
-    /// Site Styles turned on (`SiteStyle`), by id. Applies to open pages straight away.
-    var siteStyles: Set<String> {
+    /// Boosts turned on (`Boost`), by id. Applies to open pages straight away.
+    var boosts: Set<String> {
         didSet {
-            guard siteStyles != oldValue else { return }
-            Preferences.siteStyles = siteStyles
-            (engine as? SiteStylesConfigurable)?.enabledSiteStyles = siteStyles
+            guard boosts != oldValue else { return }
+            Preferences.boosts = boosts
+            (engine as? BoostsConfigurable)?.enabledBoosts = boosts
             // Choosing one yourself answers its suggestion.
-            siteStyleHintsDone.formUnion(siteStyles.symmetricDifference(oldValue))
+            boostHintsDone.formUnion(boosts.symmetricDifference(oldValue))
         }
     }
-    /// Site Styles whose suggestion has been answered (turned on, or closed).
-    var siteStyleHintsDone: Set<String> { didSet { Preferences.siteStyleHintsDone = siteStyleHintsDone } }
+    /// Boosts whose suggestion has been answered (turned on, or closed).
+    var boostHintsDone: Set<String> { didSet { Preferences.boostHintsDone = boostHintsDone } }
     /// The latest numbers from a page in a call, for the Audio settings readout.
     var callAudioStats: CallAudioStats?
     /// The extensions running now, for the toolbar.
@@ -136,8 +136,8 @@ final class Library {
         developerTools = Preferences.developerTools
         useSafariExtensions = Preferences.useSafariExtensions
         callAudio = Preferences.callAudio
-        siteStyles = Preferences.siteStyles
-        siteStyleHintsDone = Preferences.siteStyleHintsDone
+        boosts = Preferences.boosts
+        boostHintsDone = Preferences.boostHintsDone
         let support = snapshotURL?.deletingLastPathComponent()
         extensionCatalog = ExtensionCatalog(fileURL: support?.appending(path: "extensions.json"))
         extensionInstaller = ExtensionInstaller(
@@ -164,7 +164,7 @@ final class Library {
             calls.callAudio = callAudio
             calls.onCallAudioStats = { [weak self] in self?.callAudioStats = $0 }
         }
-        (engine as? SiteStylesConfigurable)?.enabledSiteStyles = siteStyles
+        (engine as? BoostsConfigurable)?.enabledBoosts = boosts
         applyBlocking()
         shareNotificationPermissions()
         archiveStaleTabs()
