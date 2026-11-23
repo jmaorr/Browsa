@@ -58,6 +58,8 @@ public protocol BrowserEngine: AnyObject {
     func loadInstalledExtensions(folders: [ExtensionFolder], includeApps: Bool) async -> [String]
     /// Stops every extension.
     func unloadExtensions()
+    /// An extension was removed: forget what the engine kept about it (its address, its prepared copy).
+    func forgetExtension(id: String)
     /// The extension's toolbar button was clicked. Its popup, if it has one, appears at `anchor`.
     func performAction(extensionID: String, for page: (any EnginePage)?, anchor: PlatformView?)
     /// An extension's toolbar action as it stands for `page`: its label, badge and icon there.
@@ -75,6 +77,7 @@ public extension BrowserEngine {
         return await loadInstalledExtensions()
     }
     func unloadExtensions() {}
+    func forgetExtension(id: String) {}
     func performAction(extensionID: String, for page: (any EnginePage)?, anchor: PlatformView?) {}
     func extensionActionState(extensionID: String, for page: (any EnginePage)?) -> EngineActionState? { nil }
     func pageDidBecomeActive(_ page: any EnginePage) {}

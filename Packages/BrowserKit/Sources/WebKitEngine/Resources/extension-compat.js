@@ -177,6 +177,9 @@
   // ("'downloads' is not a valid permission"), which stopped FireShot saving. Answer yes for them,
   // and pass the rest to WebKit.
   const bridged = ['downloads', 'notifications', 'sidePanel'];
+  // An extension given <all_urls> holds it as every website, *://*/* (WebKitExtensions.everyWebsite),
+  // so other extensions' pages stay out of reach as in Chrome. Asking about <all_urls> asks about that.
+  const websites = (origins) => origins.map((o) => (o === '<all_urls>' ? '*://*/*' : o));
   for (const root of roots) {
     const perms = root.permissions;
     if (!perms) continue;
@@ -186,11 +189,12 @@
       const wrapped = (p = {}, cb) => {
         const asked = Array.isArray(p.permissions) ? p.permissions : [];
         const rest = asked.filter((x) => !bridged.includes(x));
-        const origins = Array.isArray(p.origins) ? p.origins : [];
+        const origins = websites(Array.isArray(p.origins) ? p.origins : []);
         let result;
         if (!rest.length && !origins.length) result = Promise.resolve(true);
         else {
-          try { result = Promise.resolve(original({ ...p, permissions: rest })); } catch (e) { result = Promise.reject(e); }
+          const ask = origins.length ? { ...p, permissions: rest, origins } : { ...p, permissions: rest };
+          try { result = Promise.resolve(original(ask)); } catch (e) { result = Promise.reject(e); }
         }
         if (cb) { result.then((v) => cb(!!v), () => cb(false)); return undefined; }
         return result;
@@ -204,10 +208,12 @@
 
   // These are Chrome builds of the extensions, and some decide what they're running in from the user
   // agent (Bitwarden's device type is null without " Chrome/", and its background throws). Inside the
-  // extension only, the user agent says Chrome; websites still see Browsa's own.
+  // extension only, the user agent says Chrome; websites still see Browsa's own. Kept at Chrome's
+  // stable version, as ChromeWebStore.productVersion is: 1Password opens its popup to unlock only from
+  // Chrome 149 (found by Search, Office Commun).
   const ua = globalThis.navigator && navigator.userAgent;
   if (ua && !ua.includes(' Chrome/')) {
-    const chromeUA = ua.replace(/ Version\/[\d.]+/, '').replace(/ Safari\/[\d.]+/, '') + ' Chrome/142.0.0.0 Safari/537.36';
+    const chromeUA = ua.replace(/ Version\/[\d.]+/, '').replace(/ Safari\/[\d.]+/, '') + ' Chrome/156.0.0.0 Safari/537.36';
     try { Object.defineProperty(Object.getPrototypeOf(navigator), 'userAgent', { get: () => chromeUA, configurable: true }); } catch (e) {}
     try { Object.defineProperty(Object.getPrototypeOf(navigator), 'vendor', { get: () => 'Google Inc.', configurable: true }); } catch (e) {}
   }

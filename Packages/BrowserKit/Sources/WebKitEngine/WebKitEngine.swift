@@ -209,6 +209,10 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
         if #available(macOS 15.4, *) { webExtensions?.unloadAll() }
     }
 
+    public func forgetExtension(id: String) {
+        if #available(macOS 15.4, *) { webExtensions?.forget(id) }
+    }
+
     public func performAction(extensionID: String, for page: (any EnginePage)?, anchor: NSView?) {
         if #available(macOS 15.4, *) { webExtensions?.performAction(extensionID: extensionID, for: page as? WebKitPage, anchor: anchor) }
     }

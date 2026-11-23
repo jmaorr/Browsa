@@ -61,8 +61,9 @@ public enum ExtensionSource: Codable, Hashable, Sendable {
 /// install and update store extensions. Browsa downloads on the user's behalf and never re-hosts.
 public enum ChromeWebStore {
     /// The Chrome version Browsa says it is when asking for a package. Some extensions are only
-    /// offered to recent versions.
-    public static let productVersion = "140.0.0.0"
+    /// offered to recent versions. Kept at Chrome's stable version, and the same as the one the compat
+    /// script tells extensions (extension-compat.js): 1Password turns its unlock popup off below 149.
+    public static let productVersion = "156.0.0.0"
 
     public static func isExtensionID(_ s: String) -> Bool {
         s.count == 32 && s.allSatisfy { ("a"..."p").contains($0) }
