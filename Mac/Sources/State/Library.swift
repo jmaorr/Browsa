@@ -713,6 +713,10 @@ final class Library {
         id.flatMap { id in settings.profiles.first { $0.id == id }?.name } ?? "Default"
     }
 
+    /// A profile just added from Settings, whose name field should take focus with the name selected.
+    /// Not saved.
+    var renamingProfileID: UUID?
+
     @discardableResult
     func addProfile(named name: String? = nil) -> SpaceProfile {
         let profile = SpaceProfile(name: name ?? "Profile \(settings.profiles.count + 2)")
