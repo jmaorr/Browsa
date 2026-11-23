@@ -217,7 +217,10 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
 
     public func loadInstalledExtensions(folders: [ExtensionFolder], includeApps: Bool) async -> [String] {
         guard #available(macOS 15.4, *), let ext = webExtensions else { return ["needs macOS 15.4"] }
-        return await ext.loadInstalled(folders: folders, includeApps: includeApps)
+        let problems = await ext.loadInstalled(folders: folders, includeApps: includeApps)
+        // Pages the loaded extensions list may now talk to them (ExtensionExternal).
+        for controller in allContentControllers { install(on: controller) }
+        return problems
     }
 
     public func unloadExtensions() {
@@ -321,6 +324,9 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
             controller.addScriptMessageHandler(WebNotifications.Handler(page: { [weak self] in self?.page(for: $0) },
                                                                         saved: { [weak self] in self?.notificationPermissions ?? [:] }),
                                               contentWorld: .page, name: WebNotifications.messageName)
+        }
+        if #available(macOS 15.4, *), let listings = webExtensions?.externalListings, let external = ExtensionExternal.script(listings) {
+            controller.addUserScript(external)
         }
         if blocking.globalPrivacyControl {
             controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,

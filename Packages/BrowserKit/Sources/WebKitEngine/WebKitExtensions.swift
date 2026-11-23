@@ -44,6 +44,16 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
     }
 
     /// The catalog id for a context: what the rest of Browsa knows the extension by.
+    /// Each loaded extension's `externally_connectable` patterns, by its runtime id (ExtensionExternal).
+    var externalListings: [String: [String]] {
+        var found: [String: [String]] = [:]
+        for context in contexts.values {
+            let listed = context.webExtension.manifest["externally_connectable"] as? [String: Any]
+            if let patterns = listed?["matches"] as? [String], !patterns.isEmpty { found[context.uniqueIdentifier] = patterns }
+        }
+        return found
+    }
+
     func catalogID(for context: WKWebExtensionContext) -> String {
         catalogIDs[context.uniqueIdentifier] ?? context.uniqueIdentifier
     }

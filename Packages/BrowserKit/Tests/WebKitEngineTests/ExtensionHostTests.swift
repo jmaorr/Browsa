@@ -1,6 +1,7 @@
 #if os(macOS)
 import Foundation
 import Testing
+import JavaScriptCore
 @testable import WebKitEngine
 
 @Suite struct ExtensionHostTests {
@@ -20,6 +21,24 @@ import Testing
         #expect(ExtensionAuth.redirectOwner(URL(string: "https://evil.example/\(id).chromiumapp.org/")) == nil)
         #expect(ExtensionAuth.redirectOwner(URL(string: "http://\(id).chromiumapp.org/")) == nil)
         #expect(ExtensionAuth.redirectOwner(URL(string: "https://notanid.chromiumapp.org/")) == nil)
+    }
+
+    @MainActor @Test func externalPagesFollowChromesRules() throws {
+        #expect(ExtensionExternal.allowed("https://claude.ai/*"))
+        #expect(ExtensionExternal.allowed("https://*.claude.ai/*"))
+        #expect(!ExtensionExternal.allowed("*://*/*"))
+        #expect(!ExtensionExternal.allowed("https://*.com/*"))
+        let script = try #require(ExtensionExternal.script(["fcoeoabgfenejglbffodgkkbkcdhcgfn": ["https://claude.ai/*", "*://*/*"]]))
+        #expect(script.source.contains("claude.ai"))
+        #expect(!script.source.contains("*://*/*"))
+        #expect(ExtensionExternal.script(["x": ["*://*/*"]]) == nil)
+        // The page script parses.
+        let context = try #require(JSContext())
+        var failure: String?
+        context.exceptionHandler = { _, e in failure = e?.toString() }
+        context.evaluateScript("var window = {}, location = { protocol: 'https:', hostname: 'claude.ai', port: '', pathname: '/', search: '' };")
+        context.evaluateScript(script.source)
+        #expect(failure == nil)
     }
 
     /// 1Password's helper refuses a browser whose host isn't in the browser's process group.
