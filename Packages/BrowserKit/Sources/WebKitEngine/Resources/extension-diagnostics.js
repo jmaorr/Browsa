@@ -12,7 +12,7 @@
     addEventListener('unhandledrejection', e => say('rejection ' + String(e.reason && (e.reason.stack || e.reason.message || e.reason)).slice(0, 300)));
     for (const level of ['error', 'warn']) {
       const original = console[level].bind(console);
-      console[level] = (...a) => { say(level + ': ' + a.map(x => { try { return typeof x === 'string' ? x : (x && (x.stack || x.message)) || JSON.stringify(x); } catch (e) { return String(x); } }).join(' ').slice(0, 300)); original(...a); };
+      console[level] = (...a) => { say(level + ': ' + a.map(x => { try { return typeof x === 'string' ? x : (x instanceof Error ? x.name + ': ' + x.message + ' ' + (x.stack || '') : JSON.stringify(x)); } catch (e) { return String(x); } }).join(' ').slice(0, 400)); original(...a); };
     }
     return;
   }

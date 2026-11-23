@@ -23,7 +23,7 @@ enum WebNotifications {
     /// the first line of the page's own scripts.
     static func script(saved: [String: Bool]) -> WKUserScript {
         let json = (try? JSONSerialization.data(withJSONObject: saved)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        let source = shim.replacingOccurrences(of: "__SAVED__", with: json)
+        let source = "{\n" + PageBridge.pageHelper + "\n" + shim.replacingOccurrences(of: "__SAVED__", with: json) + "\n}"
         return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .page)
     }
 
@@ -97,10 +97,8 @@ enum WebNotifications {
     private static let shim = #"""
     (function () {
       if (window.top !== window || !window.isSecureContext) return;
-      function bridge() {
-        var handlers = window.webkit && window.webkit.messageHandlers;
-        return handlers && handlers.browsaNotifications;
-      }
+      // Browsa through the relay in its own world (PageBridge.swift), so pages never see window.webkit.
+      function bridge() { return __browsaBridge('browsaNotifications'); }
       if (!bridge()) return;
       // Looked up each time: the app can swap the handler while the page is open, and an old one goes dead.
       function post(m) {

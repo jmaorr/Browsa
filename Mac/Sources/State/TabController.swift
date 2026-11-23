@@ -119,7 +119,7 @@ final class TabController: EnginePageDelegate {
             return .cancel
         }
         let scheme = request.url.scheme?.lowercased() ?? ""
-        guard ["http", "https", "about", "blob", "data", "file", "javascript", "webkit-extension"].contains(scheme) else {
+        guard ["http", "https", "about", "blob", "data", "file", "javascript", "webkit-extension", "chrome-extension"].contains(scheme) else {
             // mailto:, zoommtg:, App Store links and the like belong to other apps. Browsa asks first (as
             // Chrome does), so a page can't throw you into an app: Zoom's join page fires zoommtg: on its
             // own, and saying no keeps its "join from your browser" option. Email links just open.

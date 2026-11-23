@@ -490,6 +490,11 @@ struct ExtensionPanelView: View {
     let extensionID: String
     @State private var page: (any EnginePage)?
 
+    private var panelURL: URL? {
+        browser.library.extensionPanelPages[extensionID]
+            ?? browser.library.extensions.first(where: { $0.id == extensionID })?.panelURL
+    }
+
     var body: some View {
         Group {
             if let page {
@@ -498,13 +503,14 @@ struct ExtensionPanelView: View {
                 ProgressView()
             }
         }
-        .task(id: extensionID) {
+        .task(id: panelURL) {
             page?.close()
-            guard let url = browser.library.extensions.first(where: { $0.id == extensionID })?.panelURL else { page = nil; return }
+            guard let url = panelURL else { page = nil; browser.library.shownExtensionPanels[extensionID] = nil; return }
+            browser.library.shownExtensionPanels[extensionID] = url
             page = browser.engine.makePage(options: PageOptions(url: url), delegate: PanelPageDelegate.shared)
             page?.load(url)
         }
-        .onDisappear { page?.close(); page = nil }
+        .onDisappear { page?.close(); page = nil; browser.library.shownExtensionPanels[extensionID] = nil }
     }
 }
 
@@ -512,6 +518,12 @@ struct ExtensionPanelView: View {
 @MainActor
 final class PanelPageDelegate: EnginePageDelegate {
     static let shared = PanelPageDelegate()
+
+    /// window.open from a panel (Raindrop's Sign in): the page goes in a new tab. Blocking it, the
+    /// default, left the button doing nothing.
+    func page(_ page: any EnginePage, openedPopup popup: any EnginePage, url: URL?) -> (any EnginePageDelegate)? {
+        (NSApp.delegate as? AppDelegate)?.browser?.library.openPanelPopup(page: popup, url: url)
+    }
 
     func page(_ page: any EnginePage, decide request: NavigationRequest) async -> NavigationDecision {
         guard request.isMainFrame, request.kind == .link, request.url.scheme == "https" || request.url.scheme == "http",

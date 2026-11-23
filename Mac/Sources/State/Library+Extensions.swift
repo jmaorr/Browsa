@@ -95,6 +95,7 @@ extension Library {
             try? FileManager.default.removeItem(atPath: URL(filePath: path).deletingLastPathComponent().path(percentEncoded: false))
         }
         extensionCatalog.remove(id: id)
+        engine.forgetExtension(id: id)
         reloadExtensions()
     }
 
