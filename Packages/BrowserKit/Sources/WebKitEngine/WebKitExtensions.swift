@@ -485,13 +485,22 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
 
     func webExtensionController(_ controller: WKWebExtensionController, presentActionPopup action: WKWebExtension.Action,
                                 for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
-        guard let popover = action.popupPopover,
-              let anchor = popupAnchor ?? NSApp.keyWindow?.contentView else {
+        guard let anchor = popupAnchor ?? NSApp.keyWindow?.contentView else {
             completionHandler(nil)
             return
         }
-        popover.behavior = .transient
-        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        // Browsa's own popover, with a view from the extension's configuration (ExtensionPopup): from
+        // WebKit's, some extensions' messages never reach their background (Bitwarden spun for ever).
+        // WebKit's popup page only tells which page it is.
+        let manifest = context.webExtension.manifest
+        let declared = ((manifest["action"] as? [String: Any]) ?? (manifest["browser_action"] as? [String: Any]))?["default_popup"] as? String
+        if let url = action.popupWebView?.url ?? declared.flatMap({ Self.page($0, in: context.baseURL) }) {
+            action.closePopup()
+            ExtensionPopup.shared.show(url, for: context, from: anchor, host: host)
+        } else if let popover = action.popupPopover {
+            popover.behavior = .transient
+            popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        }
         completionHandler(nil)
     }
 }
