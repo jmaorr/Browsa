@@ -143,6 +143,8 @@ struct SidebarIconButton: View {
 /// the site menu; pinned extensions and the extensions menu sit at the right end.
 struct AddressPill: View {
     @Environment(Browser.self) private var browser
+    /// In a split pane's glass panel: a more solid fill, and Copy Link always showing.
+    var inPanel = false
     @State private var hovering = false
 
     var body: some View {
@@ -161,7 +163,7 @@ struct AddressPill: View {
                 .help(devServer.map { Text(verbatim: "\($0.details) · localhost:\($0.port)") } ?? Text(verbatim: ""))
                 .foregroundStyle(tab?.url == nil ? .secondary : .primary)
             Spacer(minLength: 0)
-            if hovering, tab?.url != nil, !isWelcome {
+            if hovering || inPanel, tab?.url != nil, !isWelcome {
                 Button { browser.copyCurrentLink() } label: { Image(systemName: "link") }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
@@ -183,7 +185,15 @@ struct AddressPill: View {
         .font(.system(size: 13))
         .padding(.horizontal, 10)
         .frame(height: 32)
-        .background(.primary.opacity(hovering ? 0.09 : 0.06), in: .rect(cornerRadius: 9, style: .continuous))
+        .background {
+            if inPanel {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(Color(nsColor: .controlBackgroundColor).opacity(hovering ? 0.9 : 0.75))
+                    .strokeBorder(.primary.opacity(0.1))
+            } else {
+                RoundedRectangle(cornerRadius: 9, style: .continuous).fill(.primary.opacity(hovering ? 0.09 : 0.06))
+            }
+        }
         .contentShape(.rect)
         .onTapGesture { browser.showCommandBar(.editCurrent) }
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }

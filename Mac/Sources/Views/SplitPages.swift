@@ -21,6 +21,8 @@ struct SplitPages: View {
     @State private var handlePane: Int?
     /// The pane whose control panel is open. Its handle stays out whatever the pointer does.
     @State private var panelPane: Int?
+    /// The pane whose panel just closed: its pill stays a moment so the panel can shrink back into it.
+    @State private var closingPane: Int?
 
     private static let minimumPane: CGFloat = 240
     /// How far the divider's grab zone reaches over each pane, past the visible gap.
@@ -34,10 +36,20 @@ struct SplitPages: View {
             HStack(spacing: 0) {
                 ForEach(Array(tabs.enumerated()), id: \.element.id) { i, tab in
                     SplitPane(tab: tab, index: i, count: tabs.count, isFront: tab.id == browser.currentTab?.id,
-                              showsHandle: handlePane == i || panelPane == i,
+                              showsHandle: handlePane == i || panelPane == i || closingPane == i,
                               panelOpen: Binding(get: { panelPane == i }, set: { open in
                                   withAnimation(Motion.snappy) {
-                                      if open { panelPane = i } else if panelPane == i { panelPane = nil }
+                                      if open {
+                                          panelPane = i
+                                      } else if panelPane == i {
+                                          panelPane = nil
+                                          closingPane = i
+                                      }
+                                  }
+                                  if !open {
+                                      DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                          if closingPane == i { withAnimation(Motion.snappy) { closingPane = nil } }
+                                      }
                                   }
                               }))
                         .frame(width: max(0, available * widths[i]))
@@ -67,7 +79,7 @@ struct SplitPages: View {
                     if pane != handlePane { withAnimation(Motion.snappy) { handlePane = pane } }
                 }
             }
-            .onChange(of: tabs.map(\.id)) { panelPane = nil; handlePane = nil }
+            .onChange(of: tabs.map(\.id)) { panelPane = nil; handlePane = nil; closingPane = nil }
         }
     }
 
@@ -196,30 +208,36 @@ private struct PaneControls: View {
         VStack(alignment: .leading, spacing: 10) {
             section("Page")
             HStack(spacing: 6) {
-                glassButton("chevron.left", "Back", enabled: tab.canGoBack) { browser.goBack() }
-                glassButton("chevron.right", "Forward", enabled: tab.canGoForward) { browser.goForward() }
-                glassButton(tab.isLoading ? "xmark" : "arrow.clockwise", tab.isLoading ? "Stop" : "Reload") {
+                iconButton("chevron.left", "Back", enabled: tab.canGoBack) { browser.goBack() }
+                iconButton("chevron.right", "Forward", enabled: tab.canGoForward) { browser.goForward() }
+                Spacer(minLength: 0)
+                iconButton(tab.isLoading ? "xmark" : "arrow.clockwise", tab.isLoading ? "Stop" : "Reload") {
                     if tab.isLoading { browser.stopLoading() } else { browser.reload() }
                 }
-                Spacer(minLength: 0)
             }
-            AddressPill()
+            AddressPill(inPanel: true)
             section("Split View").padding(.top, 4)
-            HStack(spacing: 6) {
-                glassButton("arrow.left", "Move Left", enabled: index > 0) { act { browser.shiftPane(tab, by: -1) } }
-                glassButton("arrow.right", "Move Right", enabled: index < count - 1) { act { browser.shiftPane(tab, by: 1) } }
-                glassButton("equal", "Even Up Panes") { act { browser.evenSplit(browser.rowTabs(tab)) } }
-                Spacer(minLength: 0)
-            }
-            HStack(spacing: 6) {
-                labeledButton("rectangle.portrait.and.arrow.right", "Remove from Split") { act { browser.removeFromSplit(tab) } }
-                labeledButton(tab.isPinned ? "minus" : "xmark", tab.isPinned ? "Unload Tab" : "Close Tab") { act { browser.close(tab) } }
-                Spacer(minLength: 0)
+            VStack(spacing: 6) {
+                ForEach(SplitAction.all(for: tab, index: index, count: count)) { item in
+                    Button { act { item.run(browser, tab) } } label: {
+                        Label(item.title, systemImage: item.symbol)
+                            .font(.system(size: 12, weight: .medium))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 2)
+                    }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+                    .background(Self.solidFill, in: .capsule)
+                    .overlay(Capsule().strokeBorder(.primary.opacity(0.1)))
+                }
             }
         }
         .padding(14)
         .frame(width: Self.panelWidth, alignment: .leading)
     }
+
+    /// Behind each button in the panel, so it holds its own against the glass.
+    static let solidFill = Color(nsColor: .controlBackgroundColor).opacity(0.75)
 
     private func section(_ title: String) -> some View {
         Text(title)
@@ -227,7 +245,7 @@ private struct PaneControls: View {
             .foregroundStyle(.secondary)
     }
 
-    private func glassButton(_ symbol: String, _ help: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {
+    private func iconButton(_ symbol: String, _ help: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: .semibold))
@@ -235,17 +253,10 @@ private struct PaneControls: View {
         }
         .buttonStyle(.glass)
         .buttonBorderShape(.capsule)
+        .background(Self.solidFill, in: .capsule)
+        .overlay(Capsule().strokeBorder(.primary.opacity(0.1)))
         .disabled(!enabled)
         .help(help)
-    }
-
-    private func labeledButton(_ symbol: String, _ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: symbol)
-                .font(.system(size: 12, weight: .medium))
-        }
-        .buttonStyle(.glass)
-        .buttonBorderShape(.capsule)
     }
 
     private func act(_ action: () -> Void) {
@@ -253,6 +264,37 @@ private struct PaneControls: View {
             open = false
             action()
         }
+    }
+}
+
+/// What can be done to a split from one of its tabs, worded the same in the pane's panel and the
+/// tab's sidebar menu.
+struct SplitAction: Identifiable {
+    let id: String
+    let title: String
+    let symbol: String
+    let run: @MainActor (Browser, BrowserTab) -> Void
+
+    @MainActor static func all(for tab: BrowserTab, index: Int, count: Int) -> [SplitAction] {
+        var items: [SplitAction] = []
+        if count == 2 {
+            items.append(SplitAction(id: "swap", title: "Swap Sides", symbol: "arrow.left.arrow.right") { b, t in
+                b.shiftPane(t, by: index == 0 ? 1 : -1)
+            })
+        } else {
+            if index > 0 {
+                items.append(SplitAction(id: "left", title: "Move Left", symbol: "arrow.left") { b, t in b.shiftPane(t, by: -1) })
+            }
+            if index < count - 1 {
+                items.append(SplitAction(id: "right", title: "Move Right", symbol: "arrow.right") { b, t in b.shiftPane(t, by: 1) })
+            }
+        }
+        items.append(SplitAction(id: "separate", title: "Separate Tabs", symbol: "rectangle.split.2x1.slash") { b, t in
+            b.separateSplit(containing: t)
+        })
+        items.append(SplitAction(id: "close", title: tab.isPinned ? "Unload This Tab" : "Close This Tab",
+                                 symbol: tab.isPinned ? "minus" : "xmark") { b, t in b.close(t) })
+        return items
     }
 }
 
@@ -509,14 +551,13 @@ struct SplitTabRow: View {
     var isLifted = false
     @State private var hovering = false
 
-    static let height: CGFloat = 40
+    static let height: CGFloat = 34
     static let padding: CGFloat = 3
 
     var body: some View {
         HStack(spacing: Self.padding) {
             ForEach(tabs) { tab in
-                SplitTabSegment(tab: tab, isFront: selected && browser.currentTab?.id == tab.id,
-                                rowSelected: selected, canClose: !isLifted)
+                SplitTabSegment(tab: tab, rowSelected: selected, showsClose: hovering && !isLifted)
             }
         }
         .font(.system(size: 13))
@@ -524,7 +565,7 @@ struct SplitTabRow: View {
         .frame(height: Self.height)
         .background {
             RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .fill(.primary.opacity(selected ? 0.09 : (hovering ? 0.07 : 0.045)))
+                .fill(.primary.opacity(selected ? 0.1 : (hovering ? 0.07 : 0.045)))
         }
         .contentShape(.rect)
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
@@ -533,14 +574,13 @@ struct SplitTabRow: View {
     }
 }
 
-/// One tab's box in a split's sidebar row. The pane in front gets the strongest fill.
+/// One tab's box in a split's sidebar row. The boxes look alike: the row as a whole is selected,
+/// not one of its tabs. Their closes come and go together, with the pointer over the row.
 private struct SplitTabSegment: View {
     @Environment(Browser.self) private var browser
     let tab: BrowserTab
-    let isFront: Bool
     let rowSelected: Bool
-    var canClose = true
-    @State private var hovering = false
+    var showsClose = false
 
     var body: some View {
         HStack(spacing: 6) {
@@ -552,11 +592,9 @@ private struct SplitTabSegment: View {
             .frame(width: 16, height: 16)
             Text(tab.displayTitle)
                 .lineLimit(1)
-                // In the selected row, the tab in front reads a little stronger than the others.
-                .foregroundStyle(rowSelected && !isFront ? HierarchicalShapeStyle.secondary : HierarchicalShapeStyle.primary)
             Spacer(minLength: 0)
             if let call = tab.call { CallBadge(call: call) }
-            if hovering, canClose {
+            if showsClose {
                 Button { withAnimation(Motion.snappy) { browser.close(tab) } } label: {
                     Image(systemName: tab.isPinned ? "minus" : "xmark")
                         .font(.system(size: 9, weight: .bold))
@@ -569,17 +607,16 @@ private struct SplitTabSegment: View {
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
-        .padding(.leading, 7)
-        .padding(.trailing, 5)
+        .padding(.leading, 6)
+        .padding(.trailing, 4)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isFront ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(hovering ? 0.07 : 0.035)))
-                .shadow(color: .black.opacity(isFront ? 0.1 : 0), radius: 1.5, y: 1)
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(rowSelected ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(0.04)))
+                .shadow(color: .black.opacity(rowSelected ? 0.08 : 0), radius: 1.5, y: 1)
         }
         .contentShape(.rect)
         .onTapGesture { browser.select(tab) }
-        .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
         .contextMenu { TabMenu(tab: tab) }
         .help(tab.url?.absoluteString ?? tab.displayTitle)
     }
@@ -591,12 +628,13 @@ struct SplitViewMenuItems: View {
     let tab: BrowserTab
 
     var body: some View {
-        if browser.rowTabs(tab).count > 1 {
-            Button("Remove from Split View", systemImage: "rectangle.portrait.and.arrow.right") {
-                withAnimation(Motion.snappy) { browser.removeFromSplit(tab) }
-            }
-            Button("Separate Split View", systemImage: "rectangle.split.2x1") {
-                withAnimation(Motion.snappy) { browser.separateSplit(containing: tab) }
+        let tabs = browser.rowTabs(tab)
+        if tabs.count > 1, let index = tabs.firstIndex(where: { $0.id == tab.id }) {
+            // The same actions as the pane's panel, less Close, which the menu already has.
+            ForEach(SplitAction.all(for: tab, index: index, count: tabs.count).filter { $0.id != "close" }) { item in
+                Button(item.title, systemImage: item.symbol) {
+                    withAnimation(Motion.snappy) { item.run(browser, tab) }
+                }
             }
         } else if browser.canSplit(with: tab) {
             Button(browser.isSplit ? "Add to Split View" : "Open in Split View", systemImage: "rectangle.split.2x1") {
