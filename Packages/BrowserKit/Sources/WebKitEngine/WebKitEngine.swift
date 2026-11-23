@@ -12,7 +12,7 @@ let engineLog = Logger(subsystem: "com.orriginal.browsa", category: "webkit")
 /// Blocking uses BrowserCore's AdGuard-derived content rule lists and DuckDuckGo's autoconsent,
 /// exactly like the iOS app.
 @MainActor
-public final class WebKitEngine: BrowserEngine, CallAudioConfigurable {
+public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, WebNotificationsConfigurable {
     public let info: EngineInfo
     public var downloadsDirectory: URL
     public var developerToolsEnabled = false {
@@ -56,6 +56,18 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable {
     private var blocking = BlockingConfiguration(isEnabled: false, ruleGroups: [], allowlist: [], declineCookieBanners: false)
     /// Pages that are alive, to reach their content controllers and map script messages back.
     private var livePages: [ObjectIdentifier: WeakPage] = [:]
+
+    // MARK: Notifications
+
+    public var notificationPermissions: [String: Bool] = [:] {
+        didSet { if notificationPermissions != oldValue { for controller in allContentControllers { install(on: controller) } } }
+    }
+
+    public func notificationClicked(_ id: String, on page: any EnginePage) {
+        guard let page = page as? WebKitPage, let id = WebNotifications.Handler.cleanID(id) else { return }
+        page.webView.evaluateJavaScript("window.\(WebNotifications.eventFunction) && window.\(WebNotifications.eventFunction)('\(id)', 'click')",
+                                        in: nil, in: .page) { _ in }
+    }
     private var rulesReady = false
     private var waitingForRules: [() -> Void] = []
     let downloads = DownloadBridge()
@@ -271,6 +283,11 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable {
                                               contentWorld: .page, name: CallAudioHandler.name)
         }
         if let fixes = SiteOptimisations.script { controller.addUserScript(fixes) }
+        controller.addUserScript(WebNotifications.script(saved: notificationPermissions))
+        controller.removeScriptMessageHandler(forName: WebNotifications.messageName, contentWorld: .page)
+        controller.addScriptMessageHandler(WebNotifications.Handler(page: { [weak self] in self?.page(for: $0) },
+                                                                    saved: { [weak self] in self?.notificationPermissions ?? [:] }),
+                                          contentWorld: .page, name: WebNotifications.messageName)
         if blocking.globalPrivacyControl {
             controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,
                                                   forMainFrameOnly: false, in: .page))
