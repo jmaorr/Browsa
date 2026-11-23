@@ -152,10 +152,21 @@ final class Browser {
     func addFavorite(url: URL, title: String) { library.addFavorite(url: url, title: title) }
     func removeFavorite(_ fav: Favorite) { library.removeFavorite(fav) }
     func moveFavorite(_ fav: Favorite, before target: Favorite?) { library.moveFavorite(fav, before: target) }
-    func togglePinned(_ tab: BrowserTab) { library.togglePinned(tab) }
-    func move(_ tab: BrowserTab, to space: Space) { library.move(tab, to: space) }
+    /// Pinning or moving a tab in a split takes the whole split along.
+    func togglePinned(_ tab: BrowserTab) {
+        let split = rowTabs(tab)
+        library.togglePinned(tab)
+        keepSplitTogether(split, following: tab)
+    }
+    func move(_ tab: BrowserTab, to space: Space) {
+        let split = rowTabs(tab)
+        library.move(tab, to: space)
+        keepSplitTogether(split, following: tab)
+    }
     func move(_ tab: BrowserTab, before target: BrowserTab?, pinned: Bool) {
+        let split = rowTabs(tab)
         library.move(tab, before: target, pinned: pinned, fallback: currentSpace)
+        keepSplitTogether(split, following: tab)
     }
     func deleteSpace(_ space: Space) { library.deleteSpace(space) }
     func closePrivateSpace() { library.closePrivateSpace() }
@@ -209,6 +220,8 @@ final class Browser {
         if space.id != selectedSpaceID { selectSpace(space, resolving: false) }
         setSelection(tab, in: space)
         tab.lastActive = .now
+        // A split's panes are all on screen together.
+        for t in splitTabs ?? [] { t.lastActive = .now }
         dismissFind()
         reader = nil
         library.existingController(for: tab)?.recoverIfNeeded()
@@ -259,13 +272,21 @@ final class Browser {
     func moveOff(_ tab: BrowserTab, in space: Space) {
         guard tabSelection[space.id] == tab.id else { return }
         if selectedSpaceID == space.id { dismissFind(); reader = nil }
+        // In a split, the pane beside it comes to the front, and the split stays on screen.
+        if selectedSpaceID == space.id, let panes = splitTabs, let i = panes.firstIndex(where: { $0.id == tab.id }) {
+            let rest = panes.filter { $0.id != tab.id }
+            if let next = rest.indices.contains(i) ? rest[i] : rest.last {
+                setSelection(next, in: space)
+                return
+            }
+        }
         let list = today(in: space)
         guard !tab.isPinned, let i = list.firstIndex(where: { $0.id == tab.id }) else {
             // Leaving a pinned tab only unloads it, like Arc.
             setSelection(nil, in: space)
             return
         }
-        let elsewhere = Set(library.windows.filter { $0 !== self }.compactMap { $0.currentTab?.id })
+        let elsewhere = Set(library.windows.filter { $0 !== self }.flatMap { $0.shownTabIDs })
         let free = { (t: BrowserTab) in !elsewhere.contains(t.id) && t.id != tab.id }
         if let openerID = tab.openerID, previousSelection[space.id] == openerID,
            let opener = space.allTabs.first(where: { $0.id == openerID }), free(opener), lists(opener) {
@@ -281,7 +302,7 @@ final class Browser {
     /// A tab this window showed was dragged into another space.
     func tabLeft(_ tab: BrowserTab, space: Space) {
         guard tabSelection[space.id] == tab.id else { return }
-        let elsewhere = Set(library.windows.filter { $0 !== self }.compactMap { $0.currentTab?.id })
+        let elsewhere = Set(library.windows.filter { $0 !== self }.flatMap { $0.shownTabIDs })
         setSelection(space.allTabs.first { !elsewhere.contains($0.id) && lists($0) }, in: space)
     }
 
@@ -406,6 +427,8 @@ final class Browser {
 
     /// Moves a tab out into a window of its own.
     func openInNewWindow(_ tab: BrowserTab) {
+        // It leaves any split it was in: a window shows its own tabs.
+        library.splits.remove(tab.id)
         library.openWindow(.tab(tab))
     }
 
@@ -414,12 +437,14 @@ final class Browser {
     func close(_ tab: BrowserTab) { library.close(tab) }
 
     func closeOtherTabs(than keep: BrowserTab) {
-        for t in listedToday(in: currentSpace) where t.id != keep.id { close(t) }
+        let kept = Set(rowTabs(keep).map(\.id))
+        for t in listedToday(in: currentSpace) where !kept.contains(t.id) { close(t) }
     }
 
     /// Clears Today in the current space, like Arc's "Clear" button.
     func clearToday() {
-        for t in listedToday(in: currentSpace) where t.id != currentTab?.id { close(t) }
+        let kept = shownTabIDs
+        for t in listedToday(in: currentSpace) where !kept.contains(t.id) { close(t) }
     }
 
     func reopenClosedTab() {

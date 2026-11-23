@@ -11,9 +11,14 @@ final class SidebarDragging {
     /// The window whose sidebar this is, for its own Today tabs. Set as a drag starts.
     @ObservationIgnored private weak var browser: Browser?
 
-    /// The Today rows this window's sidebar shows.
+    /// The Today rows this window's sidebar shows. A split is one row.
     private func listedToday(in space: Space) -> [BrowserTab] {
-        browser?.listedToday(in: space) ?? space.listedToday
+        browser?.todayRows(in: space) ?? space.listedToday
+    }
+
+    /// The Pinned rows, a split as one row.
+    private func pinnedRows(in space: Space) -> [BrowserTab] {
+        browser?.pinnedRows(in: space) ?? space.pinned
     }
 
     /// Where a dragged tab would land: a slot among the other tabs of a section, or among the
@@ -233,7 +238,7 @@ final class SidebarDragging {
             }
             // Down into the list: its own tab if it has one here, otherwise a new one, and it's no
             // longer a favourite.
-            let others = target.isPinned ? space.pinned : listedToday(in: space)
+            let others = target.isPinned ? pinnedRows(in: space) : listedToday(in: space)
             let before = target.index < others.count ? others[target.index] : nil
             let tab = space.today.first { $0.favoriteID == fav.id && browser.lists($0) }
                 ?? browser.newTab(url: fav.url, in: space, source: .bookmark, select: false)
@@ -254,7 +259,7 @@ final class SidebarDragging {
         }
         guard !space.isPrivate else { return nil }
         let pinned = location.y < newTabFrame.midY
-        let others = pinned ? space.pinned : listedToday(in: space)
+        let others = pinned ? pinnedRows(in: space) : listedToday(in: space)
         let index = others.filter { (rowFrames[$0.id]?.midY ?? .infinity) < location.y }.count
         return pinned ? .pinned(index) : .today(index)
     }
@@ -311,7 +316,7 @@ final class SidebarDragging {
             withTransaction(quiet) { makeFavourite(tab, at: i, browser: browser) }
             return
         }
-        let others = (target.isPinned ? space.pinned : listedToday(in: space)).filter { $0.id != tab.id }
+        let others = (target.isPinned ? pinnedRows(in: space) : listedToday(in: space)).filter { $0.id != tab.id }
         let before = target.index < others.count ? others[target.index] : nil
         withTransaction(quiet) { browser.move(tab, before: before, pinned: target.isPinned) }
     }
@@ -339,7 +344,7 @@ final class SidebarDragging {
     }
 
     private func slot(of tab: BrowserTab, in space: Space) -> Target {
-        if let i = space.pinned.firstIndex(where: { $0.id == tab.id }) { return .pinned(i) }
+        if let i = pinnedRows(in: space).firstIndex(where: { $0.id == tab.id }) { return .pinned(i) }
         return .today(listedToday(in: space).firstIndex { $0.id == tab.id } ?? 0)
     }
 
@@ -361,7 +366,7 @@ final class SidebarDragging {
             return .favourite(before.count)
         }
         let pinned = location.y < newTabFrame.midY && !space.isPrivate && !tab.isPrivate
-        let others = (pinned ? space.pinned : listedToday(in: space)).filter { $0.id != tab.id }
+        let others = (pinned ? pinnedRows(in: space) : listedToday(in: space)).filter { $0.id != tab.id }
         let index = others.filter { (rowFrames[$0.id]?.midY ?? .infinity) < location.y }.count
         return pinned ? .pinned(index) : .today(index)
     }
@@ -389,7 +394,7 @@ struct LiftedTabRow: View {
             // Raised on a card while it moves; settles back to how the row really looks as it lands.
             let selected = tab.id == browser.selectedTabID(in: browser.currentSpace)
             ZStack {
-                TabRow(tab: tab, selected: selected || !dragging.settling, isLifted: true)
+                SidebarRow(tab: tab, selected: selected || !dragging.settling, isLifted: true)
                     .frame(width: lift.size.width, height: lift.size.height)
                     .opacity(asTile ? 0 : 1)
                 if let url = tab.url {

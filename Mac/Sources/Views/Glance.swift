@@ -115,6 +115,10 @@ struct GlanceOverlay: View {
                 }
             }
             Spacer()
+            if let tab = browser.currentTab, !Welcome.isWelcome(tab.url), browser.shownTabs.count < SplitStore.maxPanes {
+                Button { browser.expandGlanceIntoSplit() } label: { Image(systemName: "rectangle.split.2x1") }
+                    .help("Open in Split View")
+            }
             Button { browser.expandGlance() } label: {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
             }
