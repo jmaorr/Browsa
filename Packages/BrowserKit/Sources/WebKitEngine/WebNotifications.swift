@@ -75,8 +75,9 @@ enum WebNotifications {
                     tag: (body["tag"] as? String).flatMap { $0.isEmpty ? nil : String($0.prefix(200)) },
                     icon: icon,
                     silent: body["silent"] as? Bool ?? false)
-                delegate.page(page, showNotification: notification)
-                replyHandler(true, nil)
+                Task { @MainActor in
+                    replyHandler(await delegate.page(page, showNotification: notification), nil)
+                }
             case "close":
                 if let id = (body["id"] as? String).flatMap(Self.cleanID) {
                     page.delegate?.page(page, closeNotification: id, tag: (body["tag"] as? String).flatMap { $0.isEmpty ? nil : $0 })
