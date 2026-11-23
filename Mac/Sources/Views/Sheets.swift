@@ -115,9 +115,9 @@ struct PromptSheet: View {
 }
 
 /// A site handing a link to an app on this Mac (Slite, Zoom, Figma). Laid out like a macOS alert:
-/// the app's icon and the question centred, then three large rounded glass buttons stacked, the
-/// way macOS stacks an alert's buttons when there are three. Always Open is the default (Return),
-/// Not Now answers Esc.
+/// the app's icon and the question centred, then four large rounded glass buttons in two rows:
+/// this time (Open, Not Now) above every time for this site (Always Open, Don't Open). Open is the
+/// default (Return), Not Now answers Esc.
 struct OpenAppSheet: View {
     let app: String
     let appURL: URL
@@ -140,27 +140,31 @@ struct OpenAppSheet: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            VStack(spacing: 8) {
-                Button { answer(Prompt.alwaysOpen) } label: {
-                    Text("Always Open in \(app)").frame(maxWidth: .infinity)
+            Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                GridRow {
+                    Button { answer(.ok) } label: { Text("Open").frame(maxWidth: .infinity) }
+                        .buttonStyle(.glassProminent)
+                        .keyboardShortcut(.defaultAction)
+                    Button { answer(.cancel) } label: { Text("Not Now").frame(maxWidth: .infinity) }
+                        .buttonStyle(.glass)
+                        .keyboardShortcut(.cancelAction)
                 }
-                .buttonStyle(.glassProminent)
-                .keyboardShortcut(.defaultAction)
-                Button { answer(.ok) } label: { Text("Open Once").frame(maxWidth: .infinity) }
-                    .buttonStyle(.glass)
-                Button { answer(.cancel) } label: { Text("Not Now").frame(maxWidth: .infinity) }
-                    .buttonStyle(.glass)
-                    .keyboardShortcut(.cancelAction)
+                GridRow {
+                    Button { answer(Prompt.alwaysOpen) } label: { Text("Always Open").frame(maxWidth: .infinity) }
+                        .buttonStyle(.glass)
+                    Button { answer(Prompt.neverOpen) } label: { Text("Don\u{2019}t Open").frame(maxWidth: .infinity) }
+                        .buttonStyle(.glass)
+                }
             }
             .controlSize(.large)
             .buttonBorderShape(.capsule)
-            Text("Always Open sends these links from \(host) straight to \(app). You can change it in Settings › Privacy.")
+            Text("Always Open and Don\u{2019}t Open are remembered for \(host). Change them from the site menu or Settings › Privacy.")
                 .font(.caption).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(24)
-        .frame(width: 340)
+        .frame(width: 360)
     }
 }
 
