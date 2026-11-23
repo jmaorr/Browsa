@@ -325,6 +325,108 @@
     };
   }
 
+  // What the extension's background sends its own pages, and storage changes, relayed over a
+  // BroadcastChannel (one origin: the extension's). WebKit doesn't bring every message to every page
+  // of the extension, and a side panel or popup waiting on one (Claude's after sign-in, Bitwarden's
+  // sync) never heard it. Each copy is paired by its content: a page that heard WebKit's copy skips
+  // the relayed one and the other way round; unpaired copies are forgotten after 5 s. The idea is
+  // Search's (Office Commun, MIT, ExtensionShims.swift).
+  const runtime0 = globalThis.chrome && globalThis.chrome.runtime;
+  if (typeof BroadcastChannel === 'function' && runtime0 && runtime0.onMessage && typeof runtime0.sendMessage === 'function') {
+    const channel = new BroadcastChannel('browsa-relay');
+    const me = Math.random().toString(36).slice(2);
+    const ownPlace = (() => { try { return runtime0.getURL(''); } catch (e) { return ''; } })();
+    const keyOf = (m) => { try { const k = JSON.stringify(m, (_, v) => v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.keys(v).sort().map((x) => [x, v[x]])) : v); return k && k.length < 200000 ? k : null; } catch (e) { return null; } };
+    const native = new Map(), relayed = new Map();
+    const bump = (map, key, by) => {
+      const now = Date.now();
+      for (const [k, v] of map) if (now - v.at > 5000) map.delete(k);
+      const n = ((map.get(key) || {}).n || 0) + by;
+      if (n > 0) map.set(key, { n, at: now }); else map.delete(key);
+    };
+    const has = (map, key) => { const v = map.get(key); return !!v && Date.now() - v.at <= 5000 && v.n > 0; };
+    const listeners = new Map();   // the extension's onMessage listener -> ours
+    const ownSender = (s) => !!s && s.id === runtime0.id && typeof s.url === 'string' && !!ownPlace && s.url.startsWith(ownPlace);
+    const onMessage = runtime0.onMessage;
+    const add = onMessage.addListener.bind(onMessage), remove = onMessage.removeListener.bind(onMessage);
+    const wrapped = (fn) => function (message, sender, respond) {
+      const key = !isWorker && ownSender(sender) ? keyOf(message) : null;
+      if (key && has(relayed, key)) { bump(relayed, key, -1); return; }
+      if (key) bump(native, key, 1);
+      return fn.call(this, message, sender, respond);
+    };
+    try {
+      onMessage.addListener = function (fn) { if (typeof fn !== 'function') return add(fn); const w = wrapped(fn); listeners.set(fn, w); return add(w); };
+      onMessage.removeListener = function (fn) { const w = listeners.get(fn); listeners.delete(fn); return remove(w || fn); };
+      onMessage.hasListener = function (fn) { return listeners.has(fn); };
+      keep(onMessage);
+    } catch (e) {}
+    const send = runtime0.sendMessage.bind(runtime0);
+    try {
+      runtime0.sendMessage = function (...args) {
+        // Only messages for the extension itself (no other extension's id first).
+        const own = !(typeof args[0] === 'string' && args.length > 1 && args[0] !== runtime0.id);
+        const message = own ? (typeof args[0] === 'string' && args.length > 1 ? args[1] : args[0]) : undefined;
+        if (own) { const key = keyOf(message); if (key) channel.postMessage({ from: me, url: location.href, key, message }); }
+        return send(...args);
+      };
+      keep(runtime0);
+    } catch (e) {}
+    channel.onmessage = (event) => {
+      const d = event.data || {};
+      if (d.from === me) return;
+      if (d.storage) {
+        // Several pages may offer the same change: it's delivered once, whoever brings it first.
+        if (deliverStorage) deliverStorage(d.changes, d.area, d.area + '|' + d.key);
+        return;
+      }
+      // The background is left to WebKit: it answers what pages ask it, and a relayed copy (which can't
+      // be answered) arriving first would take the place of the real one.
+      if (isWorker) return;
+      if (!d.key || has(native, d.key)) { if (d.key) bump(native, d.key, -1); return; }
+      bump(relayed, d.key, 1);
+      const sender = { id: runtime0.id, url: d.url, origin: ownPlace.replace(/\/$/, '') };
+      for (const fn of [...listeners.keys()]) {
+        try { fn.call(null, d.message, sender, () => {}); } catch (e) { setTimeout(() => { throw e; }); }
+      }
+    };
+    // Storage: each change seen by any context of the extension is offered to the others.
+    const storageListeners = new Set(), storageSeen = new Map();
+    let deliverStorage = null;
+    // True when this change was already handed to the listeners in the last 5 s; marks it otherwise.
+    const seenStorage = (key) => {
+      const now = Date.now();
+      for (const [k, at] of storageSeen) if (now - at > 5000) storageSeen.delete(k);
+      if (storageSeen.has(key)) return true;
+      storageSeen.set(key, now);
+      return false;
+    };
+    const storage0 = globalThis.chrome.storage;
+    if (storage0 && storage0.onChanged && typeof storage0.onChanged.addListener === 'function') {
+      const sc = storage0.onChanged;
+      const sAdd = sc.addListener.bind(sc);
+      // One native listener hands each change to the extension's listeners once, and offers it to the
+      // extension's other pages; a relayed copy that arrives first is delivered instead.
+      deliverStorage = (changes, area, key) => {
+        if (seenStorage(key)) return;
+        for (const fn of [...storageListeners]) { try { fn(changes, area); } catch (e) { setTimeout(() => { throw e; }); } }
+      };
+      try {
+        sc.addListener = function (fn) { if (typeof fn === 'function') storageListeners.add(fn); };
+        sc.removeListener = function (fn) { storageListeners.delete(fn); };
+        sc.hasListener = function (fn) { return storageListeners.has(fn); };
+        sc.hasListeners = function () { return storageListeners.size > 0; };
+        keep(sc);
+      } catch (e) {}
+      sAdd((changes, area) => {
+        const key = area + '|' + keyOf(changes);
+        deliverStorage(changes, area, key);
+        try { channel.postMessage({ from: me, storage: true, area, key: keyOf(changes), changes }); } catch (e) {}
+      });
+    }
+  }
+
   if (!isWorker) return;
 
   // Native messaging ports, inside the worker. WebKit unloads a worker that hasn't posted on an open
