@@ -115,6 +115,10 @@ final class TabController: EnginePageDelegate {
 
     // MARK: EnginePageDelegate
 
+    func pageWantsVideoBack(_ page: any EnginePage) {
+        library?.videoPiP.bringBack(tab)
+    }
+
     func page(_ page: any EnginePage, decide request: NavigationRequest) async -> NavigationDecision {
         guard let library else { return .allow }
         if request.wantsGlance {

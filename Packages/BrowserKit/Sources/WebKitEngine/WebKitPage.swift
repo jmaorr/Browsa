@@ -468,6 +468,14 @@ extension WebKitPage: WKNavigationDelegate {
 // MARK: - UI
 
 extension WebKitPage: WKUIDelegate {
+    /// WebKit's private UI delegate call for the picture in picture window's "back to tab" button (Safari uses it
+    /// to switch to the tab). WebKit waits for the page to be visible before putting the video back, so without
+    /// this, the button did nothing for a tab that wasn't on screen. The close button doesn't come here.
+    @objc(_webViewFullscreenMayReturnToInline:)
+    func webViewFullscreenMayReturnToInline(_ webView: WKWebView) {
+        delegate?.pageWantsVideoBack(self)
+    }
+
     public func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                         for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         guard let engine, let delegate else { return nil }

@@ -432,6 +432,9 @@ public protocol EnginePageDelegate: AnyObject {
     func page(_ page: any EnginePage, didStartDownload download: EngineDownload)
     /// The cookie-banner script declined a banner on this page.
     func pageDidDeclineCookieBanner(_ page: any EnginePage)
+    /// The video window's "back to tab" button was pressed for this page's video. The video only goes back
+    /// once the page is on screen, so show its tab.
+    func pageWantsVideoBack(_ page: any EnginePage)
     /// The page showed a web notification. The site already has permission. False if it couldn't be shown
     /// (notifications are off for the app in the system, say), which the page hears as an error.
     func page(_ page: any EnginePage, showNotification notification: WebNotification) async -> Bool
@@ -527,6 +530,7 @@ public extension EnginePageDelegate {
     func page(_ page: any EnginePage, chooseFiles request: FileChooserRequest) async -> [URL]? { nil }
     func page(_ page: any EnginePage, didStartDownload download: EngineDownload) {}
     func pageDidDeclineCookieBanner(_ page: any EnginePage) {}
+    func pageWantsVideoBack(_ page: any EnginePage) {}
     func page(_ page: any EnginePage, showNotification notification: WebNotification) async -> Bool { false }
     func page(_ page: any EnginePage, closeNotification id: String, tag: String?) {}
 }

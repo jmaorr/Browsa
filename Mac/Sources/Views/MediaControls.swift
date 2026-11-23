@@ -1,7 +1,7 @@
 import SwiftUI
 import BrowserCore
 
-/// A round glass button for a tab's video or audio: play/pause, or picture in picture.
+/// A small round button for a tab's video or audio: play/pause, or picture in picture.
 struct MediaButton: View {
     let symbol: String
     let help: String
@@ -18,7 +18,13 @@ struct MediaButton: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
-        .glassEffect(.regular.interactive(), in: .circle)
+        // No glass: in the 34 pt row it drew a clipped rectangle behind the buttons (Josh, 2026-11-23). A plain
+        // light fill with its own soft shadow reads as a button on any sidebar colour.
+        .background {
+            Circle()
+                .fill(.background)
+                .shadow(color: .black.opacity(0.14), radius: 1.5, y: 0.5)
+        }
         .help(help)
         .accessibilityLabel(help)
     }
