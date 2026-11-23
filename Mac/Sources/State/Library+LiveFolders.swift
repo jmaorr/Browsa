@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Security
 import SwiftUI
 import BrowserCore
@@ -8,24 +9,41 @@ import BrowserCore
 /// moving and unloading work as they do for any pinned tab. Folders check every 15 minutes, when
 /// Browsa starts, and when you open one that hasn't checked for a while.
 extension Library {
-    static let liveCheckInterval: Duration = .seconds(15 * 60)
+    /// How often the loop wakes. GitHub folders check this often while Browsa is in front (Dia's
+    /// 2 minutes); feeds every 15 minutes.
+    static let liveTick: Duration = .seconds(120)
+    static let feedInterval: TimeInterval = 15 * 60
 
     /// Starts the checks. Called once, from `init`.
     func startLiveFolders() {
         liveTask?.cancel()
         liveTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(4))
+            await self?.refreshAllLiveFolders(dueOnly: false)
             while !Task.isCancelled {
-                await self?.refreshAllLiveFolders()
-                try? await Task.sleep(for: Library.liveCheckInterval)
+                try? await Task.sleep(for: Library.liveTick)
+                await self?.refreshAllLiveFolders(dueOnly: true)
             }
+        }
+        // A window coming forward checks GitHub folders that are due, as Dia does.
+        liveFocusObserver = NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in await self?.refreshAllLiveFolders(dueOnly: true) }
         }
         updateLiveUnread()
     }
 
-    func refreshAllLiveFolders() async {
+    /// `dueOnly`: feeds that checked within 15 minutes, and GitHub folders within 2 (or while
+    /// Browsa is in the background), wait.
+    func refreshAllLiveFolders(dueOnly: Bool = false) async {
         for space in regularSpaces {
             for folder in LiveFolders.liveFolders(in: space.pinnedTree) {
+                guard let live = folder.live else { continue }
+                if dueOnly {
+                    let age = live.lastChecked.map { Date.now.timeIntervalSince($0) } ?? .infinity
+                    if live.kind.usesGitHubLogin {
+                        guard NSApp.isActive, age >= 110 else { continue }
+                    } else if age < Self.feedInterval { continue }
+                }
                 await refreshLiveFolder(folder.id, in: space)
             }
         }
@@ -197,23 +215,34 @@ extension Library {
             }
         }
         lastGitHubPage[tab.id] = path
-        offerGitHubFolder(in: space, from: tab)
+        makeGitHubFolderIfWanted(in: space, from: tab)
     }
 
-    private static let gitHubOfferedKey = "liveFolders.gitHubFolderOffered"
+    /// Spaces that have had their GitHub folder made for them, so deleting it keeps it gone (it
+    /// comes back from Live Folders › GitHub Pull Requests).
+    private static let gitHubAutoKey = "liveFolders.gitHubFolderMadeForSpaces"
 
-    /// Once ever: signed in on github.com and no GitHub folder yet, a toast offers one.
-    private func offerGitHubFolder(in space: Space, from tab: BrowserTab) {
-        guard !UserDefaults.standard.bool(forKey: Self.gitHubOfferedKey), gitHubFolder(in: space) == nil,
-              let window = window(showing: tab) else { return }
+    /// As Arc felt: the first time a space is signed in on github.com and you have open pull requests
+    /// or review requests, its "Pull Requests" folder appears, with an Undo.
+    private func makeGitHubFolderIfWanted(in space: Space, from tab: BrowserTab) {
+        let done = UserDefaults.standard.stringArray(forKey: Self.gitHubAutoKey) ?? []
+        guard !done.contains(space.id.uuidString), gitHubFolder(in: space) == nil, !gitHubAutoChecking else { return }
+        // No open pull requests last time: look again in a while, not on every page.
+        if let last = gitHubAutoLastCheck[space.id], Date.now.timeIntervalSince(last) < 10 * 60 { return }
+        gitHubAutoLastCheck[space.id] = .now
+        gitHubAutoChecking = true
         Task {
+            defer { gitHubAutoChecking = false }
             let jar = await engine.cookies(for: profile(for: space), url: URL(string: "https://github.com/pulls")!)
-            guard jar.contains(where: { $0.name == "user_session" }),
-                  !UserDefaults.standard.bool(forKey: Self.gitHubOfferedKey) else { return }
-            UserDefaults.standard.set(true, forKey: Self.gitHubOfferedKey)
-            window.showToast("Keep your pull requests in the sidebar?", actions: [
-                ToastAction(title: "Add GitHub Folder") { [weak self] in
-                    withAnimation(Motion.snappy) { self?.toggleGitHubFolder(in: space) }
+            let header = HTTPCookie.requestHeaderFields(with: jar)
+            guard case .success(let items)? = try? await Self.fetchGitHubPulls(GitHubPulls.arcQueries, cookies: header),
+                  !items.isEmpty, gitHubFolder(in: space) == nil else { return }
+            UserDefaults.standard.set(done + [space.id.uuidString], forKey: Self.gitHubAutoKey)
+            withAnimation(Motion.snappy) { _ = newLiveFolder(.githubPullRequests, name: "Pull Requests", in: space) }
+            window(showing: tab)?.showToast("Your pull requests are in the sidebar", actions: [
+                ToastAction(title: "Undo") { [weak self] in
+                    guard let self, let folder = self.gitHubFolder(in: space) else { return }
+                    withAnimation(Motion.snappy) { self.removeLiveFolder(folder.id, in: space) }
                 },
             ])
         }
