@@ -381,6 +381,10 @@ public protocol EnginePageDelegate: AnyObject {
     func page(_ page: any EnginePage, didStartDownload download: EngineDownload)
     /// The cookie-banner script declined a banner on this page.
     func pageDidDeclineCookieBanner(_ page: any EnginePage)
+    /// The page showed a web notification. The site already has permission.
+    func page(_ page: any EnginePage, showNotification notification: WebNotification)
+    /// The page closed one of its notifications.
+    func page(_ page: any EnginePage, closeNotification id: String, tag: String?)
 }
 
 /// Find on page progress: the current match (1-based, 0 if unknown) and how many there are.
@@ -401,6 +405,39 @@ public extension EnginePage {
     func findMatches(_ text: String) async -> FindMatches? { nil }
 }
 
+/// A site's notification (`new Notification(…)` or a service worker's `showNotification`).
+public struct WebNotification: Sendable, Equatable {
+    /// The page's own id for it, to send the click back with.
+    public var id: String
+    public var title: String
+    public var body: String
+    /// The site that sent it.
+    public var host: String
+    /// A newer notification with the same tag replaces the older one.
+    public var tag: String?
+    public var icon: URL?
+    public var silent: Bool
+
+    public init(id: String, title: String, body: String, host: String, tag: String?, icon: URL?, silent: Bool) {
+        self.id = id
+        self.title = title
+        self.body = body
+        self.host = host
+        self.tag = tag
+        self.icon = icon
+        self.silent = silent
+    }
+}
+
+/// Engines that show sites' notifications.
+@MainActor
+public protocol WebNotificationsConfigurable: AnyObject {
+    /// Each site's saved answer (host: allowed), so pages know it before they ask.
+    var notificationPermissions: [String: Bool] { get set }
+    /// A notification from `page` was clicked: fire its `click` event.
+    func notificationClicked(_ id: String, on page: any EnginePage)
+}
+
 public extension EnginePageDelegate {
     func page(_ page: any EnginePage, decide request: NavigationRequest) async -> NavigationDecision { .allow }
     func page(_ page: any EnginePage, didCommit url: URL?) {}
@@ -414,6 +451,8 @@ public extension EnginePageDelegate {
     func page(_ page: any EnginePage, chooseFiles request: FileChooserRequest) async -> [URL]? { nil }
     func page(_ page: any EnginePage, didStartDownload download: EngineDownload) {}
     func pageDidDeclineCookieBanner(_ page: any EnginePage) {}
+    func page(_ page: any EnginePage, showNotification notification: WebNotification) {}
+    func page(_ page: any EnginePage, closeNotification id: String, tag: String?) {}
 }
 
 public struct NavigationRequest: Sendable {
