@@ -11,6 +11,7 @@ extension Library {
         let byID = Dictionary(space.pinned.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let ordered = PinnedOutline.tabIDs(tree).compactMap { byID[$0] }
         if ordered.map(\.id) != space.pinned.map(\.id) { space.pinned = ordered }
+        updateLiveUnread()
         scheduleSave()
     }
 

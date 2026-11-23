@@ -69,6 +69,9 @@ struct BrowserWindow: View {
         .sheet(isPresented: $browser.isArchivePresented) {
             ArchiveSheet().environment(browser)
         }
+        .sheet(item: $browser.liveFolderSheet) { draft in
+            LiveFolderSheet(draft: draft).environment(browser)
+        }
         .onChange(of: browser.selectedSpaceID) { browser.isSidebarPeeking = false }
         // A space set to Light or Dark switches the window as you move to it, or as you change its theme.
         .onChange(of: SpacePalette.appearance(for: browser.currentSpace)?.name) {

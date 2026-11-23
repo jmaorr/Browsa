@@ -250,7 +250,8 @@ private struct DraggableFolderRow: View {
                 .frame(height: 34)
                 .background(SelectedFill(), in: .rect(cornerRadius: 9, style: .continuous))
             } else {
-                FolderRowLabel(folder: folder, hovering: hovering)
+                FolderRowLabel(folder: folder, hovering: hovering,
+                               refreshing: browser.library.liveRefreshing.contains(folder.id))
                     .background {
                         if targeted { SunkenSlot(cornerRadius: 9, active: true) }
                     }
@@ -283,6 +284,18 @@ private struct DraggableFolderRow: View {
     }
 
     @ViewBuilder private var menu: some View {
+        if let live = folder.live {
+            Button("Check for New Items", systemImage: "arrow.clockwise") {
+                Task { await browser.library.refreshLiveFolder(folder.id, in: space) }
+            }
+            Button("Mark All as Read", systemImage: "circle.slash") {
+                withAnimation(Motion.snappy) { browser.library.markAllLiveRead(folder.id, in: space) }
+            }
+            .disabled(live.unreadCount == 0)
+            Button("Edit Live Folder…", systemImage: "slider.horizontal.3") { browser.editLiveFolder(folder, in: space) }
+            Text(live.lastError ?? "From \(live.kind.summary)")
+            Divider()
+        }
         Button("Rename Folder…", systemImage: "pencil") { startRename() }
         Button(folder.isOpen ? "Close Folder" : "Open Folder", systemImage: folder.isOpen ? "folder" : "folder.fill") { toggle() }
         Button("New Folder Inside", systemImage: "folder.badge.plus") {
@@ -291,16 +304,31 @@ private struct DraggableFolderRow: View {
                 browser.renamingFolderID = browser.library.newPinnedFolder(in: space, at: PinnedPlace(parent: folder.id, index: 0))
             }
         }
-        Divider()
-        Button("Remove Folder", systemImage: "folder.badge.minus") {
-            withAnimation(Motion.snappy) { browser.library.removePinnedFolder(folder.id, in: space) }
+        if folder.live == nil {
+            Button("New Live Folder…", systemImage: "folder.badge.gearshape") { browser.newLiveFolder() }
         }
-        .help("Its tabs stay pinned, where the folder was.")
+        Divider()
+        if folder.live != nil {
+            Button("Stop Updating", systemImage: "pause.circle") {
+                withAnimation(Motion.snappy) { browser.library.stopLiveFolder(folder.id, in: space) }
+            }
+            .help("It becomes an ordinary folder and keeps what it holds.")
+            Button("Remove Live Folder", systemImage: "folder.badge.minus") {
+                withAnimation(Motion.snappy) { browser.library.removeLiveFolder(folder.id, in: space) }
+            }
+            .help("Its items go too. Tabs you put in it yourself stay pinned.")
+        } else {
+            Button("Remove Folder", systemImage: "folder.badge.minus") {
+                withAnimation(Motion.snappy) { browser.library.removePinnedFolder(folder.id, in: space) }
+            }
+            .help("Its tabs stay pinned, where the folder was.")
+        }
     }
 
     private func toggle() {
         guard draft == nil else { return }
         withAnimation(Motion.quick) { browser.library.setPinnedFolder(folder.id, open: !folder.isOpen, in: space) }
+        if !folder.isOpen, folder.live != nil { browser.library.refreshLiveFolderIfStale(folder.id, in: space) }
     }
 
     private func startRename() {
@@ -326,15 +354,38 @@ struct FolderRowLabel: View {
     var hovering = false
     /// Raised, as when it's being dragged.
     var selected = false
+    /// A live folder checking its source.
+    var refreshing = false
 
     var body: some View {
         HStack(spacing: 10) {
-            FolderIcon(isOpen: folder.isOpen)
+            if let live = folder.live {
+                LiveFolderIcon(kind: live.kind, isOpen: folder.isOpen)
+            } else {
+                FolderIcon(isOpen: folder.isOpen)
+            }
             Text(folder.name)
                 .lineLimit(1)
                 .foregroundStyle(.primary)
             Spacer(minLength: 0)
-            if !folder.isOpen {
+            if refreshing {
+                ProgressView().controlSize(.mini)
+                    .transition(.opacity)
+            } else if let live = folder.live, live.unreadCount > 0 {
+                // What's new, open or closed.
+                Text(verbatim: "\(live.unreadCount)")
+                    .font(.system(size: 10, weight: .semibold)).monospacedDigit()
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5).frame(minWidth: 16, minHeight: 16)
+                    .background(Color.accentColor, in: .capsule)
+                    .help(live.unreadCount == 1 ? "1 new item" : "\(live.unreadCount) new items")
+                    .transition(.scale.combined(with: .opacity))
+            } else if folder.live?.lastError != nil {
+                Image(systemName: "exclamationmark.circle")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .help(folder.live?.lastError ?? "")
+            } else if !folder.isOpen {
                 let count = PinnedOutline.tabIDs(folder.children).count
                 if count > 0 {
                     Text(verbatim: "\(count)")
@@ -354,6 +405,33 @@ struct FolderRowLabel: View {
         .background {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(selected ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(hovering ? 0.06 : 0)))
+        }
+    }
+}
+
+/// A live folder's icon: its source's site icon, so a GitHub folder and a blog's folder tell apart
+/// at a glance, with the same small bounce as it opens and closes.
+private struct LiveFolderIcon: View {
+    let kind: LiveSourceKind
+    let isOpen: Bool
+
+    private var site: URL? {
+        switch kind {
+        case .feed(let url): URL(string: "https://\(url.host() ?? "")")
+        case .github: URL(string: "https://github.com")
+        }
+    }
+
+    var body: some View {
+        Group {
+            if let site { FaviconView(url: site, size: 16, chip: true) } else { Image(systemName: "folder") }
+        }
+        .frame(width: 16, height: 16)
+        .keyframeAnimator(initialValue: 1.0, trigger: isOpen) { view, scale in
+            view.scaleEffect(scale)
+        } keyframes: { _ in
+            SpringKeyframe(0.82, duration: 0.1, spring: .snappy)
+            SpringKeyframe(1, duration: 0.3, spring: .bouncy(extraBounce: 0.2))
         }
     }
 }
@@ -515,6 +593,15 @@ struct TabRow: View {
                     .transition(.scale.combined(with: .opacity))
             } else if tab.media.showsControls, !isLifted {
                 TabMediaControls(tab: tab, hovering: hovering)
+                    .transition(.scale.combined(with: .opacity))
+            }
+            // New in a live folder, not opened yet.
+            if browser.library.liveUnread.contains(tab.id), !hovering {
+                Circle()
+                    .fill(Color.accentColor)
+                    .frame(width: 7, height: 7)
+                    .frame(width: 18, height: 18)
+                    .help("New")
                     .transition(.scale.combined(with: .opacity))
             }
             let notes = openNoteCount(tab.url, in: browser.library)

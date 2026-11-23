@@ -155,6 +155,8 @@ struct BrowserCommands: Commands {
             Button("New Folder") { withAnimation(Motion.snappy) { browser?.newPinnedFolder() } }
                 .keyboardShortcut(keys.shortcut(.newFolder))
                 .disabled(browser == nil || browser?.currentSpace.isPrivate == true)
+            Button("New Live Folder…") { browser?.newLiveFolder() }
+                .disabled(browser == nil || browser?.currentSpace.isPrivate == true)
             Button(tab?.url.map { library.isFavorite($0) } == true ? "Remove from Favourites" : "Add to Favourites") {
                 browser?.toggleFavoriteForCurrentTab()
             }
