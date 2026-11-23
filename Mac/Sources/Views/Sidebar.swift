@@ -212,7 +212,7 @@ private struct SiteMenu: View {
     var body: some View {
         let tab = browser.currentTab
         Button(action: showMenu) {
-            Group {
+            SiteIconSwap(trigger: browser.siteIconPulse) {
                 if tab?.isPrivate == true {
                     Image(systemName: "eye.slash").foregroundStyle(.secondary)
                 } else if let url = tab?.url, url.scheme == "http" || url.scheme == "https" {
@@ -227,7 +227,6 @@ private struct SiteMenu: View {
         .buttonStyle(.plain)
         .background(AnchorView(anchor: anchor))
         .background(SiteIconAnchor(browser: browser))
-        .overlay { SiteIconPulse(trigger: browser.siteIconPulse) }
         .help("Site settings and extensions")
     }
 
@@ -317,31 +316,60 @@ private struct SiteIconAnchor: NSViewRepresentable {
     func updateNSView(_ view: NSView, context: Context) { browser.siteIconView = view }
 }
 
-/// A ring that swells out of the site icon and fades, once each time `trigger` changes.
-private struct SiteIconPulse: View {
+/// When a Site Style lands in the site icon (`trigger` changes): the favicon pops away, a paintbrush pops in
+/// with a ring swelling out of it, then the brush pops away and the favicon comes back. Shows where the style
+/// went and that the icon opens it.
+private struct SiteIconSwap<Icon: View>: View {
     let trigger: Int
+    @ViewBuilder let icon: Icon
 
     var body: some View {
-        Circle()
-            .strokeBorder(Color.accentColor, lineWidth: 2)
-            .frame(width: 26, height: 26)
-            .keyframeAnimator(initialValue: PulseFrame(), trigger: trigger) { ring, frame in
-                ring.scaleEffect(frame.scale).opacity(frame.opacity)
-            } keyframes: { _ in
-                KeyframeTrack(\.scale) {
-                    LinearKeyframe(0.5, duration: 0.01)
-                    SpringKeyframe(1.35, duration: 0.6, spring: .smooth)
-                }
-                KeyframeTrack(\.opacity) {
-                    LinearKeyframe(0.9, duration: 0.01)
-                    LinearKeyframe(0.9, duration: 0.2)
-                    LinearKeyframe(0, duration: 0.5)
-                }
+        if Motion.reduced {
+            icon
+        } else {
+            ZStack {
+                icon
+                    .keyframeAnimator(initialValue: 1.0, trigger: trigger) { view, scale in
+                        view.scaleEffect(scale).opacity(scale)
+                    } keyframes: { _ in
+                        SpringKeyframe(0, duration: 0.18, spring: .snappy)
+                        LinearKeyframe(0, duration: 1.15)
+                        SpringKeyframe(1, duration: 0.45, spring: .bouncy(extraBounce: 0.2))
+                    }
+                Image(systemName: "paintbrush.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .keyframeAnimator(initialValue: 0.0, trigger: trigger) { view, scale in
+                        view.scaleEffect(scale).opacity(min(scale, 1))
+                    } keyframes: { _ in
+                        LinearKeyframe(0, duration: 0.12)
+                        SpringKeyframe(1, duration: 0.35, spring: .bouncy(extraBounce: 0.25))
+                        LinearKeyframe(1, duration: 0.75)
+                        SpringKeyframe(0, duration: 0.2, spring: .snappy)
+                    }
+                Circle()
+                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .frame(width: 26, height: 26)
+                    .keyframeAnimator(initialValue: Ring(), trigger: trigger) { view, ring in
+                        view.scaleEffect(ring.scale).opacity(ring.opacity)
+                    } keyframes: { _ in
+                        KeyframeTrack(\.scale) {
+                            LinearKeyframe(0.5, duration: 0.15)
+                            SpringKeyframe(1.35, duration: 0.6, spring: .smooth)
+                        }
+                        KeyframeTrack(\.opacity) {
+                            LinearKeyframe(0, duration: 0.14)
+                            LinearKeyframe(0.9, duration: 0.01)
+                            LinearKeyframe(0.9, duration: 0.2)
+                            LinearKeyframe(0, duration: 0.5)
+                        }
+                    }
+                    .allowsHitTesting(false)
             }
-            .allowsHitTesting(false)
+        }
     }
 
-    private struct PulseFrame { var scale = 1.0; var opacity = 0.0 }
+    private struct Ring { var scale = 1.0; var opacity = 0.0 }
 }
 
 /// Closures behind NSMenu items.
