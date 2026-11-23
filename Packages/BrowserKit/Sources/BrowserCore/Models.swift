@@ -152,6 +152,12 @@ public struct BrowserSettings: Codable, Equatable, Sendable {
     public var filterGroups: Set<FilterGroup> = Set(FilterGroup.allCases)
     /// Sites where blocking (ads, trackers, cookie banners) is switched off. Hosts.
     public var blockingDisabledHosts: Set<String> = []
+    /// Certificates the user chose to trust with "Visit Anyway": "host:port" to the SHA-256 of
+    /// the certificate. Only that certificate: a different one on the same site asks again.
+    public var certificateExceptions: [String: String] = [:]
+    /// Open sites on the local network (192.168.x.x, .local names) even when their certificate
+    /// isn't trusted, as routers and Home Assistant often use their own.
+    public var allowLocalCertificateErrors = false
     /// Mac: new tabs (⌘T) open just below the current tab instead of at the top of Today.
     public var newTabsBelowCurrent = false
 
@@ -178,7 +184,45 @@ public struct BrowserSettings: Codable, Equatable, Sendable {
         cleanLinks = try c.decodeIfPresent(Bool.self, forKey: .cleanLinks) ?? true
         filterGroups = try c.decodeIfPresent(Set<FilterGroup>.self, forKey: .filterGroups) ?? Set(FilterGroup.allCases)
         blockingDisabledHosts = try c.decodeIfPresent(Set<String>.self, forKey: .blockingDisabledHosts) ?? []
+        certificateExceptions = try c.decodeIfPresent([String: String].self, forKey: .certificateExceptions) ?? [:]
+        allowLocalCertificateErrors = try c.decodeIfPresent(Bool.self, forKey: .allowLocalCertificateErrors) ?? false
         newTabsBelowCurrent = try c.decodeIfPresent(Bool.self, forKey: .newTabsBelowCurrent) ?? false
+    }
+}
+
+/// Addresses on the user's own network, as typed: private IPv4 and IPv6 ranges, loopback, and
+/// names that only resolve locally. Judged on the address in the URL, never on a DNS answer.
+public enum LocalNetwork {
+    public static func contains(host: String) -> Bool {
+        let host = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]")).lowercased()
+        if host == "localhost" || host.hasSuffix(".localhost") { return true }
+        if [".local", ".lan", ".home.arpa", ".internal"].contains(where: { host.hasSuffix($0) }) { return true }
+        // A single label ("homeassistant", "router") only resolves on the local network.
+        if !host.isEmpty, !host.contains("."), !host.contains(":") { return true }
+        if let v4 = ipv4(host) {
+            switch (v4[0], v4[1]) {
+            case (10, _), (127, _): return true
+            case (172, 16...31): return true
+            case (192, 168): return true
+            case (169, 254): return true
+            default: return false
+            }
+        }
+        if host.contains(":") {
+            // ::1, fe80::/10 (link-local), fc00::/7 (unique local).
+            if host == "::1" { return true }
+            let first = host.split(separator: ":", omittingEmptySubsequences: false).first.map(String.init) ?? ""
+            guard let word = UInt16(first, radix: 16) else { return false }
+            return word & 0xffc0 == 0xfe80 || word & 0xfe00 == 0xfc00
+        }
+        return false
+    }
+
+    private static func ipv4(_ host: String) -> [Int]? {
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4 else { return nil }
+        let numbers = parts.compactMap { Int($0) }.filter { (0...255).contains($0) }
+        return numbers.count == 4 ? numbers : nil
     }
 }
 
@@ -232,11 +276,18 @@ public struct LoadError: Equatable, Sendable {
         }
     }
 
-    /// Certificate problems get "Go Back", never a "Visit anyway".
+    /// The certificate the site showed, when it failed the system's checks (Mac only). Set means
+    /// the error page can offer "Visit Anyway" for this exact certificate.
+    public let certificateFingerprint: String?
+
+    /// Certificate problems get "Go Back" (and "Visit Anyway" when the certificate is known), never "Try Again".
     public var canRetry: Bool { kind != .insecure }
+    public var canVisitAnyway: Bool { kind == .insecure && certificateFingerprint != nil }
 
     public init(url: URL?, error: NSError) {
         self.url = url
+        // The key is BrowserEngine's `ServerCertificate.errorUserInfoKey`.
+        certificateFingerprint = error.userInfo["BrowsaCertificateFingerprint"] as? String
         switch (error.domain, error.code) {
         case (NSURLErrorDomain, NSURLErrorNotConnectedToInternet), (NSURLErrorDomain, NSURLErrorNetworkConnectionLost),
              (NSURLErrorDomain, NSURLErrorDataNotAllowed), (NSURLErrorDomain, NSURLErrorInternationalRoamingOff):

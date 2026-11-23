@@ -2,6 +2,8 @@
 import AppKit
 import WebKit
 import CoreServices
+import CryptoKit
+import Security
 import BrowserEngine
 
 /// One WKWebView, behind the engine-neutral `EnginePage`.
@@ -17,6 +19,9 @@ public final class WebKitPage: NSObject, EnginePage {
     /// Set while a restored session hasn't shown a page yet. WebKit can sit on a restored history
     /// entry forever (reload just retries it), where a fresh load of the same address works.
     private var awaitingRestore = false
+    /// The certificate each site ("host:port") last showed this page, so a certificate failure can
+    /// say which one was refused. Cleared with each new document.
+    private var seenCertificates: [String: String] = [:]
 
     public var view: NSView { webView }
 
@@ -338,6 +343,7 @@ extension WebKitPage: WKNavigationDelegate {
         awaitingRestore = false
         // A new document: the old one's sound and drafts are gone, and its frames report afresh.
         frameActivity = [:]
+        seenCertificates = [:]
         updateActivity()
         delegate?.page(self, didCommit: webView.url)
         engine?.extensionPageChanged(self)
@@ -356,11 +362,44 @@ extension WebKitPage: WKNavigationDelegate {
     // A failure after the page committed leaves the page up, so it isn't reported as an error page.
 
     private func report(_ error: any Error) {
-        let ns = error as NSError
+        var ns = error as NSError
         // Cancelled loads and "frame load interrupted" (a download took over) aren't failures.
         if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return }
         if ns.domain == "WebKitErrorDomain" && [102, 204].contains(ns.code) { return }
+        // A certificate failure carries the certificate that was refused, for "Visit Anyway".
+        if ns.domain == NSURLErrorDomain, Self.certificateErrors.contains(ns.code),
+           let url = (ns.userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? webView.url, let host = url.host(),
+           let fingerprint = seenCertificates[ServerCertificate.site(host: host, port: url.port)] {
+            var info = ns.userInfo
+            info[ServerCertificate.errorUserInfoKey] = fingerprint
+            ns = NSError(domain: ns.domain, code: ns.code, userInfo: info)
+        }
         delegate?.page(self, didFailWith: ns)
+    }
+
+    private static let certificateErrors: Set<Int> = [
+        NSURLErrorSecureConnectionFailed, NSURLErrorServerCertificateHasBadDate, NSURLErrorServerCertificateUntrusted,
+        NSURLErrorServerCertificateHasUnknownRoot, NSURLErrorServerCertificateNotYetValid,
+    ]
+
+    /// Every HTTPS connection asks. Nothing changes unless the app trusts a certificate the system
+    /// doesn't: then the site loads as if it were trusted.
+    private func serverTrust(_ challenge: URLAuthenticationChallenge) -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        let space = challenge.protectionSpace
+        guard let trust = space.serverTrust, let delegate, let fingerprint = Self.fingerprint(of: trust) else {
+            return (.performDefaultHandling, nil)
+        }
+        let certificate = ServerCertificate(host: space.host, port: space.port, fingerprint: fingerprint)
+        seenCertificates[certificate.site] = fingerprint
+        guard delegate.page(self, trusts: certificate) else { return (.performDefaultHandling, nil) }
+        return (.useCredential, URLCredential(trust: trust))
+    }
+
+    /// SHA-256 of the site's own certificate, the first in the chain.
+    private static func fingerprint(of trust: SecTrust) -> String? {
+        guard let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate], let leaf = chain.first else { return nil }
+        let der = SecCertificateCopyData(leaf) as Data
+        return SHA256.hash(data: der).map { String(format: "%02x", $0) }.joined()
     }
 
     public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -371,6 +410,7 @@ extension WebKitPage: WKNavigationDelegate {
     public func webView(_ webView: WKWebView, respondTo challenge: URLAuthenticationChallenge) async
         -> (URLSession.AuthChallengeDisposition, URLCredential?) {
         let method = challenge.protectionSpace.authenticationMethod
+        if method == NSURLAuthenticationMethodServerTrust { return serverTrust(challenge) }
         guard [NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest, NSURLAuthenticationMethodNTLM].contains(method),
               let delegate else { return (.performDefaultHandling, nil) }
         guard challenge.previousFailureCount < 3 else { return (.cancelAuthenticationChallenge, nil) }

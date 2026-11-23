@@ -126,6 +126,11 @@ targets:
         NSLocationUsageDescription: Websites you allow can see your location, for example to show nearby places.
         # Sign-ins can use a passkey on a phone nearby (Bluetooth); without this macOS ends the app.
         NSBluetoothAlwaysUsageDescription: Sign-ins can use a passkey on your phone nearby.
+        # Devices on the local network (routers, Home Assistant) often have self-signed
+        # certificates; "Visit Anyway" and the local network setting need App Transport Security
+        # to leave those connections to the app's own trust decision.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         # Lets Browsa be picked as the default web browser in System Settings > Desktop & Dock.
         CFBundleURLTypes:
           - CFBundleURLName: Web

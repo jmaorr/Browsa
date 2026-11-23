@@ -237,10 +237,30 @@ enum BrowserAgentTools {
         ) { args, caller in
             guard let url = args["url"]?.string.flatMap(URL.init(string:)) else { return .error("Give the page's URL.") }
             let key = MarginStore.pageKey(url)
-            let title = bridge.allTabs.first(where: { tab in tab.url.map(MarginStore.pageKey) == key })?.title ?? ""
+            let open = bridge.allTabs.first(where: { tab in tab.url.map(MarginStore.pageKey) == key })
+            let title = open?.title ?? ""
+            let quote = args["quote"]?.string, selector = args["selector"]?.string
+            // Where the anchor is now, in page coordinates, so the note keeps a pin even if the page later
+            // changes and the quote or element is gone (a basket emptied on reload, say).
+            var x: Double?, y: Double?
+            if let open, selector != nil || quote != nil {
+                let raw = try? await bridge.controller(for: open).page.evaluate("""
+                    const sel = \(jsString(selector ?? "")), quote = \(jsString(quote ?? ""));
+                    let r = null;
+                    try { const el = sel ? document.querySelector(sel) : null; if (el) r = el.getBoundingClientRect(); } catch (e) {}
+                    if (!r && quote && window.find) {
+                      const s = getSelection(), saved = s.rangeCount ? s.getRangeAt(0) : null;
+                      s.removeAllRanges();
+                      if (window.find(quote, false, false, true)) r = s.getRangeAt(0).getBoundingClientRect();
+                      s.removeAllRanges(); if (saved) s.addRange(saved);
+                    }
+                    return r && (r.width || r.height) ? [r.left + scrollX, r.top + scrollY] : null;
+                    """, inWorld: world)
+                if let xy = raw as? [Double], xy.count == 2 { x = xy[0]; y = xy[1] }
+            }
             let note = bridge.margin.add(MarginNote(
                 url: url, pageTitle: title,
-                anchor: .init(quote: args["quote"]?.string, selector: args["selector"]?.string),
+                anchor: .init(quote: quote, selector: selector, x: x, y: y),
                 body: args["body"]?.string ?? "", author: .agent(caller.name)))
             return .json(["id": .string(note.id.uuidString)])
         })

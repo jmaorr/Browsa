@@ -296,13 +296,16 @@ private struct ErrorPage: View {
     @Environment(Browser.self) private var browser
     let error: LoadError
 
+    private var host: String? { error.url?.host() }
+    private var isLocal: Bool { host.map { LocalNetwork.contains(host: $0) } ?? false }
+
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: error.symbol)
                 .font(.system(size: 40, weight: .light))
                 .foregroundStyle(.secondary)
             Text(error.title).font(.title2.weight(.semibold))
-            Text(error.detail)
+            Text(detail)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420)
@@ -310,20 +313,44 @@ private struct ErrorPage: View {
                 Text(url.absoluteString).font(.callout).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
                     .frame(maxWidth: 420)
             }
-            if error.canRetry {
-                Button("Try Again") { browser.reload() }
-                    .keyboardShortcut(.defaultAction)
-                    .controlSize(.large)
-                    .padding(.top, 6)
-            } else {
-                Button("Go Back") { browser.goBack() }
-                    .controlSize(.large)
-                    .padding(.top, 6)
+            HStack(spacing: 10) {
+                if error.canRetry {
+                    Button("Try Again") { browser.reload() }
+                        .keyboardShortcut(.defaultAction)
+                } else {
+                    Button("Go Back") { browser.goBack() }
+                        .keyboardShortcut(.defaultAction)
+                    if error.canVisitAnyway {
+                        Button("Visit Anyway") { browser.visitAnyway() }
+                    }
+                }
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
+            .controlSize(.large)
+            .padding(.top, 6)
+            if error.canVisitAnyway {
+                Text(isLocal
+                     ? "Browsa will remember this certificate for \(host ?? "this site"). To allow every device on your network, turn on Settings > Privacy > Allow local network sites with certificate errors."
+                     : "Browsa will remember this certificate for \(host ?? "this site"). If the site shows a different one, you'll be asked again.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 380)
+                    .padding(.top, 4)
             }
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .textBackgroundColor))
+    }
+
+    /// Certificate failures say what's wrong in plain words; the rest use the system's message.
+    private var detail: String {
+        guard error.kind == .insecure, error.canVisitAnyway else { return error.detail }
+        return isLocal
+            ? "Your Mac doesn't trust this site's certificate. That's normal for devices on your own network, like a router or Home Assistant."
+            : "Your Mac doesn't trust this site's certificate. Someone could be pretending to be this site, so only continue if you know it."
     }
 }
 

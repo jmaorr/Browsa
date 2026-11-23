@@ -14,6 +14,19 @@ import Testing
         #expect(!cert.canRetry)
     }
 
+    @Test func certificateFailuresOfferVisitAnywayOnlyWithTheCertificate() {
+        let bare = LoadError(url: nil, error: err(NSURLErrorSecureConnectionFailed))
+        #expect(bare.kind == .insecure)
+        #expect(!bare.canVisitAnyway)
+        let known = LoadError(url: nil, error: NSError(domain: NSURLErrorDomain, code: NSURLErrorServerCertificateUntrusted,
+                                                       userInfo: ["BrowsaCertificateFingerprint": "ab12"]))
+        #expect(known.canVisitAnyway)
+        #expect(known.certificateFingerprint == "ab12")
+        let offline = LoadError(url: nil, error: NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut,
+                                                         userInfo: ["BrowsaCertificateFingerprint": "ab12"]))
+        #expect(!offline.canVisitAnyway)
+    }
+
     @Test func cancellationsAndDownloadsAreNotErrors() {
         #expect(LoadError.isIgnorable(err(NSURLErrorCancelled)))
         #expect(LoadError.isIgnorable(err(102, "WebKitErrorDomain")))
@@ -29,12 +42,16 @@ import Testing
         #expect(s.remoteSuggestions == false)
         #expect(s.desktopSitesWhenUnfolded)
         #expect(s.sitePermissions.isEmpty)
+        #expect(s.certificateExceptions.isEmpty)
+        #expect(!s.allowLocalCertificateErrors)
     }
 
     @Test func roundTrips() throws {
         var s = BrowserSettings()
         s.siteDesktopOverrides["example.com"] = false
         s.sitePermissions["meet.google.com"] = ["camera": true]
+        s.certificateExceptions["192.168.3.4:8123"] = "ab12"
+        s.allowLocalCertificateErrors = true
         let back = try JSONDecoder().decode(BrowserSettings.self, from: JSONEncoder().encode(s))
         #expect(back == s)
     }
@@ -84,5 +101,22 @@ import Testing
         let decode = { (t: BrowserTab) in try JSONDecoder().decode(TabRecord.self, from: JSONEncoder().encode(t.record)) }
         #expect(BrowserTab(try decode(today)).windowKey == window)
         #expect(try decode(pinned).windowKey == nil)
+    }
+}
+
+@Suite struct LocalNetworkTests {
+    @Test func privateAddressesAndLocalNames() {
+        for host in ["192.168.3.4", "10.0.0.1", "172.16.0.1", "172.31.255.255", "127.0.0.1", "169.254.1.1",
+                     "localhost", "homeassistant.local", "router.lan", "nas.home.arpa", "homeassistant",
+                     "[::1]", "fe80::1", "fd12:3456::1"] {
+            #expect(LocalNetwork.contains(host: host), "\(host)")
+        }
+    }
+
+    @Test func publicAddressesAndNames() {
+        for host in ["8.8.8.8", "172.32.0.1", "192.169.1.1", "100.64.0.1", "example.com", "192.168.3.4.example.com",
+                     "local.example.com", "2001:db8::1", ""] {
+            #expect(!LocalNetwork.contains(host: host), "\(host)")
+        }
     }
 }
