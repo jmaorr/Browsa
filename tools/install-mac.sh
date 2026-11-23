@@ -77,7 +77,7 @@ PLIST
     -exportPath "$work/developer-id" -allowProvisioningUpdates > "$work/export.log" 2>&1 \
     || { tail -20 "$work/export.log" >&2; echo "Developer ID export failed (log: $work/export.log)" >&2; exit 1; }
   built="$work/developer-id/Browsa.app"
-  codesign -dv "$built" 2>&1 | grep -q "Authority=Developer ID Application" \
+  codesign -dvv "$built" 2>&1 | grep -q "Authority=Developer ID Application" \
     || { echo "exported app isn't Developer ID signed" >&2; exit 1; }
 else
   xcodebuild -project Browsa.xcodeproj -scheme BrowsaMac -configuration Release \
