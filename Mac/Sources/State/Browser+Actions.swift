@@ -52,6 +52,10 @@ extension Browser {
                                           keywords: ["favorite", "star", "bookmark"]))
             }
             out.append(BrowserCommand(id: "close", title: "Close Tab", keywords: ["tab"]))
+            if !tab.isPrivate {
+                out.append(BrowserCommand(id: "new-folder", title: tab.isPinned ? "New Folder with Tab" : "New Folder",
+                                          keywords: ["pinned", "group", "tabs"]))
+            }
             if let url = tab.url {
                 out.append(BrowserCommand(id: "copy-link", title: "Copy Link", subtitle: url.absoluteString, keywords: ["url", "share"]))
                 out.append(BrowserCommand(id: "copy-markdown", title: "Copy Link as Markdown", keywords: ["url", "md", "share"]))
@@ -155,6 +159,7 @@ extension Browser {
         switch id {
         case "panel": togglePanel()
         case "pin": if let t = currentTab { togglePinned(t) }
+        case "new-folder": withAnimation(Motion.snappy) { newPinnedFolder(holding: currentTab?.isPinned == true ? currentTab : nil) }
         case "favourite": if let t = currentTab, let url = t.url { addFavorite(url: url, title: t.displayTitle) }
         case "close": if let t = currentTab { close(t) }
         case "copy-link": copyCurrentLink()
@@ -276,6 +281,7 @@ extension Browser {
         case .pin: if let t = currentTab, !t.isPrivate { withAnimation(Motion.snappy) { togglePinned(t) } }
         case .favourite: toggleFavoriteForCurrentTab()
         case .archive: isArchivePresented = true
+        case .newFolder: withAnimation(Motion.snappy) { newPinnedFolder() }
         case .nextSpace: selectAdjacentSpace(1)
         case .previousSpace: selectAdjacentSpace(-1)
         case .sidebar: toggleSidebar()

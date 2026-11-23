@@ -122,6 +122,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
     case close, reopen, closeOthers = "close-others", clearToday = "clear-today"
     case nextTab = "next-tab", previousTab = "previous-tab"
     case pin, favourite, archive
+    case newFolder = "new-folder"
     // Spaces and window
     case nextSpace = "next-space", previousSpace = "previous-space"
     case sidebar, panel, notes, downloads
@@ -141,7 +142,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
     var group: Group {
         switch self {
         case .newTab, .openLocation, .commands, .newWindow, .privateTab, .close, .reopen, .closeOthers,
-             .clearToday, .nextTab, .previousTab, .pin, .favourite, .archive: .tabs
+             .clearToday, .nextTab, .previousTab, .pin, .favourite, .archive, .newFolder: .tabs
         case .nextSpace, .previousSpace, .sidebar, .panel, .notes, .downloads: .spaces
         default: .page
         }
@@ -163,6 +164,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case .pin: "Pin Tab"
         case .favourite: "Add to Favourites"
         case .archive: "Archived Tabs"
+        case .newFolder: "New Folder"
         case .nextSpace: "Next Space"
         case .previousSpace: "Previous Space"
         case .sidebar: "Show or Hide Sidebar"
@@ -212,6 +214,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case (.favourite, .browsa): return [k("d", shiftCmd)]
         case (.favourite, _): return [k("d")]
         case (.archive, _): return [k("y")]
+        case (.newFolder, _): return [k("n", optCmd)]
         case (.nextSpace, .chrome): return [k("right", ctrlCmd)]
         case (.nextSpace, _): return [k("right", optCmd)]
         case (.previousSpace, .chrome): return [k("left", ctrlCmd)]
