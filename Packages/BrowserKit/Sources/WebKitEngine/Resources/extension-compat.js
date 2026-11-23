@@ -182,7 +182,10 @@
   const extras = {
     // Only the offscreen document is reported; other contexts aren't tracked.
     // The offscreen document and side panel pages; other contexts aren't tracked.
-    runtime: { getContexts: (filter = {}) => {
+    runtime: {
+      // Read by Claude's side panel to check where it is.
+      ContextType: { TAB: 'TAB', POPUP: 'POPUP', BACKGROUND: 'BACKGROUND', OFFSCREEN_DOCUMENT: 'OFFSCREEN_DOCUMENT', SIDE_PANEL: 'SIDE_PANEL', DEVELOPER_TOOLS: 'DEVELOPER_TOOLS' },
+      getContexts: (filter = {}) => {
       const types = filter.contextTypes;
       const wants = (t) => !types || types.includes(t);
       const context = (type, url, id) => ({ contextType: type, documentUrl: url, documentOrigin: new URL(url).origin,
@@ -436,6 +439,44 @@
         try { channel.postMessage({ from: me, storage: true, area, key: keyOf(changes), changes }); } catch (e) {}
       });
     }
+  }
+
+  // fetch(…, { credentials: 'include' }) to a website goes through Browsa with that site's cookies
+  // (ExtensionFetch.swift): WebKit sends none from an extension's origin, so Claude's panel was told
+  // you weren't signed in to claude.ai. Streams (text/event-stream) and bodies Browsa can't carry are
+  // left to WebKit. The idea is Search's (Office Commun, MIT).
+  if (typeof globalThis.fetch === 'function' && typeof Response === 'function') {
+    const nativeFetch = globalThis.fetch.bind(globalThis);
+    const b64 = (buf) => { let s = ''; const u = new Uint8Array(buf); for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+    const unb64 = (s) => { const bin = atob(s || ''); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; };
+    globalThis.fetch = async function (input, init) {
+      try {
+        const request = input instanceof Request ? input : null;
+        const url = new URL(request ? request.url : String(input), location.href);
+        const credentials = (init && init.credentials) || (request && request.credentials);
+        const headers = new Headers((init && init.headers) || (request && request.headers) || undefined);
+        const accept = headers.get('accept') || '';
+        const body = init && init.body;
+        const carried = body == null || typeof body === 'string' || body instanceof ArrayBuffer || ArrayBuffer.isView(body) || body instanceof URLSearchParams;
+        if (credentials !== 'include' || !/^https?:$/.test(url.protocol) || accept.includes('text/event-stream') || !carried || (request && !init)) {
+          return nativeFetch(input, init);
+        }
+        if (body instanceof URLSearchParams && !headers.has('content-type')) headers.set('content-type', 'application/x-www-form-urlencoded;charset=UTF-8');
+        const encoded = body == null ? undefined : typeof body === 'string' || body instanceof URLSearchParams
+          ? b64(new TextEncoder().encode(String(body))) : b64(body instanceof ArrayBuffer ? body : body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength));
+        const signal = init && init.signal;
+        if (signal && signal.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+        const answer = await bridge('browsa.fetch', { url: url.href, method: (init && init.method) || 'GET', headers: Object.fromEntries(headers.entries()),
+          body: encoded, redirect: (init && init.redirect) || 'follow', noStore: (init && init.cache) === 'no-store' });
+        if (signal && signal.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+        const response = new Response([101, 204, 205, 304].includes(answer.status) ? null : unb64(answer.body), { status: answer.status, headers: answer.headers });
+        try { Object.defineProperty(response, 'url', { value: answer.url }); } catch (e) {}
+        return response;
+      } catch (e) {
+        if (e && e.name === 'AbortError') throw e;
+        throw new TypeError('Failed to fetch');
+      }
+    };
   }
 
   if (!isWorker) return;

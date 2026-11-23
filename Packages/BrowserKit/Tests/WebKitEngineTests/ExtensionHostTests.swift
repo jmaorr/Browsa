@@ -41,6 +41,22 @@ import JavaScriptCore
         #expect(failure == nil)
     }
 
+    @Test func extensionFetchSendsTheSitesCookies() throws {
+        guard #available(macOS 15.4, *) else { return }
+        let url = URL(string: "https://claude.ai/api/account")!
+        func cookie(_ domain: String, path: String = "/", secure: Bool = false) -> HTTPCookie {
+            var p: [HTTPCookiePropertyKey: Any] = [.domain: domain, .path: path, .name: "k", .value: "v"]
+            if secure { p[.secure] = "TRUE" }
+            return HTTPCookie(properties: p)!
+        }
+        #expect(ExtensionFetch.matches(cookie(".claude.ai"), url))
+        #expect(ExtensionFetch.matches(cookie("claude.ai", secure: true), url))
+        #expect(!ExtensionFetch.matches(cookie("evil.ai"), url))
+        #expect(!ExtensionFetch.matches(cookie(".notclaude.ai"), url))
+        #expect(!ExtensionFetch.matches(cookie("claude.ai", path: "/other"), url))
+        #expect(!ExtensionFetch.matches(cookie("claude.ai", secure: true), URL(string: "http://claude.ai/")!))
+    }
+
     /// 1Password's helper refuses a browser whose host isn't in the browser's process group.
     @Test func hostStaysInBrowsersProcessGroup() throws {
         guard #available(macOS 15.4, *) else { return }
