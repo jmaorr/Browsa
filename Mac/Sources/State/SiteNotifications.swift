@@ -1,5 +1,6 @@
 import AppKit
 import UserNotifications
+import BrowserCore
 import BrowserEngine
 
 /// Sites' notifications, posted as macOS notifications from Browsa. Clicking one brings its tab forward
