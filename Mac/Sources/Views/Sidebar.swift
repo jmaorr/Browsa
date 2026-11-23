@@ -277,13 +277,21 @@ private struct SiteMenu: View {
             }
             media.submenu = mediaMenu
             menu.addItem(media)
-            // Apps this site's links always open in ("Always Open" on the open-in-app question). Untick to be asked again.
-            for key in (browser.library.settings.sitePermissions[host] ?? [:]).filter({ $0.key.hasPrefix("app:") && $0.value }).keys.sorted() {
-                let item = actions.item("Always Open in \(TabController.appName(forKey: key))") {
-                    browser.library.settings.sitePermissions[host]?[key] = nil
+            // Apps this site has opened or been stopped from opening: Ask, Always Open or Don't Open, like camera and mic.
+            for (scheme, saved) in TabController.openAppAnswers(browser.library.settings.sitePermissions[host] ?? [:]).sorted(by: { $0.key < $1.key }) {
+                let app = TabController.appName(forScheme: scheme)
+                let openItem = NSMenuItem(title: "Open in \(app)", action: nil, keyEquivalent: "")
+                openItem.badge = NSMenuItemBadge(string: saved ? "Always" : "Don't Open")
+                let openMenu = NSMenu()
+                for (title, value) in [("Ask", Bool?.none), ("Always Open", Bool?.some(true)), ("Don't Open", Bool?.some(false))] {
+                    let item = actions.item(title) {
+                        TabController.setOpenAppAnswer(value, in: browser.library, host: host, scheme: scheme)
+                    }
+                    item.state = saved == value ? .on : .off
+                    openMenu.addItem(item)
                 }
-                item.state = .on
-                menu.addItem(item)
+                openItem.submenu = openMenu
+                menu.addItem(openItem)
             }
             let styles = SiteStyle.available(for: url)
             if !styles.isEmpty, browser.currentTab?.isPrivate != true {

@@ -18,8 +18,9 @@ struct Prompt: Identifiable, Equatable {
     let kind: Kind
     let tabID: UUID
 
-    /// The open-in-app answer that's kept for the site. `.ok` opens once; `.cancel` is Not Now.
+    /// Open-in-app answers kept for the site. `.ok` is Open (this once); `.cancel` is Not Now.
     static let alwaysOpen = EngineDialogResponse.text("always-open")
+    static let neverOpen = EngineDialogResponse.text("never-open")
 }
 
 extension Browser {

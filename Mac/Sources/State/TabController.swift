@@ -148,11 +148,10 @@ final class TabController: EnginePageDelegate {
     }
 
     /// Hands a link to the app that opens it, asking first, as Safari and Chrome do: a page could
-    /// otherwise launch Zoom, FaceTime or the App Store by itself. "Always Open" is kept per site and
-    /// per kind of link (Slite documents from slite.com, say), so those links go straight to the app
-    /// from then on. "Open Once" and "Not Now" aren't kept, so the site asks again next time. A frame
-    /// inside the page (an ad, an embed) only gets to ask when it was a click on a link. Email links
-    /// open straight away.
+    /// otherwise launch Zoom, FaceTime or the App Store by itself. "Always Open" and "Don't Open" are
+    /// kept per site and per kind of link (Slite documents from slite.com, say). "Open" and "Not Now"
+    /// aren't kept, so the site asks again next time. A frame inside the page (an ad, an embed) only
+    /// gets to ask when it was a click on a link. Email links open straight away.
     private func openInApp(_ request: NavigationRequest) async {
         let url = request.url
         let scheme = url.scheme?.lowercased() ?? ""
@@ -166,22 +165,32 @@ final class TabController: EnginePageDelegate {
             NSWorkspace.shared.open(url)
             return
         }
-        let key = Self.openAppKey(scheme)
         let app = FileManager.default.displayName(atPath: appURL.path).replacingOccurrences(of: ".app", with: "")
-        // Only "always" is kept. A "no" saved by an older version (an Esc counted as one) asks again.
-        if library.settings.sitePermissions[host]?[key] == true {
+        switch Self.openAppAnswer(library.settings, host: host, scheme: scheme) {
+        case true?:
             NSWorkspace.shared.open(url)
             window?.showToast("Opened in \(app)", actions: [
                 ToastAction(title: "Stop Always Opening") { [weak library] in
-                    library?.settings.sitePermissions[host]?[key] = nil
-                    if library?.settings.sitePermissions[host]?.isEmpty == true { library?.settings.sitePermissions[host] = nil }
+                    library.map { Self.setOpenAppAnswer(nil, in: $0, host: host, scheme: scheme) }
                 }
             ])
             return
+        case false?:
+            // Said Don't Open. A click still says why nothing happened; a page firing it by itself stays quiet.
+            if request.kind == .link {
+                window?.showToast("\(host) can't open \(app)", actions: [
+                    ToastAction(title: "Ask Again") { [weak library] in
+                        library.map { Self.setOpenAppAnswer(nil, in: $0, host: host, scheme: scheme) }
+                    }
+                ])
+            }
+            return
+        case nil:
+            break
         }
         // A page that fires its app link by itself on every load (Zoom's join page) asks once per tab
         // after "Not Now". A click on a link always asks.
-        let declineKey = host + " " + key
+        let declineKey = host + " " + scheme
         if request.kind != .link, declinedApps.contains(declineKey) { return }
         // One question at a time: a page firing the link again while it's asking doesn't stack another.
         guard !askingApps.contains(declineKey), let window else { return }
@@ -190,8 +199,10 @@ final class TabController: EnginePageDelegate {
         askingApps.remove(declineKey)
         switch answer {
         case Prompt.alwaysOpen:
-            library.settings.sitePermissions[host, default: [:]][key] = true
+            Self.setOpenAppAnswer(true, in: library, host: host, scheme: scheme)
             NSWorkspace.shared.open(url)
+        case Prompt.neverOpen:
+            Self.setOpenAppAnswer(false, in: library, host: host, scheme: scheme)
         case .ok:
             NSWorkspace.shared.open(url)
         default:
@@ -199,17 +210,47 @@ final class TabController: EnginePageDelegate {
         }
     }
 
-    /// "Not Now" answers in this tab, as "host app:scheme", so a page can't ask again by itself.
+    /// "Not Now" answers in this tab, as "host scheme", so a page can't ask again by itself.
     private var declinedApps: Set<String> = []
-    /// Open-in-app questions showing now, as "host app:scheme".
+    /// Open-in-app questions showing now, as "host scheme".
     private var askingApps: Set<String> = []
 
-    /// The saved-answer key for opening one kind of link in its app, such as "app:zoommtg".
-    static func openAppKey(_ scheme: String) -> String { "app:" + scheme }
+    /// Saved open-in-app answers live in the site's permissions as "open:slite" (true Always Open,
+    /// false Don't Open). Before these choices Browsa kept every answer as "app:slite", an Esc
+    /// included, so of those only a yes still counts.
+    static let openAppPrefix = "open:"
+    private static let legacyOpenAppPrefix = "app:"
 
-    /// The app that opens links saved under `key` ("app:slite" is Slite), or the kind of link when no app does now.
-    static func appName(forKey key: String) -> String {
-        let scheme = String(key.dropFirst(4))
+    /// Always Open (true), Don't Open (false), or ask (nil).
+    static func openAppAnswer(_ settings: BrowserSettings, host: String, scheme: String) -> Bool? {
+        let saved = settings.sitePermissions[host] ?? [:]
+        if let answer = saved[openAppPrefix + scheme] { return answer }
+        return saved[legacyOpenAppPrefix + scheme] == true ? true : nil
+    }
+
+    static func setOpenAppAnswer(_ answer: Bool?, in library: Library, host: String, scheme: String) {
+        var saved = library.settings.sitePermissions[host] ?? [:]
+        saved[legacyOpenAppPrefix + scheme] = nil
+        saved[openAppPrefix + scheme] = answer
+        library.settings.sitePermissions[host] = saved.isEmpty ? nil : saved
+    }
+
+    /// A site's saved open-in-app answers (from its permissions), by kind of link ("slite"), ignoring an old saved "no".
+    static func openAppAnswers(_ saved: [String: Bool]) -> [String: Bool] {
+        var answers: [String: Bool] = [:]
+        for (key, value) in saved {
+            if key.hasPrefix(legacyOpenAppPrefix), value { answers[String(key.dropFirst(legacyOpenAppPrefix.count))] = true }
+        }
+        for (key, value) in saved where key.hasPrefix(openAppPrefix) {
+            answers[String(key.dropFirst(openAppPrefix.count))] = value
+        }
+        return answers
+    }
+
+    static func isOpenAppKey(_ key: String) -> Bool { key.hasPrefix(openAppPrefix) || key.hasPrefix(legacyOpenAppPrefix) }
+
+    /// The app that opens one kind of link ("slite" is Slite), or the kind of link when no app does now.
+    static func appName(forScheme scheme: String) -> String {
         guard let url = URL(string: scheme + "://"), let app = NSWorkspace.shared.urlForApplication(toOpen: url) else { return scheme + ": links" }
         return FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
     }
