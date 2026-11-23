@@ -12,7 +12,7 @@ let engineLog = Logger(subsystem: "com.orriginal.browsa", category: "webkit")
 /// Blocking uses BrowserCore's AdGuard-derived content rule lists and DuckDuckGo's autoconsent,
 /// exactly like the iOS app.
 @MainActor
-public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, WebNotificationsConfigurable {
+public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, WebNotificationsConfigurable, SiteStylesConfigurable {
     public let info: EngineInfo
     public var downloadsDirectory: URL
     public var developerToolsEnabled = false {
@@ -42,6 +42,21 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, WebNotifi
         didSet { callAudioProcessing = callAudio.processing == .browsa }
     }
     public var onCallAudioStats: ((CallAudioStats) -> Void)?
+    /// Site Styles turned on, by id. Pages loaded later get them from their user scripts; pages open now on
+    /// a style's site get it added or taken away in place.
+    public var enabledSiteStyles: Set<String> = [] {
+        didSet {
+            guard enabledSiteStyles != oldValue else { return }
+            for controller in allContentControllers { install(on: controller) }
+            let changed = enabledSiteStyles.symmetricDifference(oldValue)
+            for page in livePages.values.compactMap(\.page) {
+                for style in SiteStyle.all where changed.contains(style.id) && style.matches(page.webView.url) {
+                    let source = enabledSiteStyles.contains(style.id) ? style.enableSource : style.disableSource
+                    page.webView.evaluateJavaScript(source, completionHandler: nil)
+                }
+            }
+        }
+    }
     private static let callAudioScript: WKUserScript? = {
         guard let url = Bundle.module.url(forResource: "call-audio", withExtension: "js"),
               let source = try? String(contentsOf: url, encoding: .utf8) else { return nil }
@@ -288,6 +303,15 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, WebNotifi
         controller.addScriptMessageHandler(WebNotifications.Handler(page: { [weak self] in self?.page(for: $0) },
                                                                     saved: { [weak self] in self?.notificationPermissions ?? [:] }),
                                           contentWorld: .page, name: WebNotifications.messageName)
+        for style in SiteStyle.all where enabledSiteStyles.contains(style.id) {
+            let hosts = (try? JSONEncoder().encode(style.hosts)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+            let source = """
+            if (\(hosts).some(function (d) { var h = location.hostname; return h === d || h.endsWith('.' + d); })) {
+            \(style.enableSource)
+            }
+            """
+            controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .page))
+        }
         if blocking.globalPrivacyControl {
             controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,
                                                   forMainFrameOnly: false, in: .page))
