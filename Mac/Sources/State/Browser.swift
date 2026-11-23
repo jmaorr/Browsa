@@ -61,6 +61,8 @@ final class Browser {
     /// Reader, when it's showing over the current tab.
     var reader: ReaderSession?
     var isArchivePresented = false
+    /// The pinned folder being named in this window's sidebar, after New Folder.
+    var renamingFolderID: UUID?
     /// A page to show in the Library (a plugin, pack or extension id), from a browsa://library/… link.
     var libraryTarget: String?
     /// Bumped with each request, so asking for the same page twice still opens it.
@@ -182,6 +184,19 @@ final class Browser {
 
     /// This window's Today tabs in a space, without the ones favourite tiles hold.
     func listedToday(in space: Space) -> [BrowserTab] { space.listedToday.filter(lists) }
+
+    /// The pinned section's lines in this window's sidebar: tabs and folders, with what closed
+    /// folders hold hidden except the tab this window shows. `hiding` leaves out a dragged entry.
+    func pinnedRows(in space: Space, hiding: UUID? = nil) -> [PinnedRow] {
+        PinnedOutline.rows(space.pinnedTree, selected: selectedTabID(in: space), hiding: hiding)
+    }
+
+    /// Starts a new pinned folder in the current space, holding `tab` if given, and names it.
+    func newPinnedFolder(holding tab: BrowserTab? = nil) {
+        let space = tab.flatMap(space(containing:)) ?? currentSpace
+        guard !space.isPrivate, let id = library.newPinnedFolder(in: space, holding: tab) else { return }
+        renamingFolderID = id
+    }
 
     /// This window's Today tabs in a space, favourite tabs included.
     func today(in space: Space) -> [BrowserTab] { space.today.filter(lists) }
