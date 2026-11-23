@@ -13,7 +13,7 @@ import Testing
         let plan = LiveFolders.plan(source, fetched: [item("a", 1), item("b", 3), item("c", 2)], inFolder: [])
         #expect(plan.source.items.map(\.key) == ["b", "c", "a"])
         #expect(plan.added.count == 3)
-        #expect(plan.source.items.allSatisfy(\.unread))
+        #expect(plan.source.items.allSatisfy { $0.unread })
         #expect(plan.removed.isEmpty)
     }
 
