@@ -8,6 +8,11 @@
 #                                     # signed so it may run on Browsa's own WebKit build
 #                                     # (Mac/BrowsaLocalWebKit.entitlements; see Mac/Sources/PatchedWebKit.swift)
 #
+# BROWSA_DEVELOPER_ID=1 signs the install with the Developer ID, as releases are (archive, then a Developer ID
+# export to disk through Xcode's cloud-managed certificate; nothing is notarised or uploaded). 1Password trusts a
+# browser added under Settings › Browser only when it's Developer ID or App Store signed, so its desktop app unlock
+# needs this. Updates stay off.
+#
 # Builds from a clean export of the ref, so it doesn't matter which branch this checkout (or any
 # worktree) is on, or what's uncommitted in it. Website data, sign-ins, tabs and extensions live
 # in the sandbox container for com.orriginal.browsa, which reinstalling never touches. Xcode's
@@ -51,10 +56,35 @@ extra=()
 # A fresh product each time: an incremental build keeps whatever an earlier build embedded (Chromium, after call
 # tabs were removed).
 rm -rf "$work/DerivedData/Build/Products/Release/Browsa.app"
-xcodebuild -project Browsa.xcodeproj -scheme BrowsaMac -configuration Release \
-  -destination 'platform=macOS' -derivedDataPath "$work/DerivedData" \
-  -allowProvisioningUpdates -quiet build "${extra[@]}"
-built="$work/DerivedData/Build/Products/Release/Browsa.app"
+if [[ "${BROWSA_DEVELOPER_ID:-0}" == 1 ]]; then
+  archive="$work/Browsa.xcarchive"
+  rm -rf "$archive" "$work/developer-id"
+  xcodebuild -project Browsa.xcodeproj -scheme BrowsaMac -configuration Release \
+    -destination 'generic/platform=macOS' -derivedDataPath "$work/DerivedData" -archivePath "$archive" \
+    -allowProvisioningUpdates -quiet BROWSA_UPDATES=NO archive "${extra[@]}"
+  cat > "$work/ExportOptions.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>method</key><string>developer-id</string>
+  <key>teamID</key><string>UAU4449Y7J</string>
+  <key>signingStyle</key><string>automatic</string>
+  <key>destination</key><string>export</string>
+</dict></plist>
+PLIST
+  echo "==> Signing with Developer ID, to disk only"
+  xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$work/ExportOptions.plist" \
+    -exportPath "$work/developer-id" -allowProvisioningUpdates > "$work/export.log" 2>&1 \
+    || { tail -20 "$work/export.log" >&2; echo "Developer ID export failed (log: $work/export.log)" >&2; exit 1; }
+  built="$work/developer-id/Browsa.app"
+  codesign -dv "$built" 2>&1 | grep -q "Authority=Developer ID Application" \
+    || { echo "exported app isn't Developer ID signed" >&2; exit 1; }
+else
+  xcodebuild -project Browsa.xcodeproj -scheme BrowsaMac -configuration Release \
+    -destination 'platform=macOS' -derivedDataPath "$work/DerivedData" \
+    -allowProvisioningUpdates -quiet build "${extra[@]}"
+  built="$work/DerivedData/Build/Products/Release/Browsa.app"
+fi
 if (( patched_webkit )); then
   codesign -d --entitlements - "$built" 2>/dev/null | grep -q allow-dyld-environment-variables \
     || { echo "built app isn't signed for Browsa's WebKit (Mac/BrowsaLocalWebKit.entitlements missing from the ref?)" >&2; exit 1; }
