@@ -292,6 +292,15 @@ extension WebKitPage: WKNavigationDelegate {
         }
         if navigationAction.shouldPerformDownload { return (.download, preferences) }
         guard let url = navigationAction.request.url else { return (.allow, preferences) }
+        // Click IDs (gclid, fbclid, msclkid…) off a page's address before it loads (PrivacySwitches).
+        if navigationAction.targetFrame?.isMainFrame ?? true, (navigationAction.request.httpMethod ?? "GET") == "GET",
+           let clean = PrivacySwitches.withoutClickIDs(url) {
+            var request = navigationAction.request
+            request.url = clean
+            webView.load(request)
+            return (.cancel, preferences)
+        }
+        PrivacySwitches.globalPrivacyControl(engine?.sendsGlobalPrivacyControl ?? false, in: preferences)
         // Chrome's sign-in redirect for extensions (https://<id>.chromiumapp.org/…), which never loads.
         if #available(macOS 15.4, *), ExtensionAuth.redirectOwner(url) != nil, navigationAction.targetFrame?.isMainFrame ?? true {
             if ExtensionAuth.isSimulated(url) { return (.allow, preferences) }

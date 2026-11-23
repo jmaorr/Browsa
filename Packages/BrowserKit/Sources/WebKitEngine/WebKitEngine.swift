@@ -150,6 +150,10 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
         // WKWebView's default user agent leaves out Safari's "Version/… Safari/…" tokens, and some
         // sites then serve older pages or call the browser unsupported.
         c.applicationNameForUserAgent = SafariUserAgent.applicationName
+        MainActor.assumeIsolated {
+            PrivacySwitches.filterLinkDecoration(true, in: c.preferences)
+            PrivacySwitches.backspaceStays(c.preferences)
+        }
         return c
     }
 
@@ -281,6 +285,9 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
     }
 
     /// Rule counts per group from the last download, for Settings.
+    /// Settings › Privacy › Global Privacy Control, for each navigation (WebKitPage).
+    var sendsGlobalPrivacyControl: Bool { blocking.globalPrivacyControl }
+
     public var blockingRuleCount: Int {
         let meta = ContentBlocker.shared.metadata
         return blocking.ruleGroups.reduce(0) { $0 + (meta.ruleCounts[$1] ?? 0) }
@@ -343,7 +350,8 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, SiteStyle
         if #available(macOS 15.4, *), let listings = webExtensions?.externalListings, let external = ExtensionExternal.script(listings) {
             controller.addUserScript(external)
         }
-        if blocking.globalPrivacyControl {
+        // Only where WebKit can't send the real header and property itself (macOS before 27).
+        if blocking.globalPrivacyControl, !PrivacySwitches.nativeGlobalPrivacyControl {
             controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,
                                                   forMainFrameOnly: false, in: .page))
         }

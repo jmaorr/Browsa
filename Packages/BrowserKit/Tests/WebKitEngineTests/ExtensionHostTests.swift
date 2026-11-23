@@ -57,6 +57,19 @@ import JavaScriptCore
         #expect(!ExtensionFetch.matches(cookie("claude.ai", secure: true), URL(string: "http://claude.ai/")!))
     }
 
+    @Test func clickIDsComeOffLinks() {
+        let url = URL(string: "https://shop.example/item?id=7&gclid=abc&fbclid=x&utm_source=news")!
+        #expect(PrivacySwitches.withoutClickIDs(url)?.absoluteString == "https://shop.example/item?id=7&utm_source=news")
+        #expect(PrivacySwitches.withoutClickIDs(URL(string: "https://example.com/?msclkid=1")!)?.absoluteString == "https://example.com/")
+        #expect(PrivacySwitches.withoutClickIDs(URL(string: "https://example.com/?q=gclid")!) == nil)
+    }
+
+    @Test func userAgentNamesTheInstalledSafari() {
+        #expect(SafariUserAgent.applicationName.hasPrefix("Version/"))
+        #expect(SafariUserAgent.applicationName.hasSuffix(" Safari/605.1.15"))
+        #expect(!SafariUserAgent.safariVersion.isEmpty)
+    }
+
     /// 1Password's helper refuses a browser whose host isn't in the browser's process group.
     @Test func hostStaysInBrowsersProcessGroup() throws {
         guard #available(macOS 15.4, *) else { return }
