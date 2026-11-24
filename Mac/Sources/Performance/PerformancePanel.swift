@@ -146,8 +146,8 @@ enum PerformanceFormat {
 
 // MARK: - Status card
 
-/// The status card: a living gradient drawn by a Metal shader (PerformanceGlow.metal) in the status
-/// colour, green at rest, amber when busy, red when a tab is stuck.
+/// The status card: the Velaris living gradient, drawn by a Metal shader (PerformanceGlow.metal) in the
+/// status colour, green at rest, amber when busy, red when a tab is stuck.
 struct PerformanceStatusCard: View, @MainActor Animatable {
     /// 0 green, 1 amber, 2 red; animates, so the colours blend across a change.
     var level: Double
@@ -163,17 +163,19 @@ struct PerformanceStatusCard: View, @MainActor Animatable {
     }
 
     var body: some View {
-        let shades = Self.shades(level)
+        let palette = Self.palette(level)
         ZStack(alignment: .bottomLeading) {
             GeometryReader { proxy in
                 TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { context in
                     let t = clock.advance(to: context.date, speed: reduceMotion ? 0 : speed)
                     Rectangle()
                         .colorEffect(ShaderLibrary.performanceGlow(
-                            .float2(proxy.size), .float(t),
-                            .float3(shades.deep.x, shades.deep.y, shades.deep.z),
-                            .float3(shades.mid.x, shades.mid.y, shades.mid.z),
-                            .float3(shades.bright.x, shades.bright.y, shades.bright.z)))
+                            .float2(proxy.size), .float(t * 2), .float(0.3),
+                            .float3(palette[0].x, palette[0].y, palette[0].z),
+                            .float3(palette[1].x, palette[1].y, palette[1].z),
+                            .float3(palette[2].x, palette[2].y, palette[2].z),
+                            .float3(palette[3].x, palette[3].y, palette[3].z),
+                            .float3(0, 0, 0)))
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
@@ -195,17 +197,20 @@ struct PerformanceStatusCard: View, @MainActor Animatable {
         .accessibilityElement(children: .combine)
     }
 
-    typealias Shades = (deep: SIMD3<Float>, mid: SIMD3<Float>, bright: SIMD3<Float>)
+    /// Velaris's four colours for each status, light to dark, over black. Green is Velaris's own
+    /// default; amber and red are the same steps from the same Tailwind scales (300, 400, 600, black).
+    private static let green: [SIMD3<Float>] = [rgb(0x86efac), rgb(0x4ade80), rgb(0x059669), rgb(0x000000)]
+    private static let amber: [SIMD3<Float>] = [rgb(0xfcd34d), rgb(0xfbbf24), rgb(0xd97706), rgb(0x000000)]
+    private static let red: [SIMD3<Float>] = [rgb(0xfca5a5), rgb(0xf87171), rgb(0xdc2626), rgb(0x000000)]
 
-    /// Deep, mid and bright for each status, chosen dark enough at the bottom for white text.
-    private static let green: Shades = ([0.02, 0.16, 0.10], [0.05, 0.50, 0.30], [0.50, 0.95, 0.62])
-    private static let amber: Shades = ([0.22, 0.10, 0.02], [0.78, 0.45, 0.05], [1.00, 0.84, 0.38])
-    private static let red: Shades = ([0.24, 0.03, 0.05], [0.78, 0.14, 0.17], [1.00, 0.52, 0.42])
+    private static func rgb(_ hex: UInt32) -> SIMD3<Float> {
+        SIMD3(Float((hex >> 16) & 0xff), Float((hex >> 8) & 0xff), Float(hex & 0xff)) / 255
+    }
 
-    static func shades(_ level: Double) -> Shades {
+    /// The colours at a level between statuses, so a change blends across.
+    static func palette(_ level: Double) -> [SIMD3<Float>] {
         let (a, b, f) = level <= 1 ? (green, amber, Float(max(0, level))) : (amber, red, Float(min(1, level - 1)))
-        func mix(_ x: SIMD3<Float>, _ y: SIMD3<Float>) -> SIMD3<Float> { x + (y - x) * f }
-        return (mix(a.deep, b.deep), mix(a.mid, b.mid), mix(a.bright, b.bright))
+        return zip(a, b).map { x, y in x + (y - x) * f }
     }
 }
 
