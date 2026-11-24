@@ -713,6 +713,8 @@ struct PluginIcon: View {
             }
             .blur(radius: size * 0.3)
             .opacity(scheme == .dark ? 0.32 : 0.24)
+            // Drawn once as a picture: there are dozens of these, and a live blur each made scrolling slow.
+            .drawingGroup()
             Image(systemName: symbol)
                 .font(.system(size: size * 0.42, weight: .medium))
                 .foregroundStyle(.primary.opacity(0.85))
@@ -808,6 +810,7 @@ struct PackGlow: View {
             }
             .blur(radius: 60)
             .opacity(0.13)
+            .drawingGroup()
         }
     }
 }

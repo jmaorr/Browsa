@@ -25,21 +25,48 @@ enum LibraryFilter: String, CaseIterable, Hashable {
 
 // MARK: - Art
 
-/// The loops and their posters, bundled as `library-<id>.mp4` and `library-<id>.jpg`.
+/// The loops and their posters, bundled as `library-<id>.mp4` and `library-<id>.jpg`. Posters are read
+/// once and kept: views ask for them on every redraw.
+@MainActor
 enum LibraryArt {
+    private static var posters: [String: NSImage?] = [:]
     static func clip(_ id: String) -> URL? { Bundle.main.url(forResource: "library-\(id)", withExtension: "mp4") }
-    static func poster(_ id: String) -> NSImage? { Bundle.main.image(forResource: "library-\(id)") }
+    static func poster(_ id: String) -> NSImage? {
+        if let kept = posters[id] { return kept }
+        let image = Bundle.main.image(forResource: "library-\(id)")
+        posters[id] = image
+        return image
+    }
     static func has(_ id: String) -> Bool { clip(id) != nil || poster(id) != nil }
 }
 
 /// A muted loop that fills its frame. With Reduce Motion on, or no clip, it shows the poster.
+/// The loop plays only while it's scrolled into view, and its player is made once it has been in view
+/// a moment, so scrolling past cards doesn't set up video on the main thread for each one.
 struct LibraryArtView: View {
     let id: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Outside a scroll view nothing reports, so it counts as in view.
+    @State private var inView = true
+    @State private var settled = false
 
     var body: some View {
         if !reduceMotion, let url = LibraryArt.clip(id) {
-            LoopingPlayer(url: url)
+            // The poster shows until the loop's player is made. Color.clear takes exactly the space offered.
+            Color.clear
+                .overlay {
+                    if let poster = LibraryArt.poster(id) {
+                        Image(nsImage: poster).resizable().aspectRatio(contentMode: .fill)
+                    }
+                }
+                .overlay { if settled { LoopingPlayer(url: url, playing: inView) } }
+                .clipped()
+            .onScrollVisibilityChange(threshold: 0.15) { inView = $0 }
+            .task(id: inView) {
+                guard inView, !settled else { return }
+                try? await Task.sleep(for: .milliseconds(250))
+                if !Task.isCancelled { settled = true }
+            }
         } else if let poster = LibraryArt.poster(id) {
             Image(nsImage: poster).resizable().aspectRatio(contentMode: .fill)
         } else {
@@ -50,9 +77,10 @@ struct LibraryArtView: View {
 
 private struct LoopingPlayer: NSViewRepresentable {
     let url: URL
+    var playing = true
 
     func makeNSView(context: Context) -> PlayerView { PlayerView(url: url) }
-    func updateNSView(_ view: PlayerView, context: Context) {}
+    func updateNSView(_ view: PlayerView, context: Context) { view.wantsToPlay = playing }
     static func dismantleNSView(_ view: PlayerView, coordinator: ()) { view.stop() }
 
     final class PlayerView: NSView {
@@ -79,10 +107,18 @@ private struct LoopingPlayer: NSViewRepresentable {
             CATransaction.commit()
         }
 
-        // Plays only while it's on screen in a window.
+        /// Scrolled into view. It plays only while this is true and it's in a window.
+        var wantsToPlay = true {
+            didSet { if wantsToPlay != oldValue { update() } }
+        }
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if window == nil { player.pause() } else { player.play() }
+            update()
+        }
+
+        private func update() {
+            if window != nil, wantsToPlay { player.play() } else { player.pause() }
         }
 
         func stop() {
@@ -229,10 +265,14 @@ struct PluginArtCard: View {
             }
             .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 14)
         }
-        .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 20, style: .continuous))
+        // One shadow, cast by the card's shape alone: shadowing the whole card made the video, icon and
+        // text cast it too, worked out again on every frame of a scroll.
+        .background {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color(nsColor: .textBackgroundColor))
+                .shadow(color: .black.opacity(hovering ? 0.16 : 0.08), radius: hovering ? 18 : 10, y: hovering ? 10 : 5)
+        }
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.primary.opacity(0.09), lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.05), radius: 1, y: 1)
-        .shadow(color: .black.opacity(hovering ? 0.16 : 0.07), radius: hovering ? 22 : 12, y: hovering ? 12 : 6)
         .offset(y: hovering ? -2 : 0)
         .contentShape(.rect)
         .onTapGesture(perform: open)
