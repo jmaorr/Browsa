@@ -64,7 +64,7 @@ struct BoostsSettings: View {
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url, let data = try? Data(contentsOf: url) else { return }
         guard let boost = BoostStore.importBoost(from: data) else {
-            problem = "That file isn't a Browsa Boost."
+            problem = "That file isn't a Browsa Boost for one site."
             return
         }
         if store.boosts.contains(where: { $0.host == boost.host }) {
@@ -78,14 +78,18 @@ struct BoostsSettings: View {
         problem = nil
         store.add(imported: boost)
         open("boost:" + boost.id.uuidString)
-        browser.showToast(boost.script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                          ? "Imported. Turn it on when you're ready"
-                          : "Imported with a script. Read it before turning it on")
+        browser.showToast(boost.hasScript
+                          ? "Imported with a script. Browsa shows it to you before it runs"
+                          : "Imported. Turn it on when you're ready")
     }
 
     private func newBoost() {
         guard let boost = store.newBoost(forAddress: address) else {
-            problem = "That doesn't look like a web address."
+            let typed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = SiteBoost.key(for: URL(string: typed.contains("://") ? typed : "https://" + typed))
+            problem = key.map { !SiteBoost.isSiteHost($0) } == true
+                ? "That's a whole domain ending. Pick one site, like example.com."
+                : "That doesn't look like a web address."
             return
         }
         problem = nil
@@ -155,7 +159,11 @@ struct BoostEditorPage: View {
                             .font(.system(size: 13)).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Toggle("", isOn: $draft.isOn).toggleStyle(.switch).labelsHidden()
+                    Toggle("", isOn: Binding(get: { draft.isOn }, set: { on in
+                        // An imported script asks before it first runs.
+                        if on, !BoostStore.approveScript(&draft) { return }
+                        draft.isOn = on
+                    })).toggleStyle(.switch).labelsHidden()
                         .disabled(draft.isEmpty)
                 }
                 LibraryGroup(title: "Font", detail: nil) {
@@ -191,7 +199,7 @@ struct BoostEditorPage: View {
                 }
                 codeGroup(title: "CSS", detail: "Styles go in before the page draws.", text: $draft.css,
                           placeholder: "a { color: hotpink; }", type: UTType(filenameExtension: "css") ?? .plainText)
-                codeGroup(title: "Script", detail: "Runs after the page loads, in its own world: it can change the page but can't see the site's own JavaScript. Reload the site to run it.",
+                codeGroup(title: "Script", detail: "Runs after the page loads. It can read and change everything on this site, including what you type, but not the site's own JavaScript. Reload the site to run it.",
                           text: $draft.script, placeholder: "document.title = 'Focus'", type: .javaScript)
                 HStack(spacing: 10) {
                     Button { openSite(zapping: false) } label: { Label("Open Beside \(draft.host)", systemImage: "sidebar.right") }
