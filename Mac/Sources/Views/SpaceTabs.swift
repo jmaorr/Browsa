@@ -259,8 +259,7 @@ private struct DraggableFolderRow: View {
                 .frame(height: 34)
                 .background(SelectedFill(), in: .rect(cornerRadius: 9, style: .continuous))
             } else {
-                FolderRowLabel(folder: folder, hovering: hovering,
-                               refreshing: browser.library.liveRefreshing.contains(folder.id))
+                FolderRowLabel(folder: folder, hovering: hovering)
                     .background {
                         if targeted { SunkenSlot(cornerRadius: 9, active: true) }
                     }
@@ -361,8 +360,6 @@ struct FolderRowLabel: View {
     var hovering = false
     /// Raised, as when it's being dragged.
     var selected = false
-    /// A live folder checking its source.
-    var refreshing = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -375,36 +372,36 @@ struct FolderRowLabel: View {
                 .lineLimit(1)
                 .foregroundStyle(.primary)
             Spacer(minLength: 0)
-            if refreshing {
-                ProgressView().controlSize(.mini)
-                    .transition(.opacity)
-            } else if let live = folder.live, live.unreadCount > 0 {
-                // What's new, open or closed.
-                Text(verbatim: "\(live.unreadCount)")
-                    .font(.system(size: 10, weight: .semibold)).monospacedDigit()
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 5).frame(minWidth: 16, minHeight: 16)
-                    .background(Color.accentColor, in: .capsule)
-                    .help(live.unreadCount == 1 ? "1 new item" : "\(live.unreadCount) new items")
-                    .transition(.scale.combined(with: .opacity))
-            } else if folder.live?.lastError != nil {
-                Image(systemName: "exclamationmark.circle")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .help(folder.live?.lastError ?? "")
-            } else if !folder.isOpen {
-                let count = PinnedOutline.tabIDs(folder.children).count
-                if count > 0 {
-                    Text(verbatim: "\(count)")
-                        .font(.system(size: 11, weight: .medium)).monospacedDigit()
+            // One trailing slot, the same place a tab row's badges sit: the chevron while the pointer
+            // is over the folder, otherwise its count. Checking for new items happens quietly.
+            ZStack(alignment: .trailing) {
+                if hovering {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(folder.isOpen ? 90 : 0))
+                        .frame(width: 16, height: 16)
+                } else if let live = folder.live, live.unreadCount > 0, !folder.isOpen {
+                    // Closed: how many are new. Open, each new item shows its own dot.
+                    SidebarBadge(text: "\(live.unreadCount)")
+                        .help(live.unreadCount == 1 ? "1 new item" : "\(live.unreadCount) new items")
+                } else if let error = folder.live?.lastError {
+                    Image(systemName: "exclamationmark.circle")
+                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                        .frame(width: 16, height: 16)
+                        .help(error)
+                } else if !folder.isOpen, folder.live == nil {
+                    let count = PinnedOutline.tabIDs(folder.children).count
+                    if count > 0 {
+                        Text(verbatim: "\(count)")
+                            .font(.system(size: 11, weight: .medium)).monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .frame(minWidth: 16)
+                    }
                 }
             }
-            Image(systemName: "chevron.right")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.tertiary)
-                .rotationEffect(.degrees(folder.isOpen ? 90 : 0))
-                .opacity(hovering ? 1 : 0)
+            .frame(minWidth: 18, alignment: .trailing)
         }
         .font(.system(size: 13))
         .padding(.horizontal, 8)
@@ -413,6 +410,20 @@ struct FolderRowLabel: View {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(selected ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(hovering ? 0.06 : 0)))
         }
+    }
+}
+
+/// A small count at the end of a sidebar row: neutral, so it doesn't pull the eye.
+struct SidebarBadge: View {
+    let text: String
+
+    var body: some View {
+        Text(verbatim: text)
+            .font(.system(size: 10, weight: .semibold)).monospacedDigit()
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 5).frame(minWidth: 16, minHeight: 16)
+            .background(.primary.opacity(0.08), in: .capsule)
+            .transition(.scale.combined(with: .opacity))
     }
 }
 
@@ -629,7 +640,7 @@ struct TabRow: View {
                 Circle()
                     .fill(Color.accentColor)
                     .frame(width: 7, height: 7)
-                    .frame(width: 18, height: 18)
+                    .frame(width: 16, height: 16)
                     .help("New")
                     .transition(.scale.combined(with: .opacity))
             }

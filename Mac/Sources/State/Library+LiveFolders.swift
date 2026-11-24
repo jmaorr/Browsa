@@ -3,6 +3,7 @@ import AppKit
 import Security
 import SwiftUI
 import BrowserCore
+import BrowserEngine
 
 /// Live Folders: pinned folders that fill themselves from a feed or a GitHub search (see
 /// `LiveFolders` for the rules). Each item is an ordinary pinned tab inside the folder, so opening,
@@ -53,6 +54,8 @@ extension Library {
     @discardableResult
     func newLiveFolder(_ kind: LiveSourceKind, name: String, in space: Space) -> UUID? {
         guard !space.isPrivate else { return nil }
+        // One GitHub folder per space: asking again shows the one it has.
+        if kind == .githubPullRequests, let existing = gitHubFolder(in: space) { return existing.id }
         let folder = PinnedFolder(name: name, isOpen: true, live: LiveSource(kind: kind))
         setPinnedLayout(PinnedOutline.inserting(.folder(folder), at: PinnedPlace(parent: nil, index: 0), in: space.pinnedTree), in: space)
         Task { await refreshLiveFolder(folder.id, in: space) }
@@ -220,13 +223,24 @@ extension Library {
 
     /// Spaces that have had their GitHub folder made for them, so deleting it keeps it gone (it
     /// comes back from Live Folders › GitHub Pull Requests).
-    private static let gitHubAutoKey = "liveFolders.gitHubFolderMadeForSpaces"
+    private static let gitHubAutoKey = "liveFolders.gitHubFolderMadeForProfiles"
+
+    private static func profileKey(_ profile: BrowsingProfile) -> String {
+        switch profile {
+        case .persistent(let id): "profile-" + id.uuidString
+        default: "default"
+        }
+    }
 
     /// As Arc felt: the first time a space is signed in on github.com and you have open pull requests
     /// or review requests, its "Pull Requests" folder appears, with an Undo.
     private func makeGitHubFolderIfWanted(in space: Space, from tab: BrowserTab) {
+        // Once per GitHub login (a profile), not per space: spaces that share a profile share the
+        // account, so a second space would only get a copy of the same folder.
+        let key = Self.profileKey(profile(for: space))
         let done = UserDefaults.standard.stringArray(forKey: Self.gitHubAutoKey) ?? []
-        guard !done.contains(space.id.uuidString), gitHubFolder(in: space) == nil, !gitHubAutoChecking else { return }
+        let hasOne = regularSpaces.contains { Self.profileKey(profile(for: $0)) == key && gitHubFolder(in: $0) != nil }
+        guard !done.contains(key), !hasOne, !gitHubAutoChecking else { return }
         // No open pull requests last time: look again in a while, not on every page.
         if let last = gitHubAutoLastCheck[space.id], Date.now.timeIntervalSince(last) < 10 * 60 { return }
         gitHubAutoLastCheck[space.id] = .now
@@ -237,7 +251,7 @@ extension Library {
             let header = HTTPCookie.requestHeaderFields(with: jar)
             guard case .success(let items)? = try? await Self.fetchGitHubPulls(GitHubPulls.arcQueries, cookies: header),
                   !items.isEmpty, gitHubFolder(in: space) == nil else { return }
-            UserDefaults.standard.set(done + [space.id.uuidString], forKey: Self.gitHubAutoKey)
+            UserDefaults.standard.set(done + [key], forKey: Self.gitHubAutoKey)
             withAnimation(Motion.snappy) { _ = newLiveFolder(.githubPullRequests, name: "Pull Requests", in: space) }
             window(showing: tab)?.showToast("Your pull requests are in the sidebar", actions: [
                 ToastAction(title: "Undo") { [weak self] in
