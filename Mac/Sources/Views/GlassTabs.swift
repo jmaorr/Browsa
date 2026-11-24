@@ -69,8 +69,8 @@ struct GlassTabs<Option: Hashable>: View {
                             // Dark mode: the track is lifted to a soft grey so the near-black picked
                             // option sits darker than it and reads as raised. Still sunken: an inner
                             // shadow on top and a faint light lip along the bottom.
-                            (scheme == .dark ? Color.white.opacity(0.12) : Color.primary.opacity(0.025))
-                                .shadow(.inner(color: .black.opacity(scheme == .dark ? 0.55 : 0.16), radius: 2.5, y: 1))
+                            (scheme == .dark ? Color.white.opacity(0.1) : Color.primary.opacity(0.025))
+                                .shadow(.inner(color: .black.opacity(scheme == .dark ? 0.7 : 0.16), radius: 2.5, y: 1))
                                 .shadow(.inner(color: .white.opacity(scheme == .dark ? 0.1 : 0), radius: 1, y: -1))
                         )
                     )
