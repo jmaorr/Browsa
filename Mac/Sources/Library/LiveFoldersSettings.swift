@@ -11,75 +11,81 @@ struct LiveFoldersSettings: View {
     @State private var address = ""
     @State private var problem: String?
     @State private var following = false
-    @State private var showToken = false
-    @State private var token = ""
 
     private var library: Library { browser.library }
-    /// The space the Library is showing in.
+    /// Where "Follow a Site" puts the folder: the space the Library is showing in.
     private var space: Space { browser.currentSpace.isPrivate ? browser.regularSpaces[0] : browser.currentSpace }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            group("Pull Requests") { card { pullRequests } }
-            group("Sites") { card { sites } }
+            group("Pull Requests", detail: "A folder of your open pull requests, from the GitHub account each Space is signed in to.") {
+                card { spaces }
+            }
+            group("Show in Pull Requests", detail: nil) { card { filters } }
+            group("Sites", detail: nil) { card { sites } }
         }
     }
 
     // MARK: Pull Requests
 
-    private var pullRequests: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                iconTile("arrow.triangle.pull")
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Show in \(space.name)").font(.system(size: 13, weight: .medium))
-                    Text("Your open pull requests and review requests, from the GitHub account you're signed in to in \(space.name).")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                Toggle("", isOn: Binding(
-                    get: { library.gitHubFolder(in: space) != nil },
-                    set: { on in withAnimation(Motion.snappy) { library.setPullRequests(on, in: space) } }))
-                    .toggleStyle(.switch).labelsHidden().controlSize(.small)
+    /// One switch per Space: each has its own sidebar, and can be signed in to its own account.
+    private var spaces: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(browser.regularSpaces.enumerated()), id: \.element.id) { i, s in
+                if i > 0 { Divider().padding(.leading, 58) }
+                let folder = library.gitHubFolder(in: s)
+                toggleRow(symbol: s.symbol, title: s.name,
+                          detail: folder?.live?.lastError ?? (folder == nil ? "Off" : folder!.live!.items.isEmpty ? "No open pull requests" : "\(folder!.live!.items.count) open"),
+                          isOn: Binding(get: { library.gitHubFolder(in: s) != nil },
+                                        set: { on in withAnimation(Motion.snappy) { library.setPullRequests(on, in: s) } }))
             }
-            HStack(spacing: 6) {
-                ForEach(GitHubPulls.Filter.allCases, id: \.self) { filter in
-                    let on = library.gitHubFilters.contains(filter)
-                    Button { library.setGitHubFilter(filter, on: !on) } label: {
-                        Label(filter.title, systemImage: on ? "checkmark" : "plus")
-                    }
-                    .buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.small)
-                    .tint(on ? Color.accentColor : nil)
-                    .disabled(on && library.gitHubFilters.count == 1)
-                    .help(on ? "Showing \(filter.title.lowercased())" : "Show \(filter.title.lowercased()) too")
-                }
-            }
-            .padding(.leading, 44)
-            if let error = library.gitHubFolder(in: space)?.live?.lastError {
-                HStack(spacing: 8) {
-                    Text(error).font(.caption).foregroundStyle(.secondary)
-                    Button("Open GitHub") { browser.newTab(url: URL(string: "https://github.com/login"), in: space) }
-                        .buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.small)
-                }
-                .padding(.leading, 44)
-            }
-            DisclosureGroup("Use a GitHub token instead", isExpanded: $showToken) {
-                HStack(spacing: 8) {
-                    SecureField("Token", text: $token).textFieldStyle(.roundedBorder).frame(maxWidth: 280)
-                    Button("Save") { GitHubToken.set(token); token = "" }
-                        .buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.small)
-                    Button("Make One") { browser.newTab(url: GitHubToken.newTokenURL, in: space) }
-                        .buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.small)
-                }
-                .padding(.top, 6)
-                Text("Only needed for GitHub searches when you'd rather not sign in. Kept in your Keychain.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            .font(.caption)
-            .padding(.leading, 44)
         }
-        .padding(14)
+    }
+
+    private var filters: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(GitHubPulls.Filter.allCases.enumerated()), id: \.element) { i, filter in
+                if i > 0 { Divider().padding(.leading, 58) }
+                let on = library.gitHubFilters.contains(filter)
+                toggleRow(symbol: Self.symbol(filter), title: filter.title, detail: Self.detail(filter),
+                          isOn: Binding(get: { on }, set: { library.setGitHubFilter(filter, on: $0) }))
+                    // One stays on: a folder showing nothing would just look broken.
+                    .disabled(on && library.gitHubFilters.count == 1)
+            }
+        }
+    }
+
+    private static func symbol(_ filter: GitHubPulls.Filter) -> String {
+        switch filter {
+        case .createdByMe: "person"
+        case .reviewRequests: "eye"
+        case .teamReviewRequests: "person.3"
+        }
+    }
+
+    private static func detail(_ filter: GitHubPulls.Filter) -> String {
+        switch filter {
+        case .createdByMe: "Pull requests you opened that are still open."
+        case .reviewRequests: "Pull requests where someone asked you for a review."
+        case .teamReviewRequests: "Pull requests asking a team you're on for a review."
+        }
+    }
+
+    private func toggleRow(symbol: String, title: String, detail: String, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 12) {
+            iconTile(symbol)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 13, weight: .medium))
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Toggle("", isOn: isOn).toggleStyle(.switch).labelsHidden().controlSize(.small)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        // The whole row flips the switch, not just the switch.
+        .contentShape(.rect)
+        .onTapGesture { isOn.wrappedValue.toggle() }
     }
 
     // MARK: Sites
@@ -147,9 +153,12 @@ struct LiveFoldersSettings: View {
 
     // MARK: Pieces
 
-    private func group(_ title: String, @ViewBuilder _ content: () -> some View) -> some View {
+    private func group(_ title: String, detail: String?, @ViewBuilder _ content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                if let detail { Text(detail).font(.caption).foregroundStyle(.secondary) }
+            }
             content()
         }
     }

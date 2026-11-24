@@ -416,3 +416,28 @@ struct WindowAccessor: NSViewRepresentable {
         }
     }
 }
+
+/// A disclosure whose whole title line opens and closes it, not just the small arrow.
+struct RowDisclosureStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button { withAnimation(Motion.snappy) { configuration.isExpanded.toggle() } } label: {
+                HStack(spacing: 6) {
+                    configuration.label
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .rotationEffect(.degrees(configuration.isExpanded ? 90 : 0))
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 4)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            if configuration.isExpanded { configuration.content }
+        }
+    }
+}
+
+extension DisclosureGroupStyle where Self == RowDisclosureStyle {
+    static var row: RowDisclosureStyle { RowDisclosureStyle() }
+}
