@@ -1,0 +1,69 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../../kit/kit.css"><link rel="stylesheet" href="../../kit/sites.css"><link rel="stylesheet" href="../shared/library.css"><script src="../../kit/kit.js"></script><script src="../../kit/sites.js"></script><script src="../shared/library.js"></script>
+<style>
+  .wall { background-image:url(../wallpapers/agents.jpg); }
+  /* The ask an agent puts over the page before it uses one of your tabs. */
+  .ask { position:absolute; left:50%; top:22px; display:flex; align-items:center; gap:12px; padding:8px 8px 8px 16px; border-radius:24px; font-size:16px;
+    background: rgb(255 255 255 / .94); box-shadow: 0 0 0 1px rgb(0 0 0 / .08), 0 16px 34px -12px rgb(0 0 0 / .35); white-space:nowrap; }
+  .ask .b { height:32px; padding:0 16px; border-radius:16px; display:grid; place-items:center; font-weight:600; font-size:15px; background: rgb(0 0 0 / .07); }
+  .ask .b.def { background:#0a84ff; color:#fff; }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="wall"></div>
+  <div class="win"><div class="side" id="side"></div><div class="page" id="page"></div></div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+$("side").innerHTML = sidebar({
+  addr: `${img("linear.app").replace("<img", '<img style="width:18px;height:18px;border-radius:4px"')}linear.app/browsa/my-issues`,
+  body: `<div id="pillwrap" style="overflow:hidden"><div class="pill" id="pill"><span class="av">${CLAUDE}</span>
+      <div style="flex:1;min-width:0"><b>Claude Code</b><span id="step"></span></div>
+      <span class="stop"><svg width="10" height="10" viewBox="0 0 10 10"><rect width="10" height="10" rx="2" fill="#fff"/></svg></span></div></div>
+    <div class="sect">Pinned</div>${R(img("linear.app"), "My issues · Linear", "sel")}${R(img("github.com"), "Pull requests · GitHub")}${R(img("figma.com"), "Library · Figma")}
+    <div class="sect">Today</div>${R(img("stripe.com"), "Payments · Stripe")}`,
+  foot: {},
+});
+$("page").innerHTML = site("linear") + `
+  <div class="ask" id="ask"><span class="av" style="width:22px;height:22px;border-radius:7px;background:#d97757;display:grid;place-items:center">${CLAUDE}</span>
+    <span><b>Claude Code</b> wants to use this tab</span><span class="b" id="deny">Don't Allow</span><span class="b def" id="allow">Allow</span></div>
+  <div class="cap" id="cap"><i></i><span id="captext"></span></div>
+  <div class="ring" id="ring"></div>
+  <div class="ptr" id="you">${POINTER("#161513")}</div>
+  <div class="ptr" id="ptr">${POINTER("#d97757")}<span class="tag">Claude Code</span></div>`;
+const page = $("page").getBoundingClientRect();
+const rows = [...document.querySelectorAll(".lin .it")];
+const at = (el) => { const r = el.getBoundingClientRect(); return [r.left - page.left, r.top - page.top, r.width, r.height]; };
+
+window.TOTAL = 9;
+window.render = (t) => {
+  // The agent asks first; you allow it.
+  const askIn = eo(ph(t, 0.4, 0.35)), askOut = ph(t, 2.5, 0.3);
+  $("ask").style.opacity = askIn * (1 - askOut);
+  $("ask").style.transform = `translateX(-50%) translateY(${(1 - askIn) * -10}px)`;
+  const [ax, ay, aw, ah] = at($("allow"));
+  const m = eio(ph(t, 0.9, 0.8));
+  $("you").style.left = mix(ax - 260, ax + aw / 2, m) + "px"; $("you").style.top = mix(ay + 260, ay + ah / 2, m) + "px";
+  $("you").style.opacity = Math.min(ph(t, 0.7, 0.2), 1 - ph(t, 2.6, 0.3));
+  $("allow").style.filter = t > 2.0 && t < 2.3 ? "brightness(.85)" : "none";
+  // Then it works, step by step, with Stop always in reach.
+  const pillIn = eo(ph(t, 2.5, 0.4));
+  $("pillwrap").style.maxHeight = pillIn * 80 + "px"; $("pill").style.opacity = pillIn;
+  const steps = [[2.5, "Reading My issues"], [4.2, "Opening BRW-208"], [5.6, "Typing a comment"], [7.2, "Moved BRW-208 to Done"]];
+  const step = (steps.filter(([a]) => t >= a).pop() || steps[0])[1];
+  $("step").textContent = step; $("captext").textContent = step;
+  const cIn = eo(ph(t, 2.8, 0.3));
+  $("cap").style.opacity = cIn * (1 - ph(t, 8.3, 0.3));
+  $("cap").style.transform = `translateX(-50%) translateY(${(1 - cIn) * -8}px)`;
+  const r2 = rows[1] ? at(rows[1]) : [300, 300, 400, 40];
+  const g = eio(ph(t, 3.4, 0.9));
+  $("ptr").style.left = mix(r2[0] + 520, r2[0] + 140, g) + "px"; $("ptr").style.top = mix(r2[1] - 120, r2[1] + r2[3] / 2, g) + "px";
+  $("ptr").style.opacity = Math.min(ph(t, 3.0, 0.3), 1 - ph(t, 8.3, 0.3));
+  const ck = ph(t, 4.3, 0.45);
+  $("ring").style.left = r2[0] + 146 + "px"; $("ring").style.top = r2[1] + r2[3] / 2 + 6 + "px";
+  $("ring").style.opacity = t > 4.3 && t < 4.75 ? 1 - ck : 0; $("ring").style.transform = `scale(${0.5 + ck})`;
+  if (rows[1]) rows[1].style.background = t > 4.3 && t < 8.4 ? "rgb(217 119 87 / .1)" : "transparent";
+  if (rows[1]) rows[1].style.opacity = t > 7.4 ? 1 - 0.55 * ph(t, 7.4, 0.4) : 1;
+  $("stage").style.opacity = loopFade(t, TOTAL);
+};
+render(0);
+</script></body></html>
