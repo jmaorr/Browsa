@@ -334,7 +334,7 @@ struct CommandBar: View {
     private var showsChips: Bool {
         guard model?.isTyping != true else { return false }
         switch mode {
-        case .commands: return place == .search && !browser.library.workbench.panelTools.isEmpty
+        case .commands: return place == .search
         case .newTab: return !browser.library.favorites.isEmpty
         case .editCurrent: return false
         }
@@ -343,7 +343,8 @@ struct CommandBar: View {
     @ViewBuilder private var chips: some View {
         if mode == .commands {
             ToolChips(highlighted: model?.toolHighlighted) { close() }
-                .onAppear { model?.toolCount = browser.library.workbench.panelTools.count }
+                // Library first, then the panel tools.
+                .onAppear { model?.toolCount = browser.library.workbench.panelTools.count + 1 }
         } else {
             // Favourites up top, so they're a keystroke away even in full screen with the sidebar hidden.
             FavouriteChips(highlighted: model?.toolHighlighted) { close() }
@@ -532,7 +533,8 @@ struct CommandBar: View {
         if let t = model?.toolHighlighted {
             let tools = browser.library.workbench.panelTools
             close()
-            if tools.indices.contains(t) { browser.showPanel(tools[t].id) }
+            if t == 0 { browser.openLibrary(nil) }
+            else if tools.indices.contains(t - 1) { browser.showPanel(tools[t - 1].id) }
             return
         }
         if let action = model?.submitAction(fieldText: text) {
@@ -715,7 +717,7 @@ private struct GlassChip<Icon: View>: View {
     }
 }
 
-/// ⌘K's chips: every panel tool, one click to open it beside the page.
+/// ⌘K's chips: the Library first, then every panel tool, one click to open it beside the page.
 private struct ToolChips: View {
     @Environment(Browser.self) private var browser
     var highlighted: Int?
@@ -723,7 +725,21 @@ private struct ToolChips: View {
 
     var body: some View {
         ChipRow(highlighted: highlighted) {
-            ForEach(Array(browser.library.workbench.panelTools.enumerated()), id: \.element.id) { i, tool in
+            // First: a quick way into the Library.
+            GlassChip(title: "Library", highlighted: highlighted == 0) {
+                Image(systemName: "books.vertical.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 22, height: 22)
+                    .background(Color.accentColor.opacity(0.2), in: .circle)
+            } action: {
+                done()
+                browser.openLibrary(nil)
+            }
+            .help("Open the Library")
+            .id(0)
+            ForEach(Array(browser.library.workbench.panelTools.enumerated()), id: \.element.id) { n, tool in
+                let i = n + 1
                 let tint = LibraryCatalog.plugin(tool.id)?.tint ?? .secondary
                 GlassChip(title: tool.title, highlighted: highlighted == i) {
                     Image(systemName: tool.symbol)
