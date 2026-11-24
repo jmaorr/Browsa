@@ -275,6 +275,15 @@ private struct SiteMenu: View {
             }
             media.submenu = mediaMenu
             menu.addItem(media)
+            // Only where the page lists a feed: following it puts its new posts in the sidebar.
+            if let feed = browser.currentPageFeed {
+                let following = browser.library.feedFolder(feed.url, in: browser.currentSpace) != nil
+                let item = actions.item(following ? "Following in Sidebar" : "Follow in Sidebar") { browser.followCurrentPage() }
+                item.image = NSImage(systemSymbolName: "dot.radiowaves.up.forward", accessibilityDescription: nil)
+                item.state = following ? .on : .off
+                item.toolTip = "New posts from \(feed.name) appear in a folder in your sidebar."
+                menu.addItem(item)
+            }
             let styles = SiteStyle.available(for: url)
             if !styles.isEmpty, browser.currentTab?.isPrivate != true {
                 menu.addItem(.separator())

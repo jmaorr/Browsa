@@ -138,4 +138,19 @@ import Testing
         let items = try GitHubPulls.read(Data(html.utf8), status: 200, finalURL: URL(string: "https://github.com/pulls")).get()
         #expect(items.map(\.title) == ["Tidy x · r#3"])
     }
+
+    @Test func gitHubFiltersPickTheirSearches() {
+        #expect(GitHubPulls.queries(for: [.reviewRequests]) == [GitHubPulls.Filter.reviewRequests.query])
+        #expect(GitHubPulls.queries(for: [.teamReviewRequests, .createdByMe]).count == 2)
+        #expect(GitHubPulls.queries(for: [.teamReviewRequests, .createdByMe]).first == GitHubPulls.Filter.createdByMe.query)
+        #expect(GitHubPulls.queries(for: []) == GitHubPulls.arcQueries)
+    }
+
+    @Test func pageFeedSkipsCommentFeeds() {
+        let html = """
+        <link rel="alternate" type="application/rss+xml" title="Blog » Comments Feed" href="/comments/feed">
+        <link rel="alternate" type="application/rss+xml" title="Blog Feed" href="/feed">
+        """
+        #expect(FeedDiscovery.feedLinks(inHTML: html, base: URL(string: "https://example.com/")!).first?.absoluteString == "https://example.com/feed")
+    }
 }

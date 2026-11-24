@@ -131,13 +131,15 @@ struct SpaceTabs: View {
                 }
                 .padding(.horizontal, 10)
             }
-            // Right-click the sidebar's empty space for new folders; rows have their own menus.
+            // Right-click the sidebar's empty space to add to it; rows have their own menus.
             .contextMenu {
+                Button("New Tab", systemImage: "plus") { browser.showCommandBar(.newTab) }
                 if !space.isPrivate {
                     Button("New Folder", systemImage: "folder.badge.plus") {
                         withAnimation(Motion.snappy) { browser.newPinnedFolder() }
                     }
-                    LiveFoldersMenu(space: space)
+                    Divider()
+                    Button("Live Folders…", systemImage: "folder.badge.gearshape") { browser.openLibrary("live-folders") }
                 }
             }
             .scrollIndicators(.never)
@@ -293,43 +295,49 @@ private struct DraggableFolderRow: View {
 
     @ViewBuilder private var menu: some View {
         if let live = folder.live {
-            Button("Check for New Items", systemImage: "arrow.clockwise") {
-                Task { await browser.library.refreshLiveFolder(folder.id, in: space) }
+            Text(live.lastError ?? live.lastChecked.map { "Updated " + Self.ago.localizedString(for: $0, relativeTo: .now) } ?? "Checking…")
+            if live.kind == .githubPullRequests {
+                // These act on this folder (and any other Pull Requests folder) straight away.
+                ForEach(GitHubPulls.Filter.allCases, id: \.self) { filter in
+                    Toggle(filter.title, isOn: Binding(
+                        get: { browser.library.gitHubFilters.contains(filter) },
+                        set: { browser.library.setGitHubFilter(filter, on: $0) }))
+                }
             }
+            Divider()
             Button("Mark All as Read", systemImage: "circle.slash") {
                 withAnimation(Motion.snappy) { browser.library.markAllLiveRead(folder.id, in: space) }
             }
             .disabled(live.unreadCount == 0)
-            Button("Edit Live Folder…", systemImage: "slider.horizontal.3") { browser.editLiveFolder(folder, in: space) }
-            Text(live.lastError ?? "From \(live.kind.summary)")
+            Button("Copy Links as Markdown", systemImage: "link") { browser.library.copyLinksAsMarkdown(folder, in: space) }
+            Button("Rename Folder…", systemImage: "pencil") { startRename() }
             Divider()
-        }
-        Button("Rename Folder…", systemImage: "pencil") { startRename() }
-        Button(folder.isOpen ? "Close Folder" : "Open Folder", systemImage: folder.isOpen ? "folder" : "folder.fill") { toggle() }
-        Button("New Folder Inside", systemImage: "folder.badge.plus") {
-            withAnimation(Motion.snappy) {
-                if !folder.isOpen { browser.library.setPinnedFolder(folder.id, open: true, in: space) }
-                browser.renamingFolderID = browser.library.newPinnedFolder(in: space, at: PinnedPlace(parent: folder.id, index: 0))
-            }
-        }
-        LiveFoldersMenu(space: space)
-        Divider()
-        if folder.live != nil {
-            Button("Stop Updating", systemImage: "pause.circle") {
-                withAnimation(Motion.snappy) { browser.library.stopLiveFolder(folder.id, in: space) }
-            }
-            .help("It becomes an ordinary folder and keeps what it holds.")
-            Button("Remove Live Folder", systemImage: "folder.badge.minus") {
+            Button(live.kind == .githubPullRequests ? "Remove Pull Requests" : "Unfollow \(folder.name)", systemImage: "folder.badge.minus") {
                 withAnimation(Motion.snappy) { browser.library.removeLiveFolder(folder.id, in: space) }
             }
             .help("Its items go too. Tabs you put in it yourself stay pinned.")
         } else {
+            Button("Rename Folder…", systemImage: "pencil") { startRename() }
+            Button(folder.isOpen ? "Close Folder" : "Open Folder", systemImage: folder.isOpen ? "folder" : "folder.fill") { toggle() }
+            Button("New Folder Inside", systemImage: "folder.badge.plus") {
+                withAnimation(Motion.snappy) {
+                    if !folder.isOpen { browser.library.setPinnedFolder(folder.id, open: true, in: space) }
+                    browser.renamingFolderID = browser.library.newPinnedFolder(in: space, at: PinnedPlace(parent: folder.id, index: 0))
+                }
+            }
+            Divider()
             Button("Remove Folder", systemImage: "folder.badge.minus") {
                 withAnimation(Motion.snappy) { browser.library.removePinnedFolder(folder.id, in: space) }
             }
             .help("Its tabs stay pinned, where the folder was.")
         }
     }
+
+    private static let ago: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .full
+        return f
+    }()
 
     private func toggle() {
         guard draft == nil else { return }
@@ -424,28 +432,6 @@ struct SidebarBadge: View {
             .padding(.horizontal, 5).frame(minWidth: 16, minHeight: 16)
             .background(.primary.opacity(0.08), in: .capsule)
             .transition(.scale.combined(with: .opacity))
-    }
-}
-
-/// Live Folders ›, as Arc's sidebar menu has it: the space's GitHub folder ticks on and off, and the
-/// rest open the sheet.
-struct LiveFoldersMenu: View {
-    @Environment(Browser.self) private var browser
-    let space: Space
-
-    var body: some View {
-        Menu("Live Folders", systemImage: "folder.badge.gearshape") {
-            Toggle("GitHub Pull Requests", isOn: Binding(
-                get: { browser.library.gitHubFolder(in: space) != nil },
-                set: { _ in withAnimation(Motion.snappy) { browser.library.toggleGitHubFolder(in: space) } }))
-            Divider()
-            Button("Website or Feed…") {
-                browser.liveFolderSheet = LiveFolderDraft(spaceID: space.id, kind: nil, pageURL: browser.currentTab?.url, startOnFeed: true)
-            }
-            Button("GitHub Search…") {
-                browser.liveFolderSheet = LiveFolderDraft(spaceID: space.id, kind: .github(query: ""))
-            }
-        }
     }
 }
 
@@ -754,6 +740,8 @@ struct TabMenu: View {
     /// Starts renaming the tab in place, where the menu's row can.
     var rename: (() -> Void)? = nil
 
+    // Four groups, acting only on this tab: what it is, where it goes, what to do with its page,
+    // and closing it.
     var body: some View {
         if let rename {
             Button("Rename Tab…", systemImage: "pencil", action: rename)
@@ -769,14 +757,16 @@ struct TabMenu: View {
                 withAnimation(Motion.snappy) { browser.togglePinned(tab) }
             }
         }
-        if !tab.isPrivate, let space = browser.space(containing: tab), !space.isPrivate {
-            FolderMenu(tab: tab, space: space)
-        }
         if let url = tab.url {
             Button(browser.isFavorite(url) ? "Already a Favourite" : "Add to Favourites", systemImage: "star") {
                 withAnimation(Motion.snappy) { browser.addFavorite(url: url, title: tab.displayTitle) }
             }
             .disabled(browser.isFavorite(url))
+        }
+        Divider()
+        MoveToMenu(tab: tab)
+        Divider()
+        if let url = tab.url {
             Button("Copy Link", systemImage: "link") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(url.absoluteString, forType: .string)
@@ -785,15 +775,7 @@ struct TabMenu: View {
                 browser.newTab(url: url, in: browser.space(containing: tab), source: .link)
             }
         }
-        Button("Open in New Window", systemImage: "macwindow.badge.plus") { browser.openInNewWindow(tab) }
         SplitViewMenuItems(tab: tab)
-        if !tab.isPrivate, browser.regularSpaces.count > 1 {
-            Menu("Move to Space") {
-                ForEach(browser.regularSpaces.filter { $0.id != browser.space(containing: tab)?.id }) { s in
-                    Button(s.name, systemImage: s.symbol) { withAnimation(Motion.spring) { browser.move(tab, to: s) } }
-                }
-            }
-        }
         Divider()
         if !tab.isPinned {
             Button("Close Other Tabs") { withAnimation(Motion.spring) { browser.closeOtherTabs(than: tab) } }
@@ -804,41 +786,48 @@ struct TabMenu: View {
     }
 }
 
-/// A tab's folder items: put it in a new folder, move it to one (pinning it if need be), or take
-/// it out of the one it's in.
-private struct FolderMenu: View {
+/// Move to ›: everywhere a tab can go, in one place. A folder (pinning it if need be), out of the
+/// one it's in, another space, or a window of its own.
+private struct MoveToMenu: View {
     @Environment(Browser.self) private var browser
     let tab: BrowserTab
-    let space: Space
 
     var body: some View {
-        let tree = space.pinnedTree
-        let folders = PinnedOutline.folders(tree)
-        let path = tab.isPinned ? PinnedOutline.path(of: tab.id, in: tree) ?? [] : []
-        Button("New Folder with Tab", systemImage: "folder.badge.plus") {
-            withAnimation(Motion.snappy) { browser.newPinnedFolder(holding: tab) }
-        }
-        LiveFoldersMenu(space: space)
-        if !folders.isEmpty {
-            Menu(tab.isPinned ? "Move to Folder" : "Pin to Folder", systemImage: "folder") {
+        Menu("Move to", systemImage: "arrow.right.square") {
+            if !tab.isPrivate, let space = browser.space(containing: tab), !space.isPrivate {
+                let tree = space.pinnedTree
+                // Live folders fill themselves, so they're not places to put a tab.
+                let folders = PinnedOutline.folders(tree).filter { $0.folder.live == nil }
+                let path = tab.isPinned ? PinnedOutline.path(of: tab.id, in: tree) ?? [] : []
+                Button("New Folder", systemImage: "folder.badge.plus") {
+                    withAnimation(Motion.snappy) { browser.newPinnedFolder(holding: tab) }
+                }
                 ForEach(folders) { entry in
-                    Button(String(repeating: "    ", count: entry.path.count) + entry.folder.name) {
+                    Button(String(repeating: "    ", count: entry.path.count) + entry.folder.name, systemImage: "folder") {
                         withAnimation(Motion.snappy) {
                             browser.pin(tab, in: space, at: PinnedPlace(parent: entry.folder.id, index: .max))
                         }
                     }
                     .disabled(path.last == entry.folder.id)
                 }
-            }
-        }
-        if let outer = path.first {
-            Button("Remove from Folder", systemImage: "folder.badge.minus") {
-                // Out to the top level, just under the folder it was in.
-                let at = PinnedOutline.place(of: outer, in: PinnedOutline.removing(tab.id, from: tree).0)
-                withAnimation(Motion.snappy) {
-                    browser.pin(tab, in: space, at: PinnedPlace(parent: nil, index: (at?.index ?? -1) + 1))
+                if let outer = path.first {
+                    Button("Out of Folder", systemImage: "folder.badge.minus") {
+                        // Out to the top level, just under the folder it was in.
+                        let at = PinnedOutline.place(of: outer, in: PinnedOutline.removing(tab.id, from: tree).0)
+                        withAnimation(Motion.snappy) {
+                            browser.pin(tab, in: space, at: PinnedPlace(parent: nil, index: (at?.index ?? -1) + 1))
+                        }
+                    }
                 }
+                if browser.regularSpaces.count > 1 {
+                    Divider()
+                    ForEach(browser.regularSpaces.filter { $0.id != space.id }) { s in
+                        Button(s.name, systemImage: s.symbol) { withAnimation(Motion.spring) { browser.move(tab, to: s) } }
+                    }
+                }
+                Divider()
             }
+            Button("New Window", systemImage: "macwindow.badge.plus") { browser.openInNewWindow(tab) }
         }
     }
 }

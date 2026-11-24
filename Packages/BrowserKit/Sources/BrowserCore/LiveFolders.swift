@@ -323,16 +323,36 @@ public enum FeedDiscovery {
     public static func feedLinks(inHTML html: String, base: URL) -> [URL] {
         guard let tag = try? NSRegularExpression(pattern: "<link\\b[^>]*>", options: [.caseInsensitive]) else { return [] }
         let ns = html as NSString
-        return tag.matches(in: html, range: NSRange(location: 0, length: ns.length)).compactMap { m in
+        let found: [(url: URL, comments: Bool)] = tag.matches(in: html, range: NSRange(location: 0, length: ns.length)).compactMap { m in
             let link = ns.substring(with: m.range)
             let attrs = attributes(link)
             guard attrs["rel"]?.lowercased().split(separator: " ").contains("alternate") == true,
                   let type = attrs["type"]?.lowercased(),
                   type.contains("rss") || type.contains("atom"),
-                  let href = attrs["href"] else { return nil }
-            return URL(string: href.replacingOccurrences(of: "&amp;", with: "&"), relativeTo: base)?.absoluteURL
+                  let href = attrs["href"],
+                  let url = URL(string: href.replacingOccurrences(of: "&amp;", with: "&"), relativeTo: base)?.absoluteURL else { return nil }
+            return (url, isCommentsFeed(title: attrs["title"], url: url))
         }
+        // A blog's comments feed is rarely what you want to follow: the posts come first.
+        return found.filter { !$0.comments }.map(\.url) + found.filter(\.comments).map(\.url)
     }
+
+    static func isCommentsFeed(title: String?, url: URL) -> Bool {
+        (title?.lowercased().contains("comments") ?? false) || url.path().lowercased().contains("/comments/")
+    }
+
+    /// Run in a page once it has loaded: the feed its head lists, from what's already there (no
+    /// requests). Returns `[href, name]` or null, where name is the site's own name if it gives one.
+    public static let pageScript = """
+    const links = [...document.querySelectorAll('link[rel~="alternate"][href]')]
+      .filter(l => /rss|atom/i.test(l.type || ''));
+    if (!links.length) return null;
+    const pick = links.find(l => !/comments/i.test((l.title || '') + l.href)) || links[0];
+    const site = document.querySelector('meta[property="og:site_name"]')?.content
+      || (pick.title || '').replace(/\\s*(»|\\||-|–|:)?\\s*(rss|atom)?\\s*(feed)?\\s*$/i, '').trim()
+      || location.hostname.replace(/^www\\./, '');
+    return [pick.href, site];
+    """
 
     private static func attributes(_ tag: String) -> [String: String] {
         guard let re = try? NSRegularExpression(pattern: "([a-zA-Z-]+)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)") else { return [:] }
@@ -414,11 +434,33 @@ public enum GitHubPulls {
     }
 
     /// Arc's three: pull requests you opened, reviews asked of you, and of your teams.
-    public static let arcQueries = [
-        "is:pr is:open archived:false author:@me sort:updated-desc",
-        "is:pr is:open archived:false user-review-requested:@me sort:updated-desc",
-        "is:pr is:open archived:false review-requested:@me sort:updated-desc",
-    ]
+    public enum Filter: String, CaseIterable, Codable, Sendable {
+        case createdByMe, reviewRequests, teamReviewRequests
+
+        public var title: String {
+            switch self {
+            case .createdByMe: "Created by Me"
+            case .reviewRequests: "Review Requests"
+            case .teamReviewRequests: "Team Review Requests"
+            }
+        }
+
+        public var query: String {
+            switch self {
+            case .createdByMe: "is:pr is:open archived:false author:@me sort:updated-desc"
+            case .reviewRequests: "is:pr is:open archived:false user-review-requested:@me sort:updated-desc"
+            case .teamReviewRequests: "is:pr is:open archived:false review-requested:@me sort:updated-desc"
+            }
+        }
+    }
+
+    /// The searches for a set of filters, in Arc's order. None chosen reads as all of them.
+    public static func queries(for filters: Set<Filter>) -> [String] {
+        let chosen = Filter.allCases.filter(filters.contains)
+        return (chosen.isEmpty ? Filter.allCases : chosen).map(\.query)
+    }
+
+    public static let arcQueries = Filter.allCases.map(\.query)
 
     /// The requests for one search: the pulls dashboard first, then the search page.
     public static func requests(query: String) -> [URLRequest] {

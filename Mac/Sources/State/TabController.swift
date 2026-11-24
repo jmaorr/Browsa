@@ -176,6 +176,7 @@ final class TabController: EnginePageDelegate {
 
     func page(_ page: any EnginePage, didCommit url: URL?) {
         tab.loadError = nil
+        if library?.pageFeeds[tab.id] != nil { library?.pageFeeds[tab.id] = nil }
         library?.windows.forEach { $0.cancelPrompts(for: tab.id) }
         if let host = url?.host() {
             let z = Preferences.zoom(for: host)
@@ -186,6 +187,10 @@ final class TabController: EnginePageDelegate {
     func page(_ page: any EnginePage, didFinish url: URL, title: String) {
         library?.scheduleSave()
         library?.liveFolderPageFinished(url, in: tab)
+        Task { [weak self] in
+            guard let self else { return }
+            await self.library?.detectPageFeed(page, url: url, in: self.tab)
+        }
         guard !tab.isPrivate, let history = library?.history else { pendingSource = nil; return }
         let source = pendingSource ?? .link
         pendingSource = nil

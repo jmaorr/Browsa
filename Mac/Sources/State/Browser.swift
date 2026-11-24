@@ -63,8 +63,6 @@ final class Browser {
     var isArchivePresented = false
     /// The pinned folder being named in this window's sidebar, after New Folder.
     var renamingFolderID: UUID?
-    /// The New Live Folder (or edit) sheet, when it's showing.
-    var liveFolderSheet: LiveFolderDraft?
     /// A page to show in the Library (a plugin, pack or extension id), from a browsa://library/… link.
     var libraryTarget: String?
     /// Bumped with each request, so asking for the same page twice still opens it.
@@ -227,16 +225,33 @@ final class Browser {
         renamingFolderID = id
     }
 
-    /// Opens the New Live Folder sheet, offering the current page's feed.
-    func newLiveFolder() {
-        guard !currentSpace.isPrivate else { return }
-        liveFolderSheet = LiveFolderDraft(spaceID: currentSpace.id, pageURL: currentTab?.url)
+    /// The feed the current page lists, when there's one to follow.
+    var currentPageFeed: PageFeed? {
+        guard let tab = currentTab, !tab.isPrivate, !currentSpace.isPrivate else { return nil }
+        return library.pageFeeds[tab.id]
     }
 
-    /// Opens the sheet to change a live folder's source or name.
-    func editLiveFolder(_ folder: PinnedFolder, in space: Space) {
-        guard let live = folder.live else { return }
-        liveFolderSheet = LiveFolderDraft(spaceID: space.id, editing: folder.id, name: folder.name, kind: live.kind)
+    /// "Follow in Sidebar": the current page's feed as a folder in this space.
+    func followCurrentPage() {
+        guard let feed = currentPageFeed else { return }
+        library.follow(feed, in: currentSpace, toastIn: self)
+    }
+
+    /// Shows or hides this space's Pull Requests folder.
+    func togglePullRequests() {
+        let space = currentSpace
+        guard !space.isPrivate else { return }
+        if library.gitHubFolder(in: space) != nil {
+            withAnimation(Motion.snappy) { library.setPullRequests(false, in: space) }
+            showToast("Pull Requests removed from the sidebar")
+        } else {
+            withAnimation(Motion.snappy) { library.setPullRequests(true, in: space) }
+            showToast("Your pull requests are in the sidebar", actions: [
+                ToastAction(title: "Undo") { [weak self] in
+                    withAnimation(Motion.snappy) { self?.library.setPullRequests(false, in: space) }
+                },
+            ])
+        }
     }
 
     /// This window's Today tabs in a space, favourite tabs included.

@@ -106,6 +106,13 @@ final class Library {
     @ObservationIgnored var gitHubAutoChecking = false
     @ObservationIgnored var gitHubAutoLastCheck: [UUID: Date] = [:]
     @ObservationIgnored var liveFocusObserver: (any NSObjectProtocol)?
+    /// The feed each tab's page lists in its head, found when it loads (no requests). It's what
+    /// makes "Follow in Sidebar" appear, only where there's something to follow.
+    var pageFeeds: [UUID: PageFeed] = [:]
+    /// What the Pull Requests folders show. Saved; all three to start, as in Arc.
+    var gitHubFilters: Set<GitHubPulls.Filter> = Library.savedGitHubFilters() {
+        didSet { UserDefaults.standard.set(gitHubFilters.map(\.rawValue), forKey: Library.gitHubFiltersKey) }
+    }
     /// Open windows, oldest first. The oldest one lists Today tabs that no open window owns.
     private(set) var windowsByAge: [Browser] = []
     /// Set once quitting is under way, so the windows going away keep their tabs for next time.
