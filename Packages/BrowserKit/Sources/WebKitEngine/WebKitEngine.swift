@@ -395,15 +395,6 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
                                                                         saved: { [weak self] in self?.notificationPermissions ?? [:] }),
                                               contentWorld: PageBridge.world, name: WebNotifications.messageName)
         }
-        for style in SiteStyle.all where enabledSiteStyles.contains(style.id) {
-            let hosts = (try? JSONEncoder().encode(style.hosts)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
-            let source = """
-            if (\(hosts).some(function (d) { var h = location.hostname; return h === d || h.endsWith('.' + d); })) {
-            \(style.enableSource)
-            }
-            """
-            controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .page))
-        }
         if #available(macOS 15.4, *), let listings = webExtensions?.externalListings, let external = ExtensionExternal.script(listings) {
             controller.addUserScript(external)
         }
