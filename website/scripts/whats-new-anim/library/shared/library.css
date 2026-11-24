@@ -1,0 +1,50 @@
+  /* The Library's Agent Pack loop: Radar finds a dev server, Claude Code opens it and works,
+     and a note you left gets answered and resolved. On a wallpaper, like a Mac desktop. */
+  html,body { background:#222; }
+  .wall { position:absolute; inset:0; background:url(../wallpapers/agent-pack.jpg) center/cover; }
+  .win { left:150px; top:96px; width:1300px; height:808px; --tint:#ff9500; }
+  .side { width:318px; display:flex; flex-direction:column; }
+  .page { left:330px; }
+  .addr { height:38px; margin:16px 4px 0; border-radius:12px; background:rgb(255 255 255 / .6); display:flex; align-items:center; gap:10px; padding:0 14px; font-size:16px; color:#5d5a55; }
+  .addr i { width:8px; height:8px; border-radius:50%; background:#30a46c; }
+  /* AgentDrivingPill: amber wash, who and what, Watch and Stop. */
+  .pill { display:flex; align-items:center; gap:12px; margin:12px 4px 0; padding:9px 9px 9px 13px; border-radius:15px;
+    background: rgb(245 182 11 / .12); box-shadow: inset 0 0 0 1.5px rgb(245 182 11 / .38); overflow:hidden; }
+  .pill .av { position:relative; width:24px; height:24px; border-radius:7px; background:#d97757; display:grid; place-items:center; flex:none; }
+  .pill .av::after { content:""; position:absolute; right:-3px; bottom:-3px; width:10px; height:10px; border-radius:50%; background:#f5b60b; box-shadow:0 0 0 1.5px #fff; }
+  .pill b { display:block; font-size:16px; font-weight:600; }
+  .pill span { display:block; font-size:14px; color:#5d5a55; white-space:nowrap; }
+  .pill .eye, .pill .stop { width:30px; height:30px; border-radius:50%; display:grid; place-items:center; flex:none; }
+  .pill .eye { background: rgb(0 0 0 / .08); } .pill .stop { background:#ff3b30; }
+  /* Radar's sidebar card. */
+  .tool { margin:auto 4px 10px; border-radius:16px; background: rgb(0 0 0 / .045); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .05); overflow:hidden; }
+  .tool .h { display:flex; align-items:center; gap:10px; height:44px; padding:0 14px; font-size:16px; font-weight:600; }
+  .tool .h em { margin-left:auto; font-style:normal; font-weight:500; font-size:14px; color:#5d5a55; }
+  .srv { display:flex; align-items:center; gap:10px; height:36px; margin:0 6px 4px; padding:0 10px; border-radius:10px; font-size:15px; }
+  .srv i { width:9px; height:9px; border-radius:50%; background:#30a46c; }
+  .srv small { margin-left:auto; color:#5d5a55; font-size:14px; font-variant-numeric:tabular-nums; }
+  .spaces { display:flex; justify-content:center; gap:14px; padding:4px 0 2px; }
+  .spaces i { width:10px; height:10px; border-radius:50%; background: rgb(0 0 0 / .18); }
+  /* The dev server's page. */
+  .shop { position:absolute; inset:0; padding:46px 70px; font-size:18px; }
+  .shop .brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:20px; }
+  .shop .brand i { width:26px; height:26px; border-radius:8px; background:linear-gradient(135deg,#7c5cff,#ff7ab6); }
+  .shop h1 { margin:38px 0 20px; font-size:38px; letter-spacing:-.02em; }
+  .item { display:flex; align-items:center; gap:18px; padding:16px 0; border-bottom:1px solid #eeede9; }
+  .item .th { width:64px; height:64px; border-radius:12px; background:#f0eee9; }
+  .item b { font-weight:600; } .item p { margin:4px 0 0; color:#77736c; font-size:15px; } .item .pr { margin-left:auto; font-weight:600; }
+  .total { display:flex; padding:18px 0; font-weight:700; font-size:20px; } .total span:last-child { margin-left:auto; }
+  .pay { position:absolute; left:70px; width:240px; height:56px; border-radius:28px; background:#161513; color:#fff; display:grid; place-items:center; font-weight:600; font-size:19px; }
+  .cap { position:absolute; left:50%; top:22px; display:flex; align-items:center; gap:10px; height:40px; padding:0 18px; border-radius:20px; font-size:16px; font-weight:500;
+    background: rgb(255 248 230 / .92); box-shadow: 0 0 0 1px rgb(245 182 11 / .35), 0 10px 24px -10px rgb(0 0 0 / .3); white-space:nowrap; }
+  .cap i { width:9px; height:9px; border-radius:50%; background:#f5b60b; }
+  .ptr { position:absolute; width:30px; height:30px; }
+  .ptr .tag { position:absolute; left:26px; top:26px; padding:4px 10px; border-radius:10px; background:#d97757; color:#fff; font-size:14px; font-weight:600; white-space:nowrap; }
+  .ring { position:absolute; width:48px; height:48px; margin:-24px 0 0 -24px; border-radius:50%; border:3px solid rgb(217 119 87 / .7); }
+  .pin { position:absolute; width:30px; height:30px; border-radius:15px 15px 15px 3px; box-shadow:0 4px 10px rgb(0 0 0 / .25), inset 0 1px 0 rgb(255 255 255 / .5); }
+  .note { position:absolute; width:330px; padding:16px 18px; border-radius:16px; background:#fff; font-size:16px; line-height:1.4;
+    box-shadow: 0 0 0 1px rgb(0 0 0 / .08), 0 20px 40px -14px rgb(0 0 0 / .35); }
+  .note .who { display:flex; align-items:center; gap:8px; font-weight:600; font-size:15px; margin-bottom:4px; }
+  .note .who i { width:20px; height:20px; border-radius:50%; }
+  .note .rep { margin-top:12px; padding-top:12px; border-top:1px solid #eeede9; overflow:hidden; }
+  .note .done { display:inline-flex; align-items:center; gap:6px; margin-top:8px; color:#1a7f4b; font-weight:600; font-size:14px; }
