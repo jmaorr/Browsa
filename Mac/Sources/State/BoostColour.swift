@@ -47,7 +47,7 @@ enum BoostColour {
     /// The same, for a page that's loading: once now, and again when it finishes.
     static func accentOnLoad(_ hue: Double) -> String {
         let h = Int(hue.rounded())
-        return accentFunction + "\n__browsaAccent(\(h)); addEventListener('load', () => __browsaAccent(\(h)), { once: true });"
+        return accentFunction + "\n__browsaAccent(\(h)); addEventListener('load', () => __browsaAccent(\(h), true), { once: true });"
     }
 
     static let accentFunction = """
@@ -159,10 +159,10 @@ enum BoostColour {
       };
 
       // What style sheets from other domains coloured: fixed on the elements themselves.
-      const fixElements = (root) => {
-        // A new accent close to the old one: what the sheets changed would look unchanged here, and
-        // shift twice. The sheets alone do it.
-        if (near(st.target, st.dominant)) return;
+      const fixElements = (root, original) => {
+        // New content is read with our sheet on: with a new accent close to the old one, what the
+        // sheet changed would look unchanged and shift twice, so the sheet alone does it.
+        if (!original && near(st.target, st.dominant)) return;
         const all = root.querySelectorAll ? [root, ...root.querySelectorAll('*')] : [];
         let n = 0;
         for (const el of all) {
@@ -185,17 +185,22 @@ enum BoostColour {
         st.done = new WeakSet();
       };
 
-      const run = () => {
+      // The site's own accent is measured once, with our changes off (measuring after a swap would
+      // find the colour we picked). Again only when the site adds style sheets.
+      const run = (remeasure) => {
         restore();
         const list = rules();
-        st.dominant = findDominant(list);
-        if (st.dominant === null) { if (st.sheet) st.sheet.replaceSync(''); return; }
+        // Everything is read with our changes off, in one go (no paint happens in between), so each
+        // colour is shifted from the site's own, once.
+        if (st.sheet) st.sheet.replaceSync('');
+        if (remeasure || st.dominant === null) st.dominant = findDominant(list);
+        if (st.dominant === null) return;
+        if (document.body) fixElements(document.body, true);
         rewriteSheets(list);
-        if (document.body) fixElements(document.body);
         st.sheetCount = document.styleSheets.length;
       };
 
-      return (target) => {
+      return (target, remeasure) => {
         st.target = target;
         if (target === null || target === undefined) {
           st.observer?.disconnect(); st.observer = null;
@@ -203,7 +208,7 @@ enum BoostColour {
           if (st.sheet) st.sheet.replaceSync('');
           return;
         }
-        run();
+        run(!!remeasure);
         if (st.observer) return;
         // New content in the accent colour (menus, infinite feeds): fixed as it arrives, a few times a second at most.
         const pending = new Set();
@@ -213,7 +218,7 @@ enum BoostColour {
           st.timer = setTimeout(() => {
             st.timer = 0;
             if (st.target === null || st.dominant === null) { pending.clear(); return; }
-            if (document.styleSheets.length !== st.sheetCount) { pending.clear(); run(); return; }
+            if (document.styleSheets.length !== st.sheetCount) { pending.clear(); run(true); return; }
             for (const node of pending) if (node.isConnected) fixElements(node);
             pending.clear();
           }, 400);
