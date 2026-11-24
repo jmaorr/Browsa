@@ -271,7 +271,6 @@ private struct SiteMenu: View {
             if browser.settings.blockContent {
                 let item = actions.item("Block Ads and Trackers") { browser.toggleBlockingForCurrentSite() }
                 item.state = browser.blockingDisabledForCurrentSite ? .off : .on
-                item.image = NSImage(systemSymbolName: "shield", accessibilityDescription: nil)
                 item.toolTip = host == "youtube.com" || host.hasSuffix(".youtube.com")
                     ? "Blocks and skips YouTube ads. Turn it off here if videos misbehave."
                     : "Turn it off here if this site doesn't work properly."
