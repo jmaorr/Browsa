@@ -35,6 +35,9 @@ Don't release it without the onboarding for that step:
 
 ## Making a release
 
+Before you make one, run `tools/youtube-ad-check/run.sh` ([README](../tools/youtube-ad-check/README.md)):
+every case but the known one should pass, or YouTube has changed how it serves ads.
+
 ```sh
 tools/release-mac.sh 1.0.1              # from origin/main
 tools/release-mac.sh 1.0.1 <git-ref>    # any branch, tag or commit

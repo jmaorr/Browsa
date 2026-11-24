@@ -266,6 +266,16 @@ private struct SiteMenu: View {
             reader.keyEquivalent = "r"
             reader.keyEquivalentModifierMask = [.command, .shift]
             menu.addItem(reader)
+            // The one switch for this site's blockers: on YouTube it also turns the ad skipper off, since its
+            // scripts skip the "don't block" sites.
+            if browser.settings.blockContent {
+                let item = actions.item("Block Ads and Trackers") { browser.toggleBlockingForCurrentSite() }
+                item.state = browser.blockingDisabledForCurrentSite ? .off : .on
+                item.toolTip = host == "youtube.com" || host.hasSuffix(".youtube.com")
+                    ? "Blocks and skips YouTube ads. Turn it off here if videos misbehave."
+                    : "Turn it off here if this site doesn't work properly."
+                menu.addItem(item)
+            }
             let media = NSMenuItem(title: "Camera and Microphone", action: nil, keyEquivalent: "")
             let current = mediaPermission(host)
             media.badge = NSMenuItemBadge(string: current == nil ? "Ask" : current! ? "Allow" : "Block")
