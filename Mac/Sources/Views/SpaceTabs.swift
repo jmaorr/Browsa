@@ -139,7 +139,7 @@ struct SpaceTabs: View {
                         withAnimation(Motion.snappy) { browser.newPinnedFolder() }
                     }
                     Divider()
-                    Button("Live Folders…", systemImage: "folder.badge.gearshape") { browser.openLibrary("live-folders") }
+                    Button("Live Folders…", systemImage: "folder.fill.badge.gearshape") { browser.openLibrary("live-folders") }
                 }
             }
             .scrollIndicators(.never)

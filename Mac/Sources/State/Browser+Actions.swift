@@ -119,7 +119,7 @@ extension Browser {
             out.append(BrowserCommand(id: "downloads", title: "Show Downloads", subtitle: "\(downloads.count) files", keywords: ["files"]))
         }
         out.append(BrowserCommand(id: "archive", title: "Show Archive", subtitle: "\(archive.count) archived tabs", keywords: ["history", "closed"]))
-        if !currentSpace.isPrivate {
+        if !currentSpace.isPrivate, library.liveFoldersOn {
             out.append(BrowserCommand(id: "pull-requests",
                                       title: library.gitHubFolder(in: currentSpace) == nil ? "Show Pull Requests in Sidebar" : "Remove Pull Requests from Sidebar",
                                       keywords: ["github", "pr", "review", "live folder"]))

@@ -3,10 +3,10 @@ import AppKit
 import BrowserCore
 import Suggest
 
-/// The Library's Live Folders: the things you turn on rather than build. Pull Requests (your
-/// GitHub pull requests and review requests, read with this space's github.com login), the sites
+/// Live Folders' page in the Library, under its switch: Pull Requests (your GitHub pull requests
+/// and review requests, read with this space's github.com login) with what it shows, the sites
 /// you follow, and following a new one by its address.
-struct LiveFoldersSection: View {
+struct LiveFoldersSettings: View {
     @Environment(Browser.self) private var browser
     @State private var address = ""
     @State private var problem: String?
@@ -19,13 +19,9 @@ struct LiveFoldersSection: View {
     private var space: Space { browser.currentSpace.isPrivate ? browser.regularSpaces[0] : browser.currentSpace }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Live Folders").font(.system(size: 17, weight: .semibold))
-                Text("Folders in your sidebar that keep themselves up to date.").font(.system(size: 13)).foregroundStyle(.secondary)
-            }
-            card { pullRequests }
-            card { sites }
+        VStack(alignment: .leading, spacing: 20) {
+            group("Pull Requests") { card { pullRequests } }
+            group("Sites") { card { sites } }
         }
     }
 
@@ -36,7 +32,7 @@ struct LiveFoldersSection: View {
             HStack(spacing: 12) {
                 iconTile("arrow.triangle.pull")
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Pull Requests").font(.system(size: 13, weight: .medium))
+                    Text("Show in \(space.name)").font(.system(size: 13, weight: .medium))
                     Text("Your open pull requests and review requests, from the GitHub account you're signed in to in \(space.name).")
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -150,6 +146,13 @@ struct LiveFoldersSection: View {
     }
 
     // MARK: Pieces
+
+    private func group(_ title: String, @ViewBuilder _ content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+            content()
+        }
+    }
 
     private func card(@ViewBuilder _ content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 0, content: content)

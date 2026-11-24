@@ -24,8 +24,15 @@ extension Library {
     static let liveTick: Duration = .seconds(120)
     static let feedInterval: TimeInterval = 15 * 60
 
+    nonisolated static let liveFoldersKey = "liveFolders.on"
+
     /// Starts the checks. Called once, from `init`.
     func startLiveFolders() {
+        // Live folders made before the Library switch existed: it starts on for them.
+        if UserDefaults.standard.object(forKey: Self.liveFoldersKey) == nil,
+           regularSpaces.contains(where: { !LiveFolders.liveFolders(in: $0.pinnedTree).isEmpty }) {
+            liveFoldersOn = true
+        }
         liveTask?.cancel()
         liveTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(4))
@@ -45,6 +52,7 @@ extension Library {
     /// `dueOnly`: feeds that checked within 15 minutes, and GitHub folders within 2 (or while
     /// Browsa is in the background), wait.
     func refreshAllLiveFolders(dueOnly: Bool = false) async {
+        guard liveFoldersOn else { return }
         for space in regularSpaces {
             for folder in LiveFolders.liveFolders(in: space.pinnedTree) {
                 guard let live = folder.live else { continue }
@@ -102,7 +110,7 @@ extension Library {
 
     /// Checks a live folder's source and brings the folder up to date.
     func refreshLiveFolder(_ id: UUID, in space: Space) async {
-        guard !liveRefreshing.contains(id), let kind = PinnedOutline.folder(id, in: space.pinnedTree)?.live?.kind else { return }
+        guard liveFoldersOn, !liveRefreshing.contains(id), let kind = PinnedOutline.folder(id, in: space.pinnedTree)?.live?.kind else { return }
         liveRefreshing.insert(id)
         defer { liveRefreshing.remove(id) }
         // GitHub is read as you: the space's own github.com login goes along, as in a tab.
@@ -185,6 +193,21 @@ extension Library {
         LiveFolders.liveFolders(in: space.pinnedTree).first { $0.live?.kind == .githubPullRequests }
     }
 
+    /// The Library's switch. On brings Pull Requests to the space (the one Live Folder that's on to
+    /// start). Off takes away the Pull Requests folders; sites you follow keep their folders, which
+    /// stop updating until it's back on.
+    func setLiveFolders(_ on: Bool, in space: Space) {
+        guard on != liveFoldersOn else { return }
+        liveFoldersOn = on
+        if on {
+            setPullRequests(true, in: space)
+            Task { await refreshAllLiveFolders(dueOnly: false) }
+        } else {
+            for s in regularSpaces { setPullRequests(false, in: s) }
+            pageFeeds = [:]
+        }
+    }
+
     /// Turns the space's Pull Requests folder on or off. Off takes it away with its items.
     func setPullRequests(_ on: Bool, in space: Space) {
         if on {
@@ -235,7 +258,7 @@ extension Library {
     /// A page finished loading: notes the feed its head lists, if any. Reads only what the page
     /// already has, so it costs nothing on the network.
     func detectPageFeed(_ page: any EnginePage, url: URL, in tab: BrowserTab) async {
-        guard !tab.isPrivate, url.scheme == "https" || url.scheme == "http" else {
+        guard liveFoldersOn, !tab.isPrivate, url.scheme == "https" || url.scheme == "http" else {
             pageFeeds[tab.id] = nil
             return
         }
@@ -294,7 +317,7 @@ extension Library {
     /// GitHub folders soon after you open or review a pull request (as Dia does), so it shows up
     /// without waiting for the next check.
     func liveFolderPageFinished(_ url: URL, in tab: BrowserTab) {
-        guard !tab.isPrivate, url.host()?.lowercased() == "github.com", let space = space(containing: tab), !space.isPrivate else { return }
+        guard liveFoldersOn, !tab.isPrivate, url.host()?.lowercased() == "github.com", let space = space(containing: tab), !space.isPrivate else { return }
         let path = url.path()
         let isPull = GitHubPulls.pullPath(path) != nil
         if isPull, url.fragment()?.hasPrefix("pullrequestreview-") == true || lastGitHubPage[tab.id]?.contains("/compare") == true {

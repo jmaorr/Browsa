@@ -230,7 +230,7 @@ final class Browser {
 
     /// The feed the current page lists, when there's one to follow.
     var currentPageFeed: PageFeed? {
-        guard let tab = currentTab, !tab.isPrivate, !currentSpace.isPrivate else { return nil }
+        guard library.liveFoldersOn, let tab = currentTab, !tab.isPrivate, !currentSpace.isPrivate else { return nil }
         return library.pageFeeds[tab.id]
     }
 
@@ -244,6 +244,7 @@ final class Browser {
     func togglePullRequests() {
         let space = currentSpace
         guard !space.isPrivate else { return }
+        library.liveFoldersOn = true
         if library.gitHubFolder(in: space) != nil {
             withAnimation(Motion.snappy) { library.setPullRequests(false, in: space) }
             showToast("Pull Requests removed from the sidebar")
