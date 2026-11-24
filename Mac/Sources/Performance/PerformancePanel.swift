@@ -324,15 +324,16 @@ struct PerformanceRowView: View {
                     .frame(minWidth: 58, alignment: .trailing)
             }
             .monospacedDigit()
+            // Only the line itself shows the tab, so the buttons below always get their clicks.
+            .contentShape(.rect)
+            .onTapGesture { if let tab = tabs.first { browser.select(tab) } }
+            .help(row.kind == .tabs ? "Show this tab" : "")
             if isStuck, let tab = tabs.first { actions(for: tab) }
         }
         .font(.system(size: 12.5))
         .padding(.horizontal, 8).padding(.vertical, 7)
         .background(background, in: .rect(cornerRadius: 9, style: .continuous))
-        .contentShape(.rect)
         .onHover { hovering = $0 }
-        .onTapGesture { if let tab = tabs.first { browser.select(tab) } }
-        .help(row.kind == .tabs ? "Show this tab" : "")
     }
 
     private var background: AnyShapeStyle {
@@ -381,23 +382,23 @@ struct PerformanceRowView: View {
         }
     }
 
+    /// What to do about a stuck tab. A tab in the background is unloaded; the one on screen can't be
+    /// (it would only load straight back), so for that one the first button reloads it instead.
     private func actions(for tab: BrowserTab) -> some View {
         let onScreen = browser.library.window(showing: tab) != nil
         let inCall = tab.call != nil
         return HStack(spacing: 6) {
-            Button("Unload Tab") {
-                withAnimation(Motion.snappy) {
-                    for id in row.tabIDs { browser.library.unload(id) }
-                }
-                browser.showToast(row.tabIDs.count == 1 ? "Unloaded. It reloads when you go back to it."
-                                                         : "Unloaded \(row.tabIDs.count) tabs. They reload when you go back to them.")
-            }
-            .buttonStyle(.glassProminent)
-            .disabled(onScreen || inCall)
-            .help(inCall ? "This tab is in a call" : onScreen ? "This tab is on screen. Reload it instead." : "Frees its CPU and memory. The tab stays in the sidebar.")
-            Button("Reload") { browser.library.controllers[tab.id]?.page.reload() }
-                .buttonStyle(.glass)
-            if !onScreen {
+            if onScreen {
+                Button("Reload Tab") { reload(tab) }
+                    .buttonStyle(.glassProminent)
+                    .help("Starts the page again, which stops whatever got stuck")
+            } else {
+                Button("Unload Tab") { unload() }
+                    .buttonStyle(.glassProminent)
+                    .disabled(inCall)
+                    .help(inCall ? "This tab is in a call" : "Frees its CPU and memory. The tab stays in the sidebar.")
+                Button("Reload") { reload(tab) }
+                    .buttonStyle(.glass)
                 Button("Show Tab") { browser.select(tab) }
                     .buttonStyle(.glass)
             }
@@ -405,6 +406,21 @@ struct PerformanceRowView: View {
         .controlSize(.small)
         .buttonBorderShape(.capsule)
         .padding(.leading, 24)
+    }
+
+    private func unload() {
+        let ids = row.tabIDs
+        withAnimation(Motion.snappy) {
+            for id in ids { browser.library.unload(id) }
+            monitor.resolved(ids)
+        }
+        browser.showToast(ids.count == 1 ? "Unloaded. It reloads when you go back to it."
+                                         : "Unloaded \(ids.count) tabs. They reload when you go back to them.")
+    }
+
+    private func reload(_ tab: BrowserTab) {
+        browser.library.controllers[tab.id]?.page.reload()
+        withAnimation(Motion.snappy) { monitor.resolved(row.tabIDs) }
     }
 
     private var title: String {

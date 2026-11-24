@@ -113,6 +113,22 @@ final class PerformanceMonitor {
         sample()
     }
 
+    /// The tabs were just unloaded or reloaded: stop pretending if one was simulated, forget how long
+    /// their process was busy, and take a fresh reading so the panel and sidebar update at once.
+    func resolved(_ tabIDs: [UUID]) {
+        for row in rows where !Set(row.tabIDs).isDisjoint(with: tabIDs) { busySince[row.id] = nil }
+        if let simulatedTab, tabIDs.contains(simulatedTab) {
+            endSimulation()
+        } else {
+            sample()
+        }
+    }
+
+    /// CPU for the process a tab runs in, if it's loaded.
+    func cpu(forTab id: UUID) -> Double? {
+        rows.first { $0.tabIDs.contains(id) }?.cpu
+    }
+
     func endSimulation() {
         simulationEnd?.cancel()
         simulationEnd = nil
