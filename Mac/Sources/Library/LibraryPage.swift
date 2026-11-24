@@ -432,20 +432,6 @@ struct LibraryView: View {
 
     // MARK: Sections
 
-    /// Above a page's greyed-out settings while it's off.
-    private var offNote: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "eye").foregroundStyle(.secondary)
-            Text("A preview of what \(plugin.title) adds. Turn it on to use it.")
-                .font(.callout).foregroundStyle(.secondary)
-            Spacer()
-            Button("Turn On") { LibraryActions.set(plugin.id, on: true, in: browser) }
-                .buttonStyle(.glassProminent).buttonBorderShape(.capsule).controlSize(.small)
-        }
-        .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(.primary.opacity(0.035), in: .rect(cornerRadius: 12, style: .continuous))
-    }
-
     private var header: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
@@ -989,6 +975,20 @@ private struct PluginDetail: View {
     let back: () -> Void
     private var workbench: Workbench { browser.library.workbench }
     private var on: Bool { LibraryActions.isOn(plugin.id, in: browser) }
+
+    /// Above a page's greyed-out settings while it's off.
+    private var offNote: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "eye").foregroundStyle(.secondary)
+            Text("A preview of what \(plugin.title) adds. Turn it on to use it.")
+                .font(.callout).foregroundStyle(.secondary)
+            Spacer()
+            Button("Turn On") { LibraryActions.set(plugin.id, on: true, in: browser) }
+                .buttonStyle(.glassProminent).buttonBorderShape(.capsule).controlSize(.small)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(.primary.opacity(0.035), in: .rect(cornerRadius: 12, style: .continuous))
+    }
 
     var body: some View {
         if plugin.id == "space-routing" {
