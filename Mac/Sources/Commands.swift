@@ -89,6 +89,11 @@ struct BrowserCommands: Commands {
             Button(browser?.isReaderShowing == true ? "Hide Reader" : "Show Reader") { browser?.toggleReader() }
                 .keyboardShortcut(keys.shortcut(.reader))
                 .disabled(!hasPage)
+            Button(browser?.pictureInPictureTab?.media.isPictureInPicture == true ? "Put Video Back in Page" : "Picture in Picture") {
+                browser?.togglePictureInPicture()
+            }
+            .keyboardShortcut(keys.shortcut(.pictureInPicture))
+            .disabled(browser?.pictureInPictureTab == nil)
             Divider()
             Button("Reload Page") { browser?.reload() }
                 .keyboardShortcut(keys.shortcut(.reload))
@@ -147,6 +152,11 @@ struct BrowserCommands: Commands {
             }
             .keyboardShortcut(keys.shortcut(.pin))
             .disabled(tab == nil || tab?.isPrivate == true)
+            Button("New Folder") { withAnimation(Motion.snappy) { browser?.newPinnedFolder() } }
+                .keyboardShortcut(keys.shortcut(.newFolder))
+                .disabled(browser == nil || browser?.currentSpace.isPrivate == true)
+            Button("Live Folders…") { browser?.openLibrary("live-folders") }
+                .disabled(browser == nil)
             Button(tab?.url.map { library.isFavorite($0) } == true ? "Remove from Favourites" : "Add to Favourites") {
                 browser?.toggleFavoriteForCurrentTab()
             }
@@ -158,6 +168,18 @@ struct BrowserCommands: Commands {
             Button("Clear Today's Tabs") { if let browser { withAnimation(Motion.snappy) { browser.clearToday() } } }
                 .keyboardShortcut(keys.shortcut(.clearToday))
                 .disabled(browser.map { b in b.listedToday(in: b.currentSpace).contains { $0.id != tab?.id } } != true)
+            Divider()
+            Button(browser?.isSplit == true ? "Add Tab to Split View" : "New Split View") { browser?.newSplitPane() }
+                .keyboardShortcut(keys.shortcut(.splitView))
+                .disabled(tab == nil || (browser?.shownTabs.count ?? 0) >= SplitStore.maxPanes)
+            Button("Separate Split View") { if let browser, let tab { withAnimation(Motion.snappy) { browser.separateSplit(containing: tab) } } }
+                .disabled(browser?.isSplit != true)
+            Button("Next Pane") { browser?.focusAdjacentPane(1) }
+                .keyboardShortcut(.rightArrow, modifiers: [.control, .option, .command])
+                .disabled(browser?.isSplit != true)
+            Button("Previous Pane") { browser?.focusAdjacentPane(-1) }
+                .keyboardShortcut(.leftArrow, modifiers: [.control, .option, .command])
+                .disabled(browser?.isSplit != true)
             Divider()
             ForEach(1...9, id: \.self) { n in
                 Button(n == 9 ? "Last Tab" : "Tab \(n)") { browser?.selectTab(number: n) }

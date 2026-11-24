@@ -29,6 +29,8 @@ struct Sidebar: View {
             ToolSections()
                 .padding(.horizontal, 10)
                 .introArrival(4)
+            NowPlaying()
+                .padding(.horizontal, 10)
             bottomRow
                 .padding(.horizontal, 10)
                 .padding(.bottom, 8)
@@ -143,6 +145,8 @@ struct SidebarIconButton: View {
 /// the site menu; pinned extensions and the extensions menu sit at the right end.
 struct AddressPill: View {
     @Environment(Browser.self) private var browser
+    /// In a split pane's glass panel: a more solid fill, and Copy Link always showing.
+    var inPanel = false
     @State private var hovering = false
 
     var body: some View {
@@ -161,7 +165,7 @@ struct AddressPill: View {
                 .help(devServer.map { Text(verbatim: "\($0.details) · localhost:\($0.port)") } ?? Text(verbatim: ""))
                 .foregroundStyle(tab?.url == nil ? .secondary : .primary)
             Spacer(minLength: 0)
-            if hovering, tab?.url != nil, !isWelcome {
+            if hovering || inPanel, tab?.url != nil, !isWelcome {
                 Button { browser.copyCurrentLink() } label: { Image(systemName: "link") }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
@@ -183,7 +187,14 @@ struct AddressPill: View {
         .font(.system(size: 13))
         .padding(.horizontal, 10)
         .frame(height: 32)
-        .background(.primary.opacity(hovering ? 0.09 : 0.06), in: .rect(cornerRadius: 9, style: .continuous))
+        .background {
+            if inPanel {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(PaneControls.solidFill)
+            } else {
+                RoundedRectangle(cornerRadius: 9, style: .continuous).fill(.primary.opacity(hovering ? 0.09 : 0.06))
+            }
+        }
         .contentShape(.rect)
         .onTapGesture { browser.showCommandBar(.editCurrent) }
         .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
@@ -266,11 +277,35 @@ private struct SiteMenu: View {
             }
             media.submenu = mediaMenu
             menu.addItem(media)
-            let styles = Boost.available(for: url)
-            if !styles.isEmpty, browser.currentTab?.isPrivate != true {
+            // Apps this site has opened or been stopped from opening: Ask, Always Open or Don't Open, like camera and mic.
+            for (scheme, saved) in TabController.openAppAnswers(browser.library.settings.sitePermissions[host] ?? [:]).sorted(by: { $0.key < $1.key }) {
+                let app = TabController.appName(forScheme: scheme)
+                let openItem = NSMenuItem(title: "Open in \(app)", action: nil, keyEquivalent: "")
+                openItem.badge = NSMenuItemBadge(string: saved ? "Always" : "Don't Open")
+                let openMenu = NSMenu()
+                for (title, value) in [("Ask", Bool?.none), ("Always Open", Bool?.some(true)), ("Don't Open", Bool?.some(false))] {
+                    let item = actions.item(title) {
+                        TabController.setOpenAppAnswer(value, in: browser.library, host: host, scheme: scheme)
+                    }
+                    item.state = saved == value ? .on : .off
+                    openMenu.addItem(item)
+                }
+                openItem.submenu = openMenu
+                menu.addItem(openItem)
+            }
+            // Only where the page lists a feed: following it puts its new posts in the sidebar.
+            if let feed = browser.currentPageFeed {
+                let following = browser.library.feedFolder(feed.url, in: browser.currentSpace) != nil
+                let item = actions.item(following ? "Following in Sidebar" : "Follow in Sidebar") { browser.followCurrentPage() }
+                item.image = NSImage(systemSymbolName: "dot.radiowaves.up.forward", accessibilityDescription: nil)
+                item.state = following ? .on : .off
+                item.toolTip = "New posts from \(feed.name) appear in a folder in your sidebar."
+                menu.addItem(item)
+            }
+            if browser.library.workbench.isEnabled("boosts"), browser.currentTab?.isPrivate != true, SiteBoost.key(for: url) != nil {
                 menu.addItem(.separator())
                 menu.addItem(.sectionHeader(title: "Boosts"))
-                for style in styles {
+                for style in Boost.available(for: url) {
                     let on = browser.library.boosts.contains(style.id)
                     let item = actions.item(style.name) { browser.setBoost(style, on: !on) }
                     item.state = on ? .on : .off
@@ -278,6 +313,25 @@ private struct SiteMenu: View {
                     item.toolTip = style.summary
                     menu.addItem(item)
                 }
+                let own = BoostStore.shared.boost(for: url)
+                if let own {
+                    let item = actions.item("My Boost") {
+                        BoostStore.shared.setOn(own.id, !own.isOn)
+                        var updated = own
+                        updated.isOn.toggle()
+                        if let page { Task { await BoostStore.shared.preview(updated, on: page) } }
+                    }
+                    item.state = own.isOn ? .on : .off
+                    item.image = NSImage(systemSymbolName: "paintbrush.pointed.fill", accessibilityDescription: nil)
+                    item.toolTip = own.summary
+                    menu.addItem(item)
+                }
+                let edit = actions.item(own == nil ? "Boost This Site…" : "Edit Boost…") { browser.showPanel("boosts") }
+                edit.image = NSImage(systemSymbolName: "paintbrush.pointed", accessibilityDescription: nil)
+                menu.addItem(edit)
+                let zap = actions.item("Zap Something…") { ZapPicker.zapOnCurrentPage(in: browser) }
+                zap.image = NSImage(systemSymbolName: "scope", accessibilityDescription: nil)
+                menu.addItem(zap)
             }
         }
         let exts = browser.library.actionExtensions
@@ -761,7 +815,7 @@ struct FavoriteTile: View {
                 if !now, dragging.isLiftedFavourite(favorite.id) { dragging.ended(favorite, in: browser.currentSpace, browser: browser) }
             }
             .contextMenu {
-                Button("Open in New Tab", systemImage: "plus.square.on.square") { browser.newTab(url: favorite.url, source: .bookmark) }
+                Button("Open in New Tab", systemImage: "plus.square.on.square") { browser.newTab(url: favorite.url, in: browser.currentSpace, source: .bookmark) }
                 Button("Copy Link", systemImage: "link") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(favorite.url.absoluteString, forType: .string)

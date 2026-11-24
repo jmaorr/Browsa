@@ -19,7 +19,6 @@ struct SettingsView: View {
     static let panes: [Pane] = [
         Pane(id: "general", title: "General", symbol: "gearshape"),
         Pane(id: "spaces", title: "Spaces", symbol: "square.stack"),
-        Pane(id: "routing", title: "Routing", symbol: "arrow.triangle.branch"),
         Pane(id: "shortcuts", title: "Shortcuts", symbol: "keyboard"),
         Pane(id: "privacy", title: "Privacy", symbol: "hand.raised"),
         Pane(id: "audio", title: "Audio", symbol: "waveform"),
@@ -37,12 +36,13 @@ struct SettingsView: View {
             }
         }
         .frame(width: 660)
+        // Routing moved to the Library (Space Routing).
+        .onAppear { if !Self.panes.contains(where: { $0.id == tab }) { tab = "general" } }
     }
 
     @ViewBuilder private func paneView(_ id: String) -> some View {
         switch id {
         case "spaces": SpacesSettings()
-        case "routing": SpaceRoutingSettings()
         case "shortcuts": ShortcutSettings()
         case "privacy": PrivacySettings()
         case "audio": AudioSettings()
@@ -59,6 +59,7 @@ private struct GeneralSettings: View {
     @State private var isDefault = false
     @State private var importing = false
     @AppStorage(BrowsaAppearance.key) private var appearance = ""
+    @AppStorage(VideoPiP.autoKey) private var videoPiPOnTabSwitch = true
 
     var body: some View {
         @Bindable var browser = browser
@@ -117,21 +118,26 @@ private struct GeneralSettings: View {
                 }
             }
             Section {
-                ForEach(Boost.all) { style in
-                    Toggle(isOn: Binding(
-                        get: { browser.boosts.contains(style.id) },
-                        set: { on in if on { browser.boosts.insert(style.id) } else { browser.boosts.remove(style.id) } })) {
-                        VStack(alignment: .leading) {
-                            Text("\(style.site): \(style.name)")
-                            Text(style.summary).font(.caption).foregroundStyle(.secondary)
-                        }
+                Toggle(isOn: $videoPiPOnTabSwitch) {
+                    VStack(alignment: .leading) {
+                        Text("Pop out videos when you switch tabs")
+                        Text("A video playing with sound follows you in picture in picture, and goes back when you return to its tab. ⌥⌘P pops out any video.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-            } header: {
-                Text("Boosts")
-            } footer: {
-                Text("Boosts give some sites a new look. They change how a site looks, never what it does. You can also turn one on from the site icon in the address bar.")
-                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section {
+                LabeledContent {
+                    Button("Open Library") {
+                        guard let window = browser.windows.first(where: { $0.nsWindow?.isVisible == true }) ?? browser.windows.first else { return }
+                        window.openLibrary()
+                        window.nsWindow?.makeKeyAndOrderFront(nil)
+                    }
+                        .buttonStyle(.glass).buttonBorderShape(.capsule)
+                } label: {
+                    Text("Boosts and Space Routing")
+                    Text("Now in the Library, with Live Folders.").font(.caption).foregroundStyle(.secondary)
+                }
             }
             if Updates.isEnabled {
                 @Bindable var updates = updates
@@ -201,6 +207,8 @@ private struct SpacesSettings: View {
                         .buttonStyle(.glass)
                         .buttonBorderShape(.capsule)
                 }
+                ProfilesSettings()
+                    .padding(.top, 10)
             }
             .padding(20)
         }
@@ -265,12 +273,140 @@ private struct SpaceEditor: View {
                 .onSubmit { browser.scheduleSave() }
             SpaceThemeButton(space: space) { browser.scheduleSave() }
                 .padding(.horizontal, 4)
+            SpaceProfileMenu(space: space)
             Button(role: .destructive) { browser.deleteSpace(space) } label: { Image(systemName: "trash") }
                 .buttonStyle(.borderless)
                 .disabled(browser.regularSpaces.count < 2)
                 .help("Delete space and its tabs")
         }
         .onChange(of: space.name) { browser.scheduleSave() }
+    }
+}
+
+/// Which profile's cookies and logins the space uses.
+private struct SpaceProfileMenu: View {
+    @Environment(Library.self) private var browser
+    let space: Space
+
+    var body: some View {
+        Menu {
+            Picker("Profile", selection: Binding(get: { space.profileID }, set: { browser.setProfile($0, for: space) })) {
+                Text("Default").tag(UUID?.none)
+                ForEach(browser.settings.profiles) { profile in
+                    Text(profile.name).tag(UUID?.some(profile.id))
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+            Divider()
+            Button("New Profile", systemImage: "plus") {
+                let id = browser.addProfile().id
+                browser.setProfile(id, for: space)
+                browser.renamingProfileID = id
+            }
+        } label: {
+            Label(browser.profileName(space.profileID), systemImage: "person.crop.circle")
+                .lineLimit(1)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.glass)
+        .buttonBorderShape(.capsule)
+        .fixedSize()
+        .help("Profile: which logins and cookies this space uses")
+    }
+}
+
+/// Profiles: separate cookies and logins. Spaces pick one; spaces sharing a profile share logins.
+private struct ProfilesSettings: View {
+    @Environment(Library.self) private var browser
+    @State private var deleting: SpaceProfile?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Profiles").font(.headline)
+            VStack(spacing: 0) {
+                row(icon: "person.crop.circle", spaces: browser.spaces(using: nil)) {
+                    Text("Default")
+                }
+                ForEach(browser.settings.profiles) { profile in
+                    Divider().padding(.leading, 40)
+                    row(icon: "person.crop.circle.fill", spaces: browser.spaces(using: profile.id)) {
+                        ProfileNameField(profile: profile)
+                    } trailing: {
+                        Button("Delete", role: .destructive) { deleting = profile }
+                            .buttonStyle(.glass)
+                            .buttonBorderShape(.capsule)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+            .background(Color.primary.opacity(0.04), in: .rect(cornerRadius: 12, style: .continuous))
+            HStack(alignment: .top) {
+                Text("Each profile keeps its own cookies, logins and site data, so you can be signed in to different accounts in different spaces. History, favourites and extensions are shared.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button("Add Profile", systemImage: "plus") { browser.renamingProfileID = browser.addProfile().id }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+            }
+        }
+        .confirmationDialog("Delete \(deleting?.name ?? "profile")?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Delete Profile", role: .destructive) {
+                if let id = deleting?.id { Task { await browser.deleteProfile(id) } }
+                deleting = nil
+            }
+        } message: {
+            Text("Its cookies, logins and site data are deleted. Spaces using it switch to the Default profile.")
+        }
+    }
+
+    private func row<Name: View, Trailing: View>(icon: String, spaces: [Space], @ViewBuilder name: () -> Name,
+                                                  @ViewBuilder trailing: () -> Trailing = { EmptyView() }) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
+                .frame(width: 20)
+            name()
+            Spacer()
+            Text(spaces.isEmpty ? "No spaces" : spaces.map(\.name).joined(separator: ", "))
+                .font(.caption).foregroundStyle(.secondary)
+                .lineLimit(1)
+            trailing()
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 44)
+    }
+}
+
+/// A profile's name, edited in place and saved as you type. Return leaves the field, so it's
+/// clear the name took.
+private struct ProfileNameField: View {
+    @Environment(Library.self) private var library
+    let profile: SpaceProfile
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("Name", text: Binding(get: { profile.name }, set: { library.renameProfile(profile.id, to: $0) }),
+                  prompt: Text("Name"))
+            .textFieldStyle(.roundedBorder)
+            .labelsHidden()
+            .frame(maxWidth: 180)
+            .focused($focused)
+            .onSubmit { focused = false }
+            // A profile just added starts with its name selected, to type over.
+            .onAppear { if library.renamingProfileID == profile.id { startEditing() } }
+            .onChange(of: library.renamingProfileID) { _, id in if id == profile.id { startEditing() } }
+    }
+
+    private func startEditing() {
+        library.renamingProfileID = nil
+        // After the row is on screen: focus the field, then select its text.
+        DispatchQueue.main.async {
+            focused = true
+            DispatchQueue.main.async { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
+        }
     }
 }
 
@@ -469,11 +605,16 @@ private struct PrivacySettings: View {
                 perms[single.rawValue] = nil
             }
         }
-        return perms.sorted { $0.key < $1.key }.map { k, v in
-            let name = EnginePermission(rawValue: k).map(Self.title)
-                ?? (k.hasPrefix("app:") ? "Open in \(k.dropFirst(4))" : k)
+        var parts: [String] = perms.filter { !TabController.isOpenAppKey($0.key) }.sorted { $0.key < $1.key }.map { k, v in
+            let name = EnginePermission(rawValue: k).map(Self.title) ?? k
             return "\(name): \(v ? "Allowed" : "Denied")"
-        }.joined(separator: ", ")
+        }
+        // Open-in-app answers: Always Open or Don't Open.
+        for (scheme, open) in TabController.openAppAnswers(perms).sorted(by: { $0.key < $1.key }) {
+            let app = TabController.appName(forScheme: scheme)
+            parts.append(open ? "Always opens in \(app)" : "Doesn't open \(app)")
+        }
+        return parts.isEmpty ? "Asks before opening apps" : parts.joined(separator: ", ")
     }
 }
 

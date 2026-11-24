@@ -26,49 +26,101 @@ struct RightPanel: View {
                 }
             }
             .id(toolID)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(PanelFill(), in: .rect(cornerRadius: PageCard.radius, style: .continuous))
         .clipShape(.rect(cornerRadius: PageCard.radius, style: .continuous))
     }
 
-    /// The tool's name on the left, a rail of the other panel tools on the right.
+    /// The panel's width, for how many tool buttons fit in the header.
+    @State private var width: CGFloat = 320
+
+    /// The tool's name on the left, a rail of the other panel tools on the right. When the panel is
+    /// too narrow for them all, the ones that don't fit go in a ••• menu (the open one always shows).
     private var header: some View {
-        HStack(spacing: 6) {
+        let (shown, more) = railTools
+        return HStack(spacing: 6) {
             if let tool {
                 Text(tool.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    .layoutPriority(-1)
                 if tool.stage == .preview { PreviewBadge() }
             }
             Spacer(minLength: 4)
-            ForEach(workbench.panelTools) { t in
-                Button { browser.showPanel(t.id) } label: {
-                    Image(systemName: t.symbol)
+            ForEach(shown) { t in railButton(t) }
+            if !more.isEmpty {
+                Menu {
+                    ForEach(more) { t in
+                        Button(t.title, systemImage: t.symbol) { browser.showPanel(t.id) }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
                         .font(.system(size: 12, weight: .medium))
                         .frame(width: 26, height: 24)
                         .overlay(alignment: .topTrailing) {
-                            // Asks waiting for you, on the Agents button.
-                            if t.id == "agents", !browser.library.agents.requests.isEmpty {
-                                Text(verbatim: "\(browser.library.agents.requests.count)")
-                                    .font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
-                                    .frame(minWidth: 13, minHeight: 13)
-                                    .background(.orange, in: .capsule)
-                                    .offset(x: 2, y: -1)
+                            // Agents is in the menu with asks waiting: say so here.
+                            if more.contains(where: { $0.id == "agents" }), !browser.library.agents.requests.isEmpty {
+                                Circle().fill(.orange).frame(width: 7, height: 7).offset(x: 1, y: 1)
                             }
                         }
-                        .background(t.id == toolID ? AnyShapeStyle(.primary.opacity(0.08)) : AnyShapeStyle(.clear),
-                                    in: .rect(cornerRadius: 6, style: .continuous))
                         .contentShape(.rect)
                 }
+                .menuStyle(.button)
                 .buttonStyle(.plain)
-                .foregroundStyle(t.id == toolID ? .primary : .secondary)
-                .help(t.title)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .foregroundStyle(.secondary)
+                .help("More tools")
             }
             Divider().frame(height: 14)
             SidebarIconButton(symbol: "xmark", help: Shortcuts.shared.help("Close Panel", .panel)) { browser.togglePanel() }
         }
         .padding(.leading, 12)
         .padding(.trailing, 6)
+        .frame(minWidth: 0, maxWidth: .infinity)
         .frame(height: 38)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+
+    /// The tools that fit in the header at this width, and the rest. Room is kept for a short title.
+    private var railTools: (shown: [Tool], more: [Tool]) {
+        let tools = workbench.panelTools
+        // Padding, a short title, the divider and the close button; each tool button is 26 + 6.
+        let fixed: CGFloat = 18 + 76 + 4 + 13 + 34
+        let slot: CGFloat = 32
+        let fitsAll = Int((width - fixed) / slot)
+        guard tools.count > fitsAll else { return (tools, []) }
+        // One slot goes to the ••• menu.
+        let count = max(1, fitsAll - 1)
+        var shown = Array(tools.prefix(count))
+        if !shown.contains(where: { $0.id == toolID }), let current = tools.first(where: { $0.id == toolID }) {
+            shown[shown.count - 1] = current
+        }
+        let ids = Set(shown.map(\.id))
+        return (shown, tools.filter { !ids.contains($0.id) })
+    }
+
+    private func railButton(_ t: Tool) -> some View {
+        Button { browser.showPanel(t.id) } label: {
+            Image(systemName: t.symbol)
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 26, height: 24)
+                .overlay(alignment: .topTrailing) {
+                    // Asks waiting for you, on the Agents button.
+                    if t.id == "agents", !browser.library.agents.requests.isEmpty {
+                        Text(verbatim: "\(browser.library.agents.requests.count)")
+                            .font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
+                            .frame(minWidth: 13, minHeight: 13)
+                            .background(.orange, in: .capsule)
+                            .offset(x: 2, y: -1)
+                    }
+                }
+                .background(t.id == toolID ? AnyShapeStyle(.primary.opacity(0.08)) : AnyShapeStyle(.clear),
+                            in: .rect(cornerRadius: 6, style: .continuous))
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(t.id == toolID ? .primary : .secondary)
+        .help(t.title)
     }
 }
 
@@ -277,6 +329,7 @@ private struct ConnectAgentCard: View {
             }
             .font(.caption).foregroundStyle(status.color)
             DisclosureGroup("Set it up by hand") { AgentManualSetup(client: client, agents: agents).padding(.top, 6) }
+                .disclosureGroupStyle(.row)
                 .font(.caption).foregroundStyle(.secondary)
             Divider().opacity(0.5)
             HStack(spacing: 6) {

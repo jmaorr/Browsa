@@ -100,6 +100,15 @@ struct ImportedData: Sendable {
         var name: String
         var pinned: [(title: String, url: URL)]
         var open: [(title: String, url: URL)]
+        /// The pinned tabs as the other browser arranged them, folders and all (Arc). Empty means
+        /// `pinned` as a flat list.
+        var pinnedTree: [Pin] = []
+    }
+
+    /// A pinned tab or a folder of them.
+    indirect enum Pin: Sendable {
+        case tab(title: String, url: URL)
+        case folder(name: String, isOpen: Bool, children: [Pin])
     }
 
     var bookmarks: [(title: String, url: URL)] = []
@@ -107,6 +116,16 @@ struct ImportedData: Sendable {
     var bar: [(title: String, url: URL)] = []
     var history: [HistoryStore.ImportedVisit] = []
     var spaces: [Space] = []
+
+    /// The tabs in pinned folders, in order.
+    static func flatten(_ pins: [Pin]) -> [(title: String, url: URL)] {
+        pins.flatMap { pin -> [(title: String, url: URL)] in
+            switch pin {
+            case .tab(let title, let url): [(title, url)]
+            case .folder(_, _, let children): flatten(children)
+            }
+        }
+    }
 }
 
 enum ImportError: LocalizedError {
@@ -268,7 +287,8 @@ enum BrowserImport {
     // MARK: Arc
 
     /// Arc's spaces with their pinned and unpinned tabs, and its top apps, from StorableSidebar.json.
-    /// Folders are flattened: their tabs keep their order.
+    /// Pinned folders come over as pinned folders, nested as they were. Elsewhere (unpinned tabs,
+    /// top apps) folders are flattened: their tabs keep their order.
     static func arcSidebar() -> (spaces: [ImportedData.Space], topApps: [(title: String, url: URL)]) {
         let file = support.appending(path: "Arc/StorableSidebar.json")
         guard let data = try? Data(contentsOf: file),
@@ -290,20 +310,36 @@ enum BrowserImport {
             return (item["childrenIds"] as? [String] ?? []).flatMap { tabs(under: $0) }
         }
 
+        /// What a pinned container or folder holds, folders kept. Arc's folders are items with a
+        /// `list` in their data; anything else that holds items (a split view) is flattened.
+        func pins(under id: String, depth: Int = 0) -> [ImportedData.Pin] {
+            guard depth < 32, let item = byID[id] else { return [] }
+            return (item["childrenIds"] as? [String] ?? []).flatMap { child -> [ImportedData.Pin] in
+                guard let node = byID[child] else { return [] }
+                let data = node["data"] as? [String: Any]
+                if data?["tab"] != nil { return tabs(under: child).map { ImportedData.Pin.tab(title: $0.title, url: $0.url) } }
+                let inner = pins(under: child, depth: depth + 1)
+                guard data?["list"] != nil else { return inner }
+                let name = (node["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Folder"
+                return [.folder(name: name, isOpen: node["isExpanded"] as? Bool ?? false, children: inner)]
+            }
+        }
+
         let spaces: [ImportedData.Space] = (main["spaces"] as? [Any] ?? []).compactMap { $0 as? [String: Any] }.compactMap { s in
             let ids = s["containerIDs"] as? [Any] ?? []
-            var pinned: [(String, URL)] = [], open: [(String, URL)] = []
+            var tree: [ImportedData.Pin] = [], open: [(String, URL)] = []
             // Pairs of a marker ("pinned" / "unpinned") and that container's id.
             var i = 0
             while i + 1 < ids.count {
                 if let kind = ids[i] as? String, let id = ids[i + 1] as? String {
-                    if kind == "pinned" { pinned += tabs(under: id) } else if kind == "unpinned" { open += tabs(under: id) }
+                    if kind == "pinned" { tree += pins(under: id) } else if kind == "unpinned" { open += tabs(under: id) }
                 }
                 i += 2
             }
+            let pinned = ImportedData.flatten(tree)
             let name = (s["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Space"
             guard !pinned.isEmpty || !open.isEmpty else { return nil }
-            return ImportedData.Space(sourceID: s["id"] as? String ?? name, name: name, pinned: pinned, open: open)
+            return ImportedData.Space(sourceID: s["id"] as? String ?? name, name: name, pinned: pinned, open: open, pinnedTree: tree)
         }
 
         let topIDs = main["topAppsContainerIDs"] as? [Any] ?? []
@@ -423,7 +459,27 @@ extension Library {
             let name = taken.contains(imported.name) ? "\(imported.name) (\(source.name))" : imported.name
             let space = addSpace()
             space.name = name
-            space.pinned = imported.pinned.map { BrowserTab(url: $0.url, title: $0.title, isPinned: true) }
+            if imported.pinnedTree.isEmpty {
+                space.pinned = imported.pinned.map { BrowserTab(url: $0.url, title: $0.title, isPinned: true) }
+            } else {
+                // Folders and all: each tab once, in the layout the other browser had.
+                var tabs: [BrowserTab] = []
+                func nodes(_ pins: [ImportedData.Pin]) -> [PinnedNode] {
+                    pins.map { pin in
+                        switch pin {
+                        case .tab(let title, let url):
+                            let tab = BrowserTab(url: url, title: title, isPinned: true)
+                            tabs.append(tab)
+                            return .tab(tab.id)
+                        case .folder(let name, let isOpen, let children):
+                            return .folder(PinnedFolder(name: name, isOpen: isOpen, children: nodes(children)))
+                        }
+                    }
+                }
+                let layout = nodes(imported.pinnedTree)
+                space.pinned = tabs
+                space.pinnedLayout = layout
+            }
             space.today = imported.open.map { BrowserTab(url: $0.url, title: $0.title) }
             result.spaces += 1
             result.tabs += imported.pinned.count + imported.open.count

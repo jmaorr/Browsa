@@ -17,7 +17,9 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
     public var downloadsDirectory: URL
     public var developerToolsEnabled = false {
         didSet {
-            for c in [standardConfiguration, ephemeralConfiguration] { Self.setDeveloperExtras(developerToolsEnabled, on: c) }
+            for c in [standardConfiguration, ephemeralConfiguration] + profileConfigurations.values {
+                Self.setDeveloperExtras(developerToolsEnabled, on: c)
+            }
             for page in livePages.values.compactMap(\.page) {
                 Self.setDeveloperExtras(developerToolsEnabled, on: page.webView.configuration)
             }
@@ -57,6 +59,13 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
             }
         }
     }
+    /// Boosts people made, that are on. See `BoostsConfigurable.userBoosts`.
+    public var userBoosts: [PageBoost] = [] {
+        didSet {
+            guard userBoosts != oldValue else { return }
+            for controller in allContentControllers { install(on: controller) }
+        }
+    }
     private static let callAudioScript: WKUserScript? = {
         guard let url = Bundle.module.url(forResource: "call-audio", withExtension: "js"),
               let source = try? String(contentsOf: url, encoding: .utf8) else { return nil }
@@ -65,6 +74,10 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
 
     private let standardConfiguration: WKWebViewConfiguration
     private var ephemeralConfiguration: WKWebViewConfiguration
+    /// One per `.persistent` profile, made on first use: the standard configuration with the
+    /// profile's own data store. Copies share the content controller and extension controller, so
+    /// rules, scripts and extensions reach every profile.
+    private var profileConfigurations: [UUID: WKWebViewConfiguration] = [:]
     /// For pages the app renders (Reader): no storage, no JavaScript, no rules or scripts.
     private let staticConfiguration: WKWebViewConfiguration
     private var ruleLists: [WKContentRuleList] = []
@@ -135,6 +148,11 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
         c.preferences.isElementFullscreenEnabled = true
         c.preferences.isTextInteractionEnabled = true
         c.allowsAirPlayForMediaPlayback = true
+        // Picture in picture for any video (Browsa's button, ⌥⌘P, popping out when you switch tabs). On by
+        // default in WebKit; set in case a build ships it off. Private API, so only where it answers.
+        if c.preferences.responds(to: NSSelectorFromString("_setAllowsPictureInPictureMediaPlayback:")) {
+            c.preferences.setValue(true, forKey: "allowsPictureInPictureMediaPlayback")
+        }
         // WKWebView's default user agent leaves out Safari's "Version/… Safari/…" tokens, and some
         // sites then serve older pages or call the browser unsupported.
         c.applicationNameForUserAgent = SafariUserAgent.applicationName
@@ -150,7 +168,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
             if let url = options.url { page.load(url) }
             return page
         }
-        var configuration = options.profile == .ephemeral ? ephemeralConfiguration : standardConfiguration
+        var configuration = self.configuration(for: options.profile)
         if #available(macOS 15.4, *), let url = options.url, let own = webExtensions?.configuration(for: url) {
             configuration = own
         }
@@ -168,6 +186,22 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
             }
         }
         return page
+    }
+
+    private func configuration(for profile: BrowsingProfile) -> WKWebViewConfiguration {
+        switch profile {
+        case .standard: return standardConfiguration
+        case .ephemeral: return ephemeralConfiguration
+        case .persistent(let id):
+            if let c = profileConfigurations[id] { return c }
+            let c = standardConfiguration.copy() as! WKWebViewConfiguration
+            c.websiteDataStore = WKWebsiteDataStore(forIdentifier: id)
+            if #available(macOS 15.4, *) { c.webExtensionController = webExtensions?.controller }
+            Self.setDeveloperExtras(developerToolsEnabled, on: c)
+            profileConfigurations[id] = c
+            install(on: c.userContentController)
+            return c
+        }
     }
 
     /// A popup WebKit asked for. It must be built from WebKit's own configuration.
@@ -270,6 +304,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
     private var allContentControllers: [WKUserContentController] {
         var seen = Set<ObjectIdentifier>()
         return ([standardConfiguration.userContentController, ephemeralConfiguration.userContentController]
+            + profileConfigurations.values.map(\.userContentController)
             + livePages.values.compactMap { $0.page?.webView.configuration.userContentController })
             .filter { seen.insert(ObjectIdentifier($0)).inserted }
     }
@@ -310,6 +345,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
             """
             controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .page))
         }
+        for boost in userBoosts { Self.boostScripts(boost).forEach(controller.addUserScript) }
         controller.addUserScript(WebNotifications.script(saved: notificationPermissions))
         // Added once per controller and never swapped: a page keeps talking to the handler it started with.
         if !notificationControllers.contains(controller) {
@@ -322,6 +358,24 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
             controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,
                                                   forMainFrameOnly: false, in: .page))
         }
+    }
+
+    /// Two scripts per Boost someone made, both checking the host first: the style goes in as early as the
+    /// page has an element to hold it, the script once the document has loaded.
+    static func boostScripts(_ boost: PageBoost) -> [WKUserScript] {
+        let world = WKContentWorld.world(name: PageBoost.world)
+        let host = PageBoost.jsString(boost.host.lowercased())
+        let guardHost = "const h = location.hostname.toLowerCase(), H = \(host); if (!(h === H || h.endsWith('.' + H))) return;"
+        var scripts: [WKUserScript] = []
+        if !boost.css.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let source = "(() => { \(guardHost)\n\(PageBoost.applyCSSFunction)\n__browsaBoostCSS(\(PageBoost.jsString(boost.css))); })();"
+            scripts.append(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: world))
+        }
+        if !boost.script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let source = "(() => { \(guardHost)\n try {\n\(boost.script)\n} catch (e) { console.error('Browsa Boost:', e); } })();"
+            scripts.append(WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: world))
+        }
+        return scripts
     }
 
     /// Global Privacy Control: sites that honour it treat the visitor as opted out of the sale or
@@ -358,9 +412,28 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
     // MARK: Data
 
     public func clearWebsiteData(for profile: BrowsingProfile) async {
-        let store = profile == .ephemeral ? ephemeralConfiguration.websiteDataStore : standardConfiguration.websiteDataStore
+        let store = configuration(for: profile).websiteDataStore
         await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
         if profile == .standard { HTTPCookieStorage.shared.removeCookies(since: .distantPast) }
+    }
+
+    public func cookies(for profile: BrowsingProfile, url: URL) async -> [HTTPCookie] {
+        guard let host = url.host()?.lowercased() else { return [] }
+        let all = await configuration(for: profile).websiteDataStore.httpCookieStore.allCookies()
+        let now = Date.now
+        return all.filter { c in
+            let domain = c.domain.lowercased()
+            let bare = domain.hasPrefix(".") ? String(domain.dropFirst()) : domain
+            let hostMatches = host == bare || (domain.hasPrefix(".") && host.hasSuffix(domain)) || host.hasSuffix("." + bare)
+            return hostMatches && url.path().hasPrefix(c.path) && (c.expiresDate.map { $0 > now } ?? true)
+                && (!c.isSecure || url.scheme == "https")
+        }
+    }
+
+    public func deleteProfile(_ id: UUID) async {
+        profileConfigurations[id] = nil
+        // WebKit refuses while a web view still uses the store; the caller closes the pages first.
+        try? await WKWebsiteDataStore.remove(forIdentifier: id)
     }
 
     public func resetEphemeralProfile() {

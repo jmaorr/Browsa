@@ -105,6 +105,18 @@ enum LibraryCatalog {
               blurb: "Your local dev servers, one click away.",
               surfaces: ["Sidebar", "Panel", "⌘K"],
               about: "Finds the dev servers running on this Mac, names them by project and branch, and reloads a tab by itself when its server comes back."),
+        .init(id: "boosts", title: "Boosts", symbol: "paintbrush.pointed.fill", tint: .pink,
+              blurb: "Make any site look the way you like.",
+              surfaces: ["Site menu", "Panel", "⌘K"],
+              about: "Turn on Browsa's ready-made Boosts, or make your own for any site: a font, a tint, things zapped away, or your own CSS and script. Boosts change how a site looks, never what it sends, and stay on this Mac."),
+        .init(id: "space-routing", title: "Space Routing", symbol: "arrow.triangle.branch", tint: .cyan,
+              blurb: "Sites open in the Space they belong to.",
+              surfaces: ["New tabs", "⌘K"],
+              about: "New tabs for a site go to its Space, wherever you are: work tools in Work, the rest in Personal. Links you follow inside a tab stay put, and private tabs and Favourites never move."),
+        .init(id: "live-folders", title: "Live Folders", symbol: "folder.fill.badge.gearshape", tint: .purple,
+              blurb: "Sidebar folders that keep themselves up to date.",
+              surfaces: ["Sidebar", "⌘K", "Site menu"],
+              about: "Your GitHub pull requests and review requests appear in a Pull Requests folder, read with the GitHub account you're signed in to. Follow a site and its new posts appear in a folder too. Nothing checks while Live Folders is off."),
         .init(id: "privacy-blocking", title: "Ad & Tracker Blocker", symbol: "hand.raised.fill", tint: .blue,
               blurb: "Blocks ads and trackers on every site.",
               surfaces: ["Every page"], kind: .privacy,
@@ -157,6 +169,8 @@ enum LibraryActions {
         case "privacy-blocking": return library.settings.blockContent
         case "privacy-cookies": return library.settings.declineCookieBanners
         case "privacy-links": return library.settings.cleanLinks
+        case "live-folders": return library.liveFoldersOn
+        case "space-routing": return SpaceRouter.shared.isEnabled
         default: return library.workbench.isEnabled(id)
         }
     }
@@ -167,6 +181,12 @@ enum LibraryActions {
         case "privacy-blocking": library.settings.blockContent = on
         case "privacy-cookies": library.settings.declineCookieBanners = on
         case "privacy-links": library.settings.cleanLinks = on
+        case "space-routing":
+            SpaceRouter.shared.spacesProvider = { [library] in library.regularSpaces }
+            SpaceRouter.shared.isEnabled = on
+        case "live-folders":
+            let space = browser.currentSpace.isPrivate ? browser.regularSpaces[0] : browser.currentSpace
+            withAnimation(Motion.snappy) { library.setLiveFolders(on, in: space) }
         default:
             library.workbench.setEnabled(id, on)
             if id == "agents" { library.agents.isEnabled = on }   // Agents is the MCP endpoint itself.
@@ -228,7 +248,11 @@ struct LibraryView: View {
     }
 
     private var packs: [PluginPack] { LibraryCatalog.packs.filter { matches($0.title, $0.blurb, "pack") } }
-    private var tools: [PluginInfo] { LibraryCatalog.toolPlugins.filter { matches($0.title, $0.blurb) } }
+    private var tools: [PluginInfo] {
+        let extra = ["live-folders": "github pull requests rss feed follow", "boosts": "site styles css script zap font",
+                     "space-routing": "routing rules work personal air traffic"]
+        return LibraryCatalog.toolPlugins.filter { matches($0.title, $0.blurb, extra[$0.id] ?? "") }
+    }
     private var privacy: [PluginInfo] { LibraryCatalog.privacyPlugins.filter { matches($0.title, $0.blurb, "privacy") } }
     private var installed: [InstalledExtension] { library.extensionCatalog.items.filter { matches($0.name, $0.source.label) } }
     private var verified: [VerifiedExtension] { LibraryCatalog.verified.filter { matches($0.name, $0.blurb, $0.category) } }
@@ -290,11 +314,15 @@ struct LibraryView: View {
                 ExtensionDetail(item: item) { close() }
             } else if let detail, let pack = LibraryCatalog.pack(detail) {
                 PackDetail(pack: pack) { id in parentPack = pack.id; self.detail = id } back: { close() }
+            } else if let detail, let boost = boostForEditor(detail) {
+                BoostEditorPage(boost: boost) { self.detail = "boosts" }.id(detail)
             } else if let detail, let plugin = LibraryCatalog.plugin(detail) {
-                PluginDetail(plugin: plugin, backTitle: parentPack.flatMap { LibraryCatalog.pack($0)?.title } ?? "Library") {
-                    self.detail = parentPack
-                    parentPack = nil
-                }
+                PluginDetail(plugin: plugin, backTitle: parentPack.flatMap { LibraryCatalog.pack($0)?.title } ?? "Library",
+                             open: { self.detail = $0 },
+                             back: {
+                                 self.detail = parentPack
+                                 parentPack = nil
+                             })
             } else {
                 list
             }
@@ -319,6 +347,15 @@ struct LibraryView: View {
     /// An extension's page: "ext:<catalog id>" from the list, or a bare Chrome Web Store id from a link.
     private func extensionItem(_ target: String) -> InstalledExtension? {
         target.hasPrefix("ext:") ? library.extensionCatalog[String(target.dropFirst(4))] : library.extensionCatalog["chrome:" + target]
+    }
+
+    /// "boost:<id>" opens one of your Boosts; "boost-new:<host>" a new one for a site.
+    private func boostForEditor(_ target: String) -> SiteBoost? {
+        if target.hasPrefix("boost:"), let id = UUID(uuidString: String(target.dropFirst(6))) {
+            return BoostStore.shared.boosts.first { $0.id == id }
+        }
+        if target.hasPrefix("boost-new:") { return SiteBoost(host: String(target.dropFirst(10))) }
+        return nil
     }
 
     private func close() {
@@ -997,25 +1034,82 @@ private struct PluginDetail: View {
     @Environment(Browser.self) private var browser
     let plugin: PluginInfo
     var backTitle = "Library"
+    /// Opens another page in the Library, such as one Boost's editor.
+    var open: (String) -> Void = { _ in }
     let back: () -> Void
     private var workbench: Workbench { browser.library.workbench }
     private var on: Bool { LibraryActions.isOn(plugin.id, in: browser) }
 
+    /// Above a page's greyed-out settings while it's off.
+    private var offNote: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "eye").foregroundStyle(.secondary)
+            Text("A preview of what \(plugin.title) adds. Turn it on to use it.")
+                .font(.callout).foregroundStyle(.secondary)
+            Spacer()
+            Button("Turn On") { LibraryActions.set(plugin.id, on: true, in: browser) }
+                .buttonStyle(.glassProminent).buttonBorderShape(.capsule).controlSize(.small)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(.primary.opacity(0.035), in: .rect(cornerRadius: 12, style: .continuous))
+    }
+
     var body: some View {
+        if plugin.id == "space-routing" {
+            // Its sets and rules are a long settings form that scrolls on its own, under the header.
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 24) {
+                    BackButton(title: backTitle, action: back)
+                    header
+                    Text(plugin.about).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
+                    if !on { offNote }
+                }
+                .frame(maxWidth: 720, alignment: .leading)
+                .padding(.horizontal, 40)
+                .padding(.top, 32)
+                .frame(maxWidth: .infinity)
+                // Off, still shown (greyed) so you can see what you'd be turning on.
+                SpaceRoutingSettings(showsSwitch: false)
+                    .environment(browser.library)
+                    .disabled(!on)
+                    .opacity(on ? 1 : 0.5)
+                    .frame(maxWidth: 760)
+                    .frame(maxWidth: .infinity)
+            }
+        } else {
+            page
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 18) {
+            PluginIcon(plugin: plugin, size: 72)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(plugin.title).font(.system(size: 26, weight: .bold))
+                Text(plugin.blurb).font(.system(size: 14)).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(get: { on }, set: { LibraryActions.set(plugin.id, on: $0, in: browser) }))
+                .toggleStyle(.switch).labelsHidden()
+        }
+    }
+
+    private var page: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 BackButton(title: backTitle, action: back)
-                HStack(alignment: .center, spacing: 18) {
-                    PluginIcon(plugin: plugin, size: 72)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(plugin.title).font(.system(size: 26, weight: .bold))
-                        Text(plugin.blurb).font(.system(size: 14)).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle("", isOn: Binding(get: { on }, set: { LibraryActions.set(plugin.id, on: $0, in: browser) }))
-                        .toggleStyle(.switch).labelsHidden()
-                }
+                header
+                if !on { offNote }
                 Text(plugin.about).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
+                if plugin.id == "live-folders" {
+                    LiveFoldersSettings()
+                        .disabled(!on)
+                        .opacity(on ? 1 : 0.5)
+                } else if plugin.id == "boosts" {
+                    BoostsSettings(open: open)
+                        .disabled(!on)
+                        .opacity(on ? 1 : 0.5)
+                } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Where it shows up").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                     VStack(spacing: 0) {
@@ -1027,6 +1121,7 @@ private struct PluginDetail: View {
                     .background(.primary.opacity(0.035), in: .rect(cornerRadius: 12, style: .continuous))
                     .disabled(!on)
                     .opacity(on ? 1 : 0.5)
+                }
                 }
             }
             .frame(maxWidth: 720, alignment: .leading)
@@ -1085,7 +1180,7 @@ private struct PluginDetail: View {
     }
 }
 
-private struct BackButton: View {
+struct BackButton: View {
     let title: String
     let action: () -> Void
 

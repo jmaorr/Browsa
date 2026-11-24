@@ -9,7 +9,7 @@ struct Prompt: Identifiable, Equatable {
         case dialog(EngineDialog)
         case permission(EnginePermission, host: String)
         /// A site wants to hand a link to another app (Zoom, FaceTime, the App Store).
-        case openApp(app: String, host: String)
+        case openApp(app: String, appURL: URL, host: String)
         /// A connected coding agent wants to act on a site for the first time.
         case agent(caller: String, action: String, host: String)
     }
@@ -17,6 +17,10 @@ struct Prompt: Identifiable, Equatable {
     let id = UUID()
     let kind: Kind
     let tabID: UUID
+
+    /// Open-in-app answers kept for the site. `.ok` is Open (this once); `.cancel` is Not Now.
+    static let alwaysOpen = EngineDialogResponse.text("always-open")
+    static let neverOpen = EngineDialogResponse.text("never-open")
 }
 
 extension Browser {

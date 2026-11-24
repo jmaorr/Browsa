@@ -13,29 +13,61 @@ struct SpaceTabs: View {
     @State private var offset: CGFloat = 0
     @State private var maxOffset: CGFloat = 0
 
-    /// A row in a section: a tab, or the gap a dragged tab would land in.
+    /// A row in a section: a tab, a pinned folder, or the gap a dragged row would land in.
     private struct Slot: Identifiable {
+        enum Kind {
+            case tab(BrowserTab)
+            case folder(PinnedFolder)
+            case gap
+        }
         let id: String
-        /// Nil for the gap.
-        let tab: BrowserTab?
-        /// The tab being dragged, folded to nothing where it was. Its row has to stay in the view
+        let kind: Kind
+        /// How many folders in it sits.
+        var depth = 0
+        /// The row being dragged, folded to nothing where it was. Its row has to stay in the view
         /// tree, or SwiftUI drops the drag gesture that's carrying it.
         var collapsed = false
-        static let gap = Slot(id: "gap", tab: nil)
-        @MainActor static func tab(_ tab: BrowserTab, collapsed: Bool = false) -> Slot {
-            Slot(id: tab.id.uuidString, tab: tab, collapsed: collapsed)
+        static func gap(depth: Int = 0) -> Slot { Slot(id: "gap", kind: .gap, depth: depth) }
+        @MainActor static func tab(_ tab: BrowserTab, depth: Int = 0, collapsed: Bool = false) -> Slot {
+            Slot(id: tab.id.uuidString, kind: .tab(tab), depth: depth, collapsed: collapsed)
+        }
+        static func folder(_ folder: PinnedFolder, depth: Int, collapsed: Bool = false) -> Slot {
+            Slot(id: folder.id.uuidString, kind: .folder(folder), depth: depth, collapsed: collapsed)
         }
     }
 
-    /// The section's tabs with a gap where the dragged one would land, and the dragged one folded
-    /// away at its old place.
-    private func slots(_ tabs: [BrowserTab], pinned: Bool, gapAllowed: Bool = true) -> [Slot] {
+    /// Today's tabs with a gap where the dragged one would land, and the dragged one folded away at
+    /// its old place.
+    private func todaySlots(_ tabs: [BrowserTab]) -> [Slot] {
         var slots = tabs.filter { !dragging.isLifted($0.id) }.map { Slot.tab($0) }
-        if gapAllowed, let target = dragging.target, pinned ? target.isPinned : target.isToday {
-            slots.insert(.gap, at: min(target.index, slots.count))
+        if let target = dragging.target, target.isToday {
+            slots.insert(.gap(), at: min(target.index, slots.count))
         }
         if let i = tabs.firstIndex(where: { dragging.isLifted($0.id) }) {
             slots.insert(.tab(tabs[i], collapsed: true), at: min(i, slots.count))
+        }
+        return slots
+    }
+
+    /// The pinned tabs and folders as laid out, with the gap and the dragged row folded away, the
+    /// same way. A dragged folder takes what it holds with it.
+    private func pinnedSlots(in space: Space, gapAllowed: Bool) -> [Slot] {
+        let tree = space.pinnedTree
+        let tabs = Dictionary(space.pinned.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        func slot(_ row: PinnedRow, collapsed: Bool = false) -> Slot? {
+            if row.isFolder {
+                return PinnedOutline.folder(row.id, in: tree).map { Slot.folder($0, depth: row.depth, collapsed: collapsed) }
+            }
+            return tabs[row.id].map { Slot.tab($0, depth: row.depth, collapsed: collapsed) }
+        }
+        let lifted = dragging.liftedID
+        var slots = browser.pinnedRows(in: space, hiding: lifted).compactMap { slot($0) }
+        if gapAllowed, case .pinned(let i, let depth)? = dragging.target {
+            slots.insert(.gap(depth: depth), at: min(i, slots.count))
+        }
+        let all = browser.pinnedRows(in: space)
+        if let lifted, let i = all.firstIndex(where: { $0.id == lifted }), let s = slot(all[i], collapsed: true) {
+            slots.insert(s, at: min(i, slots.count))
         }
         return slots
     }
@@ -47,9 +79,9 @@ struct SpaceTabs: View {
     var body: some View {
         let space = browser.currentSpace
         // Dragging with nothing else pinned: a zone to drop on stands in for the Pinned section.
-        let pinZone = dragging.lift != nil && !space.isPrivate && !space.pinned.contains { !dragging.isLifted($0.id) }
-        let pinned = slots(space.pinned, pinned: true, gapAllowed: !pinZone)
-        let today = slots(browser.listedToday(in: space), pinned: false)
+        let pinZone = dragging.lift != nil && !space.isPrivate && browser.pinnedRows(in: space, hiding: dragging.liftedID).isEmpty
+        let pinned = pinnedSlots(in: space, gapAllowed: !pinZone)
+        let today = todaySlots(browser.todayRows(in: space))
         // The whole list is the unit that slides: its id is the space, and a transition on the list
         // inside a ScrollView is ignored (it only cross-faded).
         ZStack {
@@ -99,6 +131,17 @@ struct SpaceTabs: View {
                 }
                 .padding(.horizontal, 10)
             }
+            // Right-click the sidebar's empty space to add to it; rows have their own menus.
+            .contextMenu {
+                Button("New Tab", systemImage: "plus") { browser.showCommandBar(.newTab) }
+                if !space.isPrivate {
+                    Button("New Folder", systemImage: "folder.badge.plus") {
+                        withAnimation(Motion.snappy) { browser.newPinnedFolder() }
+                    }
+                    Divider()
+                    Button("Live Folders…", systemImage: "folder.fill.badge.gearshape") { browser.openLibrary("live-folders") }
+                }
+            }
             .scrollIndicators(.never)
             .scrollPosition($scroll)
             .onScrollGeometryChange(for: [CGFloat].self) { g in
@@ -132,14 +175,19 @@ struct SpaceTabs: View {
     }
 
     @ViewBuilder private func row(_ slot: Slot, in space: Space) -> some View {
-        if let tab = slot.tab {
-            DraggableTabRow(tab: tab, space: space, collapsed: slot.collapsed)
-        } else {
+        let inset = CGFloat(slot.depth) * SidebarDragging.indent
+        switch slot.kind {
+        case .tab(let tab):
+            DraggableTabRow(tab: tab, space: space, collapsed: slot.collapsed, inset: inset)
+        case .folder(let folder):
+            DraggableFolderRow(folder: folder, space: space, collapsed: slot.collapsed, inset: inset)
+        case .gap:
             SunkenSlot(cornerRadius: 9, active: true)
                 .frame(height: 34)
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
                     dragging.gapFrame = $0
                 }
+                .padding(.leading, inset)
                 .transition(.opacity)
         }
     }
@@ -153,10 +201,12 @@ private struct DraggableTabRow: View {
     let space: Space
     /// Being dragged: folded to nothing, but kept so its gesture lives on.
     let collapsed: Bool
+    /// Set in by the folders it's in.
+    var inset: CGFloat = 0
     @GestureState private var held = false
 
     var body: some View {
-        TabRow(tab: tab, selected: tab.id == browser.selectedTabID(in: space))
+        SidebarRow(tab: tab, selected: browser.rowTabs(tab).contains { $0.id == browser.selectedTabID(in: space) })
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
                 if !collapsed { dragging.rowFrames[tab.id] = $0 }
             }
@@ -173,6 +223,256 @@ private struct DraggableTabRow: View {
             .clipped()
             // Cancels the stack's spacing, so the folded row takes no room at all.
             .padding(.bottom, collapsed ? -2 : 0)
+            // Outside the measured frame, so a row in a folder is measured where it's drawn.
+            .padding(.leading, inset)
+    }
+}
+
+/// A pinned folder's line: click to open or close it, double-click to rename, drag it anywhere
+/// among the pinned (into other folders too), and drop tabs on it to put them inside.
+private struct DraggableFolderRow: View {
+    @Environment(Browser.self) private var browser
+    @Environment(SidebarDragging.self) private var dragging
+    let folder: PinnedFolder
+    let space: Space
+    let collapsed: Bool
+    var inset: CGFloat = 0
+    @GestureState private var held = false
+    @State private var hovering = false
+    @State private var draft: String?
+    @FocusState private var nameFocused: Bool
+
+    var body: some View {
+        let targeted = dragging.target == .folder(folder.id)
+        ZStack {
+            if draft != nil {
+                HStack(spacing: 10) {
+                    FolderIcon(isOpen: folder.isOpen)
+                    TextField("Folder Name", text: Binding(get: { draft ?? "" }, set: { draft = $0 }))
+                        .textFieldStyle(.plain)
+                        .focused($nameFocused)
+                        .onSubmit(commitRename)
+                        .onExitCommand { draft = nil; browser.renamingFolderID = nil }
+                        .onChange(of: nameFocused) { if !nameFocused { commitRename() } }
+                    Spacer(minLength: 0)
+                }
+                .font(.system(size: 13))
+                .padding(.horizontal, 8)
+                .frame(height: 34)
+                .background(SelectedFill(), in: .rect(cornerRadius: 9, style: .continuous))
+            } else {
+                FolderRowLabel(folder: folder, hovering: hovering)
+                    .background {
+                        if targeted { SunkenSlot(cornerRadius: 9, active: true) }
+                    }
+            }
+        }
+        .contentShape(.rect)
+        .onTapGesture { toggle() }
+        .simultaneousGesture(TapGesture(count: 2).onEnded { startRename() })
+        .onHover { h in withAnimation(Motion.snappy) { hovering = h } }
+        .contextMenu { menu }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SidebarDragging.coordinateSpace)) } action: {
+            if !collapsed { dragging.rowFrames[folder.id] = $0 }
+        }
+        .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .named(SidebarDragging.coordinateSpace))
+            .updating($held) { _, held, _ in held = true }
+            .onChanged { dragging.changed(folder: folder.id, from: $0.startLocation, to: $0.location, in: space, browser: browser) }
+            .onEnded { _ in dragging.ended(folder: folder.id, in: space, browser: browser) }, isEnabled: draft == nil)
+        .onChange(of: held) { _, now in
+            if !now, dragging.isLifted(folder.id) { dragging.ended(folder: folder.id, in: space, browser: browser) }
+        }
+        .animation(Motion.snappy, value: targeted)
+        .onAppear { if browser.renamingFolderID == folder.id { startRename() } }
+        .onChange(of: browser.renamingFolderID) { _, id in if id == folder.id { startRename() } }
+        .help(folder.name)
+        .frame(height: collapsed ? 0 : nil, alignment: .top)
+        .opacity(collapsed ? 0 : 1)
+        .clipped()
+        .padding(.bottom, collapsed ? -2 : 0)
+        .padding(.leading, inset)
+    }
+
+    @ViewBuilder private var menu: some View {
+        if let live = folder.live {
+            Text(live.lastError ?? live.lastChecked.map { "Updated " + Self.ago.localizedString(for: $0, relativeTo: .now) } ?? "Checking…")
+            if live.kind == .githubPullRequests {
+                // These act on this folder (and any other Pull Requests folder) straight away.
+                ForEach(GitHubPulls.Filter.allCases, id: \.self) { filter in
+                    Toggle(filter.title, isOn: Binding(
+                        get: { browser.library.gitHubFilters.contains(filter) },
+                        set: { browser.library.setGitHubFilter(filter, on: $0) }))
+                }
+            }
+            Divider()
+            Button("Mark All as Read", systemImage: "circle.slash") {
+                withAnimation(Motion.snappy) { browser.library.markAllLiveRead(folder.id, in: space) }
+            }
+            .disabled(live.unreadCount == 0)
+            Button("Copy Links as Markdown", systemImage: "link") { browser.library.copyLinksAsMarkdown(folder, in: space) }
+            Button("Rename Folder…", systemImage: "pencil") { startRename() }
+            Divider()
+            Button(live.kind == .githubPullRequests ? "Remove Pull Requests" : "Unfollow \(folder.name)", systemImage: "folder.badge.minus") {
+                withAnimation(Motion.snappy) { browser.library.removeLiveFolder(folder.id, in: space) }
+            }
+            .help("Its items go too. Tabs you put in it yourself stay pinned.")
+        } else {
+            Button("Rename Folder…", systemImage: "pencil") { startRename() }
+            Button(folder.isOpen ? "Close Folder" : "Open Folder", systemImage: folder.isOpen ? "folder" : "folder.fill") { toggle() }
+            Button("New Folder Inside", systemImage: "folder.badge.plus") {
+                withAnimation(Motion.snappy) {
+                    if !folder.isOpen { browser.library.setPinnedFolder(folder.id, open: true, in: space) }
+                    browser.renamingFolderID = browser.library.newPinnedFolder(in: space, at: PinnedPlace(parent: folder.id, index: 0))
+                }
+            }
+            Divider()
+            Button("Remove Folder", systemImage: "folder.badge.minus") {
+                withAnimation(Motion.snappy) { browser.library.removePinnedFolder(folder.id, in: space) }
+            }
+            .help("Its tabs stay pinned, where the folder was.")
+        }
+    }
+
+    private static let ago: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .full
+        return f
+    }()
+
+    private func toggle() {
+        guard draft == nil else { return }
+        withAnimation(Motion.quick) { browser.library.setPinnedFolder(folder.id, open: !folder.isOpen, in: space) }
+        if !folder.isOpen, folder.live != nil { browser.library.refreshLiveFolderIfStale(folder.id, in: space) }
+    }
+
+    private func startRename() {
+        guard draft == nil else { return }
+        draft = folder.name
+        DispatchQueue.main.async {
+            nameFocused = true
+            DispatchQueue.main.async { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
+        }
+    }
+
+    private func commitRename() {
+        guard let name = draft else { return }
+        draft = nil
+        if browser.renamingFolderID == folder.id { browser.renamingFolderID = nil }
+        browser.library.renamePinnedFolder(folder.id, to: name, in: space)
+    }
+}
+
+/// How a pinned folder's line looks: its icon, name, and when closed, how many tabs it holds.
+struct FolderRowLabel: View {
+    let folder: PinnedFolder
+    var hovering = false
+    /// Raised, as when it's being dragged.
+    var selected = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let live = folder.live {
+                LiveFolderIcon(kind: live.kind, isOpen: folder.isOpen)
+            } else {
+                FolderIcon(isOpen: folder.isOpen)
+            }
+            Text(folder.name)
+                .lineLimit(1)
+                .foregroundStyle(.primary)
+            Spacer(minLength: 0)
+            // One trailing slot, the same place a tab row's badges sit: the chevron while the pointer
+            // is over the folder, otherwise its count. Checking for new items happens quietly.
+            ZStack(alignment: .trailing) {
+                if hovering {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(folder.isOpen ? 90 : 0))
+                        .frame(width: 16, height: 16)
+                } else if let live = folder.live, live.unreadCount > 0, !folder.isOpen {
+                    // Closed: how many are new. Open, each new item shows its own dot.
+                    SidebarBadge(text: "\(live.unreadCount)")
+                        .help(live.unreadCount == 1 ? "1 new item" : "\(live.unreadCount) new items")
+                } else if let error = folder.live?.lastError {
+                    Image(systemName: "exclamationmark.circle")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16, height: 16)
+                        .help(error)
+                } else if !folder.isOpen, folder.live == nil {
+                    let count = PinnedOutline.tabIDs(folder.children).count
+                    if count > 0 {
+                        Text(verbatim: "\(count)")
+                            .font(.system(size: 11, weight: .medium)).monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .frame(minWidth: 16)
+                    }
+                }
+            }
+            .frame(minWidth: 18, alignment: .trailing)
+        }
+        .font(.system(size: 13))
+        .padding(.horizontal, 8)
+        .frame(height: 34)
+        .background {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(selected ? AnyShapeStyle(SelectedFill()) : AnyShapeStyle(.primary.opacity(hovering ? 0.06 : 0)))
+        }
+    }
+}
+
+/// A small count at the end of a sidebar row: neutral, so it doesn't pull the eye.
+struct SidebarBadge: View {
+    let text: String
+
+    var body: some View {
+        Text(verbatim: text)
+            .font(.system(size: 10, weight: .semibold)).monospacedDigit()
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 5).frame(minWidth: 16, minHeight: 16)
+            .background(.primary.opacity(0.08), in: .capsule)
+            .transition(.scale.combined(with: .opacity))
+    }
+}
+
+/// A live folder's icon: its source's site icon, so a GitHub folder and a blog's folder tell apart
+/// at a glance, with the same small bounce as it opens and closes.
+private struct LiveFolderIcon: View {
+    let kind: LiveSourceKind
+    let isOpen: Bool
+
+    private var site: URL? {
+        switch kind {
+        case .feed(let url): URL(string: "https://\(url.host() ?? "")")
+        case .github, .githubPullRequests: URL(string: "https://github.com")
+        }
+    }
+
+    var body: some View {
+        Group {
+            if let site { FaviconView(url: site, size: 16, chip: true) } else { Image(systemName: "folder") }
+        }
+        .frame(width: 16, height: 16)
+        .keyframeAnimator(initialValue: 1.0, trigger: isOpen) { view, scale in
+            view.scaleEffect(scale)
+        } keyframes: { _ in
+            SpringKeyframe(0.82, duration: 0.1, spring: .snappy)
+            SpringKeyframe(1, duration: 0.3, spring: .bouncy(extraBounce: 0.2))
+        }
+    }
+}
+
+private struct FolderIcon: View {
+    let isOpen: Bool
+
+    var body: some View {
+        // One icon whether open or closed (the chevron and the rows say which); it gives a small
+        // bounce as it opens or closes.
+        Image(systemName: "folder")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(.secondary)
+            .symbolEffect(.bounce.down, options: .speed(1.6), value: isOpen)
+            .frame(width: 16, height: 16)
     }
 }
 
@@ -317,6 +617,24 @@ struct TabRow: View {
             if let call = tab.call {
                 CallBadge(call: call)
                     .transition(.scale.combined(with: .opacity))
+            } else if tab.media.showsControls, !isLifted {
+                TabMediaControls(tab: tab, hovering: hovering)
+                    .transition(.scale.combined(with: .opacity))
+            }
+            // Its process has been flat out for a while: a red dot that opens into the CPU figure on
+            // hover. A click opens the Performance panel.
+            if PerformanceMonitor.shared.stuckTabs.contains(tab.id), !isLifted {
+                StuckTabBadge(tabID: tab.id, expanded: hovering)
+                    .transition(.scale.combined(with: .opacity))
+            }
+            // New in a live folder, not opened yet.
+            if browser.library.liveUnread.contains(tab.id), !hovering {
+                Circle()
+                    .fill(Color.accentColor)
+                    .frame(width: 7, height: 7)
+                    .frame(width: 16, height: 16)
+                    .help("New")
+                    .transition(.scale.combined(with: .opacity))
             }
             let notes = openNoteCount(tab.url, in: browser.library)
             if notes > 0 {
@@ -431,6 +749,8 @@ struct TabMenu: View {
     /// Starts renaming the tab in place, where the menu's row can.
     var rename: (() -> Void)? = nil
 
+    // Four groups, acting only on this tab: what it is, where it goes, what to do with its page,
+    // and closing it.
     var body: some View {
         if let rename {
             Button("Rename Tab…", systemImage: "pencil", action: rename)
@@ -451,6 +771,11 @@ struct TabMenu: View {
                 withAnimation(Motion.snappy) { browser.addFavorite(url: url, title: tab.displayTitle) }
             }
             .disabled(browser.isFavorite(url))
+        }
+        Divider()
+        MoveToMenu(tab: tab)
+        Divider()
+        if let url = tab.url {
             Button("Copy Link", systemImage: "link") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(url.absoluteString, forType: .string)
@@ -459,20 +784,59 @@ struct TabMenu: View {
                 browser.newTab(url: url, in: browser.space(containing: tab), source: .link)
             }
         }
-        Button("Open in New Window", systemImage: "macwindow.badge.plus") { browser.openInNewWindow(tab) }
-        if !tab.isPrivate, browser.regularSpaces.count > 1 {
-            Menu("Move to Space") {
-                ForEach(browser.regularSpaces.filter { $0.id != browser.space(containing: tab)?.id }) { s in
-                    Button(s.name, systemImage: s.symbol) { withAnimation(Motion.spring) { browser.move(tab, to: s) } }
-                }
-            }
-        }
+        SplitViewMenuItems(tab: tab)
         Divider()
         if !tab.isPinned {
             Button("Close Other Tabs") { withAnimation(Motion.spring) { browser.closeOtherTabs(than: tab) } }
         }
         Button(tab.isPinned ? "Unload Tab" : "Close Tab", systemImage: "xmark", role: .destructive) {
             withAnimation(Motion.snappy) { browser.close(tab) }
+        }
+    }
+}
+
+/// Move to ›: everywhere a tab can go, in one place. A folder (pinning it if need be), out of the
+/// one it's in, another space, or a window of its own.
+private struct MoveToMenu: View {
+    @Environment(Browser.self) private var browser
+    let tab: BrowserTab
+
+    var body: some View {
+        Menu("Move to", systemImage: "arrow.right.square") {
+            if !tab.isPrivate, let space = browser.space(containing: tab), !space.isPrivate {
+                let tree = space.pinnedTree
+                // Live folders fill themselves, so they're not places to put a tab.
+                let folders = PinnedOutline.folders(tree).filter { $0.folder.live == nil }
+                let path = tab.isPinned ? PinnedOutline.path(of: tab.id, in: tree) ?? [] : []
+                Button("New Folder", systemImage: "folder.badge.plus") {
+                    withAnimation(Motion.snappy) { browser.newPinnedFolder(holding: tab) }
+                }
+                ForEach(folders) { entry in
+                    Button(String(repeating: "    ", count: entry.path.count) + entry.folder.name, systemImage: "folder") {
+                        withAnimation(Motion.snappy) {
+                            browser.pin(tab, in: space, at: PinnedPlace(parent: entry.folder.id, index: .max))
+                        }
+                    }
+                    .disabled(path.last == entry.folder.id)
+                }
+                if let outer = path.first {
+                    Button("Out of Folder", systemImage: "folder.badge.minus") {
+                        // Out to the top level, just under the folder it was in.
+                        let at = PinnedOutline.place(of: outer, in: PinnedOutline.removing(tab.id, from: tree).0)
+                        withAnimation(Motion.snappy) {
+                            browser.pin(tab, in: space, at: PinnedPlace(parent: nil, index: (at?.index ?? -1) + 1))
+                        }
+                    }
+                }
+                if browser.regularSpaces.count > 1 {
+                    Divider()
+                    ForEach(browser.regularSpaces.filter { $0.id != space.id }) { s in
+                        Button(s.name, systemImage: s.symbol) { withAnimation(Motion.spring) { browser.move(tab, to: s) } }
+                    }
+                }
+                Divider()
+            }
+            Button("New Window", systemImage: "macwindow.badge.plus") { browser.openInNewWindow(tab) }
         }
     }
 }
