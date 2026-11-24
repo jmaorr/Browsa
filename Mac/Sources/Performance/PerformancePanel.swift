@@ -148,7 +148,7 @@ enum PerformanceFormat {
 
 /// The status card: a living gradient drawn by a Metal shader (PerformanceGlow.metal) in the status
 /// colour, green at rest, amber when busy, red when a tab is stuck.
-struct PerformanceStatusCard: View, Animatable {
+struct PerformanceStatusCard: View, @MainActor Animatable {
     /// 0 green, 1 amber, 2 red; animates, so the colours blend across a change.
     var level: Double
     let speed: Double
