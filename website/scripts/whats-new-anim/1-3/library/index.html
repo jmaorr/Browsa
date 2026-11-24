@@ -1,0 +1,95 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../../kit/kit.css"><link rel="stylesheet" href="../../kit/sites.css"><link rel="stylesheet" href="../../library/shared/library.css"><link rel="stylesheet" href="../shared/scene.css"><script src="../../kit/kit.js"></script><script src="../../kit/sites.js"></script><script src="../../library/shared/library.js"></script><script src="../shared/scene.js"></script>
+<style>
+  .win { --tint:#5856d6; }
+  .lib { position:absolute; inset:0; background:#f7f6f3; overflow:hidden; }
+  .lib .in { position:absolute; left:0; right:0; top:0; padding:26px 30px; }
+  .lib h1 { margin:0; font-size:30px; letter-spacing:-.02em; }
+  .tabs2 { display:inline-flex; gap:2px; margin:16px 0 18px; padding:4px; border-radius:20px; background:rgb(0 0 0 / .05); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .05); position:relative; }
+  .tabs2 span { position:relative; z-index:1; height:30px; padding:0 14px; display:grid; place-items:center; font-size:14px; font-weight:500; color:#3a3936; border-radius:15px; white-space:nowrap; }
+  .tabs2 .knob { position:absolute; top:4px; height:30px; border-radius:15px; background:#fff; box-shadow:0 1px 3px rgb(0 0 0 / .15), 0 0 0 .5px rgb(0 0 0 / .08); z-index:0; }
+  .hero { display:flex; gap:26px; align-items:center; padding:22px 22px 22px 30px; border-radius:22px; background:#fff; box-shadow:0 0 0 1px rgb(0 0 0 / .06); overflow:hidden; }
+  .hero .tx { width:300px; flex:none; }
+  .hero small { font-size:11px; font-weight:600; letter-spacing:.6px; color:#77736c; }
+  .hero h2 { margin:8px 0 8px; font-size:28px; line-height:1.1; letter-spacing:-.02em; }
+  .hero p { margin:0 0 14px; font-size:14px; line-height:1.45; color:#5d5a55; }
+  .gb { display:inline-flex; align-items:center; height:32px; padding:0 16px; border-radius:16px; font-size:14px; font-weight:600; margin-right:6px; }
+  .gb.pri { background:#5856d6; color:#fff; } .gb.gl { background:rgb(0 0 0 / .06); }
+  .hero .art { flex:1; aspect-ratio:16/10; border-radius:14px; background:#000 center/cover; box-shadow:0 12px 24px -8px rgb(0 0 0 / .35); }
+  .sec { margin:24px 4px 12px; font-size:17px; font-weight:700; }
+  .grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; }
+  .card { border-radius:20px; background:#fff; box-shadow:0 0 0 1px rgb(0 0 0 / .06); overflow:hidden; }
+  .card .art { height:150px; margin:6px 6px 0; border-radius:14px; background:#000 center/cover; }
+  .card .ft { display:flex; align-items:center; gap:11px; padding:12px 14px 14px; }
+  .ic { width:34px; height:34px; border-radius:9px; display:grid; place-items:center; flex:none; }
+  .card b { display:block; font-size:14px; } .card em { display:block; font-style:normal; font-size:12px; color:#77736c; margin-top:1px; line-height:1.3; }
+  .sw { margin-left:auto; flex:none; position:relative; width:42px; height:25px; border-radius:13px; background:#d8d6d1; }
+  .sw i { position:absolute; top:2.5px; left:2.5px; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgb(0 0 0 / .25); }
+  .fold .n { margin-left:auto; min-width:22px; height:22px; padding:0 7px; box-sizing:border-box; border-radius:11px; background:rgb(0 0 0 / .07); color:#5d5a55; font-size:13px; font-weight:600; display:grid; place-items:center; }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="wall"></div>
+  <div class="win"><div class="side" id="side"></div><div class="page" id="page"></div></div>
+  <div class="ring" id="ring"></div><div class="ptr" id="ptr"></div>
+</div>
+<script>
+const FOLDER = `<svg width="22" height="22" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 014.5 5h4.6l2 2.2h8.4A1.5 1.5 0 0121 8.7v9.8a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 18.5z" fill="#af52de" opacity=".85"/></svg>`;
+const GRID_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="#5d5a55"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>`;
+$("side").innerHTML = sidebar({
+  addr: `${GRID_ICON}Library`, space: 1, tint: "#5856d6",
+  body: `<div class="sect">Pinned</div><div id="pr" style="overflow:hidden"><div class="row fold"><div class="in">${FOLDER}<span>Pull Requests</span><span class="n">3</span></div></div></div>
+    ${R(img("linear.app"), "My issues · Linear")}${R(img("github.com"), "Browsa · GitHub")}
+    <div class="sect">Today</div>${R(GRID_ICON, "Library", "sel")}${R(img("notion.so"), "Standup notes · Notion")}${R(img("figma.com"), "Library · Figma")}`,
+  foot: {},
+});
+const G = (d) => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const CARDS = [
+  ["live-folders", "Live Folders", "Sidebar folders that keep themselves up to date.", "#af52de", G('<path d="M3 7h6l2 2h10v10H3z"/>')],
+  ["boosts", "Boosts", "Make any site look the way you like.", "#ff2d55", G('<path d="M4 20l7-7M14 4l6 6-7 7-6-6z"/>')],
+  ["performance", "Performance Monitor", "See which tabs are slowing Browsa down.", "#ff3b30", G('<path d="M4 16a8 8 0 0116 0M12 16l4-5"/>')],
+  ["notes", "Notes", "Notes on any page, for you and your agents.", "#f5b60b", G('<path d="M4 5h16v11H9l-5 4z"/>')],
+  ["radar", "Radar", "Your local dev servers, one click away.", "#30a46c", G('<circle cx="12" cy="12" r="2"/><path d="M7 7a7 7 0 000 10M17 7a7 7 0 010 10"/>')],
+  ["space-routing", "Space Routing", "Sites open in the Space they belong to.", "#32ade6", G('<path d="M6 4v6a4 4 0 004 4h8M14 10l4 4-4 4"/>')],
+];
+const FILTERS = ["All", "Browsa Plugins", "Packs", "Privacy and Performance", "Extensions", "On"];
+$("page").innerHTML = `<div class="lib"><div class="in" id="scroll">
+  <h1>Library</h1>
+  <div class="tabs2" id="tabs"><i class="knob" id="knob"></i>${FILTERS.map((f, i) => `<span id="t${i}">${f}</span>`).join("")}</div>
+  <div id="heroWrap" style="overflow:hidden"><div class="hero" id="hero"><div class="tx"><small>AGENT PACK</small><h2>Build with an agent beside you</h2>
+    <p>Radar, Agents and Notes together: your dev servers in the sidebar, agents that can use Browsa, and notes they can answer.</p>
+    <span class="gb pri">Turn On Agent Pack</span><span class="gb gl">▶ Try the Demo</span></div>
+    <div class="art" style="background-image:url(${ART("agent-pack")})"></div></div></div>
+  <div class="sec" id="sec">Browsa Plugins</div>
+  <div class="grid">${CARDS.map(([id, t, b, c, g]) => `<div class="card" id="c-${id}"><div class="art" style="background-image:url(${ART(id)})"></div>
+    <div class="ft"><span class="ic" style="background:${c}">${g}</span><div><b>${t}</b><em>${b}</em></div><span class="sw" id="sw-${id}"><i></i></span></div></div>`).join("")}</div>
+</div></div>`;
+$("ptr").innerHTML = POINTER("#161513");
+["notes", "radar"].forEach((id) => { $("sw-" + id).style.background = "#34c759"; $("sw-" + id).querySelector("i").style.left = "19.5px"; });
+
+const stage = $("stage");
+const T1 = box($("t1"), stage), T0 = box($("t0"), stage);
+const knobAt = (i) => { const s = $("t" + i), p = $("tabs"); return [s.offsetLeft, s.offsetWidth]; };
+window.TOTAL = 10;
+window.render = (t) => {
+  // Filter to Browsa Plugins at 1.6, back to All at 8.2.
+  const f = ph(t, 1.6, 0.35) - ph(t, 8.2, 0.35);
+  const k = eio(Math.max(0, f));
+  const [a0, w0] = knobAt(0), [a1, w1] = knobAt(1);
+  $("knob").style.left = mix(a0, a1, k) + "px"; $("knob").style.width = mix(w0, w1, k) + "px";
+  const hh = $("hero").offsetHeight;
+  $("heroWrap").style.maxHeight = (1 - k) * hh + "px"; $("heroWrap").style.opacity = 1 - k;
+  // Turn on Live Folders at 3.9; the Pull Requests folder arrives in the sidebar.
+  const sw = box($("sw-live-folders"), stage);
+  const on = t > 3.9 && t < 9.6;
+  $("sw-live-folders").style.background = on ? "#34c759" : "#d8d6d1"; $("sw-live-folders").querySelector("i").style.left = on ? "19.5px" : "2.5px";
+  const pr = eo(ph(t, 4.3, 0.5)) * (1 - ph(t, 9.5, 0.3));
+  $("pr").style.maxHeight = pr * 44 + "px"; $("pr").style.opacity = pr;
+  // Then a look further down: scroll to the second row.
+  const ps = box($("sw-performance"), stage), pon = t > 6.2 && t < 9.6;
+  $("sw-performance").style.background = pon ? "#34c759" : "#d8d6d1"; $("sw-performance").querySelector("i").style.left = pon ? "19.5px" : "2.5px";
+  const b2 = box($("t0"), stage);
+  pointer(t, [[0.6, [900, 600]], [1.5, [T1.cx, T1.cy]], [3.8, [sw.cx, sw.cy]], [6.1, [ps.cx, ps.cy]], [8.1, [b2.cx, b2.cy]], [9, [b2.cx + 80, b2.cy + 160]]], [1.6, 3.9, 6.2, 8.2], 9.0);
+  const lf = 0.15 + 0.85 * loopFade(t, TOTAL); $("side").style.opacity = lf; $("page").style.opacity = lf;
+};
+render(0);
+</script></body></html>

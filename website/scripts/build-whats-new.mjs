@@ -72,7 +72,9 @@ function media(e) {
   }
   if (e.image) return `<div class="wn-media"><img src="${esc(e.image)}" alt="${esc(e.alt)}" loading="lazy"></div>`;
   if (e.scene) return `<div class="wn-media wn-window"><div data-mw data-cycle="${esc(e.scene)}" role="img" aria-label="${esc(e.alt ?? "A drawing of Browsa's Mac window.")}"></div></div>`;
-  return e.draft ? `<div class="wn-media wn-empty"><span>Clip to come</span></div>` : "";
+  // List posts (Improvements, Fixes) never get a clip, so no placeholder for them either.
+  const isList = e.paragraphs.length > 0 && e.paragraphs.every((p) => p.list);
+  return e.draft && !isList ? `<div class="wn-media wn-empty"><span>Clip to come</span></div>` : "";
 }
 
 const block = (p, cls) => p.list
