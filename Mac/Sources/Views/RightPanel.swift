@@ -277,6 +277,7 @@ private struct ConnectAgentCard: View {
             }
             .font(.caption).foregroundStyle(status.color)
             DisclosureGroup("Set it up by hand") { AgentManualSetup(client: client, agents: agents).padding(.top, 6) }
+                .disclosureGroupStyle(.row)
                 .font(.caption).foregroundStyle(.secondary)
             Divider().opacity(0.5)
             HStack(spacing: 6) {
