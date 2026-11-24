@@ -705,7 +705,7 @@ private struct GlassChip<Icon: View>: View {
             if raised {
                 Capsule()
                     .fill(RaisedFill.color(scheme))
-                    .shadow(color: .black.opacity(scheme == .dark ? 0.45 : 0.18), radius: 6, y: 2)
+                    .shadow(color: .black.opacity(scheme == .dark ? 0.32 : 0.1), radius: 4, y: 1)
             } else {
                 Capsule().fill(Color.primary.opacity(scheme == .dark ? 0.08 : 0.05))
             }
