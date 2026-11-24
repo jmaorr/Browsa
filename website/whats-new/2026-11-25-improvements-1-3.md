@@ -3,7 +3,7 @@ title: Improvements in 1.3
 platform: Mac
 version: 1.3
 order: 9
-draft: true
+date: 2026-11-25
 ---
 - ⌘T and ⌘K have a new glass look. In ⌘K, press Tab to search the Library and add a tool or extension right there.
 - When a link wants to open an app, choose Open, Not Now, Always Open or Don't Open. Change your answer from the site menu or Settings › Privacy.

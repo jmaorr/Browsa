@@ -3,7 +3,7 @@ title: Picture in Picture
 platform: Mac
 version: 1.3
 order: 5
-draft: true
+date: 2026-11-25
 video: /media/whats-new/picture-in-picture.mp4
 poster: /media/whats-new/picture-in-picture.webp
 alt: Switching from a playing YouTube tab to Notion pops the video into a floating window; the sidebar's pause button pauses and plays it, and going back to the tab puts the video back in the page.

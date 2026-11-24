@@ -3,7 +3,7 @@ title: Live Folders
 platform: Mac
 version: 1.3
 order: 3
-draft: true
+date: 2026-11-25
 video: /media/whats-new/live-folders.mp4
 poster: /media/whats-new/live-folders.webp
 alt: A Pull Requests folder in the sidebar fills with three pull requests as they arrive, one marked Review, with a note that a review was requested.

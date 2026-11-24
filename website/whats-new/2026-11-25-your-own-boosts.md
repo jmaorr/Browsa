@@ -3,7 +3,7 @@ title: Make your own Boosts
 platform: Mac
 version: 1.3
 order: 6
-draft: true
+date: 2026-11-25
 video: /media/whats-new/boosts.mp4
 poster: /media/whats-new/boosts.webp
 alt: A Boost panel beside a Notion page switches the font to Serif, picks a warm page colour, and starts Zap something to hide part of the page.
