@@ -321,7 +321,8 @@ struct CommandBar: View {
             }
             if mode == .commands {
                 GlassTabs(selection: Binding(get: { place }, set: { setPlace($0, refocus: true) }),
-                          options: CommandPlace.allCases, size: .large, title: { $0.rawValue }, symbol: { $0.symbol })
+                          options: CommandPlace.allCases, size: .large, title: { $0.rawValue }, symbol: { $0.symbol },
+                          onGlass: true)
             }
         }
         .padding(.leading, 20)
@@ -699,15 +700,17 @@ private struct GlassChip<Icon: View>: View {
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
+        // One shape per chip. Glass here sat on the sheet's own glass and, with an outline on top,
+        // read as a box in a box. At rest a soft sunken fill; raised, solid with a shadow.
         .background {
             if raised {
                 Capsule()
                     .fill(RaisedFill.color(scheme))
                     .shadow(color: .black.opacity(scheme == .dark ? 0.45 : 0.18), radius: 6, y: 2)
+            } else {
+                Capsule().fill(Color.primary.opacity(scheme == .dark ? 0.08 : 0.05))
             }
         }
-        .glassEffect(raised ? .identity : .regular, in: .capsule)
-        .overlay(Capsule().strokeBorder(raised ? RaisedFill.edge(scheme) : Color.primary.opacity(0.1)))
         .animation(Motion.quick, value: raised)
         .onHover { hovering = $0 }
     }

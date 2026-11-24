@@ -16,6 +16,9 @@ struct GlassTabs<Option: Hashable>: View {
     var title: (Option) -> String
     var symbol: ((Option) -> String)? = nil
     var count: ((Option) -> Int?)? = nil
+    /// Set when the switch already sits on glass (the command bar): a soft sunken track instead
+    /// of a second glass capsule, which read as a box inside a box.
+    var onGlass = false
 
     @Namespace private var namespace
 
@@ -26,7 +29,8 @@ struct GlassTabs<Option: Hashable>: View {
         size: ControlSize = .regular,
         title: @escaping (Option) -> String,
         symbol: ((Option) -> String)? = nil,
-        count: ((Option) -> Int?)? = nil
+        count: ((Option) -> Int?)? = nil,
+        onGlass: Bool = false
     ) {
         _selection = selection
         self.options = options
@@ -35,6 +39,7 @@ struct GlassTabs<Option: Hashable>: View {
         self.title = title
         self.symbol = symbol
         self.count = count
+        self.onGlass = onGlass
     }
 
     @Environment(\.colorScheme) private var scheme
@@ -43,18 +48,22 @@ struct GlassTabs<Option: Hashable>: View {
     private var height: CGFloat { size == .small ? 28 : (size == .large ? 40 : 34) }
 
     var body: some View {
-        GlassEffectContainer(spacing: 2) {
-            HStack(spacing: 2) {
-                ForEach(options, id: \.self) { option in
-                    tab(option)
-                }
+        let row = HStack(spacing: 2) {
+            ForEach(options, id: \.self) { option in
+                tab(option)
             }
-            .padding(3)
-            .glassEffect(.regular, in: Capsule())
         }
-        // A hairline, so the track holds its shape on white (light mode). Outside the glass container,
-        // which otherwise draws its glass over it.
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.14), lineWidth: 1))
+        .padding(3)
+
+        Group {
+            if onGlass {
+                row.background(Color.primary.opacity(scheme == .dark ? 0.08 : 0.05), in: Capsule())
+            } else {
+                // One glass capsule and nothing drawn around it: an extra hairline outside the
+                // glass's own edge read as a second container.
+                row.glassEffect(.regular, in: Capsule())
+            }
+        }
         .fixedSize()
         .accessibilityElement(children: .contain)
     }
@@ -88,8 +97,8 @@ struct GlassTabs<Option: Hashable>: View {
                     // Solid white (black in dark mode) and raised, so the picked option reads at a glance.
                     Capsule()
                         .fill(RaisedFill.color(scheme))
-                        .overlay(Capsule().strokeBorder(RaisedFill.edge(scheme)))
-                        .shadow(color: .black.opacity(scheme == .dark ? 0.4 : 0.16), radius: 3, y: 1)
+                        // A tight shadow that stays inside the track's 3pt inset, so it isn't cut off.
+                        .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.12), radius: 1.5, y: 0.5)
                         .matchedGeometryEffect(id: "selection", in: namespace)
                 }
             }
@@ -104,8 +113,8 @@ struct GlassTabs<Option: Hashable>: View {
 
 extension GlassTabs where Option: RawRepresentable, Option.RawValue == String {
     /// Options whose raw value is their title.
-    init(selection: Binding<Option>, options: [Option], iconsOnly: Bool = false, size: ControlSize = .regular, symbol: ((Option) -> String)? = nil, count: ((Option) -> Int?)? = nil) {
-        self.init(selection: selection, options: options, iconsOnly: iconsOnly, size: size, title: { $0.rawValue }, symbol: symbol, count: count)
+    init(selection: Binding<Option>, options: [Option], iconsOnly: Bool = false, size: ControlSize = .regular, symbol: ((Option) -> String)? = nil, count: ((Option) -> Int?)? = nil, onGlass: Bool = false) {
+        self.init(selection: selection, options: options, iconsOnly: iconsOnly, size: size, title: { $0.rawValue }, symbol: symbol, count: count, onGlass: onGlass)
     }
 }
 
