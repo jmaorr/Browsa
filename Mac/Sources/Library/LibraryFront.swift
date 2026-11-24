@@ -1,7 +1,6 @@
 import SwiftUI
 import AppKit
 import AVFoundation
-import CoreImage
 
 // The Library's front page: the featured pack as a hero, filters, and cards whose art is a short
 // loop made with the What's New animation kit (website/scripts/whats-new-anim/library). A card
@@ -37,19 +36,8 @@ enum LibraryArt {
         return size.width / size.height
     }
 
-    /// The poster, small and blurred, made once: a live blur on a big image costs every frame of a scroll.
-    @MainActor static func blurred(_ id: String) -> NSImage? {
-        if let done = blurCache[id] { return done }
-        guard let poster = poster(id), let tiff = poster.tiffRepresentation, let input = CIImage(data: tiff) else { return nil }
-        let scale = 360 / max(input.extent.width, 1)
-        let small = input.transformed(by: .init(scaleX: scale, y: scale))
-        let blurred = small.clampedToExtent().applyingGaussianBlur(sigma: 10).cropped(to: small.extent)
-        guard let cg = CIContext().createCGImage(blurred, from: small.extent) else { return nil }
-        let image = NSImage(cgImage: cg, size: small.extent.size)
-        blurCache[id] = image
-        return image
-    }
-    @MainActor private static var blurCache: [String: NSImage] = [:]
+    /// The one wallpaper every clip sits on, for the hero's background.
+    static var wallpaper: NSImage? { Bundle.main.image(forResource: "library-wallpaper") }
 }
 
 /// A muted loop that fills its frame. With Reduce Motion on, or no clip, it shows the poster.
@@ -201,16 +189,17 @@ struct LibraryHero: View {
     let pack: PluginPack
     let open: () -> Void
     @State private var demo = false
+    @Environment(\.colorScheme) private var scheme
     private var on: Bool { LibraryActions.isPackOn(pack, in: browser) }
 
     var body: some View {
         HStack(spacing: 28) {
             VStack(alignment: .leading, spacing: 12) {
                 PackFan(pack: pack, size: 30).frame(width: 74, height: 44, alignment: .leading)
-                Text(pack.title.uppercased()).font(.system(size: 11, weight: .semibold)).kerning(0.6).opacity(0.85)
+                Text(pack.title.uppercased()).font(.system(size: 11, weight: .semibold)).kerning(0.6).foregroundStyle(.secondary)
                 Text("Build with an agent beside you")
                     .font(.system(size: 30, weight: .bold)).fixedSize(horizontal: false, vertical: true)
-                Text(pack.about).font(.system(size: 14)).opacity(0.9).lineSpacing(2)
+                Text(pack.about).font(.system(size: 14)).foregroundStyle(.secondary).lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
                     if on {
@@ -226,7 +215,6 @@ struct LibraryHero: View {
                 }
                 .padding(.top, 4)
             }
-            .foregroundStyle(.white)
             .frame(maxWidth: 340, alignment: .leading)
             Spacer(minLength: 0)
             LibraryArtView(id: pack.id)
@@ -241,20 +229,25 @@ struct LibraryHero: View {
         .padding(.leading, 36).padding(.trailing, 24).padding(.vertical, 24)
         .frame(height: 340)
         .background {
-            // The loop's own wallpaper, blurred and dimmed, so the clip sits in its landscape.
+            // The clips' own wallpaper, washed toward the page's colour behind the text, so the text,
+            // icons and glass buttons follow light and dark like the rest of the page.
             ZStack {
-                if let poster = LibraryArt.poster(pack.id) {
-                    Image(nsImage: LibraryArt.blurred(pack.id) ?? poster).resizable().aspectRatio(contentMode: .fill).scaleEffect(1.15)
+                if let wall = LibraryArt.wallpaper {
+                    Image(nsImage: wall).resizable().aspectRatio(contentMode: .fill)
                 } else {
                     PackGlow(pack: pack)
                 }
-                LinearGradient(colors: [.black.opacity(0.55), .black.opacity(0.08)], startPoint: .leading, endPoint: .trailing)
+                let base = Color(nsColor: .textBackgroundColor)
+                LinearGradient(stops: [.init(color: base.opacity(scheme == .dark ? 0.86 : 0.9), location: 0),
+                                       .init(color: base.opacity(scheme == .dark ? 0.6 : 0.55), location: 0.42),
+                                       .init(color: base.opacity(0.0), location: 0.75)],
+                               startPoint: .leading, endPoint: .trailing)
             }
         }
         .clipShape(.rect(cornerRadius: 22, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(.primary.opacity(0.1), lineWidth: 0.5))
         .background {
-            RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.black)
+            RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(nsColor: .textBackgroundColor))
                 .shadow(color: .black.opacity(0.12), radius: 20, y: 10)
         }
         .contentShape(.rect)

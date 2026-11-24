@@ -1200,9 +1200,15 @@ struct BackButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) { Label(title, systemImage: "chevron.left") }
-            .buttonStyle(.plain).foregroundStyle(.secondary)
-            .keyboardShortcut(.escape, modifiers: [])
+        // A glass capsule like the rest of Browsa's buttons, big enough to hit easily.
+        Button(action: action) {
+            Label(title, systemImage: "chevron.left")
+                .font(.system(size: 13, weight: .medium))
+                .padding(.horizontal, 4)
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.large)
+        .keyboardShortcut(.escape, modifiers: [])
     }
 }
 
