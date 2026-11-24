@@ -71,15 +71,16 @@ float snoise(float2 v) {
     float vignette = 1.0 - smoothstep(0.45, 1.45, dist);
 
     float lift = 0.08 * breath;
-    col = mix(col, c0, smoothstep(-0.35 - lift, 0.5, n1) * 0.85);
-    col = mix(col, c1, smoothstep(-0.25 - lift, 0.6, n2) * 0.75);
+    col = mix(col, c0, smoothstep(-0.1 - lift, 0.6, n1) * 0.6);
+    col = mix(col, c1, smoothstep(0.0 - lift, 0.7, n2) * 0.55);
     col = mix(col, c2, smoothstep(-0.3, 0.4, n3) * 0.6);
     col = mix(col, c3, smoothstep(0.0, 0.7, n1 * n2) * 0.5);
 
     float glow = smoothstep(1.2, 0.0, dist) * (0.22 + 0.08 * breath);
     col += c1 * glow;
 
-    col = mix(col * 0.25, col, vignette);
+    // Kept dim overall, like Velaris on a big hero: mostly deep colour with lighter sweeps through it.
+    col = mix(col * 0.25, col, vignette) * 0.8;
 
     float g = fract(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453 + time);
     col += (g - 0.5) * grain * 0.1;
