@@ -278,14 +278,15 @@ private struct SiteMenu: View {
             media.submenu = mediaMenu
             menu.addItem(media)
             // Apps this site has opened or been stopped from opening: Ask, Always Open or Don't Open, like camera and mic.
-            for (scheme, saved) in TabController.openAppAnswers(browser.library.settings.sitePermissions[host] ?? [:]).sorted(by: { $0.key < $1.key }) {
+            let isPrivate = browser.currentTab?.isPrivate == true
+            for (scheme, saved) in TabController.openAppAnswers(browser.library.sitePermissions(for: host, isPrivate: isPrivate)).sorted(by: { $0.key < $1.key }) {
                 let app = TabController.appName(forScheme: scheme)
                 let openItem = NSMenuItem(title: "Open in \(app)", action: nil, keyEquivalent: "")
                 openItem.badge = NSMenuItemBadge(string: saved ? "Always" : "Don't Open")
                 let openMenu = NSMenu()
                 for (title, value) in [("Ask", Bool?.none), ("Always Open", Bool?.some(true)), ("Don't Open", Bool?.some(false))] {
                     let item = actions.item(title) {
-                        TabController.setOpenAppAnswer(value, in: browser.library, host: host, scheme: scheme)
+                        TabController.setOpenAppAnswer(value, in: browser.library, host: host, scheme: scheme, isPrivate: isPrivate)
                     }
                     item.state = saved == value ? .on : .off
                     openMenu.addItem(item)
@@ -360,13 +361,15 @@ private struct SiteMenu: View {
 
     /// Saved answers for camera and microphone on this site: nil means Browsa asks.
     private func mediaPermission(_ host: String) -> Bool? {
-        let saved = browser.library.settings.sitePermissions[host] ?? [:]
+        let saved = browser.library.sitePermissions(for: host, isPrivate: browser.currentTab?.isPrivate == true)
         return saved[EnginePermission.cameraAndMicrophone.rawValue] ?? saved[EnginePermission.camera.rawValue] ?? saved[EnginePermission.microphone.rawValue]
     }
 
     private func setMediaPermission(_ host: String, _ value: Bool?) {
+        // From a private tab the answer stays in memory, like one given at the prompt there.
+        let isPrivate = browser.currentTab?.isPrivate == true
         for p in [EnginePermission.camera, .microphone, .cameraAndMicrophone] {
-            browser.library.settings.sitePermissions[host, default: [:]][p.rawValue] = value
+            browser.library.setSitePermission(p.rawValue, value, for: host, isPrivate: isPrivate)
         }
     }
 }

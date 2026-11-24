@@ -764,6 +764,30 @@ final class Library {
         scheduleSave()
     }
 
+    // MARK: Site permissions
+
+    /// A site's answers (camera, microphone, open in app…) as a tab sees them: a private tab's own answers
+    /// on top of the saved ones.
+    func sitePermissions(for host: String, isPrivate: Bool) -> [String: Bool] {
+        let saved = settings.sitePermissions[host] ?? [:]
+        guard isPrivate else { return saved }
+        return saved.merging(privatePermissions[host] ?? [:]) { _, mine in mine }
+    }
+
+    /// Keeps (or with nil, forgets) one answer. One given in a private tab lasts until the private space
+    /// closes and is never written to disk, so the site doesn't show up in Settings afterwards.
+    func setSitePermission(_ key: String, _ value: Bool?, for host: String, isPrivate: Bool) {
+        if isPrivate {
+            var answers = privatePermissions[host] ?? [:]
+            answers[key] = value
+            privatePermissions[host] = answers.isEmpty ? nil : answers
+        } else {
+            var answers = settings.sitePermissions[host] ?? [:]
+            answers[key] = value
+            settings.sitePermissions[host] = answers.isEmpty ? nil : answers
+        }
+    }
+
     // MARK: Profiles
 
     /// The cookies and logins a tab's page uses: its space's profile, or private.

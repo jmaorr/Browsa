@@ -170,12 +170,13 @@ final class TabController: EnginePageDelegate {
             return
         }
         let app = FileManager.default.displayName(atPath: appURL.path).replacingOccurrences(of: ".app", with: "")
-        switch Self.openAppAnswer(library.settings, host: host, scheme: scheme) {
+        let isPrivate = tab.isPrivate
+        switch Self.openAppAnswer(library, host: host, scheme: scheme, isPrivate: tab.isPrivate) {
         case true?:
             NSWorkspace.shared.open(url)
             window?.showToast("Opened in \(app)", actions: [
                 ToastAction(title: "Stop Always Opening") { [weak library] in
-                    library.map { Self.setOpenAppAnswer(nil, in: $0, host: host, scheme: scheme) }
+                    library.map { Self.setOpenAppAnswer(nil, in: $0, host: host, scheme: scheme, isPrivate: isPrivate) }
                 }
             ])
             return
@@ -184,7 +185,7 @@ final class TabController: EnginePageDelegate {
             if request.kind == .link {
                 window?.showToast("\(host) can't open \(app)", actions: [
                     ToastAction(title: "Ask Again") { [weak library] in
-                        library.map { Self.setOpenAppAnswer(nil, in: $0, host: host, scheme: scheme) }
+                        library.map { Self.setOpenAppAnswer(nil, in: $0, host: host, scheme: scheme, isPrivate: isPrivate) }
                     }
                 ])
             }
@@ -203,10 +204,10 @@ final class TabController: EnginePageDelegate {
         askingApps.remove(declineKey)
         switch answer {
         case Prompt.alwaysOpen:
-            Self.setOpenAppAnswer(true, in: library, host: host, scheme: scheme)
+            Self.setOpenAppAnswer(true, in: library, host: host, scheme: scheme, isPrivate: tab.isPrivate)
             NSWorkspace.shared.open(url)
         case Prompt.neverOpen:
-            Self.setOpenAppAnswer(false, in: library, host: host, scheme: scheme)
+            Self.setOpenAppAnswer(false, in: library, host: host, scheme: scheme, isPrivate: tab.isPrivate)
         case .ok:
             NSWorkspace.shared.open(url)
         default:
@@ -225,18 +226,17 @@ final class TabController: EnginePageDelegate {
     static let openAppPrefix = "open:"
     private static let legacyOpenAppPrefix = "app:"
 
-    /// Always Open (true), Don't Open (false), or ask (nil).
-    static func openAppAnswer(_ settings: BrowserSettings, host: String, scheme: String) -> Bool? {
-        let saved = settings.sitePermissions[host] ?? [:]
+    /// Always Open (true), Don't Open (false), or ask (nil). A private tab also sees its own answers.
+    static func openAppAnswer(_ library: Library, host: String, scheme: String, isPrivate: Bool) -> Bool? {
+        let saved = library.sitePermissions(for: host, isPrivate: isPrivate)
         if let answer = saved[openAppPrefix + scheme] { return answer }
         return saved[legacyOpenAppPrefix + scheme] == true ? true : nil
     }
 
-    static func setOpenAppAnswer(_ answer: Bool?, in library: Library, host: String, scheme: String) {
-        var saved = library.settings.sitePermissions[host] ?? [:]
-        saved[legacyOpenAppPrefix + scheme] = nil
-        saved[openAppPrefix + scheme] = answer
-        library.settings.sitePermissions[host] = saved.isEmpty ? nil : saved
+    /// Keeps an answer. From a private tab it lasts until the private space closes and isn't saved.
+    static func setOpenAppAnswer(_ answer: Bool?, in library: Library, host: String, scheme: String, isPrivate: Bool) {
+        if !isPrivate { library.setSitePermission(legacyOpenAppPrefix + scheme, nil, for: host, isPrivate: false) }
+        library.setSitePermission(openAppPrefix + scheme, answer, for: host, isPrivate: isPrivate)
     }
 
     /// A site's saved open-in-app answers (from its permissions), by kind of link ("slite"), ignoring an old saved "no".
@@ -326,8 +326,7 @@ final class TabController: EnginePageDelegate {
         guard let library else { return false }
         // Screen sharing is asked every time, like other browsers do.
         let remembers = permission != .screen
-        if remembers, tab.isPrivate, let answered = library.privatePermissions[host]?[permission.rawValue] { return answered }
-        if remembers, let saved = library.settings.sitePermissions[host]?[permission.rawValue] { return saved }
+        if remembers, let saved = library.sitePermissions(for: host, isPrivate: tab.isPrivate)[permission.rawValue] { return saved }
         guard let window else { return false }
         let answer = await window.ask(.permission(permission, host: host), from: tab)
         // Cancelled because the tab went away: don't remember a "no" the user never gave.
@@ -335,13 +334,7 @@ final class TabController: EnginePageDelegate {
         let granted = answer == .ok
         // A private tab's answer lasts until the private space closes, and isn't saved.
         if permission == .notifications, granted { SiteNotifications.shared.requestAuthorization(in: window) }
-        if remembers {
-            if tab.isPrivate {
-                library.privatePermissions[host, default: [:]][permission.rawValue] = granted
-            } else {
-                library.settings.sitePermissions[host, default: [:]][permission.rawValue] = granted
-            }
-        }
+        if remembers { library.setSitePermission(permission.rawValue, granted, for: host, isPrivate: tab.isPrivate) }
         return granted
     }
 
