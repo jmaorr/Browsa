@@ -301,6 +301,10 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
                                               contentWorld: .page, name: CallAudioHandler.name)
         }
         if let fixes = SiteOptimisations.script { controller.addUserScript(fixes) }
+        // YouTube's ads are announced in the player's own data, so the rules alone leave a blank wait.
+        if blocking.isEnabled, blocking.ruleGroups.contains(FilterGroup.ads.rawValue) {
+            YouTubeAds.scripts(skipping: blocking.allowlist).forEach(controller.addUserScript)
+        }
         for style in Boost.all where enabledBoosts.contains(style.id) {
             let hosts = (try? JSONEncoder().encode(style.hosts)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             let source = """
