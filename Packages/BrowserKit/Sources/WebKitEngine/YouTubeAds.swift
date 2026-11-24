@@ -32,7 +32,16 @@ import WebKit
 //   YouTube holds it at 0:00 for the pre-roll that was taken out. The restart runs on the first page and
 //   on every in-page navigation (yt-navigate-finish): the player streams over SABR, whose first answer
 //   carries a server backoff the length of the cut ad, and asking the player for the video again starts a
-//   stream without it. Playlists are left alone, since the player would drop the playlist.
+//   stream without it (usually: the server sometimes gives the new stream a shorter wait of its own).
+//   Asking again empties the player's playlist, so in a playlist or Mix the script keeps the playlist
+//   YouTube's page last handed the player (player.updatePlaylist) and hands it back once the video plays;
+//   if it has none for this video, the video is left to wait. That covers Next in a playlist or Mix.
+//   Clicking into one from search hands nothing over (the player fetches the playlist itself), so that
+//   still waits; loading one as a page rarely waits at all. Tried and dropped: restarting with the list
+//   (loadVideoByPlayerVars, loadPlaylist, updatePlaylist() with nothing: each drops or empties it),
+//   turning SABR off in the answer (the adaptive formats carry no URLs, so nothing plays), and zeroing
+//   the backoff in SABR's answers (the server enforces it and answers each early request with the time
+//   still left).
 // - In Browsa's own world (pages can't see it): if an ad plays anyway, it is muted and played at 16x while
 //   the player says `ad-showing`, then sound and speed are put back. It never seeks.
 //
@@ -224,7 +233,50 @@ enum YouTubeAds {
           // length anyway: YouTube's stream server waits it out. Asking the
           // player for the video again starts a stream without the wait. Once
           // per page or in-page navigation, only for a video whose ads were
-          // cut, and not in playlists (the player would drop the playlist).
+          // cut. Asking again empties the player's playlist (Next would go to
+          // a suggestion), so in a playlist or Mix it is done only with the
+          // playlist YouTube's page last gave the player, and that is given
+          // back once the video plays. Without it the video waits, as before.
+          var given = null, hooked = new WeakSet();
+          function hook() {
+            var player = document.getElementById('movie_player');
+            if (!player || hooked.has(player) || typeof player.updatePlaylist !== 'function') return !!player && hooked.has(player);
+            hooked.add(player);
+            var update = player.updatePlaylist;
+            player.updatePlaylist = ({ updatePlaylist(data) {
+              try { if (plain(data) && typeof data.list === 'string' && isArray(data.video)) given = data; } catch (e) {}
+              return apply(update, this, arguments);
+            } }).updatePlaylist;
+            return true;
+          }
+          function watchPlayer() {
+            var until = Date.now() + 15000;
+            (function again() { if (!hook() && Date.now() < until) setTimeout(again, 100); })();
+          }
+          // The playlist the page gave for this video: same list, this video at its index.
+          function playlistFor(list, id) {
+            try {
+              var g = given;
+              if (!g || g.list !== list || typeof g.index !== 'number') return null;
+              var item = g.video[g.index];
+              return plain(item) && item.encrypted_id === id ? g : null;
+            } catch (e) { return null; }
+          }
+          function giveBack(player, id, list, playlist, href) {
+            var until = Date.now() + 20000;
+            (function look() {
+              if (location.href !== href || Date.now() > until) return;
+              try {
+                var video = player.querySelector('video'), data = player.getVideoData();
+                if (video && !video.paused && video.currentTime > 0 && data && data.video_id === id) {
+                  var ids = player.getPlaylist();
+                  if (player.getPlaylistId() !== list || !isArray(ids) || ids[player.getPlaylistIndex()] !== id) player.updatePlaylist(playlist);
+                  return;
+                }
+              } catch (e) { return; }
+              setTimeout(look, 100);
+            })();
+          }
           function seconds(t) {
             if (!t) return 0;
             if (/^\\d+$/.test(t)) return +t;
@@ -234,11 +286,11 @@ enum YouTubeAds {
           function restart() {
             try {
               if (location.pathname !== '/watch' || location.hostname.indexOf('music.') === 0) return;
-              var query = new URLSearchParams(location.search), id = query.get('v');
-              if (!id || query.get('list') || !cutIds[id]) return;
+              var query = new URLSearchParams(location.search), id = query.get('v'), list = query.get('list');
+              if (!id || !cutIds[id]) return;
               delete cutIds[id];
               var at = seconds(query.get('t') || query.get('start')), href = location.href;
-              var until = Date.now() + 10000;
+              var asked = Date.now(), until = asked + 10000;
               (function look() {
                 if (location.href !== href || Date.now() > until) return;
                 var player = document.getElementById('movie_player'), data = null;
@@ -248,7 +300,16 @@ enum YouTubeAds {
                   // Already playing: nothing held.
                   var video = player.querySelector('video');
                   if (video && !video.paused && video.currentTime > 0) return;
-                  try { player.loadVideoById(id, at); } catch (e) {}
+                  var playlist = list ? playlistFor(list, id) : null;
+                  if (list && typeof player.updatePlaylist !== 'function') return;
+                  // In a playlist, Next hands the player its playlist again a moment after the video.
+                  // Opening one hands nothing (the player fetches it itself), so that waits, as before.
+                  if (list && !playlist) {
+                    if (Date.now() < asked + 1500) setTimeout(look, 100);
+                    return;
+                  }
+                  try { player.loadVideoById(id, at); } catch (e) { return; }
+                  if (playlist) giveBack(player, id, list, playlist, href);
                   return;
                 }
                 setTimeout(look, 100);
@@ -256,6 +317,8 @@ enum YouTubeAds {
             } catch (e) {}
           }
           try {
+            document.addEventListener('DOMContentLoaded', watchPlayer, { once: true });
+            document.addEventListener('yt-navigate-start', watchPlayer);
             document.addEventListener('DOMContentLoaded', restart, { once: true });
             document.addEventListener('yt-navigate-finish', restart);
           } catch (e) {}
