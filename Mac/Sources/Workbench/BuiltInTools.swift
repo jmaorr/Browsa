@@ -66,6 +66,11 @@ enum BuiltInTools {
 
 
         workbench.register(Tool(
+            id: "performance", title: "Performance", symbol: "gauge.with.dots.needle.33percent",
+            summary: "How hard Browsa is working, and which tabs are busy",
+            panel: { AnyView(PerformancePanel()) }))
+
+        workbench.register(Tool(
             id: "radar", title: "Radar", symbol: "dot.radiowaves.left.and.right",
             summary: "Dev servers on this Mac, by project and branch",
             panel: { AnyView(RadarPanel()) },

@@ -621,6 +621,19 @@ struct TabRow: View {
                 TabMediaControls(tab: tab, hovering: hovering)
                     .transition(.scale.combined(with: .opacity))
             }
+            // Its process has been flat out for a while. A click opens the Performance panel.
+            if PerformanceMonitor.shared.stuckTabs.contains(tab.id), !hovering {
+                Button {
+                    if browser.panel != "performance" { browser.showPanel("performance") }
+                } label: {
+                    Circle().fill(.red).frame(width: 7, height: 7)
+                        .frame(width: 16, height: 16)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .help("This tab is using a lot of CPU. Click to see more.")
+                .transition(.scale.combined(with: .opacity))
+            }
             // New in a live folder, not opened yet.
             if browser.library.liveUnread.contains(tab.id), !hovering {
                 Circle()

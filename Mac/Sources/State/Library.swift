@@ -209,6 +209,7 @@ final class Library {
         reloadExtensions()
         agents = AgentBridge(library: self)
         BuiltInTools.register(in: workbench)
+        PerformanceMonitor.shared.start(library: self)
         SpaceRouter.register(in: workbench, library: self)
         NotesUI.installPageMenu(library: self)
         startLiveFolders()
