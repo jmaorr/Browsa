@@ -155,6 +155,8 @@ struct PerformanceStatusCard: View, @MainActor Animatable {
     let title: String
     let detail: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Behind another window, or the app in the background: the glow holds still.
+    @Environment(\.controlActiveState) private var activeState
     @State private var clock = GlowClock()
 
     var animatableData: Double {
@@ -166,7 +168,7 @@ struct PerformanceStatusCard: View, @MainActor Animatable {
         let palette = Self.palette(level)
         ZStack(alignment: .bottomLeading) {
             GeometryReader { proxy in
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { context in
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || activeState == .inactive)) { context in
                     let t = clock.advance(to: context.date, speed: reduceMotion ? 0 : speed)
                     Rectangle()
                         .colorEffect(ShaderLibrary.performanceGlow(
