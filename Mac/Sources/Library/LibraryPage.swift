@@ -207,6 +207,7 @@ enum LibraryItem: Hashable {
 struct LibraryView: View {
     @Environment(Browser.self) private var browser
     @State private var search = ""
+    @State private var filter: LibraryFilter = .all
     /// The page open over the list: a plugin's or a pack's id.
     @State private var detail: String?
     /// The pack a plugin's page was opened from, so Back returns there.
@@ -237,10 +238,50 @@ struct LibraryView: View {
         return library.useSafariExtensions ? library.extensions.filter { !catalogued.contains($0.id) && matches($0.name) } : []
     }
 
+    // What the filter shows. The hero is the featured pack, so it isn't listed again under All.
+    private var heroPack: PluginPack { LibraryCatalog.agentPack }
+    private var showsHero: Bool { filter == .all && !isSearching }
+    private var shownPacks: [PluginPack] {
+        switch filter {
+        case .all: packs.filter { !showsHero || $0.id != heroPack.id }
+        case .packs: packs
+        case .on: packs.filter { LibraryActions.isPackOn($0, in: browser) }
+        default: []
+        }
+    }
+    private var shownTools: [PluginInfo] {
+        switch filter {
+        case .all, .plugins: tools
+        case .on: tools.filter { LibraryActions.isOn($0.id, in: browser) }
+        default: []
+        }
+    }
+    private var shownPrivacy: [PluginInfo] {
+        switch filter {
+        case .all, .privacy: privacy
+        case .on: privacy.filter { LibraryActions.isOn($0.id, in: browser) }
+        default: []
+        }
+    }
+    private var showsExtensions: Bool { filter == .all || filter == .extensions || filter == .on }
+    private var shownVerified: [VerifiedExtension] { filter == .on ? [] : verified }
+    private var shownInstalled: [InstalledExtension] { filter == .on ? installed.filter(\.isEnabled) : installed }
+
+    private func count(_ f: LibraryFilter) -> Int? {
+        switch f {
+        case .all: nil
+        case .plugins: tools.count
+        case .packs: packs.count
+        case .privacy: privacy.count
+        case .extensions: installed.count + verified.filter { v in !installed.contains { $0.source.key.lowercased().contains(v.id) } }.count
+        case .on: (tools + privacy).filter { LibraryActions.isOn($0.id, in: browser) }.count + installed.filter(\.isEnabled).count
+        }
+    }
+
     /// Everything the arrow keys move through, in reading order.
     private var order: [LibraryItem] {
-        packs.map { .pack($0.id) } + tools.map { .plugin($0.id) } + privacy.map { .plugin($0.id) }
-            + verified.map { .verified($0.id) } + installed.map { .installed($0.id) }
+        shownPacks.map { .pack($0.id) } + shownTools.map { .plugin($0.id) } + shownPrivacy.map { .plugin($0.id) }
+            + (showsExtensions ? shownVerified.map { .verified($0.id) } + shownInstalled.map { .installed($0.id) } : [])
     }
 
     var body: some View {
@@ -288,17 +329,24 @@ struct LibraryView: View {
     private var list: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 26) {
                     header
-                    ForEach(packs) { pack in
+                    if showsHero { LibraryHero(pack: heroPack) { detail = heroPack.id } }
+                    GlassTabs(selection: $filter.animation(Motion.snappy), options: LibraryFilter.allCases,
+                              title: \.title, count: { count($0) })
+                    pluginArtGrid(shownTools)
+                    ForEach(shownPacks) { pack in
                         PackCard(pack: pack, isFocused: focused == .pack(pack.id)) { detail = pack.id }.id(LibraryItem.pack(pack.id))
                     }
-                    pluginGrid(title: "Browsa Plugins", detail: "Made for Browsa.", plugins: tools)
-                    pluginGrid(title: "Privacy", detail: "Built in, and on from the start.", plugins: privacy)
-                    if !isSearching || !(verified.isEmpty && installed.isEmpty && safari.isEmpty) { extensionsSection }
+                    pluginGrid(title: "Privacy", detail: "Built in, and on from the start.", plugins: shownPrivacy)
+                    if showsExtensions, !isSearching || !(verified.isEmpty && installed.isEmpty && safari.isEmpty) { extensionsSection }
                     if isSearching { storeSearch }
+                    if order.isEmpty, !isSearching {
+                        Text(filter == .on ? "Nothing is on yet. Turn something on and it shows up here." : "Nothing here yet.")
+                            .font(.system(size: 14)).foregroundStyle(.secondary)
+                    }
                 }
-                .frame(maxWidth: 860, alignment: .leading)
+                .frame(maxWidth: 1040, alignment: .leading)
                 .padding(.horizontal, 40)
                 .padding(.vertical, 36)
                 .frame(maxWidth: .infinity)
@@ -410,19 +458,36 @@ struct LibraryView: View {
                     .buttonBorderShape(.capsule)
                     .sheet(isPresented: $importing) { ImportSheet().environment(browser.library) }
             }
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search plugins and extensions", text: $search)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 14))
-                    .focused($searchFocused)
-                if !search.isEmpty {
-                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain).foregroundStyle(.tertiary)
+            HStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Search plugins and extensions", text: $search)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 14))
+                        .focused($searchFocused)
+                    if !search.isEmpty {
+                        Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
+                            .buttonStyle(.plain).foregroundStyle(.tertiary)
+                    }
+                }
+                .padding(.horizontal, 14).frame(height: 38)
+                .glassEffect(.regular, in: .capsule)
+                Button { problem = nil; addingChrome = true } label: { Label("Add Extension", systemImage: "plus") }
+                    .buttonStyle(.glass).controlSize(.large).buttonBorderShape(.capsule)
+                    .help("Add an extension from the Chrome Web Store")
+            }
+        }
+    }
+
+    /// Browsa's plugins as art cards.
+    @ViewBuilder private func pluginArtGrid(_ plugins: [PluginInfo]) -> some View {
+        if !plugins.isEmpty {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 18)], spacing: 18) {
+                ForEach(plugins) { p in
+                    PluginArtCard(plugin: p, isFocused: focused == .plugin(p.id)) { detail = p.id }
+                        .id(LibraryItem.plugin(p.id))
                 }
             }
-            .padding(.horizontal, 14).frame(height: 38)
-            .glassEffect(.regular, in: .capsule)
         }
     }
 
@@ -445,33 +510,32 @@ struct LibraryView: View {
     private var extensionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .bottom) {
-                SectionTitle(title: "Extensions", detail: "From the Chrome Web Store.")
+                SectionTitle(title: "Extensions", detail: "From the Chrome Web Store. Most run in Browsa; the verified ones are tested by us.")
                 Spacer()
-                Button { problem = nil; addingChrome = true } label: { Label("Add Chrome Extension", systemImage: "plus") }
-                    .buttonStyle(.glass).controlSize(.large).buttonBorderShape(.capsule)
             }
             if let problem, !addingChrome { Text(problem).font(.caption).foregroundStyle(.red) }
-            if !verified.isEmpty {
+            if filter != .on {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Verified to work in Browsa").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14)], spacing: 14) {
-                        ForEach(verified) { v in
+                        ForEach(shownVerified) { v in
                             VerifiedCard(ext: v, isFocused: focused == .verified(v.id)) { fetch(v.storeURL.absoluteString) }
                                 .id(LibraryItem.verified(v.id))
                         }
+                        if !isSearching { AddExtensionSlot { problem = nil; addingChrome = true } }
                     }
                 }
             }
             VStack(alignment: .leading, spacing: 8) {
                 Text("Added").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                 VStack(spacing: 0) {
-                    if installed.isEmpty && safari.isEmpty {
+                    if shownInstalled.isEmpty && safari.isEmpty {
                         Text(search.isEmpty ? "Nothing added yet." : "No added extensions match.")
                             .font(.callout).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(14)
                     }
-                    ForEach(Array(installed.enumerated()), id: \.element.id) { i, item in
+                    ForEach(Array(shownInstalled.enumerated()), id: \.element.id) { i, item in
                         if i > 0 { Divider().padding(.leading, 58) }
                         ExtensionRow(item: item, isFocused: focused == .installed(item.id)) { detail = "ext:" + item.id }
                             .id(LibraryItem.installed(item.id))
@@ -624,7 +688,7 @@ struct PluginIcon: View {
 }
 
 /// The keyboard's ring, in the system accent like its focus ring.
-private struct FocusRing: ViewModifier {
+struct FocusRing: ViewModifier {
     let on: Bool
     let radius: CGFloat
 
@@ -675,7 +739,7 @@ private struct PackCard: View {
 }
 
 /// A pack's plugins, fanned like a hand of cards.
-private struct PackFan: View {
+struct PackFan: View {
     let pack: PluginPack
     var size: CGFloat = 50
 
@@ -693,7 +757,7 @@ private struct PackFan: View {
 }
 
 /// The pack card's base: its plugins' colours, spread softly across the whole card.
-private struct PackGlow: View {
+struct PackGlow: View {
     let pack: PluginPack
     var body: some View {
         GeometryReader { g in
