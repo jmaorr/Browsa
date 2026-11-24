@@ -130,7 +130,8 @@ final class Announcements {
             return
         }
         guard next != current else { return }
-        let file = await next.video.flatMap { await Self.download($0) }
+        var file: URL?
+        if let video = next.video { file = await Self.download(video) }
         // Something else may have been picked or closed while the clip downloaded.
         guard !dismissed.contains(next.id), next != current else { return }
         withAnimation(Motion.spring) { clip = file; current = next }
