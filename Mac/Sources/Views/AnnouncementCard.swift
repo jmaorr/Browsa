@@ -37,7 +37,12 @@ struct Announcement: Codable, Identifiable, Equatable {
 @MainActor @Observable
 final class Announcements {
     static let shared = Announcements()
-    static let feed = URL(string: "https://browsa.app/mac/announcements.json")!
+    static let published = URL(string: "https://browsa.app/mac/announcements.json")!
+    /// For trying a card before it's published: `defaults write <bundle id> announcementsFeedURL file:///…/announcements.json`.
+    /// A local feed may use local clips too.
+    static var feed: URL {
+        UserDefaults.standard.string(forKey: "announcementsFeedURL").flatMap(URL.init(string:)) ?? published
+    }
 
     /// The announcement to show now, with its clip on disk if it has one.
     private(set) var current: Announcement?
@@ -102,8 +107,9 @@ final class Announcements {
     }
 
     private func refresh() async {
-        guard let (data, response) = try? await Self.session.data(from: Self.feed),
-              (response as? HTTPURLResponse)?.statusCode == 200,
+        let feed = Self.feed
+        guard let (data, response) = try? await Self.session.data(from: feed),
+              feed.isFileURL || (response as? HTTPURLResponse)?.statusCode == 200,
               let list = Self.decode(data) else { return }
         try? data.write(to: Self.saved, options: .atomic)
         all = list
@@ -132,6 +138,7 @@ final class Announcements {
 
     /// The clip, saved by its file name so it's fetched once. Nil (card without a clip) if it can't be had.
     private static func download(_ url: URL) async -> URL? {
+        if url.isFileURL, feed.isFileURL { return FileManager.default.fileExists(atPath: url.path) ? url : nil }
         guard url.scheme == "https" else { return nil }
         let file = folder.appending(path: "clip-" + url.lastPathComponent)
         if FileManager.default.fileExists(atPath: file.path) { return file }
