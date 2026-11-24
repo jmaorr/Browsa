@@ -41,6 +41,27 @@ struct ExtensionCompatCheck {
         }
 
         guard let engine = library.engine as? WebKitEngine else { note("not the WebKit engine"); exit(1) }
+        // With BROWSA_EXT_COMPAT_POPOVERS: each popup as the toolbar opens it (Browsa's popover), pictured.
+        if ProcessInfo.processInfo.environment["BROWSA_EXT_COMPAT_POPOVERS"] != nil {
+            let anchor = delegate.browser.flatMap { _ in NSApp.windows.first { $0.isVisible && $0.canBecomeMain }?.contentView }
+            for ext in engine.debugExtensionPopups().sorted(by: { $0.name < $1.name }) where ext.popup != nil {
+                let slug = ext.name.lowercased().filter { $0.isLetter || $0.isNumber }.prefix(20)
+                engine.performAction(extensionID: ext.id, for: nil, anchor: anchor)
+                await pause(7)
+                if let window = engine.debugPopupWindow(), let view = window.contentView,
+                   let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(to: directory.appending(path: "popover-\(slug).png"))
+                    note("[\(ext.name)] popover \(Int(window.frame.width))x\(Int(window.frame.height))")
+                } else {
+                    note("[\(ext.name)] popover: none shown")
+                }
+                engine.debugClosePopup()
+                await pause(1)
+            }
+            note("popovers done")
+            exit(0)
+        }
         for ext in engine.debugExtensionPopups().sorted(by: { $0.name < $1.name }) {
             if !ext.errors.isEmpty { note("[\(ext.name)] errors: \(ext.errors.joined(separator: " | ").prefix(600))") }
             let slug = ext.name.lowercased().filter { $0.isLetter || $0.isNumber }.prefix(20)

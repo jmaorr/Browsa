@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Observation
 import BrowserCore
 import BrowserEngine
@@ -8,7 +9,9 @@ import BrowserEngine
 ///
 /// Ready-made Boosts (`Boost`, like LinkedIn Tidy Feed) sit beside these and are turned on by id. The engine
 /// runs these through `BoostsConfigurable.userBoosts`: styles go in before the page draws, scripts after it
-/// loads, both in their own world, so a Boost never sees the page's JavaScript.
+/// loads, both in their own world. That world keeps a Boost apart from the page's JavaScript, but a script
+/// still reads and changes the whole page (what you type included) and can make requests to the site as you,
+/// so an imported Boost with a script asks before it first runs (`awaitsScriptReview`).
 struct SiteBoost: Codable, Identifiable, Equatable {
     enum Font: String, Codable, CaseIterable, Identifiable {
         case site, system, serif, rounded, mono
@@ -48,6 +51,8 @@ struct SiteBoost: Codable, Identifiable, Equatable {
     var css = ""
     var script = ""
     var created = Date()
+    /// Imported with a script nobody here has looked at yet: turning it on shows the script and asks first.
+    var awaitsScriptReview = false
 
     struct Zap: Codable, Equatable, Identifiable {
         var id = UUID()
@@ -59,7 +64,7 @@ struct SiteBoost: Codable, Identifiable, Equatable {
     init(host: String) { self.host = host }
 
     private enum CodingKeys: String, CodingKey {
-        case id, host, isOn, font, tint, look, zaps, css, script, created
+        case id, host, isOn, font, tint, look, zaps, css, script, created, awaitsScriptReview
     }
 
     /// Boosts saved before a setting existed still load, with that setting at its default.
@@ -75,7 +80,10 @@ struct SiteBoost: Codable, Identifiable, Equatable {
         css = try c.decodeIfPresent(String.self, forKey: .css) ?? ""
         script = try c.decodeIfPresent(String.self, forKey: .script) ?? ""
         created = try c.decodeIfPresent(Date.self, forKey: .created) ?? Date()
+        awaitsScriptReview = try c.decodeIfPresent(Bool.self, forKey: .awaitsScriptReview) ?? false
     }
+
+    var hasScript: Bool { !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     /// Everything the choices add up to, as one style sheet.
     var effectiveCSS: String {
@@ -125,6 +133,29 @@ struct SiteBoost: Codable, Identifiable, Equatable {
     }
 
     func matches(_ host: String) -> Bool { host == self.host || host.hasSuffix("." + self.host) }
+
+    /// Whether `host` names one site rather than a whole domain ending. A Boost also covers subdomains, so
+    /// one for "com" or "github.io" would run on every .com site or every GitHub Pages site.
+    static func isSiteHost(_ host: String) -> Bool {
+        let labels = host.lowercased().split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+        if host.lowercased() == "localhost" { return true }
+        guard labels.count >= 2, !labels.contains(where: \.isEmpty) else { return false }
+        if sharedSuffixes.contains(labels.suffix(2).joined(separator: ".")) && labels.count == 2 { return false }
+        if sharedSuffixes.contains(labels.suffix(3).joined(separator: ".")) && labels.count == 3 { return false }
+        // Country endings like co.uk and com.au: a second-level label that only ever groups sites.
+        if labels.count == 2, labels[1].count == 2, countryGroupings.contains(labels[0]) { return false }
+        return true
+    }
+
+    /// Endings where anyone can have a site of their own (from the public suffix list's private section).
+    static let sharedSuffixes: Set<String> = [
+        "github.io", "gitlab.io", "pages.dev", "workers.dev", "vercel.app", "netlify.app", "herokuapp.com",
+        "web.app", "firebaseapp.com", "blogspot.com", "azurewebsites.net", "cloudfront.net", "appspot.com",
+        "glitch.me", "fly.dev", "onrender.com", "ngrok.io", "ngrok-free.app", "s3.amazonaws.com", "myshopify.com",
+        "wixsite.com", "substack.com", "neocities.org", "surge.sh", "repl.co", "replit.app", "duckdns.org",
+    ]
+    /// Second-level labels countries use to group sites: co.uk, com.au, org.nz, ac.jp…
+    static let countryGroupings: Set<String> = ["co", "com", "org", "net", "gov", "edu", "ac", "or", "ne", "go", "gob", "mil", "nic", "id", "asn"]
 }
 
 /// The Boosts you've made, saved in `Browser/boosts.json`.
@@ -170,6 +201,9 @@ final class BoostStore {
 
     /// Saves a change. A Boost that changes nothing isn't kept, so trying one out and undoing it leaves no trace.
     func save(_ boost: SiteBoost) {
+        var boost = boost
+        // An imported script runs only once it's been looked at (`approveScript`).
+        if boost.isOn, boost.awaitsScriptReview, boost.hasScript { boost.isOn = false }
         if let i = boosts.firstIndex(where: { $0.id == boost.id }) {
             if boost.isEmpty { boosts.remove(at: i) } else { boosts[i] = boost }
         } else if !boost.isEmpty {
@@ -182,8 +216,32 @@ final class BoostStore {
 
     func setOn(_ id: UUID, _ on: Bool) {
         guard let i = boosts.firstIndex(where: { $0.id == id }), boosts[i].isOn != on else { return }
+        if on, !Self.approveScript(&boosts[i]) { return }
         boosts[i].isOn = on
         changed()
+    }
+
+    /// Before an imported Boost's script first runs: shows the site and the script and asks. True if it
+    /// may run (it has no script waiting, or you said yes); the Boost then stops asking.
+    static func approveScript(_ boost: inout SiteBoost) -> Bool {
+        guard boost.awaitsScriptReview, boost.hasScript else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Run this Boost's script on \(boost.host)?"
+        alert.informativeText = "It came from a file someone shared. A Boost's script can read and change everything on \(boost.host) and its subdomains, including what you type, and can make requests there as you. Only turn it on if you trust where it came from."
+        let code = NSTextView(frame: NSRect(x: 0, y: 0, width: 420, height: 160))
+        code.string = String(boost.script.prefix(4000)) + (boost.script.count > 4000 ? "\n…" : "")
+        code.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        code.isEditable = false
+        let scroll = NSScrollView(frame: code.frame)
+        scroll.documentView = code
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        alert.accessoryView = scroll
+        alert.addButton(withTitle: "Turn On")
+        alert.addButton(withTitle: "Keep Off")
+        guard alert.runModal() == .alertFirstButtonReturn else { return false }
+        boost.awaitsScriptReview = false
+        return true
     }
 
     /// A new, empty Boost for a site you type in the Library. Kept once it changes something.
@@ -191,6 +249,7 @@ final class BoostStore {
         var text = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
         if !text.contains("://") { text = "https://" + text }
+        guard let key = SiteBoost.key(for: URL(string: text)), SiteBoost.isSiteHost(key) else { return nil }
         return boostOrNew(for: URL(string: text))
     }
 
@@ -203,18 +262,21 @@ final class BoostStore {
     static func exportData(_ boost: SiteBoost) -> Data? {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try? encoder.encode(SharedFile(boost: boost))
+        var shared = boost
+        shared.awaitsScriptReview = false
+        return try? encoder.encode(SharedFile(boost: shared))
     }
 
     /// Reads a shared Boost. It comes in off, as a new Boost, so you see what it does before it runs.
     static func importBoost(from data: Data) -> SiteBoost? {
         guard let file = try? JSONDecoder().decode(SharedFile.self, from: data), file.browsaBoost == 1,
-              let host = SiteBoost.key(for: URL(string: "https://" + file.boost.host)) else { return nil }
+              let host = SiteBoost.key(for: URL(string: "https://" + file.boost.host)), SiteBoost.isSiteHost(host) else { return nil }
         var boost = file.boost
         boost.id = UUID()
         boost.host = host
         boost.isOn = false
         boost.created = Date()
+        boost.awaitsScriptReview = boost.hasScript
         return boost
     }
 
@@ -350,7 +412,8 @@ enum ZapPicker {
         Task {
             guard let zap = await pick(on: page), var boost = BoostStore.shared.boostOrNew(for: url) else { return }
             boost.zaps.append(zap)
-            boost.isOn = true
+            // An imported script still asks before it first runs; the zap is kept either way.
+            if BoostStore.approveScript(&boost) { boost.isOn = true }
             BoostStore.shared.save(boost)
             await BoostStore.shared.preview(boost, on: page)
             browser.showToast("Zapped. It stays hidden on \(boost.host)")

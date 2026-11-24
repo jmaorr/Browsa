@@ -36,7 +36,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
     /// processing, which lets echo through and over-boosts some audio interfaces. Applies to pages
     /// loaded after it changes.
     public var callAudioProcessing = true {
-        didSet { if callAudioProcessing != oldValue { for controller in allContentControllers { install(on: controller) } } }
+        didSet { if callAudioProcessing != oldValue { for controller in allContentControllers { install(on: controller, rules: false) } } }
     }
     /// Settings › Audio. Pages read it about once a second while a call runs, so changes apply live;
     /// switching processing to the system's applies to pages loaded after.
@@ -49,7 +49,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
     public var enabledBoosts: Set<String> = [] {
         didSet {
             guard enabledBoosts != oldValue else { return }
-            for controller in allContentControllers { install(on: controller) }
+            for controller in allContentControllers { install(on: controller, rules: false) }
             let changed = enabledBoosts.symmetricDifference(oldValue)
             for page in livePages.values.compactMap(\.page) {
                 for style in Boost.all where changed.contains(style.id) && style.matches(page.webView.url) {
@@ -63,13 +63,15 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
     public var userBoosts: [PageBoost] = [] {
         didSet {
             guard userBoosts != oldValue else { return }
-            for controller in allContentControllers { install(on: controller) }
+            for controller in allContentControllers { install(on: controller, rules: false) }
         }
     }
     private static let callAudioScript: WKUserScript? = {
         guard let url = Bundle.module.url(forResource: "call-audio", withExtension: "js"),
               let source = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-        return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page)
+        // In a block with the bridge helper, which the script reaches Browsa through (PageBridge).
+        return WKUserScript(source: "{\n" + PageBridge.pageHelper + "\n" + source + "\n}", injectionTime: .atDocumentStart,
+                            forMainFrameOnly: false, in: .page)
     }()
 
     private let standardConfiguration: WKWebViewConfiguration
@@ -91,7 +93,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
     private let notificationControllers = NSHashTable<WKUserContentController>.weakObjects()
 
     public var notificationPermissions: [String: Bool] = [:] {
-        didSet { if notificationPermissions != oldValue { for controller in allContentControllers { install(on: controller) } } }
+        didSet { if notificationPermissions != oldValue { for controller in allContentControllers { install(on: controller, rules: false) } } }
     }
 
     public func notificationClicked(_ id: String, on page: any EnginePage) {
@@ -111,6 +113,15 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
     public func debugExtensionPopups() -> [(id: String, name: String, popup: URL?, manifest: [String: Any], errors: [String])] {
         if #available(macOS 15.4, *) { return webExtensions?.debugPopups() ?? [] }
         return []
+    }
+
+    /// Debug checks: the extension popup popover's window while one is up, and closing it.
+    public func debugPopupWindow() -> NSWindow? {
+        if #available(macOS 15.4, *) { return ExtensionPopup.shared.debugWindow }
+        return nil
+    }
+    public func debugClosePopup() {
+        if #available(macOS 15.4, *) { ExtensionPopup.shared.close() }
     }
     #endif
 
@@ -142,7 +153,8 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
         let c = WKWebViewConfiguration()
         c.websiteDataStore = store
         c.upgradeKnownHostsToHTTPS = true
-        c.mediaTypesRequiringUserActionForPlayback = AudioBench.isEnabled ? [] : .all
+        // Sound waits for a click, as in Safari; muted video (previews, GIF-like loops) plays on its own.
+        c.mediaTypesRequiringUserActionForPlayback = AudioBench.isEnabled ? [] : .audio
         c.defaultWebpagePreferences.preferredContentMode = .desktop
         // Sites' own fullscreen buttons (YouTube, Netflix) work on the Mac.
         c.preferences.isElementFullscreenEnabled = true
@@ -156,6 +168,10 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
         // WKWebView's default user agent leaves out Safari's "Version/… Safari/…" tokens, and some
         // sites then serve older pages or call the browser unsupported.
         c.applicationNameForUserAgent = SafariUserAgent.applicationName
+        MainActor.assumeIsolated {
+            PrivacySwitches.filterLinkDecoration(true, in: c.preferences)
+            PrivacySwitches.backspaceStays(c.preferences)
+        }
         return c
     }
 
@@ -251,11 +267,25 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
 
     public func loadInstalledExtensions(folders: [ExtensionFolder], includeApps: Bool) async -> [String] {
         guard #available(macOS 15.4, *), let ext = webExtensions else { return ["needs macOS 15.4"] }
-        return await ext.loadInstalled(folders: folders, includeApps: includeApps)
+        let problems = await ext.loadInstalled(folders: folders, includeApps: includeApps)
+        // Pages the loaded extensions list may now talk to them (ExtensionExternal).
+        for controller in allContentControllers { install(on: controller) }
+        return problems
     }
 
     public func unloadExtensions() {
         if #available(macOS 15.4, *) { webExtensions?.unloadAll() }
+    }
+
+    public func forgetExtension(id: String) {
+        if #available(macOS 15.4, *) { webExtensions?.forget(id) }
+    }
+
+    public func extensionAllowedInPrivate(id: String) -> Bool { WebKitExtensionsPrivacy.isAllowed(id) }
+
+    public func setExtension(id: String, allowedInPrivate: Bool) {
+        WebKitExtensionsPrivacy.set(id, allowed: allowedInPrivate)
+        if #available(macOS 15.4, *) { webExtensions?.applyPrivateAccess(id) }
     }
 
     public func performAction(extensionID: String, for page: (any EnginePage)?, anchor: NSView?) {
@@ -296,6 +326,9 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
     }
 
     /// Rule counts per group from the last download, for Settings.
+    /// Settings › Privacy › Global Privacy Control, for each navigation (WebKitPage).
+    var sendsGlobalPrivacyControl: Bool { blocking.globalPrivacyControl }
+
     public var blockingRuleCount: Int {
         let meta = ContentBlocker.shared.metadata
         return blocking.ruleGroups.reduce(0) { $0 + (meta.ruleCounts[$1] ?? 0) }
@@ -309,9 +342,14 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
             .filter { seen.insert(ObjectIdentifier($0)).inserted }
     }
 
-    private func install(on controller: WKUserContentController) {
-        controller.removeAllContentRuleLists()
-        ruleLists.forEach(controller.add)
+    /// Puts Browsa's rule lists and scripts on a content controller. `rules: false` swaps only the scripts,
+    /// for changes that don't touch blocking (a Boost, call audio, notification answers): re-adding every
+    /// rule list makes every open page's process take them again.
+    private func install(on controller: WKUserContentController, rules: Bool = true) {
+        if rules {
+            controller.removeAllContentRuleLists()
+            ruleLists.forEach(controller.add)
+        }
         controller.removeAllUserScripts()
         controller.removeScriptMessageHandler(forName: CookieBannerHandler.messageName, contentWorld: CookieBannerHandler.world)
         let cookieScripts = blocking.declineCookieBanners ? CookieBannerHandler.scripts(skipping: blocking.allowlist) : []
@@ -328,12 +366,15 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
         controller.add(PageActivity.Handler { [weak self] webView, report in
             self?.page(for: webView)?.activityChanged(report)
         }, contentWorld: PageActivity.world, name: PageActivity.messageName)
+        // Browsa's handlers for page-world scripts live in its own world, behind the relay (PageBridge).
+        controller.addUserScript(PageBridge.relay)
         controller.removeScriptMessageHandler(forName: CallAudioHandler.name, contentWorld: .page)
+        controller.removeScriptMessageHandler(forName: CallAudioHandler.name, contentWorld: PageBridge.world)
         if callAudioProcessing, let script = Self.callAudioScript {
             controller.addUserScript(script)
             controller.addScriptMessageHandler(CallAudioHandler(tuning: { [weak self] in self?.callAudio ?? CallAudioTuning() },
                                                                stats: { [weak self] in self?.onCallAudioStats?($0) }),
-                                              contentWorld: .page, name: CallAudioHandler.name)
+                                              contentWorld: PageBridge.world, name: CallAudioHandler.name)
         }
         if let fixes = SiteOptimisations.script { controller.addUserScript(fixes) }
         // YouTube's ads are announced in the player's own data, so the rules alone leave a blank wait.
@@ -356,9 +397,13 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
             notificationControllers.add(controller)
             controller.addScriptMessageHandler(WebNotifications.Handler(page: { [weak self] in self?.page(for: $0) },
                                                                         saved: { [weak self] in self?.notificationPermissions ?? [:] }),
-                                              contentWorld: .page, name: WebNotifications.messageName)
+                                              contentWorld: PageBridge.world, name: WebNotifications.messageName)
         }
-        if blocking.globalPrivacyControl {
+        if #available(macOS 15.4, *), let listings = webExtensions?.externalListings, let external = ExtensionExternal.script(listings) {
+            controller.addUserScript(external)
+        }
+        // Only where WebKit can't send the real header and property itself (macOS before 27).
+        if blocking.globalPrivacyControl, !PrivacySwitches.nativeGlobalPrivacyControl {
             controller.addUserScript(WKUserScript(source: Self.globalPrivacyControlScript, injectionTime: .atDocumentStart,
                                                   forMainFrameOnly: false, in: .page))
         }
@@ -453,9 +498,20 @@ private struct WeakPage {
 
 /// User agent tokens that match Safari on this Mac.
 enum SafariUserAgent {
-    static var applicationName: String {
-        let v = ProcessInfo.processInfo.operatingSystemVersion
-        return "Version/\(v.majorVersion).\(v.minorVersion) Safari/605.1.15"
+    /// "Version/<the installed Safari's version> Safari/605.1.15", as Safari itself sends: tabs and
+    /// extension backgrounds alike. The macOS version alone under-claims on macOS 14 and 15 (Safari
+    /// there is 17 and 18), and sites then serve older pages. From Search (Office Commun, MIT, Tab.swift).
+    static let applicationName = "Version/\(safariVersion) Safari/605.1.15"
+
+    static var safariVersion: String {
+        for path in ["/System/Cryptexes/App/System/Applications/Safari.app", "/Applications/Safari.app"] {
+            if let version = Bundle(path: path)?.infoDictionary?["CFBundleShortVersionString"] as? String { return version }
+        }
+        // Safari can't be read: the Safari this macOS shipped with. From macOS 26 Safari shares its
+        // number; before, it was 3 ahead (14 -> 17, 15 -> 18). Under-claiming gets older pages that
+        // still run; over-claiming sends what the engine can't.
+        let os = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+        return os >= 26 ? "\(os).0" : "\(os + 3).0"
     }
 }
 /// Hands the call audio script WebRTC's audio processing (WebAssembly, about a megabyte) when a page

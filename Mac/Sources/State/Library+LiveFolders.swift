@@ -1,6 +1,5 @@
 import Foundation
 import AppKit
-import Security
 import SwiftUI
 import BrowserCore
 import BrowserEngine
@@ -57,7 +56,7 @@ extension Library {
             for folder in LiveFolders.liveFolders(in: space.pinnedTree) {
                 guard let live = folder.live else { continue }
                 if dueOnly {
-                    let age = live.lastChecked.map { Date.now.timeIntervalSince($0) } ?? .infinity
+                    let age = lastChecked(live, folder: folder.id).map { Date.now.timeIntervalSince($0) } ?? .infinity
                     if live.kind.usesGitHubLogin {
                         guard NSApp.isActive, age >= 110 else { continue }
                     } else if age < Self.feedInterval { continue }
@@ -124,6 +123,12 @@ extension Library {
         guard let folder = PinnedOutline.folder(id, in: space.pinnedTree), let live = folder.live, live.kind == kind else { return }
         switch result {
         case .failure(let error):
+            // The same failure as last time: nothing new to save.
+            if live.lastError == error.message {
+                liveChecked[id] = .now
+                return
+            }
+            liveChecked[id] = nil
             setPinnedLayout(PinnedOutline.updating(id, in: space.pinnedTree) { f in
                 f.live?.lastError = error.message
                 f.live?.lastChecked = .now
@@ -132,18 +137,31 @@ extension Library {
             apply(LiveFolders.plan(live, fetched: fetched,
                                    inFolder: Set(PinnedOutline.tabIDs(folder.children)),
                                    keep: Set(windows.flatMap(\.shownTabIDs))),
-                  to: id, in: space)
+                  previous: live, to: id, in: space)
         }
     }
 
     /// Refreshes a live folder you've just opened, if it hasn't checked in a few minutes.
     func refreshLiveFolderIfStale(_ id: UUID, in space: Space) {
         guard let live = PinnedOutline.folder(id, in: space.pinnedTree)?.live else { return }
-        if let last = live.lastChecked, Date.now.timeIntervalSince(last) < 120 { return }
+        if let last = lastChecked(live, folder: id), Date.now.timeIntervalSince(last) < 120 { return }
         Task { await refreshLiveFolder(id, in: space) }
     }
 
-    private func apply(_ plan: LivePlan, to id: UUID, in space: Space) {
+    /// When a live folder last checked its source, whether or not that changed anything.
+    func lastChecked(_ live: LiveSource, folder id: UUID) -> Date? {
+        [live.lastChecked, liveChecked[id]].compactMap { $0 }.max()
+    }
+
+    private func apply(_ plan: LivePlan, previous: LiveSource, to id: UUID, in space: Space) {
+        // Nothing new, gone or renamed: note the check in memory only.
+        var unchanged = plan.source
+        unchanged.lastChecked = previous.lastChecked
+        if plan.added.isEmpty, plan.removed.isEmpty, unchanged == previous {
+            liveChecked[id] = .now
+            return
+        }
+        liveChecked[id] = nil
         removeLiveTabs(plan.removed, in: space)
         // The layout before the new tabs are pinned, so they don't first land at the top level.
         var tree = space.pinnedTree
@@ -387,15 +405,46 @@ extension Library {
         let message: String
     }
 
-    /// A session that keeps no cookies of its own: the space's are handed in per request.
+    /// A session that keeps no cookies of its own: the space's are handed in per request, and only ever
+    /// to the site they belong to (`SameSiteRedirects`). Feeds use it too, so a feed can't leave a cookie
+    /// to see on every check.
     nonisolated static let liveSession: URLSession = {
         let c = URLSessionConfiguration.ephemeral
         c.httpCookieStorage = nil
         c.httpShouldSetCookies = false
         c.httpCookieAcceptPolicy = .never
         c.timeoutIntervalForRequest = 20
-        return URLSession(configuration: c)
+        return URLSession(configuration: c, delegate: SameSiteRedirects(), delegateQueue: nil)
     }()
+
+    /// A redirect to another host goes without the Cookie and Authorization headers set by hand, which
+    /// URLSession would otherwise carry along.
+    final class SameSiteRedirects: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest) async -> URLRequest? {
+            var next = request
+            if task.originalRequest?.url?.host()?.lowercased() != request.url?.host()?.lowercased() {
+                next.setValue(nil, forHTTPHeaderField: "Cookie")
+                next.setValue(nil, forHTTPHeaderField: "Authorization")
+            }
+            return next
+        }
+    }
+
+    /// The most of a feed or page read: past this it's not a feed anyone follows, and it would sit in memory.
+    nonisolated static let feedByteLimit = 5 << 20
+
+    /// Fetches `url` without cookies, stopping at `feedByteLimit`.
+    nonisolated static func feedData(from url: URL) async throws -> (Data, URLResponse) {
+        let (bytes, response) = try await liveSession.bytes(from: url)
+        if response.expectedContentLength > Int64(feedByteLimit) { throw LiveError(message: "That feed is too big to follow.") }
+        var data = Data()
+        for try await byte in bytes {
+            data.append(byte)
+            if data.count > feedByteLimit { throw LiveError(message: "That feed is too big to follow.") }
+        }
+        return (data, response)
+    }
 
     /// Searches github.com as the signed-in person. Each search tries the pulls dashboard, then
     /// the search page; results from all searches are merged.
@@ -440,22 +489,23 @@ extension Library {
                 }
                 return .success(feed.items)
             case .github(let query):
-                // Signed in on github.com in this space: no token needed. Otherwise the token, if any.
+                // Signed in on github.com in this space: searched as you, like a tab. Anything else is a
+                // public search. Browsa keeps no GitHub token of its own.
                 if query.contains("is:pr"), case .success(let items)? = try? await fetchGitHubPulls([query], cookies: cookies) {
                     return .success(items)
                 }
-                let token = await GitHubToken.value
-                let (data, response) = try await URLSession.shared.data(for: GitHubSearch.request(query: query, token: token))
+                if query.contains("@me") {
+                    return .failure(LiveError(message: "Sign in to GitHub in this space to see your own pull requests."))
+                }
+                let (data, response) = try await liveSession.data(for: GitHubSearch.request(query: query))
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 guard status == 200 else {
-                    if status == 401 { return .failure(LiveError(message: "GitHub didn't accept the token. Add a new one.")) }
-                    if status == 422, token == nil, query.contains("@me") {
-                        return .failure(LiveError(message: "Sign in to GitHub in this space (or add a token) to see your own pull requests."))
-                    }
                     return .failure(LiveError(message: GitHubSearch.message(from: data) ?? "GitHub said \(status)."))
                 }
                 return .success(try GitHubSearch.items(from: data))
             }
+        } catch let error as LiveError {
+            return .failure(error)
         } catch {
             return .failure(LiveError(message: (error as? URLError)?.code == .notConnectedToInternet
                                       ? "You're offline." : error.localizedDescription))
@@ -464,12 +514,12 @@ extension Library {
 
     /// The feed at `url`. A web page leads to the first feed it lists.
     nonisolated static func fetchFeed(_ url: URL) async throws -> FeedParser.Feed? {
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await feedData(from: url)
         let base = response.url ?? url
         if let feed = FeedParser.parse(data, base: base) { return feed }
         let html = String(decoding: data.prefix(400_000), as: UTF8.self)
         for link in FeedDiscovery.feedLinks(inHTML: html, base: base).prefix(3) {
-            let (data, response) = try await URLSession.shared.data(from: link)
+            let (data, response) = try await feedData(from: link)
             if let feed = FeedParser.parse(data, base: response.url ?? link) { return feed }
         }
         return nil
@@ -477,49 +527,16 @@ extension Library {
 
     /// For "Follow a Site": the feed a page or address leads to, and its title.
     nonisolated static func resolveFeed(_ url: URL) async -> (url: URL, title: String)? {
-        guard let page = try? await URLSession.shared.data(from: url) else { return nil }
+        guard let page = try? await feedData(from: url) else { return nil }
         let base = page.1.url ?? url
         if let feed = FeedParser.parse(page.0, base: base) { return (url, feed.title) }
         let html = String(decoding: page.0.prefix(400_000), as: UTF8.self)
         for link in FeedDiscovery.feedLinks(inHTML: html, base: base).prefix(3) {
-            if let found = try? await URLSession.shared.data(from: link),
+            if let found = try? await feedData(from: link),
                let feed = FeedParser.parse(found.0, base: found.1.url ?? link) {
                 return (link, feed.title)
             }
         }
         return nil
     }
-}
-
-/// The GitHub token live folders search with, kept in the Keychain. Optional: public searches
-/// work without one, but `@me` needs it.
-enum GitHubToken {
-    private static let service = "com.orriginal.browsa.github-token"
-
-    @MainActor static var value: String? {
-        var query: [String: Any] = base
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-        var out: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess, let data = out as? Data else { return nil }
-        let token = String(decoding: data, as: UTF8.self)
-        return token.isEmpty ? nil : token
-    }
-
-    @MainActor static func set(_ token: String?) {
-        SecItemDelete(base as CFDictionary)
-        guard let token = token?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else { return }
-        var add = base
-        add[kSecValueData as String] = Data(token.utf8)
-        SecItemAdd(add as CFDictionary, nil)
-    }
-
-    private static var base: [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: service,
-         kSecAttrAccount as String: "live-folders"]
-    }
-
-    /// Where to make one: a classic token with read access to private repos.
-    static let newTokenURL = URL(string: "https://github.com/settings/tokens/new?scopes=repo&description=Browsa%20Live%20Folders")!
 }

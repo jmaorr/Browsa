@@ -13,6 +13,43 @@
   const keep = (o) => { kept.push(o); return o; };
   globalThis.__browsaCompatKept = kept;
 
+  // From Search (Office Commun, MIT, ExtensionShims.swift): small gaps and one trap.
+  // Symbol.dispose / asyncDispose, which bundled TypeScript (Bitwarden) uses as class keys.
+  for (const name of ['dispose', 'asyncDispose']) {
+    if (Symbol[name] === undefined) { try { Object.defineProperty(Symbol, name, { value: Symbol.for('Symbol.' + name) }); } catch (e) {} }
+  }
+  // requestIdleCallback, which WebKit took back out (bug 287681) and Proton Pass relies on.
+  if (typeof globalThis.requestIdleCallback !== 'function') {
+    const idle = new Map();
+    let idleId = 0;
+    globalThis.requestIdleCallback = (callback) => {
+      const id = ++idleId;
+      idle.set(id, setTimeout(() => {
+        if (!idle.delete(id)) return;
+        const start = Date.now();
+        callback({ didTimeout: false, timeRemaining: () => Math.max(0, 50 - (Date.now() - start)) });
+      }, 1));
+      return id;
+    };
+    globalThis.cancelIdleCallback = (id) => { const t = idle.get(id); if (t !== undefined) { idle.delete(id); clearTimeout(t); } };
+  }
+  // WebKit finds a page's extension APIs through the chrome and browser globals when it delivers an
+  // event. An extension that puts its own object there, one that hides the APIs (Proton Pass wraps
+  // chrome in a Proxy), cuts itself off: nothing arrives any more. Made accessors, they keep WebKit's
+  // object unless a replacement still carries runtime.id. browser stays configurable (a page may
+  // declare its own), and in the worker keeps WebKit's own (webextension-polyfill would replace it).
+  for (const key of ['chrome', 'browser']) {
+    const d = Object.getOwnPropertyDescriptor(globalThis, key);
+    if (!d || !d.configurable || !d.hasOwnProperty('value')) continue;
+    let value = globalThis[key];
+    const carries = (v) => { try { return !!(v && v.runtime && v.runtime.id); } catch (e) { return false; } };
+    const ownBrowser = key === 'browser' && isWorker;
+    try {
+      Object.defineProperty(globalThis, key, { configurable: key === 'browser', enumerable: d.enumerable,
+        get: () => value, set: (v) => { if (!ownBrowser && carries(v)) value = v; } });
+    } catch (e) {}
+  }
+
   const event = () => {
     const listeners = new Set();
     return {
@@ -90,13 +127,37 @@
     // The side panel is Browsa's right panel. open() shows it; openPanelOnActionClick makes the toolbar
     // button open it, as in Chrome.
     sidePanel: () => ({
-      setOptions: resolves(undefined),
+      // Browsa's panel isn't per tab: the latest page set is the one shown (Claude sets its page here,
+      // with none in its manifest).
+      setOptions: (o = {}) => bridge('browsa.sidepanel', { action: 'options', path: typeof o.path === 'string' ? o.path : null, enabled: o.enabled !== false }).then(() => undefined),
       getOptions: resolves({}),
       setPanelBehavior: (b = {}) => bridge('browsa.sidepanel', { action: 'behavior', openPanelOnActionClick: !!b.openPanelOnActionClick }).then(() => undefined),
       getPanelBehavior: () => bridge('browsa.sidepanel', { action: 'getBehavior' }),
       open: () => bridge('browsa.sidepanel', { action: 'open' }).then(() => undefined),
     }),
-    identity: () => ({ launchWebAuthFlow: unsupported('identity.launchWebAuthFlow'), getRedirectURL: (p = '') => `https://${chrome.runtime.id}.chromiumapp.org/${p}`, onSignInChanged: event() }),
+    // Tab groups: Browsa has none to report. Constants are read at startup (Claude reads
+    // TAB_GROUP_ID_NONE and Color); queries find nothing and changes are refused.
+    tabGroups: () => ({
+      TAB_GROUP_ID_NONE: -1,
+      Color: Object.fromEntries(['GREY', 'BLUE', 'RED', 'YELLOW', 'GREEN', 'PINK', 'PURPLE', 'CYAN', 'ORANGE'].map(c => [c, c.toLowerCase()])),
+      query: resolves([]), get: unsupported('tabGroups.get'), update: unsupported('tabGroups.update'), move: unsupported('tabGroups.move'),
+      onCreated: event(), onUpdated: event(), onMoved: event(), onRemoved: event(),
+    }),
+    // The DevTools protocol, which Browsa doesn't offer extensions. Listeners can be added (Claude adds
+    // them at startup); attaching is refused, so features built on it say they can't run.
+    debugger: () => ({
+      attach: unsupported('debugger.attach'), detach: unsupported('debugger.detach'),
+      sendCommand: unsupported('debugger.sendCommand'), getTargets: resolves([]),
+      onEvent: event(), onDetach: event(),
+    }),
+    // Sign-in through Browsa (ExtensionAuth.swift): the provider in a tab, or quietly in a hidden view;
+    // the answer is the https://<id>.chromiumapp.org/ address the provider redirects to.
+    identity: () => ({ launchWebAuthFlow: (details = {}, cb) => {
+      const p = bridge('browsa.identity', { url: String(details.url || ''), interactive: !!details.interactive,
+        timeout: details.timeoutMsForNonInteractive || 5000 });
+      if (cb) p.then(cb, (e) => { try { chrome.runtime.lastError = e; } catch (x) {} cb(undefined); });
+      return p;
+    }, getRedirectURL: (p = '') => `https://${chrome.runtime.id}.chromiumapp.org/${p}`, onSignInChanged: event() }),
     contentSettings: () => ({}),
   };
   // Events missing from namespaces WebKit does have.
@@ -120,11 +181,25 @@
   // them at startup (chrome.offscreen.Reason.CLIPBOARD, chrome.scripting.ExecutionWorld.MAIN).
   const extras = {
     // Only the offscreen document is reported; other contexts aren't tracked.
-    runtime: { getContexts: (filter = {}) => {
+    // The offscreen document and side panel pages; other contexts aren't tracked.
+    runtime: {
+      // Read by Claude's side panel to check where it is.
+      ContextType: { TAB: 'TAB', POPUP: 'POPUP', BACKGROUND: 'BACKGROUND', OFFSCREEN_DOCUMENT: 'OFFSCREEN_DOCUMENT', SIDE_PANEL: 'SIDE_PANEL', DEVELOPER_TOOLS: 'DEVELOPER_TOOLS' },
+      getContexts: (filter = {}) => {
       const types = filter.contextTypes;
-      if (types && !types.includes('OFFSCREEN_DOCUMENT')) return Promise.resolve([]);
-      return offscreenCall('has').then((url) => url ? [{ contextType: 'OFFSCREEN_DOCUMENT', documentUrl: url, documentOrigin: new URL(url).origin,
-        contextId: 'browsa-offscreen', tabId: -1, windowId: -1, frameId: -1, incognito: false }] : [], () => []);
+      const wants = (t) => !types || types.includes(t);
+      const context = (type, url, id) => ({ contextType: type, documentUrl: url, documentOrigin: new URL(url).origin,
+        contextId: id, tabId: -1, windowId: -1, frameId: -1, incognito: false });
+      const offscreen = wants('OFFSCREEN_DOCUMENT')
+        ? offscreenCall('has').then((url) => url ? [context('OFFSCREEN_DOCUMENT', url, 'browsa-offscreen')] : [], () => []) : Promise.resolve([]);
+      const panels = wants('SIDE_PANEL')
+        ? bridge('browsa.sidepanel', { action: 'contexts' }).then((urls) => (urls || []).map((u, i) => context('SIDE_PANEL', u, 'browsa-panel-' + i)), () => [])
+        : Promise.resolve([]);
+      return Promise.all([offscreen, panels]).then(([a, b]) => {
+        let all = a.concat(b);
+        if (filter.documentUrls) all = all.filter((c) => filter.documentUrls.includes(c.documentUrl));
+        return all;
+      });
     } },
     scripting: { ExecutionWorld: { ISOLATED: 'ISOLATED', MAIN: 'MAIN' } },
     tabs: { TAB_ID_NONE: -1, TAB_INDEX_NONE: -1 },
@@ -164,6 +239,29 @@
         }
       }
     }
+    // Each storage area's own onChanged (chrome.storage.session.onChanged…), which Chrome has and
+    // WebKit doesn't: fed from chrome.storage.onChanged for that area. Claude's background adds a
+    // listener to storage.session.onChanged at startup and stopped there.
+    if (root.storage && root.storage.onChanged && typeof root.storage.onChanged.addListener === 'function') {
+      for (const area of ['local', 'sync', 'session']) {
+        const target = root.storage[area];
+        if (!target || target.onChanged !== undefined) continue;
+        const listeners = new Set();
+        try {
+          keep(target).onChanged = {
+            addListener(fn) { if (typeof fn === 'function') listeners.add(fn); },
+            removeListener(fn) { listeners.delete(fn); },
+            hasListener(fn) { return listeners.has(fn); },
+            hasListeners() { return listeners.size > 0; },
+          };
+          root.storage.onChanged.addListener((changes, areaName) => {
+            if (areaName !== area) return;
+            for (const fn of [...listeners]) { try { fn(changes); } catch (e) { setTimeout(() => { throw e; }); } }
+          });
+          missing.push(`storage.${area}.onChanged`);
+        } catch (e) {}
+      }
+    }
     if (root.storage && root.storage.managed === undefined) {
       try {
         // Chrome's callback form too: Grammarly passes a callback and waits for it (timing out otherwise).
@@ -177,6 +275,9 @@
   // ("'downloads' is not a valid permission"), which stopped FireShot saving. Answer yes for them,
   // and pass the rest to WebKit.
   const bridged = ['downloads', 'notifications', 'sidePanel'];
+  // An extension given <all_urls> holds it as every website, *://*/* (WebKitExtensions.everyWebsite),
+  // so other extensions' pages stay out of reach as in Chrome. Asking about <all_urls> asks about that.
+  const websites = (origins) => origins.map((o) => (o === '<all_urls>' ? '*://*/*' : o));
   for (const root of roots) {
     const perms = root.permissions;
     if (!perms) continue;
@@ -186,11 +287,12 @@
       const wrapped = (p = {}, cb) => {
         const asked = Array.isArray(p.permissions) ? p.permissions : [];
         const rest = asked.filter((x) => !bridged.includes(x));
-        const origins = Array.isArray(p.origins) ? p.origins : [];
+        const origins = websites(Array.isArray(p.origins) ? p.origins : []);
         let result;
         if (!rest.length && !origins.length) result = Promise.resolve(true);
         else {
-          try { result = Promise.resolve(original({ ...p, permissions: rest })); } catch (e) { result = Promise.reject(e); }
+          const ask = origins.length ? { ...p, permissions: rest, origins } : { ...p, permissions: rest };
+          try { result = Promise.resolve(original(ask)); } catch (e) { result = Promise.reject(e); }
         }
         if (cb) { result.then((v) => cb(!!v), () => cb(false)); return undefined; }
         return result;
@@ -204,10 +306,12 @@
 
   // These are Chrome builds of the extensions, and some decide what they're running in from the user
   // agent (Bitwarden's device type is null without " Chrome/", and its background throws). Inside the
-  // extension only, the user agent says Chrome; websites still see Browsa's own.
+  // extension only, the user agent says Chrome; websites still see Browsa's own. Kept at Chrome's
+  // stable version, as ChromeWebStore.productVersion is: 1Password opens its popup to unlock only from
+  // Chrome 149 (found by Search, Office Commun).
   const ua = globalThis.navigator && navigator.userAgent;
   if (ua && !ua.includes(' Chrome/')) {
-    const chromeUA = ua.replace(/ Version\/[\d.]+/, '').replace(/ Safari\/[\d.]+/, '') + ' Chrome/142.0.0.0 Safari/537.36';
+    const chromeUA = ua.replace(/ Version\/[\d.]+/, '').replace(/ Safari\/[\d.]+/, '') + ' Chrome/156.0.0.0 Safari/537.36';
     try { Object.defineProperty(Object.getPrototypeOf(navigator), 'userAgent', { get: () => chromeUA, configurable: true }); } catch (e) {}
     try { Object.defineProperty(Object.getPrototypeOf(navigator), 'vendor', { get: () => 'Google Inc.', configurable: true }); } catch (e) {}
   }
@@ -235,7 +339,229 @@
     };
   }
 
+  // What the extension's background sends its own pages, and storage changes, relayed over a
+  // BroadcastChannel (one origin: the extension's). WebKit doesn't bring every message to every page
+  // of the extension, and a side panel or popup waiting on one (Claude's after sign-in, Bitwarden's
+  // sync) never heard it. Each copy is paired by its content: a page that heard WebKit's copy skips
+  // the relayed one and the other way round; unpaired copies are forgotten after 5 s. The idea is
+  // Search's (Office Commun, MIT, ExtensionShims.swift).
+  const runtime0 = globalThis.chrome && globalThis.chrome.runtime;
+  if (typeof BroadcastChannel === 'function' && runtime0 && runtime0.onMessage && typeof runtime0.sendMessage === 'function') {
+    const channel = new BroadcastChannel('browsa-relay');
+    const me = Math.random().toString(36).slice(2);
+    const ownPlace = (() => { try { return runtime0.getURL(''); } catch (e) { return ''; } })();
+    const keyOf = (m) => { try { const k = JSON.stringify(m, (_, v) => v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.keys(v).sort().map((x) => [x, v[x]])) : v); return k && k.length < 200000 ? k : null; } catch (e) { return null; } };
+    const native = new Map(), relayed = new Map();
+    const bump = (map, key, by) => {
+      const now = Date.now();
+      for (const [k, v] of map) if (now - v.at > 5000) map.delete(k);
+      const n = ((map.get(key) || {}).n || 0) + by;
+      if (n > 0) map.set(key, { n, at: now }); else map.delete(key);
+    };
+    const has = (map, key) => { const v = map.get(key); return !!v && Date.now() - v.at <= 5000 && v.n > 0; };
+    const listeners = new Map();   // the extension's onMessage listener -> ours
+    const ownSender = (s) => !!s && s.id === runtime0.id && typeof s.url === 'string' && !!ownPlace && s.url.startsWith(ownPlace);
+    const onMessage = runtime0.onMessage;
+    const add = onMessage.addListener.bind(onMessage), remove = onMessage.removeListener.bind(onMessage);
+    const wrapped = (fn) => function (message, sender, respond) {
+      const key = !isWorker && ownSender(sender) ? keyOf(message) : null;
+      if (key && has(relayed, key)) { bump(relayed, key, -1); return; }
+      if (key) bump(native, key, 1);
+      return fn.call(this, message, sender, respond);
+    };
+    try {
+      onMessage.addListener = function (fn) { if (typeof fn !== 'function') return add(fn); const w = wrapped(fn); listeners.set(fn, w); return add(w); };
+      onMessage.removeListener = function (fn) { const w = listeners.get(fn); listeners.delete(fn); return remove(w || fn); };
+      onMessage.hasListener = function (fn) { return listeners.has(fn); };
+      keep(onMessage);
+    } catch (e) {}
+    const send = runtime0.sendMessage.bind(runtime0);
+    try {
+      runtime0.sendMessage = function (...args) {
+        // Only messages for the extension itself (no other extension's id first).
+        const own = !(typeof args[0] === 'string' && args.length > 1 && args[0] !== runtime0.id);
+        const message = own ? (typeof args[0] === 'string' && args.length > 1 ? args[1] : args[0]) : undefined;
+        // A message the channel can't copy (functions, DOM objects) simply isn't relayed: never an
+        // error for the extension's own sendMessage (Bitwarden's popup spun on one).
+        if (own) { try { const key = keyOf(message); if (key) channel.postMessage({ from: me, url: location.href, key, message }); } catch (e) {} }
+        return send(...args);
+      };
+      keep(runtime0);
+    } catch (e) {}
+    channel.onmessage = (event) => {
+      const d = event.data || {};
+      if (d.from === me) return;
+      if (d.storage) {
+        // Several pages may offer the same change: it's delivered once, whoever brings it first.
+        if (deliverStorage) deliverStorage(d.changes, d.area, d.area + '|' + d.key);
+        return;
+      }
+      // The background is left to WebKit: it answers what pages ask it, and a relayed copy (which can't
+      // be answered) arriving first would take the place of the real one.
+      if (isWorker) return;
+      if (!d.key || has(native, d.key)) { if (d.key) bump(native, d.key, -1); return; }
+      bump(relayed, d.key, 1);
+      const sender = { id: runtime0.id, url: d.url, origin: ownPlace.replace(/\/$/, '') };
+      for (const fn of [...listeners.keys()]) {
+        try { fn.call(null, d.message, sender, () => {}); } catch (e) { setTimeout(() => { throw e; }); }
+      }
+    };
+    // Storage: each change seen by any context of the extension is offered to the others.
+    const storageListeners = new Set(), storageSeen = new Map();
+    let deliverStorage = null;
+    // True when this change was already handed to the listeners in the last 5 s; marks it otherwise.
+    const seenStorage = (key) => {
+      const now = Date.now();
+      for (const [k, at] of storageSeen) if (now - at > 5000) storageSeen.delete(k);
+      if (storageSeen.has(key)) return true;
+      storageSeen.set(key, now);
+      return false;
+    };
+    const storage0 = globalThis.chrome.storage;
+    if (storage0 && storage0.onChanged && typeof storage0.onChanged.addListener === 'function') {
+      const sc = storage0.onChanged;
+      const sAdd = sc.addListener.bind(sc);
+      // One native listener hands each change to the extension's listeners once, and offers it to the
+      // extension's other pages; a relayed copy that arrives first is delivered instead.
+      deliverStorage = (changes, area, key) => {
+        if (seenStorage(key)) return;
+        for (const fn of [...storageListeners]) { try { fn(changes, area); } catch (e) { setTimeout(() => { throw e; }); } }
+      };
+      try {
+        sc.addListener = function (fn) { if (typeof fn === 'function') storageListeners.add(fn); };
+        sc.removeListener = function (fn) { storageListeners.delete(fn); };
+        sc.hasListener = function (fn) { return storageListeners.has(fn); };
+        sc.hasListeners = function () { return storageListeners.size > 0; };
+        keep(sc);
+      } catch (e) {}
+      sAdd((changes, area) => {
+        const key = area + '|' + keyOf(changes);
+        deliverStorage(changes, area, key);
+        try { channel.postMessage({ from: me, storage: true, area, key: keyOf(changes), changes }); } catch (e) {}
+      });
+    }
+  }
+
+  // fetch(…, { credentials: 'include' }) to a website goes through Browsa with that site's cookies
+  // (ExtensionFetch.swift): WebKit sends none from an extension's origin, so Claude's panel was told
+  // you weren't signed in to claude.ai. Streams (text/event-stream) and bodies Browsa can't carry are
+  // left to WebKit. The idea is Search's (Office Commun, MIT).
+  if (typeof globalThis.fetch === 'function' && typeof Response === 'function') {
+    const nativeFetch = globalThis.fetch.bind(globalThis);
+    const b64 = (buf) => { let s = ''; const u = new Uint8Array(buf); for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+    const unb64 = (s) => { const bin = atob(s || ''); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; };
+    globalThis.fetch = async function (input, init) {
+      try {
+        const request = input instanceof Request ? input : null;
+        const url = new URL(request ? request.url : String(input), location.href);
+        const credentials = (init && init.credentials) || (request && request.credentials);
+        const headers = new Headers((init && init.headers) || (request && request.headers) || undefined);
+        const accept = headers.get('accept') || '';
+        const body = init && init.body;
+        const carried = body == null || typeof body === 'string' || body instanceof ArrayBuffer || ArrayBuffer.isView(body) || body instanceof URLSearchParams;
+        if (credentials !== 'include' || !/^https?:$/.test(url.protocol) || accept.includes('text/event-stream') || !carried || (request && !init)) {
+          return nativeFetch(input, init);
+        }
+        if (body instanceof URLSearchParams && !headers.has('content-type')) headers.set('content-type', 'application/x-www-form-urlencoded;charset=UTF-8');
+        const encoded = body == null ? undefined : typeof body === 'string' || body instanceof URLSearchParams
+          ? b64(new TextEncoder().encode(String(body))) : b64(body instanceof ArrayBuffer ? body : body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength));
+        const signal = init && init.signal;
+        if (signal && signal.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+        const answer = await bridge('browsa.fetch', { url: url.href, method: (init && init.method) || 'GET', headers: Object.fromEntries(headers.entries()),
+          body: encoded, redirect: (init && init.redirect) || 'follow', noStore: (init && init.cache) === 'no-store' });
+        if (signal && signal.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+        const response = new Response([101, 204, 205, 304].includes(answer.status) ? null : unb64(answer.body), { status: answer.status, headers: answer.headers });
+        try { Object.defineProperty(response, 'url', { value: answer.url }); } catch (e) {}
+        return response;
+      } catch (e) {
+        if (e && e.name === 'AbortError') throw e;
+        throw new TypeError('Failed to fetch');
+      }
+    };
+  }
+
+  // Claude's side panel shows claude.ai/cic in a frame, signed in by claude.ai's SameSite=Lax cookies,
+  // which WebKit doesn't send to a frame inside an extension's page: the frame stays empty. claude.ai
+  // has its own answer for a panel it can't fill (cic_sidepanel_cowork_unavailable), and the panel
+  // then shows its built-in chat on the extension's own sign-in. That message is given here as the
+  // frame appears. From Search (Office Commun, MIT, SidePanel.swift PanelFrameFallback); drop once
+  // WebKit sends those cookies.
+  if (!isWorker && typeof MutationObserver === 'function' && globalThis.document) {
+    const isClaudeFrame = (el) => {
+      try { const u = new URL(el.src || '', location.href); return u.protocol === 'https:' && ['claude.ai', 'preview.claude.ai'].includes(u.hostname) && (u.pathname === '/cic' || u.pathname.startsWith('/cic/')); } catch (e) { return false; }
+    };
+    const told = new WeakSet();
+    const check = (el) => {
+      if (!el || el.tagName !== 'IFRAME' || told.has(el) || !isClaudeFrame(el)) return;
+      told.add(el);
+      setTimeout(() => window.dispatchEvent(new MessageEvent('message', { origin: 'https://claude.ai', data: { type: 'cic_sidepanel_cowork_unavailable' } })), 0);
+    };
+    const watch = () => new MutationObserver((records) => {
+      for (const r of records) {
+        if (r.type === 'attributes') check(r.target);
+        for (const n of r.addedNodes || []) { check(n); if (n.querySelectorAll) n.querySelectorAll('iframe').forEach(check); }
+      }
+    }).observe(document.documentElement || document, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+    if (document.documentElement) watch(); else document.addEventListener('DOMContentLoaded', watch, { once: true });
+  }
+
   if (!isWorker) return;
+
+  // Native messaging ports, inside the worker. WebKit unloads a worker that hasn't posted on an open
+  // port for two minutes, even with an app attached (1Password's helper, which then drops the
+  // session). Browsa says {__browsaNative: 'alive'} every 25 s on each port to an app and the worker
+  // answers 'beat'; neither word reaches the extension or the app (ExtensionNativeHosts.swift). The
+  // idea is Search's (Office Commun, MIT, ExtensionShims.swift); the port handed to the extension is
+  // a plain object, as WebKit's ports can't be proxied.
+  for (const root of roots) {
+    const runtime = root && root.runtime;
+    const connectNative = runtime && runtime.connectNative;
+    if (typeof connectNative !== 'function' || connectNative.__browsaBeat) continue;
+    const ours = (m) => !!m && typeof m === 'object' && !Array.isArray(m) && '__browsaNative' in m;
+    const beating = function (application) {
+      const name = String(application);
+      const port = connectNative.call(runtime, name);
+      // Browsa's own in-process names know nothing of the beat.
+      if (/^browsa\./.test(name)) return port;
+      const fire = (set, ...args) => { for (const fn of [...set]) { try { fn(...args); } catch (e) { setTimeout(() => { throw e; }); } } };
+      const listeners = () => {
+        const set = new Set();
+        return { set, event: {
+          addListener(fn) { if (typeof fn === 'function') set.add(fn); },
+          removeListener(fn) { set.delete(fn); },
+          hasListener(fn) { return set.has(fn); },
+          hasListeners() { return set.size > 0; },
+        } };
+      };
+      const onMessage = listeners(), onDisconnect = listeners();
+      let gone = false;
+      const facade = keep({
+        name,
+        sender: undefined,
+        onMessage: onMessage.event,
+        onDisconnect: onDisconnect.event,
+        postMessage(message) {
+          if (gone) throw new Error('Attempting to use a disconnected port object');
+          port.postMessage(message);
+        },
+        disconnect() { if (gone) return; gone = true; try { port.disconnect(); } catch (e) {} },
+      });
+      port.onMessage.addListener((m) => {
+        if (ours(m)) {
+          if (m.__browsaNative === 'alive') { try { port.postMessage({ __browsaNative: 'beat' }); } catch (e) {} }
+          return;
+        }
+        fire(onMessage.set, m, facade);
+      });
+      port.onDisconnect.addListener(() => { if (gone) return; gone = true; fire(onDisconnect.set, facade); });
+      return facade;
+    };
+    beating.__browsaBeat = true;
+    keep(runtime);
+    try { Object.defineProperty(runtime, 'connectNative', { value: beating, configurable: true, writable: true }); }
+    catch (e) { try { runtime.connectNative = beating; } catch (e2) {} }
+  }
 
   // navigator.locks, inside the worker. WebKit's own goes over IPC to a lock registry that can reject
   // a service worker's requests ("Received an invalid message") and leave them pending for ever.

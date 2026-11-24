@@ -130,6 +130,13 @@ enum PageActivity {
         last = now;
         post(r);
       }
+      // Feeds full of autoplay clips fire media events all the time, and each report looks up every video
+      // and measures it. One report for a burst of them is enough.
+      var pending = 0;
+      function soon() {
+        if (pending) return;
+        pending = setTimeout(function () { pending = 0; report(); }, 200);
+      }
       function editable(el) {
         if (!el) return false;
         if (el.isContentEditable) return true;
@@ -179,7 +186,7 @@ enum PageActivity {
        'enterpictureinpicture', 'leavepictureinpicture', 'webkitpresentationmodechanged'].forEach(function (type) {
         document.addEventListener(type, function (e) {
           if (e.target instanceof HTMLMediaElement) media.add(e.target);
-          report();
+          soon();
         }, true);
       });
       document.addEventListener('input', function (e) {

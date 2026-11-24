@@ -47,6 +47,7 @@ let package = Package(
             resources: [.copy("Resources/extension-compat.js"), .copy("Resources/extension-diagnostics.js"),
                         .copy("Resources/call-audio.js"), .copy("Resources/call-audio-apm.wasm")]
         ),
+        .testTarget(name: "WebKitEngineTests", dependencies: ["WebKitEngine"]),
 
         // Extensions, plugins, Margin notes and the agent (MCP) toolbox. Foundation only, no
         // engine, so it's testable on its own. See docs/extensibility.md.

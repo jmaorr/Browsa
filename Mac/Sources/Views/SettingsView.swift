@@ -342,7 +342,7 @@ private struct ProfilesSettings: View {
             .padding(.vertical, 4)
             .background(Color.primary.opacity(0.04), in: .rect(cornerRadius: 12, style: .continuous))
             HStack(alignment: .top) {
-                Text("Each profile keeps its own cookies, logins and site data, so you can be signed in to different accounts in different spaces. History, favourites and extensions are shared.")
+                Text("Each profile keeps its own cookies, logins and site data, so you can be signed in to different accounts in different spaces. History, favourites, site permissions, Boosts and extensions are shared.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()

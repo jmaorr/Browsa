@@ -85,7 +85,11 @@ struct BoostPanel: View {
             }
             Spacer()
             if !draft.wrappedValue.isEmpty {
-                Toggle("Boost", isOn: draft.isOn).toggleStyle(.switch).labelsHidden().controlSize(.small)
+                Toggle("Boost", isOn: Binding(get: { draft.wrappedValue.isOn }, set: { on in
+                    // An imported script asks before it first runs.
+                    if on, !BoostStore.approveScript(&draft.wrappedValue) { return }
+                    draft.wrappedValue.isOn = on
+                })).toggleStyle(.switch).labelsHidden().controlSize(.small)
                     .help(draft.wrappedValue.isOn ? "Turn this Boost off" : "Turn this Boost on")
             }
         }

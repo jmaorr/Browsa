@@ -35,6 +35,12 @@ Later, the same file can be served from browsa.app so the list grows without an 
 
 The Add Chrome Extension sheet says plainly that only verified extensions are tested, and names what usually doesn't work: desktop-app unlock, DevTools panels, and anything using `chrome.debugger`.
 
+## Extension addresses and apps on the Mac
+
+Chrome Web Store extensions run as they do in Chrome: their pages live at `chrome-extension://<id>/` and `chrome.runtime.id` is the bare 32-letter id. Extensions installed before this change keep their old `webkit-extension://` address and `chrome:<id>` id, so nothing they saved is lost; removing one and adding it again moves it over. `defaults write com.orriginal.browsa extensions.chromeAddressForAll -bool true` moves every one, for testing. Code: `ExtensionAddress.swift`.
+
+Extensions that talk to an app on the Mac (1Password's desktop app, Bitwarden's Touch ID unlock) use Chrome's native messaging: Browsa reads the host files apps register in Chrome's, Edge's, Brave's, Arc's and other Chromium browsers' `NativeMessagingHosts` folders, and starts the host only for a store extension whose own manifest asks for `nativeMessaging` and whose origin the host lists. Some apps also check which browser is calling: for 1Password, add Browsa in 1Password › Settings › Browser › Add Browser. Code: `ExtensionNativeHosts.swift`, adapted from Search (Office Commun, MIT; notice in the file).
+
 ## Safari extensions
 
 Browsa can load Safari extensions bundled in apps on the Mac (`WKWebExtension(appExtensionBundle:)`). It's off for everyone (reset once, for people who had it on) and isn't in the Library: the switch is in Settings › Engine, marked experimental. When it's on, they're listed under Added, and a verified card offers the Chrome version; once that's added, the engine skips the Safari copy. Extensions that talk to their own app through native messaging don't work: WebKit reports "Native messaging is not supported", and 1Password's helper rejects the `webkit-extension://` origin. So password managers need their Chrome extension instead. Extensions that work on their own may be fine but are untested.
