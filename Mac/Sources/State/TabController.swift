@@ -164,8 +164,10 @@ final class TabController: EnginePageDelegate {
             window?.showToast("No app on this Mac opens \(scheme): links")
             return
         }
-        // Typed into the address bar on an empty tab, or an email, phone or message link: no site to ask about.
-        guard !["mailto", "tel", "facetime", "sms"].contains(scheme), let host = page.state.url?.host() ?? tab.url?.host(), let library else {
+        // Typed into the address bar on an empty tab, an email link, or a phone, FaceTime or message link you
+        // clicked: nothing to ask. A page firing a call or message link by itself asks, as Safari does.
+        let clickedContact = ["tel", "facetime", "facetime-audio", "sms"].contains(scheme) && request.kind == .link
+        guard scheme != "mailto", !clickedContact, let host = page.state.url?.host() ?? tab.url?.host(), let library else {
             NSWorkspace.shared.open(url)
             return
         }
