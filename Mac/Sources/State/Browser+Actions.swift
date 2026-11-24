@@ -7,9 +7,12 @@ import Suggest
 extension Browser {
     // MARK: Command bar
 
-    func showCommandBar(_ mode: CommandBarMode) {
+    /// `toggles`: from a keyboard shortcut, where pressing it again closes the bar.
+    func showCommandBar(_ mode: CommandBarMode, toggles: Bool = false) {
         // Editing needs a page; with none it's just a new tab.
-        commandBar = mode == .editCurrent && currentTab == nil ? .newTab : mode
+        let wanted = mode == .editCurrent && currentTab == nil ? .newTab : mode
+        // The same shortcut again closes it, like Spotlight's ⌘Space. A different one switches.
+        commandBar = toggles && commandBar == wanted ? nil : wanted
     }
 
     /// A picked suggestion, favourite or Return in the command bar.
@@ -298,9 +301,9 @@ extension Browser {
     /// An action's extra keys (⇧⌘] beside ⌥⌘↓, say), which the menu can't show, land here.
     func perform(_ action: ShortcutAction) {
         switch action {
-        case .newTab: showCommandBar(.newTab)
-        case .openLocation: showCommandBar(.editCurrent)
-        case .commands: showCommandBar(.commands)
+        case .newTab: showCommandBar(.newTab, toggles: true)
+        case .openLocation: showCommandBar(.editCurrent, toggles: true)
+        case .commands: showCommandBar(.commands, toggles: true)
         case .newWindow: library.openWindow()
         case .privateTab: run(command: "private")
         case .close: if let t = currentTab { withAnimation(Motion.snappy) { close(t) } }

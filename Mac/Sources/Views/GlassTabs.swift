@@ -37,7 +37,10 @@ struct GlassTabs<Option: Hashable>: View {
         self.count = count
     }
 
-    private var height: CGFloat { size == .small ? 24 : (size == .large ? 34 : 28) }
+    @Environment(\.colorScheme) private var scheme
+
+    /// Close to Apple's large and extra large control heights, so the labels are easy to read.
+    private var height: CGFloat { size == .small ? 28 : (size == .large ? 40 : 34) }
 
     var body: some View {
         GlassEffectContainer(spacing: 2) {
@@ -82,9 +85,11 @@ struct GlassTabs<Option: Hashable>: View {
             .frame(minWidth: iconsOnly ? height : nil, minHeight: height - 6)
             .background {
                 if on {
+                    // Solid white (black in dark mode) and raised, so the picked option reads at a glance.
                     Capsule()
-                        .fill(Color.primary.opacity(0.10))
-                        .glassEffect(.regular.interactive(), in: Capsule())
+                        .fill(RaisedFill.color(scheme))
+                        .overlay(Capsule().strokeBorder(RaisedFill.edge(scheme)))
+                        .shadow(color: .black.opacity(scheme == .dark ? 0.4 : 0.16), radius: 3, y: 1)
                         .matchedGeometryEffect(id: "selection", in: namespace)
                 }
             }
@@ -102,4 +107,10 @@ extension GlassTabs where Option: RawRepresentable, Option.RawValue == String {
     init(selection: Binding<Option>, options: [Option], iconsOnly: Bool = false, size: ControlSize = .regular, symbol: ((Option) -> String)? = nil, count: ((Option) -> Int?)? = nil) {
         self.init(selection: selection, options: options, iconsOnly: iconsOnly, size: size, title: { $0.rawValue }, symbol: symbol, count: count)
     }
+}
+
+/// The raised fill for a picked or highlighted control on glass: white in light mode, near black in dark.
+enum RaisedFill {
+    static func color(_ scheme: ColorScheme) -> Color { scheme == .dark ? Color(white: 0.09) : .white }
+    static func edge(_ scheme: ColorScheme) -> Color { scheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.06) }
 }

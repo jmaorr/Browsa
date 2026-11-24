@@ -321,7 +321,7 @@ struct CommandBar: View {
             }
             if mode == .commands {
                 GlassTabs(selection: Binding(get: { place }, set: { setPlace($0, refocus: true) }),
-                          options: CommandPlace.allCases, title: { $0.rawValue }, symbol: { $0.symbol })
+                          options: CommandPlace.allCases, size: .large, title: { $0.rawValue }, symbol: { $0.symbol })
             }
         }
         .padding(.leading, 20)
@@ -553,6 +553,12 @@ struct CommandBar: View {
     }
 }
 
+/// The grey behind the row the arrows are on. A fixed grey rather than a vibrant primary tint,
+/// which all but disappeared on the card inside the glass.
+enum RowHighlight {
+    static func color(_ scheme: ColorScheme) -> Color { scheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.085) }
+}
+
 /// A key, drawn as a small cap.
 private struct KeyCap: View {
     let key: String
@@ -570,6 +576,7 @@ private struct KeyCap: View {
 }
 
 private struct SuggestionRow: View {
+    @Environment(\.colorScheme) private var scheme
     let suggestion: Suggestion
     let highlighted: Bool
     let inSearch: Bool
@@ -603,7 +610,7 @@ private struct SuggestionRow: View {
         .font(.system(size: 13))
         .padding(.horizontal, 10)
         .frame(height: suggestion.subtitle == nil ? 34 : 42)
-        .background(highlighted ? AnyShapeStyle(.primary.opacity(0.08)) : AnyShapeStyle(.clear),
+        .background(highlighted ? RowHighlight.color(scheme) : .clear,
                     in: .rect(cornerRadius: 9, style: .continuous))
         .contentShape(.rect)
     }
@@ -658,13 +665,17 @@ private struct ChipRow<Content: View>: View {
     }
 }
 
-/// One capsule: an icon in a small circle, then a name. Interactive glass, with an accent ring
-/// when the arrow keys are on it.
+/// One capsule: an icon in a small circle, then a name. Glass at rest; under the pointer or the
+/// arrow keys it turns solid white (black in dark mode) and lifts off the sheet.
 private struct GlassChip<Icon: View>: View {
     let title: String
     var highlighted = false
     let icon: Icon
     let action: () -> Void
+    @Environment(\.colorScheme) private var scheme
+    @State private var hovering = false
+
+    private var raised: Bool { highlighted || hovering }
 
     init(title: String, highlighted: Bool, @ViewBuilder icon: () -> Icon, action: @escaping () -> Void) {
         self.title = title
@@ -687,9 +698,18 @@ private struct GlassChip<Icon: View>: View {
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: .capsule)
-        .overlay(Capsule().strokeBorder(highlighted ? Color.accentColor : Color.primary.opacity(0.1),
-                                        lineWidth: highlighted ? 2 : 1))
+        .background {
+            if raised {
+                Capsule()
+                    .fill(RaisedFill.color(scheme))
+                    .shadow(color: .black.opacity(scheme == .dark ? 0.45 : 0.18), radius: 6, y: 2)
+            }
+        }
+        .glassEffect(raised ? .identity : .regular, in: .capsule)
+        .overlay(Capsule().strokeBorder(raised ? RaisedFill.edge(scheme) : Color.primary.opacity(0.1)))
+        .scaleEffect(raised ? 1.03 : 1)
+        .animation(Motion.quick, value: raised)
+        .onHover { hovering = $0 }
     }
 }
 
@@ -797,6 +817,7 @@ struct CommandLibraryItem: Identifiable {
 
 /// ⌘K's Library place: the list on the left, a preview of the picked one on the right.
 private struct CommandLibraryPane: View {
+    @Environment(\.colorScheme) private var scheme
     let items: [CommandLibraryItem]
     @Binding var index: Int
     let isOn: (CommandLibraryItem) -> Bool
@@ -863,7 +884,7 @@ private struct CommandLibraryPane: View {
         .padding(.horizontal, 10)
         .frame(height: 40)
         // Grey, like every other list in the sheet.
-        .background(highlighted ? AnyShapeStyle(.primary.opacity(0.08)) : AnyShapeStyle(.clear),
+        .background(highlighted ? RowHighlight.color(scheme) : .clear,
                     in: .rect(cornerRadius: 10, style: .continuous))
         .contentShape(.rect)
     }
