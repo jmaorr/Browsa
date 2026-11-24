@@ -161,6 +161,10 @@ struct BoostPanel: View {
                 CodeField(text: draft.script, placeholder: "document.title = 'Focus'")
                 Text("The script runs after the page loads, in its own world: it can change the page but can't see the site's own JavaScript. Reload to run it.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if store.boosts.contains(where: { $0.id == draft.wrappedValue.id }) {
+                    Button("Open Larger Editor in Library") { browser.openLibrary("boost:" + draft.wrappedValue.id.uuidString) }
+                        .buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.small)
+                }
             }
             .padding(.top, 6)
         } label: {

@@ -32,7 +32,7 @@ struct BoostsSettings: View {
             LibraryGroup(title: "Your Boosts", detail: "A font, a tint, things zapped away, or your own CSS and script for a site.") {
                 LibraryCard {
                     ForEach(store.boosts) { boost in
-                        BoostRow(boost: boost) { open("boost:" + boost.id.uuidString) }
+                        BoostRow(boost: boost) { browser.editBoost(host: boost.host) } editCode: { open("boost:" + boost.id.uuidString) }
                         Divider().padding(.leading, 58)
                     }
                     VStack(alignment: .leading, spacing: 6) {
@@ -45,7 +45,7 @@ struct BoostsSettings: View {
                                 .disabled(address.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
                         if let problem { Text(problem).font(.caption).foregroundStyle(.secondary) }
-                        Text("You can also Boost the site you're on from the site icon in the address bar, and zap things away right on the page.")
+                        Text("A Boost opens beside its site, so you see each change on the real page. You can also Boost the site you're on from the site icon in the address bar.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     .padding(14)
@@ -61,18 +61,16 @@ struct BoostsSettings: View {
         }
         problem = nil
         address = ""
-        if store.boosts.contains(where: { $0.id == boost.id }) {
-            open("boost:" + boost.id.uuidString)
-        } else {
-            open("boost-new:" + boost.host)
-        }
+        browser.editBoost(host: boost.host)
     }
 }
 
-/// One of your Boosts in the list. The whole row opens its editor; the switch turns it on and off.
+/// One of your Boosts in the list. The whole row opens the site with the Boost panel beside it;
+/// the switch turns it on and off, and the menu has the full-page code editor.
 private struct BoostRow: View {
     let boost: SiteBoost
     let open: () -> Void
+    let editCode: () -> Void
     @State private var hovering = false
 
     var body: some View {
@@ -93,6 +91,11 @@ private struct BoostRow: View {
         .contentShape(.rect)
         .onTapGesture(perform: open)
         .onHover { hovering = $0 }
+        .contextMenu {
+            Button("Open Beside \(boost.host)", systemImage: "sidebar.right", action: open)
+            Button("Edit CSS and Script…", systemImage: "chevron.left.forwardslash.chevron.right", action: editCode)
+        }
+        .help("Open \(boost.host) with its Boost beside it")
     }
 }
 
@@ -158,7 +161,7 @@ struct BoostEditorPage: View {
                 codeGroup(title: "Script", detail: "Runs after the page loads, in its own world: it can change the page but can't see the site's own JavaScript. Reload the site to run it.",
                           text: $draft.script, placeholder: "document.title = 'Focus'", type: .javaScript)
                 HStack(spacing: 10) {
-                    Button { openSite(zapping: false) } label: { Label("Open \(draft.host)", systemImage: "safari") }
+                    Button { openSite(zapping: false) } label: { Label("Open Beside \(draft.host)", systemImage: "sidebar.right") }
                         .buttonStyle(.glass).buttonBorderShape(.capsule)
                     Spacer()
                     if store.boosts.contains(where: { $0.id == draft.id }) {
@@ -224,12 +227,7 @@ struct BoostEditorPage: View {
     /// The site, in a tab. Zapping starts once it has loaded.
     private func openSite(zapping: Bool) {
         flush()
-        browser.newTab(url: siteURL)
-        guard zapping else { return }
-        Task {
-            try? await Task.sleep(for: .seconds(2))
-            ZapPicker.zapOnCurrentPage(in: browser)
-        }
+        browser.editBoost(host: draft.host, zap: zapping)
     }
 }
 
@@ -300,5 +298,31 @@ struct LibraryToggleRow: View {
         .padding(.horizontal, 14).padding(.vertical, 10)
         .contentShape(.rect)
         .onTapGesture { isOn.wrappedValue.toggle() }
+    }
+}
+
+extension Browser {
+    /// Shows a site with its Boost panel beside it, so changes show on the real page as you make
+    /// them. Goes to a tab already on the site, or opens one. `zap` starts zapping once it loads.
+    func editBoost(host: String, zap: Bool = false) {
+        guard let url = URL(string: "https://\(host)") else { return }
+        let space = currentSpace.isPrivate ? regularSpaces[0] : currentSpace
+        let existing = space.allTabs.first { tab in
+            guard lists(tab), let h = SiteBoost.key(for: tab.url) else { return false }
+            return h == host || h.hasSuffix("." + host)
+        }
+        let tab = existing ?? newTab(url: url, in: space)
+        select(tab)
+        showPanel("boosts")
+        guard zap else { return }
+        Task { @MainActor [weak self] in
+            // Wait for the page to finish loading (up to 10 seconds).
+            for _ in 0..<40 {
+                try? await Task.sleep(for: .milliseconds(250))
+                if !tab.isLoading, tab.url != nil { break }
+            }
+            guard let self, self.currentTab?.id == tab.id else { return }
+            ZapPicker.zapOnCurrentPage(in: self)
+        }
     }
 }
