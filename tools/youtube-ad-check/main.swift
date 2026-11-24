@@ -5,11 +5,14 @@ import WebKit
 // non-persistent store, the Ads rules plus YouTubeAdRules, YouTubeAds' two scripts), page muted.
 // Built by run.sh together with the app's own YouTubeAds.swift and YouTubeAdRules.swift.
 //
-//   youtube-ad-check --case <name> --url <url> [--click results|related] [--repeat]
+//   youtube-ad-check --case <name> --url <url> [--click results|related|mix|playlist] [--repeat] [--next]
 //                    [--ads <ads.json>] [--seconds 30] [--verbose]
 //
 // Prints per-second probes with --verbose, then one line:
 //   RESULT <case> <seconds to play or -> <ad flags>
+// On a playlist (list=) the flags also carry list-ok or list-lost: whether the playlist survived. With
+// --next it then presses the player's Next button, checks it went to the playlist's next item, and
+// times that video the same way.
 
 var args = Array(CommandLine.arguments.dropFirst())
 func flag(_ n: String) -> Bool { if let i = args.firstIndex(of: n) { args.remove(at: i); return true }; return false }
@@ -24,6 +27,7 @@ let seconds = Int(opt("--seconds") ?? "30")!
 let adsPath = opt("--ads")
 let storeDir = opt("--store") ?? NSTemporaryDirectory() + "youtube-ad-check-rules"
 let repeatLoad = flag("--repeat"), verbose = flag("--verbose")
+let nexts = flag("--next") ? Int(opt("--nexts") ?? "1")! : 0
 
 let start = Date()
 func log(_ s: String) {
@@ -126,20 +130,51 @@ let probeJS = """
 })()
 """
 
-// The first thumbnail of a non-playlist video: search results, or the related list on a watch page.
-let pickJS = """
+// The first thumbnail to click: for results/related one of a non-playlist video (search results, or the
+// related list on a watch page); for mix/playlist one that opens a Mix (list=RD…) or a playlist (list=PL…).
+func pickJS(_ kind: String) -> String { """
 (function(){
-  var as = document.querySelectorAll('ytd-video-renderer a#thumbnail[href^="/watch"], #secondary a[href^="/watch?v="]');
+  var kind = '\(kind)';
+  var as = kind === 'results' || kind === 'related'
+    ? document.querySelectorAll('ytd-video-renderer a#thumbnail[href^="/watch"], #secondary a[href^="/watch?v="]')
+    : document.querySelectorAll('ytd-search a[href^="/watch?v="], #secondary a[href^="/watch?v="]');
+  var want = kind === 'mix' ? /[?&]list=RD/ : kind === 'playlist' ? /[?&]list=PL/ : null;
   var here = new URLSearchParams(location.search).get('v');
   for (var i = 0; i < as.length; i++) {
     var a = as[i], h = a.getAttribute('href') || '', r = a.getBoundingClientRect();
-    if (r.width < 80 || r.height < 40 || /[?&]list=/.test(h) || (here && h.indexOf(here) >= 0)) continue;
+    if (r.width < 80 || r.height < 40 || (here && h.indexOf(here) >= 0)) continue;
+    if (want ? !want.test(h) : /[?&]list=/.test(h)) continue;
     if (r.top < 60 || r.bottom > innerHeight) { a.scrollIntoView({block: 'center'}); r = a.getBoundingClientRect(); }
     return JSON.stringify({x: r.left + r.width / 2, y: r.top + r.height / 2, href: h});
   }
-  // Only playlists so far, or the list isn't drawn yet: scroll so YouTube loads more.
+  // Nothing of that kind so far, or the list isn't drawn yet: scroll so YouTube loads more.
   window.scrollBy(0, 500);
   return null;
+})()
+""" }
+
+// Whether the playlist is still there. The page's own panel is the truth: it is drawn, holds the video
+// playing now, and gives the item after it ("next"). The player agrees when its playlist id is the page's
+// list= and its playlist has the video playing now at its index ("ok"); "next" is what Next should open.
+let listJS = """
+(function(){
+  var p = document.querySelector('#movie_player'), q = new URLSearchParams(location.search);
+  var list = q.get('list'), id = q.get('v');
+  if (!list) return JSON.stringify({ list: null });
+  var ids = null, at = -1, pid = null, vid = null;
+  try { ids = p.getPlaylist(); } catch (e) {}
+  try { at = p.getPlaylistIndex(); } catch (e) {}
+  try { pid = p.getPlaylistId(); } catch (e) {}
+  try { vid = p.getVideoData().video_id; } catch (e) {}
+  var panel = document.querySelector('ytd-playlist-panel-renderer#playlist');
+  var shown = !!panel && !panel.hidden && panel.getBoundingClientRect().height > 50;
+  var items = panel ? Array.prototype.map.call(panel.querySelectorAll('ytd-playlist-panel-video-renderer a#wc-endpoint'), function (a) {
+    return new URLSearchParams((a.getAttribute('href') || '').split('?')[1] || '').get('v');
+  }) : [];
+  var mine = items.indexOf(id), next = mine >= 0 ? items[mine + 1] || null : null;
+  var ok = shown && mine >= 0 && pid === list && vid === id && !!ids && ids[at] === id;
+  return JSON.stringify({ list: list, pid: pid, n: ids ? ids.length : 0, at: at, items: items.length, mine: mine,
+                          next: next, playerNext: ids && at >= 0 ? ids[at + 1] || null : null, shown: shown, ok: ok });
 })()
 """
 
@@ -223,16 +258,16 @@ func defaultAds() -> String? {
         return (played, flags)
     }
 
-    func waitForPick() async -> (Double, Double, String)? {
+    func waitForPick(_ kind: String) async -> (Double, Double, String)? {
         for _ in 0..<40 {
             try? await Task.sleep(for: .milliseconds(500))
             let found: Any?
-            do { found = try await web.evaluateJavaScript(pickJS) } catch { log("pick: \(error)"); found = nil }
+            do { found = try await web.evaluateJavaScript(pickJS(kind)) } catch { log("pick: \(error)"); found = nil }
             if let s = found as? String,
                let o = try? JSONSerialization.jsonObject(with: Data(s.utf8)) as? [String: Any],
                let x = o["x"] as? Double, let y = o["y"] as? Double {
                 try? await Task.sleep(for: .milliseconds(600))   // let the scroll settle, then measure again
-                if let s2 = (try? await web.evaluateJavaScript(pickJS)) as? String,
+                if let s2 = (try? await web.evaluateJavaScript(pickJS(kind))) as? String,
                    let o2 = try? JSONSerialization.jsonObject(with: Data(s2.utf8)) as? [String: Any],
                    let x2 = o2["x"] as? Double, let y2 = o2["y"] as? Double { return (x2, y2, o2["href"] as? String ?? "") }
                 return (x, y, o["href"] as? String ?? "")
@@ -264,7 +299,7 @@ func defaultAds() -> String? {
         let before = web.url?.absoluteString
         var href = ""
         for _ in 0..<3 {
-            guard let (x, y, h) = await waitForPick() else { fail("no video to click") }
+            guard let (x, y, h) = await waitForPick(click) else { fail("no video to click") }
             href = h
             log("clicking \(href)")
             _ = try? await web.evaluateJavaScript("window.__check && (window.__check.adsCut = 0, window.__check.backoff = 0); 0")
@@ -282,6 +317,39 @@ func defaultAds() -> String? {
             web.load(URLRequest(url: url))
             result = await watch()
         }
+    }
+    /// list-ok or list-lost on a playlist page (checked a little after play starts, as a person would see it).
+    func listState() async -> (String?, [String: Any]) {
+        try? await Task.sleep(for: .milliseconds(1500))
+        guard let s = (try? await web.evaluateJavaScript(listJS)) as? String,
+              let o = try? JSONSerialization.jsonObject(with: Data(s.utf8)) as? [String: Any] else { return ("list-lost", [:]) }
+        log("list: \(s)")
+        if o["list"] is NSNull || o["list"] == nil { return (nil, o) }
+        return (o["ok"] as? Bool == true ? "list-ok" : "list-lost", o)
+    }
+    if result.0 != nil {
+        let (state, first) = await listState()
+        if let state { result.1.insert(state) }
+        // Next, as a person presses it: each must open the panel's next item and keep the playlist.
+        // Timed by the slowest Next.
+        var o = first, slowest = 0.0
+        for n in 0..<nexts {
+            guard let want = o["next"] as? String else { fail("no playlist to go next in") }
+            log("next \(n + 1): expecting \(want)")
+            _ = try? await web.evaluateJavaScript("window.__check && (window.__check.adsCut = 0, window.__check.backoff = 0); var b = document.querySelector('.ytp-next-button'); b && b.click(); !!b")
+            let before = result.1.subtracting(["list-ok", "list-lost"])
+            result = await watch(expect: want)
+            result.1.formUnion(before)
+            guard let played = result.0 else { result.1.insert("next-stuck"); break }   // didn't play, or Next went elsewhere
+            log(String(format: "next %d played in %.1f s", n + 1, played))
+            slowest = max(slowest, played)
+            result.0 = slowest
+            let (state2, o2) = await listState()
+            o = o2
+            result.1.remove("list-ok")
+            if state2 != "list-ok" { result.1.insert("next-lost") }
+        }
+        if nexts > 0, !result.1.contains("next-stuck"), !result.1.contains("next-lost") { result.1.insert("next-ok") }
     }
     let secs = result.0.map { String(format: "%.1f", $0) } ?? "-"
     let flags = result.1.isEmpty ? "none" : result.1.sorted().joined(separator: ",")
