@@ -51,7 +51,7 @@ float snoise(float2 v) {
     p.x *= ratio;
     // A little zoomed in, so the wide card shows two or three big sweeping shapes, as Velaris does
     // on a full-size hero.
-    p *= 0.8;
+    p *= 0.64;
 
     float t = time * 0.1;
     // Breathing: the whole field swells and settles about every 12 seconds.
