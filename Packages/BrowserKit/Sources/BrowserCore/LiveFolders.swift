@@ -462,6 +462,26 @@ public enum GitHubPulls {
 
     public static let arcQueries = Filter.allCases.map(\.query)
 
+    /// The organisation or person a pull request's repository belongs to ("acme" for
+    /// github.com/acme/app/pull/1), lowercased.
+    public static func owner(of url: URL) -> String? {
+        let parts = url.path().split(separator: "/")
+        guard parts.count >= 2, url.host()?.lowercased().hasSuffix("github.com") != false else { return nil }
+        return parts[0].lowercased()
+    }
+
+    /// The owners these pull requests come from, in the order they first appear.
+    public static func owners(in items: [FetchedItem]) -> [String] {
+        var seen = Set<String>()
+        return items.compactMap { owner(of: $0.url) }.filter { seen.insert($0).inserted }
+    }
+
+    /// Leaves out pull requests from owners you've turned off.
+    public static func hiding(_ hidden: Set<String>, from items: [FetchedItem]) -> [FetchedItem] {
+        guard !hidden.isEmpty else { return items }
+        return items.filter { item in owner(of: item.url).map { !hidden.contains($0) } ?? true }
+    }
+
     /// The requests for one search: the pulls dashboard first, then the search page.
     public static func requests(query: String) -> [URLRequest] {
         let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "+&=#"))) ?? query

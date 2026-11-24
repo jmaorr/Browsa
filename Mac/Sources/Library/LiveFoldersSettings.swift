@@ -22,6 +22,11 @@ struct LiveFoldersSettings: View {
                 card { spaces }
             }
             group("Show in Pull Requests", detail: nil) { card { filters } }
+            if browser.regularSpaces.contains(where: { (library.gitHubOwners[$0.id]?.seen.count ?? 0) > 1 }) {
+                group("Organisations", detail: "Where each Space's pull requests come from. Turn one off to keep, say, work pull requests out of Personal.") {
+                    card { organisations }
+                }
+            }
             group("Sites", detail: nil) { card { sites } }
         }
     }
@@ -40,6 +45,45 @@ struct LiveFoldersSettings: View {
                                         set: { on in withAnimation(Motion.snappy) { library.setPullRequests(on, in: s) } }))
             }
         }
+    }
+
+    /// Per Space, a switch for each organisation (or person) its pull requests come from.
+    private var organisations: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            let spaces = browser.regularSpaces.filter { (library.gitHubOwners[$0.id]?.seen.count ?? 0) > 1 }
+            ForEach(Array(spaces.enumerated()), id: \.element.id) { i, s in
+                if i > 0 { Divider() }
+                Label(s.name, systemImage: s.symbol)
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
+                let owners = library.gitHubOwners[s.id] ?? GitHubOwners()
+                ForEach(owners.seen, id: \.self) { owner in
+                    HStack(spacing: 12) {
+                        AsyncImage(url: URL(string: "https://github.com/\(owner).png?size=64")) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Image(systemName: "building.2").foregroundStyle(.secondary)
+                        }
+                        .frame(width: 22, height: 22)
+                        .clipShape(.rect(cornerRadius: 5, style: .continuous))
+                        .frame(width: 32)
+                        Text(owner).font(.system(size: 13, weight: .medium))
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { !(library.gitHubOwners[s.id]?.hidden.contains(owner) ?? false) },
+                            set: { library.setGitHubOwner(owner, shown: $0, in: s) }))
+                            .toggleStyle(.switch).labelsHidden().controlSize(.small)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 7)
+                    .contentShape(.rect)
+                    .onTapGesture {
+                        let hidden = library.gitHubOwners[s.id]?.hidden.contains(owner) ?? false
+                        library.setGitHubOwner(owner, shown: hidden, in: s)
+                    }
+                }
+            }
+        }
+        .padding(.bottom, 6)
     }
 
     private var filters: some View {

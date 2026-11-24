@@ -121,6 +121,13 @@ final class Library {
         didSet { UserDefaults.standard.set(liveFoldersOn, forKey: Library.liveFoldersKey) }
     }
     /// What the Pull Requests folders show. Saved; all three to start, as in Arc.
+    /// Per space: the organisations its pull requests come from, and the ones turned off there.
+    var gitHubOwners: [UUID: GitHubOwners] = Library.savedGitHubOwners() {
+        didSet {
+            guard gitHubOwners != oldValue, let data = try? JSONEncoder().encode(gitHubOwners) else { return }
+            UserDefaults.standard.set(data, forKey: Library.gitHubOwnersKey)
+        }
+    }
     var gitHubFilters: Set<GitHubPulls.Filter> = Library.savedGitHubFilters() {
         didSet { UserDefaults.standard.set(gitHubFilters.map(\.rawValue), forKey: Library.gitHubFiltersKey) }
     }
