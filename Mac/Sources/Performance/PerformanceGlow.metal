@@ -5,8 +5,9 @@ using namespace metal;
 // The Performance panel's status card: the "Velaris" living gradient from 21st.dev, ported from its
 // WebGL fragment shader to a SwiftUI colour effect. Three layers of 2D simplex noise, each pushed by
 // the last, blend four colours over a dark background, with a centre glow, a vignette and film
-// grain. Same maths as the original; the only changes are GLSL to Metal syntax and flipping y,
-// since SwiftUI's origin is top-left and WebGL's is bottom-left.
+// grain. Same noise and colour layering as the original. Changes: GLSL to Metal syntax, y flipped (SwiftUI's
+// origin is top-left), the noise zoomed out and the vignette softened so a small wide card fills
+// edge to edge, a dark-green floor instead of bare black, and a slow breath.
 
 namespace velaris {
 
@@ -48,27 +49,37 @@ float snoise(float2 v) {
     float ratio = size.x / max(size.y, 1.0);
     float2 p = uv - 0.5;
     p.x *= ratio;
+    // The card is small and wide, so it looks at more of the noise than Velaris's full-screen canvas
+    // would; otherwise only one swirl shows, in the middle.
+    p *= 2.4;
 
     float t = time * 0.1;
+    // Breathing: the whole field swells and settles about every 12 seconds.
+    float breath = 0.5 + 0.5 * sin(time * 0.26);
 
     float n1 = velaris::snoise(p * 0.4 + float2(t * 0.2, -t * 0.3));
     float n2 = velaris::snoise(p * 0.55 + float2(-t * 0.15, t * 0.25) + n1 * 0.25);
     float n3 = velaris::snoise(p * 0.75 + float2(t * 0.1, -t * 0.2) + n2 * 0.2);
 
-    float3 col = bg;
+    // Never bare black: under the colours sits a deep shade of the darker green, so the whole card
+    // reads as the status colour.
+    float3 col = mix(bg, c2, 0.38);
 
-    float dist = length(p) * 1.5;
-    float vignette = 1.0 - smoothstep(0.3, 1.2, dist);
+    // Measured on the card itself (an ellipse to its edges), not the stretched noise space, and kept
+    // gentle, so the colour reaches the corners.
+    float dist = length((uv - 0.5) * 2.0);
+    float vignette = 1.0 - smoothstep(0.7, 1.5, dist);
 
-    col = mix(col, c0, smoothstep(-0.2, 0.5, n1) * 0.85);
-    col = mix(col, c1, smoothstep(-0.1, 0.6, n2) * 0.7);
+    float lift = 0.12 * breath;
+    col = mix(col, c0, smoothstep(-0.35 - lift, 0.5, n1) * 0.85);
+    col = mix(col, c1, smoothstep(-0.25 - lift, 0.6, n2) * 0.75);
     col = mix(col, c2, smoothstep(-0.3, 0.4, n3) * 0.6);
-    col = mix(col, c3, smoothstep(0.0, 0.7, n1 * n2) * 0.5);
+    col = mix(col, c3, smoothstep(0.0, 0.7, n1 * n2) * 0.35);
 
-    float glow = smoothstep(0.8, 0.0, dist) * 0.3;
+    float glow = smoothstep(1.3, 0.0, dist) * (0.18 + 0.12 * breath);
     col += c1 * glow;
 
-    col = mix(col * 0.2, col, vignette);
+    col = mix(col * 0.55, col, vignette);
 
     float g = fract(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453 + time);
     col += (g - 0.5) * grain * 0.1;
