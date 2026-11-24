@@ -56,7 +56,7 @@ final class Library {
         didSet {
             guard boosts != oldValue else { return }
             Preferences.boosts = boosts
-            (engine as? BoostsConfigurable)?.enabledBoosts = boosts
+            applyBoostsSwitch()
             // Choosing one yourself answers its suggestion.
             boostHintsDone.formUnion(boosts.symmetricDifference(oldValue))
         }
@@ -200,8 +200,8 @@ final class Library {
             calls.callAudio = callAudio
             calls.onCallAudioStats = { [weak self] in self?.callAudioStats = $0 }
         }
-        (engine as? BoostsConfigurable)?.enabledBoosts = boosts
         BoostStore.shared.attach(engine: engine as? BoostsConfigurable)
+        applyBoostsSwitch()
         applyBlocking()
         shareNotificationPermissions()
         archiveStaleTabs()
@@ -217,11 +217,22 @@ final class Library {
         // SpikeBrowsa sets mock servers instead. Radar only looks at this Mac's ports while it's on
         // (it's in the Agent Pack, off for new installs).
         if workbench.isEnabled("radar") { startRadar() }
+        #endif
         workbench.onEnabledChange = { [weak self] id, on in
+            if id == "boosts" { self?.applyBoostsSwitch() }
+            #if !SPIKE
             guard id == "radar" else { return }
             if on { self?.startRadar() } else { RadarStore.shared.stopLive() }
+            #endif
         }
-        #endif
+    }
+
+    /// The Library's Boosts switch: off, no Boost applies (ready-made or your own), and they all
+    /// come back as they were when it's on again.
+    func applyBoostsSwitch() {
+        let on = workbench.isEnabled("boosts")
+        (engine as? BoostsConfigurable)?.enabledBoosts = on ? boosts : []
+        BoostStore.shared.paused = !on
     }
 
     #if !SPIKE

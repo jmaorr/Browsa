@@ -302,7 +302,7 @@ private struct SiteMenu: View {
                 item.toolTip = "New posts from \(feed.name) appear in a folder in your sidebar."
                 menu.addItem(item)
             }
-            if browser.currentTab?.isPrivate != true, SiteBoost.key(for: url) != nil {
+            if browser.library.workbench.isEnabled("boosts"), browser.currentTab?.isPrivate != true, SiteBoost.key(for: url) != nil {
                 menu.addItem(.separator())
                 menu.addItem(.sectionHeader(title: "Boosts"))
                 for style in Boost.available(for: url) {

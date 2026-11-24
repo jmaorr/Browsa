@@ -110,6 +110,10 @@ final class BoostStore {
     @ObservationIgnored private weak var engine: (any BoostsConfigurable)?
     @ObservationIgnored private let fileURL = AppFolders.support.appending(path: "Browser/boosts.json")
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    /// The Library's Boosts switch is off: nothing applies, nothing is lost.
+    var paused = false {
+        didSet { if paused != oldValue { push() } }
+    }
 
     private init() {
         if let data = try? Data(contentsOf: fileURL), let saved = try? JSONDecoder().decode([SiteBoost].self, from: data) {
@@ -153,6 +157,14 @@ final class BoostStore {
         changed()
     }
 
+    /// A new, empty Boost for a site you type in the Library. Kept once it changes something.
+    func newBoost(forAddress address: String) -> SiteBoost? {
+        var text = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        if !text.contains("://") { text = "https://" + text }
+        return boostOrNew(for: URL(string: text))
+    }
+
     func remove(_ id: UUID) {
         boosts.removeAll { $0.id == id }
         changed()
@@ -173,7 +185,7 @@ final class BoostStore {
     }
 
     private func push() {
-        engine?.userBoosts = boosts.filter(\.isOn).map { PageBoost(host: $0.host, css: $0.effectiveCSS, script: $0.script) }
+        engine?.userBoosts = paused ? [] : boosts.filter(\.isOn).map { PageBoost(host: $0.host, css: $0.effectiveCSS, script: $0.script) }
     }
 
     /// Shows a Boost's style on a page now, without reloading. Its script runs on the next load.

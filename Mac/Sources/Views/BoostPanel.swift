@@ -116,45 +116,7 @@ struct BoostPanel: View {
     }
 
     private func tintRow(_ draft: Binding<SiteBoost>) -> some View {
-        section("Tint") {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 0) {
-                    swatch(nil, name: "Original", draft: draft)
-                    ForEach(SpacePalette.presets, id: \.name) { preset in
-                        swatch(preset.hue, name: preset.name, draft: draft)
-                    }
-                }
-                HueStrip(hue: Binding(
-                    get: { draft.wrappedValue.tint ?? 208 },
-                    set: { draft.wrappedValue.tint = $0 }), save: {})
-                    .opacity(draft.wrappedValue.tint == nil ? 0.5 : 1)
-            }
-        }
-    }
-
-    private func swatch(_ hue: Double?, name: String, draft: Binding<SiteBoost>) -> some View {
-        let current = draft.wrappedValue.tint
-        let selected = hue == nil ? current == nil : current.map { abs($0 - hue!) < 1 } ?? false
-        return Button {
-            withAnimation(Motion.snappy) { draft.wrappedValue.tint = hue }
-        } label: {
-            Group {
-                if let hue {
-                    Circle().fill(Color(nsColor: SpacePalette.hsl(hue, SpacePalette.saturation, 0.55)))
-                } else {
-                    Circle().fill(.background).overlay(Circle().strokeBorder(.primary.opacity(0.2)))
-                        .overlay(Image(systemName: "nosign").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary))
-                }
-            }
-            .frame(width: 18, height: 18)
-            .overlay(Circle().strokeBorder(.primary.opacity(selected ? 0.6 : 0), lineWidth: 2).padding(-3))
-            .contentShape(.circle)
-        }
-        .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
-        .help(name)
-        .accessibilityLabel(name)
-        .accessibilityAddTraits(selected ? .isSelected : [])
+        section("Tint") { BoostTintPicker(tint: draft.tint) }
     }
 
     private func zapRow(_ draft: Binding<SiteBoost>) -> some View {
@@ -204,6 +166,7 @@ struct BoostPanel: View {
         } label: {
             Text("Code").font(.subheadline.weight(.semibold))
         }
+        .disclosureGroupStyle(.row)
     }
 
     private var allBoosts: some View {
@@ -257,17 +220,61 @@ struct BoostPanel: View {
     }
 }
 
+/// A Boost's tint: Original, the Space theme presets, then any hue on the strip.
+struct BoostTintPicker: View {
+    @Binding var tint: Double?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 0) {
+                swatch(nil, name: "Original")
+                ForEach(SpacePalette.presets, id: \.name) { preset in
+                    swatch(preset.hue, name: preset.name)
+                }
+            }
+            HueStrip(hue: Binding(get: { tint ?? 208 }, set: { tint = $0 }), save: {})
+                .opacity(tint == nil ? 0.5 : 1)
+        }
+    }
+
+    private func swatch(_ hue: Double?, name: String) -> some View {
+        let selected = hue == nil ? tint == nil : tint.map { abs($0 - hue!) < 1 } ?? false
+        return Button {
+            withAnimation(Motion.snappy) { tint = hue }
+        } label: {
+            Group {
+                if let hue {
+                    Circle().fill(Color(nsColor: SpacePalette.hsl(hue, SpacePalette.saturation, 0.55)))
+                } else {
+                    Circle().fill(.background).overlay(Circle().strokeBorder(.primary.opacity(0.2)))
+                        .overlay(Image(systemName: "nosign").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary))
+                }
+            }
+            .frame(width: 18, height: 18)
+            .overlay(Circle().strokeBorder(.primary.opacity(selected ? 0.6 : 0), lineWidth: 2).padding(-3))
+            .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .help(name)
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
 /// A small monospaced editor.
-private struct CodeField: View {
+struct CodeField: View {
     @Binding var text: String
     let placeholder: String
+    var minHeight: CGFloat = 70
+    var maxHeight: CGFloat = 160
 
     var body: some View {
         TextEditor(text: $text)
             .font(.system(size: 11, design: .monospaced))
             .scrollContentBackground(.hidden)
             .padding(6)
-            .frame(minHeight: 70, maxHeight: 160)
+            .frame(minHeight: minHeight, maxHeight: maxHeight)
             .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 8, style: .continuous))
             .overlay(alignment: .topLeading) {
                 if text.isEmpty {

@@ -19,7 +19,6 @@ struct SettingsView: View {
     static let panes: [Pane] = [
         Pane(id: "general", title: "General", symbol: "gearshape"),
         Pane(id: "spaces", title: "Spaces", symbol: "square.stack"),
-        Pane(id: "routing", title: "Routing", symbol: "arrow.triangle.branch"),
         Pane(id: "shortcuts", title: "Shortcuts", symbol: "keyboard"),
         Pane(id: "privacy", title: "Privacy", symbol: "hand.raised"),
         Pane(id: "audio", title: "Audio", symbol: "waveform"),
@@ -37,12 +36,13 @@ struct SettingsView: View {
             }
         }
         .frame(width: 660)
+        // Routing moved to the Library (Space Routing).
+        .onAppear { if !Self.panes.contains(where: { $0.id == tab }) { tab = "general" } }
     }
 
     @ViewBuilder private func paneView(_ id: String) -> some View {
         switch id {
         case "spaces": SpacesSettings()
-        case "routing": SpaceRoutingSettings()
         case "shortcuts": ShortcutSettings()
         case "privacy": PrivacySettings()
         case "audio": AudioSettings()
@@ -127,39 +127,17 @@ private struct GeneralSettings: View {
                 }
             }
             Section {
-                ForEach(Boost.all) { style in
-                    Toggle(isOn: Binding(
-                        get: { browser.boosts.contains(style.id) },
-                        set: { on in if on { browser.boosts.insert(style.id) } else { browser.boosts.remove(style.id) } })) {
-                        VStack(alignment: .leading) {
-                            Text("\(style.site): \(style.name)")
-                            Text(style.summary).font(.caption).foregroundStyle(.secondary)
-                        }
+                LabeledContent {
+                    Button("Open Library") {
+                        guard let window = browser.windows.first(where: { $0.nsWindow?.isVisible == true }) ?? browser.windows.first else { return }
+                        window.openLibrary()
+                        window.nsWindow?.makeKeyAndOrderFront(nil)
                     }
+                        .buttonStyle(.glass).buttonBorderShape(.capsule)
+                } label: {
+                    Text("Boosts and Space Routing")
+                    Text("Now in the Library, with Live Folders.").font(.caption).foregroundStyle(.secondary)
                 }
-                ForEach(BoostStore.shared.boosts) { boost in
-                    Toggle(isOn: Binding(
-                        get: { boost.isOn },
-                        set: { BoostStore.shared.setOn(boost.id, $0) })) {
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(boost.host)
-                                Text(boost.summary).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Button("Delete", systemImage: "trash") { BoostStore.shared.remove(boost.id) }
-                                .labelStyle(.iconOnly)
-                                .buttonStyle(.glass)
-                                .buttonBorderShape(.circle)
-                                .help("Delete this Boost")
-                        }
-                    }
-                }
-            } header: {
-                Text("Boosts")
-            } footer: {
-                Text("Boosts give sites a new look. Turn on a ready-made one, or make your own from the site icon in the address bar: a font, a tint, things zapped away, or your own CSS. They change how a site looks, never what it does, and stay on this Mac.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
             if Updates.isEnabled {
                 @Bindable var updates = updates

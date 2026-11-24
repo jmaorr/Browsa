@@ -403,6 +403,8 @@ final class SpaceRouter {
 /// its sites), an Add Set menu, and custom rules (one address, one Space). Everything edits in place.
 struct SpaceRoutingSettings: View {
     @Environment(Library.self) private var library
+    /// The Library's page has its own switch above this.
+    var showsSwitch = true
     @State private var importFailed = false
 
     private var router: SpaceRouter { .shared }
@@ -411,10 +413,12 @@ struct SpaceRoutingSettings: View {
     var body: some View {
         @Bindable var router = SpaceRouter.shared
         Form {
-            Section {
-                Toggle(isOn: $router.isEnabled) {
-                    Text("Open sites in their Space")
-                    Text("New tabs for a site go to its Space, wherever you are. Links you follow inside a tab stay put, and private tabs and Favourites never move.")
+            if showsSwitch {
+                Section {
+                    Toggle(isOn: $router.isEnabled) {
+                        Text("Open sites in their Space")
+                        Text("New tabs for a site go to its Space, wherever you are. Links you follow inside a tab stay put, and private tabs and Favourites never move.")
+                    }
                 }
             }
             if router.isEnabled {
