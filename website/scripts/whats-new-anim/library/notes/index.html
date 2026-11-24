@@ -52,7 +52,8 @@ window.render = (t) => {
   $("rep").style.maxHeight = rep * 140 + "px"; $("rep").style.opacity = rep;
   $("rep").querySelector(".done").style.opacity = ph(t, 6.6, 0.3);
   $("hl").style.opacity = 1;
-  $("stage").style.opacity = loopFade(t, TOTAL);
+  // Only the window's contents fade at the loop point; the desktop and window stay put.
+  const lf = 0.15 + 0.85 * loopFade(t, TOTAL); $("side").style.opacity = lf; $("page").style.opacity = lf;
 };
 render(0);
 </script></body></html>

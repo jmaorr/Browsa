@@ -97,7 +97,8 @@ window.render = (t) => {
   const gone = eio(ph(t, 6.05, 0.5));
   props[1].style.opacity = 1 - gone; props[1].style.transform = `scale(${1 - 0.06 * gone})`; props[1].style.transformOrigin = "left center";
   props[1].style.maxHeight = (1 - gone) * 30 + "px"; props[1].style.marginBottom = (1 - gone) * 6 + "px"; props[1].style.overflow = "hidden";
-  $("stage").style.opacity = loopFade(t, TOTAL);
+  // Only the window's contents fade at the loop point; the desktop and window stay put.
+  const lf = 0.15 + 0.85 * loopFade(t, TOTAL); $("side").style.opacity = lf; $("page").style.opacity = lf;
 };
 render(0);
 </script></body></html>

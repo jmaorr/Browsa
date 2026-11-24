@@ -1,0 +1,135 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../../kit/kit.css"><link rel="stylesheet" href="../../kit/sites.css"><link rel="stylesheet" href="../shared/library.css"><script src="../../kit/kit.js"></script><script src="../../kit/sites.js"></script><script src="../shared/library.js"></script>
+<style>
+  .wall { background-image:url(../wallpapers/privacy.jpg); }
+  .win { left:250px; width:1100px; --tint:#5856d6; }
+  .site-wrap { position:absolute; left:0; top:0; bottom:0; right:372px; overflow:hidden; border-radius:14px 0 0 14px; }
+  /* The Performance panel, beside the page like Browsa's other panels. */
+  .perf { position:absolute; top:0; right:0; bottom:0; width:360px; padding:16px 16px; box-sizing:border-box; background:#fbfaf8; border-left:1px solid rgb(0 0 0 / .07); font-size:14px; }
+  .perf h2 { margin:0 0 12px; font-size:18px; font-weight:700; display:flex; align-items:center; gap:8px; }
+  .status { position:relative; height:84px; border-radius:16px; overflow:hidden; padding:14px 16px; box-sizing:border-box; color:#fff; }
+  .status .glow { position:absolute; inset:-40px; }
+  .status b { position:relative; display:block; font-size:17px; font-weight:700; }
+  .status span { position:relative; display:block; font-size:13px; opacity:.9; margin-top:2px; }
+  .status svg { position:absolute; right:12px; top:12px; }
+  .totals { display:flex; gap:10px; margin:12px 0; }
+  .totals > div { flex:1; padding:10px 12px; border-radius:12px; background:rgb(0 0 0 / .04); }
+  .totals small { display:block; font-size:12px; color:#77736c; font-weight:600; }
+  .totals b { font-size:19px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .most { display:flex; align-items:center; margin:4px 2px 8px; font-size:12px; font-weight:600; color:#77736c; text-transform:uppercase; letter-spacing:.04em; }
+  .seg { margin-left:auto; display:flex; padding:2px; border-radius:12px; background:rgb(0 0 0 / .06); text-transform:none; letter-spacing:0; }
+  .seg span { padding:3px 10px; border-radius:10px; font-size:12px; color:#5d5a55; }
+  .seg span.on { background:#fff; color:#161513; box-shadow:0 1px 2px rgb(0 0 0 / .12); }
+  .rows { position:relative; height:240px; }
+  .pr { position:absolute; left:0; right:0; height:46px; display:flex; align-items:center; gap:10px; padding:0 8px; border-radius:10px; }
+  .pr img { width:20px; height:20px; border-radius:5px; }
+  .pr .t { flex:1; min-width:0; }
+  .pr .t div { font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pr .bar { height:4px; border-radius:2px; background:rgb(0 0 0 / .07); margin-top:5px; overflow:hidden; }
+  .pr .bar i { display:block; height:100%; border-radius:2px; background:#8e8a83; }
+  .pr .v { text-align:right; font-variant-numeric:tabular-nums; font-size:13px; font-weight:600; min-width:58px; }
+  .pr .v small { display:block; font-weight:500; color:#a19d96; font-size:12px; }
+  .unload { position:absolute; left:38px; top:50px; display:flex; gap:6px; }
+  .unload span { height:28px; padding:0 12px; border-radius:14px; display:grid; place-items:center; font-size:13px; font-weight:600; background:rgb(0 0 0 / .06); }
+  .unload span.def { background:#0a84ff; color:#fff; }
+  .dot { position:absolute; right:14px; width:8px; height:8px; border-radius:50%; background:#ff3b30; box-shadow:0 0 0 3px rgb(255 59 48 / .2); }
+  .ptr { position:absolute; width:30px; height:30px; }
+  .ring { position:absolute; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%; border:3px solid rgb(22 21 19 / .45); }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="wall"></div>
+  <div class="win"><div class="side" id="side"></div><div class="page" id="page"></div></div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+$("side").innerHTML = sidebar({
+  addr: `${img("linear.app").replace("<img", '<img style="width:18px;height:18px;border-radius:4px"')}linear.app/browsa/my-issues`,
+  space: 1, tint: "#5856d6",
+  body: `<div class="sect">Pinned</div>${R(img("linear.app"), "My issues · Linear", "sel")}${R(img("github.com"), "Pull requests · GitHub")}
+    <div class="sect">Today</div><div style="position:relative">${R(img("stripe.com"), "Payments · Stripe", "", "stripe")}<i class="dot" id="sdot" style="top:17px"></i></div>${R(img("figma.com"), "Library · Figma")}${R(img("youtube.com"), "lofi hip hop radio")}`,
+  foot: {},
+});
+const ROWS = [
+  ["figma", "figma.com", "Library · Figma", 6, 640],
+  ["gfx", null, "Graphics and Media", 9, 350],
+  ["yt", "youtube.com", "lofi hip hop radio", 12, 410],
+  ["linear", "linear.app", "My issues · Linear", 3, 280],
+  ["stripe", "stripe.com", "Payments · Stripe", 2, 190],
+];
+const GFX = `<span style="width:20px;height:20px;border-radius:5px;background:linear-gradient(135deg,#8e8e93,#636366);display:grid;place-items:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="#fff"><rect x="3" y="5" width="18" height="12" rx="2"/><rect x="9" y="18" width="6" height="2"/></svg></span>`;
+$("page").innerHTML = `<div class="site-wrap">${site("linear")}</div>
+  <div class="perf">
+    <h2><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#161513" stroke-width="2.2" stroke-linecap="round"><path d="M4 16a8 8 0 1116 0"/><path d="M12 16l4-5"/></svg>Performance</h2>
+    <div class="status" id="status"><div class="glow" id="glow"></div><b id="head">All calm</b><span id="detail">7 tabs loaded, nothing working hard</span>
+      <svg width="84" height="30" viewBox="0 0 120 30" preserveAspectRatio="none"><path id="pulse" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".85"/></svg></div>
+    <div class="totals"><div><small>CPU</small><b id="cpu">32%</b></div><div><small>Memory</small><b id="mem">2.1 GB</b></div></div>
+    <div class="most">Using the Most<span class="seg"><span id="sc">CPU</span><span id="sm" class="on">Memory</span></span></div>
+    <div class="rows" id="rows">${ROWS.map(([id, f, t]) => `<div class="pr" id="r-${id}">${f ? img(f) : GFX}<div class="t"><div>${t}</div><div class="bar"><i id="b-${id}"></i></div></div><div class="v"><span id="v-${id}"></span><small id="w-${id}"></small></div></div>`).join("")}
+      <div class="unload" id="unload"><span class="def" id="ubtn">Unload Tab</span><span>Reload</span><span>Show Tab</span></div></div>
+  </div>
+  <div class="ring" id="ring"></div>
+  <div class="ptr" id="ptr">${POINTER("#161513")}</div>`;
+
+const page = $("page").getBoundingClientRect();
+window.TOTAL = 9;
+window.render = (t) => {
+  // Payments · Stripe gets stuck in the background (2.0 s), you unload it (5.6 s).
+  const up = eio(ph(t, 1.6, 1.4)), down = eio(ph(t, 5.7, 0.8));
+  const stuck = up * (1 - down);
+  const unloaded = t > 5.7;
+  const cpuOf = { figma: 6, gfx: 9 + 8 * stuck, yt: 12, linear: 3, stripe: unloaded ? 2 * (1 - down) : 2 + 110 * up };
+  const memOf = { figma: 640, gfx: 350, yt: 410, linear: 280, stripe: unloaded ? 190 * (1 - down) + 0 : 190 + 120 * up };
+  const byCPU = t > 3.0 && t < 7.4;
+  $("sc").classList.toggle("on", byCPU); $("sm").classList.toggle("on", !byCPU);
+  const key = byCPU ? cpuOf : memOf;
+  const order = ROWS.map((r) => r[0]).sort((a, b) => key[b] - key[a]);
+  const showStuck = t > 3.0 && t < 6.0;
+  ROWS.forEach(([id]) => {
+    const i = order.indexOf(id);
+    const el = $("r-" + id);
+    const extra = showStuck && order.indexOf("stripe") < i ? 40 : 0;
+    const target = i * 48 + extra;
+    const prev = parseFloat(el.dataset.y ?? target);
+    const y = Math.abs(prev - target) < 0.5 ? target : prev + (target - prev) * 0.22;
+    el.dataset.y = y; el.style.top = y + "px";
+    const max = byCPU ? 120 : 700;
+    $("b-" + id).style.width = Math.min(100, (key[id] / max) * 100) + "%";
+    $("b-" + id).style.background = id === "stripe" && stuck > 0.5 ? "#ff3b30" : "#8e8a83";
+    $("v-" + id).textContent = byCPU ? Math.round(cpuOf[id]) + "%" : (memOf[id] >= 1000 ? (memOf[id] / 1000).toFixed(1) + " GB" : Math.round(memOf[id]) + " MB");
+    $("w-" + id).textContent = byCPU ? Math.round(memOf[id]) + " MB" : Math.round(cpuOf[id]) + "%";
+    el.style.background = id === "stripe" && showStuck ? "rgb(255 59 48 / .08)" : "transparent";
+  });
+  if (unloaded) $("v-stripe").textContent = byCPU ? "0%" : "0 MB";
+  $("unload").style.top = (parseFloat($("r-stripe").dataset.y) + 46) + "px";
+  $("unload").style.opacity = showStuck ? Math.min(ph(t, 3.0, 0.3), 1 - ph(t, 5.75, 0.25)) : 0;
+
+  // Status card: calm green, stuck red.
+  const red = Math.min(ph(t, 2.6, 0.5), 1 - ph(t, 5.9, 0.6));
+  const g = [48, 164, 108], r = [235, 64, 52];
+  const c = g.map((v, i) => Math.round(mix(v, r[i], red)));
+  $("glow").style.background = `radial-gradient(circle at ${30 + 20 * Math.sin(t)}% ${40 + 20 * Math.cos(t * 0.8)}%, rgb(${c.map((v) => Math.min(255, v + 60)).join(",")}) 0, transparent 55%), radial-gradient(circle at 80% 70%, rgb(${c.join(",")}) 0, transparent 60%), rgb(${c.map((v) => Math.round(v * 0.75)).join(",")})`;
+  $("head").textContent = red > 0.5 ? "Payments · Stripe is stuck" : "All calm";
+  $("detail").textContent = red > 0.5 ? `${Math.round(cpuOf.stripe)}% CPU for ${Math.max(1, Math.round(t - 2.2))}0 seconds, in the background` : "7 tabs loaded, nothing working hard";
+  const speed = 2 + 8 * red;
+  let d = "M0 15";
+  for (let x = 0; x <= 120; x += 4) { const ph2 = (x / 120) * Math.PI * 2 * 2 - t * speed; d += ` L${x} ${15 - Math.max(0, Math.sin(ph2 * 2)) ** 6 * (8 + 6 * red) * (Math.sin(ph2) > 0 ? 1 : -0.4)}`; }
+  $("pulse").setAttribute("d", d);
+  const tc = Object.values(cpuOf).reduce((a, b) => a + b, 0), tm = Object.values(memOf).reduce((a, b) => a + b, 0) + 220;
+  $("cpu").textContent = Math.round(tc) + "%"; $("mem").textContent = (tm / 1000).toFixed(1) + " GB";
+  $("sdot").style.opacity = red;
+
+  // Pointer clicks Unload Tab.
+  const b = $("ubtn").getBoundingClientRect();
+  const bx = b.left - page.left + b.width / 2, by = b.top - page.top + b.height / 2;
+  const m = eio(ph(t, 4.0, 1.0));
+  $("ptr").style.left = mix(bx - 200, bx, m) + "px"; $("ptr").style.top = mix(by + 160, by, m) + "px";
+  $("ptr").style.opacity = Math.min(ph(t, 3.9, 0.3), 1 - ph(t, 6.6, 0.4));
+  const ck = ph(t, 5.5, 0.45);
+  $("ring").style.left = bx + "px"; $("ring").style.top = by + "px";
+  $("ring").style.opacity = t > 5.5 && t < 5.95 ? 1 - ck : 0; $("ring").style.transform = `scale(${0.5 + ck})`;
+  $("ubtn").style.filter = t > 5.45 && t < 5.75 ? "brightness(.85)" : "none";
+
+  const lf = 0.15 + 0.85 * loopFade(t, TOTAL); $("side").style.opacity = lf; $("page").style.opacity = lf;
+};
+render(0);
+</script></body></html>

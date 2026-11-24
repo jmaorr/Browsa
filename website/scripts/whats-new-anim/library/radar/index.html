@@ -55,7 +55,8 @@ window.render = (t) => {
   const ti = eo(ph(t, 3.7, 0.4));
   $("toast").style.opacity = ti * (1 - ph(t, 6.4, 0.4));
   $("toast").style.transform = `translateX(-50%) translateY(${(1 - ti) * 10}px)`;
-  $("stage").style.opacity = loopFade(t, TOTAL);
+  // Only the window's contents fade at the loop point; the desktop and window stay put.
+  const lf = 0.15 + 0.85 * loopFade(t, TOTAL); $("side").style.opacity = lf; $("page").style.opacity = lf;
 };
 render(0);
 </script></body></html>
