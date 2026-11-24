@@ -29,7 +29,8 @@ struct BrowserWindow: View {
             if let mode = browser.commandBar {
                 CommandBar(mode: mode)
                     .id(mode)
-                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+                    // Fade only: scaling here grew the dimming's edges too. The sheet settles in by itself.
+                    .transition(.opacity)
             }
         }
         .overlay {

@@ -220,6 +220,6 @@ struct BrowserCommands: Commands {
 
     /// Cmd-T and friends. With every window closed they open a fresh one.
     private func newTab(_ mode: CommandBarMode) {
-        if let browser { browser.showCommandBar(mode) } else { library.openWindow() }
+        if let browser { browser.showCommandBar(mode, toggles: true) } else { library.openWindow() }
     }
 }
