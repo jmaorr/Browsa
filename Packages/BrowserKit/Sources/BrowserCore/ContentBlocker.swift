@@ -59,9 +59,12 @@ public final class ContentBlocker {
         var wanted: Set<String> = []
         for group in FilterGroup.allCases where groups.contains(group) {
             guard let json = try? String(contentsOf: jsonURL(group), encoding: .utf8) else { continue }
-            let id = identifier("filters.\(group.rawValue)", allowlist: allowlist)
+            let ads = group == .ads
+            let id = identifier("filters.\(group.rawValue)" + (ads ? ".yt\(YouTubeAdRules.version)" : ""), allowlist: allowlist)
             wanted.insert(id)
-            if let list = await compiled(id: id, json: json, allowlist: allowlist) { out.append(list) }
+            if let list = await compiled(id: id, json: ads ? YouTubeAdRules.appending(to: json) : json, allowlist: allowlist) {
+                out.append(list)
+            }
         }
         if out.isEmpty, !groups.isEmpty,
            let url = Bundle.module.url(forResource: "blocklist", withExtension: "json"),
