@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import WebKit
 import WebKitEngine
 import BrowserCore
 
@@ -224,6 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Sheets, the settings window and other windows keep their own keys.
         guard let window = event.window, window.attachedSheet == nil,
               let browser = library.window(for: window) else { return false }
+        releaseKeysFromDeadPage(in: window, browser: browser)
         if flags == .command, key == "=" { browser.zoom(1); return true }
         let shortcuts = Shortcuts.shared
         // Pages that take ⌘S for themselves (Save in Docs, Notion, Figma…) would otherwise swallow
@@ -255,6 +257,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if browser.currentTab?.isLoading == true, browser.commandBar == nil { browser.stopLoading(); return false }
         }
         return false
+    }
+
+    /// A web view keeps every key press while it's first responder, menu keys included, and hands
+    /// the ones the page doesn't use back to the menus once the page has answered. A page whose process
+    /// has crashed (Browsa's error page is over it) or hung never answers, so ⌘T, ⌘L, ⌘W, Try Again's
+    /// Return, even ⌘Q did nothing. Then the window takes the keys instead, and the menus get them.
+    /// A click on the page, or the next tab switch, gives the page the keys back.
+    private func releaseKeysFromDeadPage(in window: NSWindow, browser: Browser) {
+        var view = window.firstResponder as? NSView
+        while let v = view, !(v is WKWebView) { view = v.superview }
+        guard let web = view as? WKWebView else { return }
+        let behindErrorPage = browser.shownTabs.contains { tab in
+            guard tab.loadError != nil, let page = library.existingController(for: tab)?.page.view else { return false }
+            return web.isDescendant(of: page)
+        }
+        guard behindErrorPage || !ProcessSampler.pageCanTakeKeys(web) else { return }
+        window.makeFirstResponder(nil)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
