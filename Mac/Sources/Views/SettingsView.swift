@@ -19,7 +19,6 @@ struct SettingsView: View {
     static let panes: [Pane] = [
         Pane(id: "general", title: "General", symbol: "gearshape"),
         Pane(id: "spaces", title: "Spaces", symbol: "square.stack"),
-        Pane(id: "routing", title: "Routing", symbol: "arrow.triangle.branch"),
         Pane(id: "shortcuts", title: "Shortcuts", symbol: "keyboard"),
         Pane(id: "privacy", title: "Privacy", symbol: "hand.raised"),
         Pane(id: "audio", title: "Audio", symbol: "waveform"),
@@ -37,12 +36,13 @@ struct SettingsView: View {
             }
         }
         .frame(width: 660)
+        // Routing moved to the Library (Space Routing).
+        .onAppear { if !Self.panes.contains(where: { $0.id == tab }) { tab = "general" } }
     }
 
     @ViewBuilder private func paneView(_ id: String) -> some View {
         switch id {
         case "spaces": SpacesSettings()
-        case "routing": SpaceRoutingSettings()
         case "shortcuts": ShortcutSettings()
         case "privacy": PrivacySettings()
         case "audio": AudioSettings()
@@ -59,6 +59,7 @@ private struct GeneralSettings: View {
     @State private var isDefault = false
     @State private var importing = false
     @AppStorage(BrowsaAppearance.key) private var appearance = ""
+    @AppStorage(VideoPiP.autoKey) private var videoPiPOnTabSwitch = true
 
     var body: some View {
         @Bindable var browser = browser
@@ -117,21 +118,26 @@ private struct GeneralSettings: View {
                 }
             }
             Section {
-                ForEach(SiteStyle.all) { style in
-                    Toggle(isOn: Binding(
-                        get: { browser.siteStyles.contains(style.id) },
-                        set: { on in if on { browser.siteStyles.insert(style.id) } else { browser.siteStyles.remove(style.id) } })) {
-                        VStack(alignment: .leading) {
-                            Text("\(style.site): \(style.name)")
-                            Text(style.summary).font(.caption).foregroundStyle(.secondary)
-                        }
+                Toggle(isOn: $videoPiPOnTabSwitch) {
+                    VStack(alignment: .leading) {
+                        Text("Pop out videos when you switch tabs")
+                        Text("A video playing with sound follows you in picture in picture, and goes back when you return to its tab. ⌥⌘P pops out any video.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-            } header: {
-                Text("Site styles")
-            } footer: {
-                Text("New looks for some sites. They change how a site looks, never what it does. You can also turn one on from the site icon in the address bar.")
-                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section {
+                LabeledContent {
+                    Button("Open Library") {
+                        guard let window = browser.windows.first(where: { $0.nsWindow?.isVisible == true }) ?? browser.windows.first else { return }
+                        window.openLibrary()
+                        window.nsWindow?.makeKeyAndOrderFront(nil)
+                    }
+                        .buttonStyle(.glass).buttonBorderShape(.capsule)
+                } label: {
+                    Text("Boosts and Space Routing")
+                    Text("Now in the Library, with Live Folders.").font(.caption).foregroundStyle(.secondary)
+                }
             }
             if Updates.isEnabled {
                 @Bindable var updates = updates
@@ -336,7 +342,7 @@ private struct ProfilesSettings: View {
             .padding(.vertical, 4)
             .background(Color.primary.opacity(0.04), in: .rect(cornerRadius: 12, style: .continuous))
             HStack(alignment: .top) {
-                Text("Each profile keeps its own cookies, logins and site data, so you can be signed in to different accounts in different spaces. History, favourites and extensions are shared.")
+                Text("Each profile keeps its own cookies, logins and site data, so you can be signed in to different accounts in different spaces. History, favourites, site permissions, Boosts and extensions are shared.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
@@ -599,11 +605,16 @@ private struct PrivacySettings: View {
                 perms[single.rawValue] = nil
             }
         }
-        return perms.sorted { $0.key < $1.key }.map { k, v in
-            let name = EnginePermission(rawValue: k).map(Self.title)
-                ?? (k.hasPrefix("app:") ? "Open in \(k.dropFirst(4))" : k)
+        var parts: [String] = perms.filter { !TabController.isOpenAppKey($0.key) }.sorted { $0.key < $1.key }.map { k, v in
+            let name = EnginePermission(rawValue: k).map(Self.title) ?? k
             return "\(name): \(v ? "Allowed" : "Denied")"
-        }.joined(separator: ", ")
+        }
+        // Open-in-app answers: Always Open or Don't Open.
+        for (scheme, open) in TabController.openAppAnswers(perms).sorted(by: { $0.key < $1.key }) {
+            let app = TabController.appName(forScheme: scheme)
+            parts.append(open ? "Always opens in \(app)" : "Doesn't open \(app)")
+        }
+        return parts.isEmpty ? "Asks before opening apps" : parts.joined(separator: ", ")
     }
 }
 

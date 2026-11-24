@@ -99,6 +99,10 @@ extension Library {
         reloadExtensions()
     }
 
+    func isAllowedInPrivate(_ id: String) -> Bool { engine.extensionAllowedInPrivate(id: id) }
+
+    func setAllowedInPrivate(_ id: String, _ allowed: Bool) { engine.setExtension(id: id, allowedInPrivate: allowed) }
+
     func setExtension(_ id: String, enabled: Bool) {
         extensionCatalog.setEnabled(enabled, id: id)
         reloadExtensions()

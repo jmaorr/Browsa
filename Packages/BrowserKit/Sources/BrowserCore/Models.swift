@@ -43,6 +43,8 @@ public final class BrowserTab: Identifiable {
     public var isAwaitingFirstPaint = false
     /// The page has the camera or microphone on: the tab is in a call. Nil otherwise.
     public var call: TabCall?
+    /// The page's video and audio: what the sidebar's play button and picture in picture work with.
+    public var media = TabMedia()
     /// The page's zoom (1 = actual size), for the address bar's zoom badge. The engine's own value
     /// can't be observed, so the Mac app keeps this one in step whenever it zooms.
     public var pageZoom: Double = 1
@@ -79,6 +81,34 @@ public struct TabCall: Equatable, Sendable {
     }
 }
 
+/// What a tab's video and audio are doing (the Mac mirrors the engine's `PageMedia` here).
+public struct TabMedia: Equatable, Sendable {
+    /// A video big enough to pop out.
+    public var hasVideo = false
+    public var isPlaying = false
+    /// Something played with sound since the page loaded, so a paused video keeps its play button.
+    public var hasPlayed = false
+    /// Something is playing with sound.
+    public var isAudible = false
+    /// A video with sound is playing.
+    public var isWatching = false
+    public var isPictureInPicture = false
+
+    public init(hasVideo: Bool = false, isPlaying: Bool = false, hasPlayed: Bool = false, isAudible: Bool = false,
+                isWatching: Bool = false, isPictureInPicture: Bool = false) {
+        self.hasVideo = hasVideo
+        self.isPlaying = isPlaying
+        self.hasPlayed = hasPlayed
+        self.isAudible = isAudible
+        self.isWatching = isWatching
+        self.isPictureInPicture = isPictureInPicture
+    }
+
+    /// Worth a play/pause button: something played with sound (playing now or paused since), or a video is out.
+    /// Muted autoplay (feeds, backgrounds) doesn't count.
+    public var showsControls: Bool { isAudible || hasPlayed || isPictureInPicture }
+}
+
 @MainActor @Observable
 public final class Space: Identifiable {
     public let id: UUID
@@ -96,6 +126,9 @@ public final class Space: Identifiable {
     /// "light" or "dark" keeps the space's whole window in that appearance. Nil follows Browsa's setting.
     public var appearance: String?
     public var pinned: [BrowserTab]
+    /// How the pinned tabs are arranged into folders (Mac). Read it through `pinnedTree`, which
+    /// fits it to `pinned`. iOS doesn't show folders and keeps it as it is.
+    public var pinnedLayout: [PinnedNode] = []
     public var today: [BrowserTab]
     public var selectedTabID: UUID?
     public var isSidebarOpen: Bool
@@ -120,6 +153,10 @@ public final class Space: Identifiable {
     }
 
     public var allTabs: [BrowserTab] { pinned + today }
+
+    /// The pinned layout with every pinned tab in it: tabs pinned since it last changed are at the
+    /// top level, next to the tab they were pinned beside.
+    public var pinnedTree: [PinnedNode] { PinnedOutline.reconciled(pinnedLayout, tabs: pinned.map(\.id)) }
 
     /// Today's tabs as the sidebar lists them: without the ones a favourite tile holds.
     public var listedToday: [BrowserTab] { today.filter { $0.favoriteID == nil } }
@@ -373,6 +410,8 @@ public struct SpaceRecord: Codable, Sendable {
     public var appearance: String? = nil
     /// Missing in state saved before Mac profiles.
     public var profileID: UUID? = nil
+    /// Missing in state saved before pinned folders, and when the space has none.
+    public var pinnedLayout: [PinnedNode]? = nil
 }
 
 public struct BrowserSnapshot: Codable, Sendable {
@@ -417,7 +456,8 @@ extension Space {
                     today: today.filter { !$0.isPrivate }.map(\.record),
                     selectedTabID: selectedTabID, isSidebarOpen: isSidebarOpen,
                     themeHue: themeHue, themeShade: themeShade,
-                    appearance: appearance, profileID: profileID)
+                    appearance: appearance, profileID: profileID,
+                    pinnedLayout: pinnedLayout.contains { $0.folder != nil } ? pinnedTree : nil)
     }
     public convenience init(_ r: SpaceRecord) {
         self.init(id: r.id, name: r.name, symbol: r.symbol, colorIndex: r.colorIndex,
@@ -427,5 +467,6 @@ extension Space {
         themeShade = r.themeShade
         appearance = r.appearance
         profileID = r.profileID
+        pinnedLayout = r.pinnedLayout ?? []
     }
 }

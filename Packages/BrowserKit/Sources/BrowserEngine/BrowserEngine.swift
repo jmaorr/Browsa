@@ -36,6 +36,10 @@ public protocol BrowserEngine: AnyObject {
     /// Forgets cookies and site storage for a profile.
     func clearWebsiteData(for profile: BrowsingProfile) async
 
+    /// The profile's cookies a request to `url` would carry, so the app can fetch as the signed-in
+    /// person (Live Folders read github.com this way, as Arc did).
+    func cookies(for profile: BrowsingProfile, url: URL) async -> [HTTPCookie]
+
     /// Throws away everything the ephemeral (private) profile stored. Its pages must be closed first.
     func resetEphemeralProfile()
 
@@ -63,6 +67,9 @@ public protocol BrowserEngine: AnyObject {
     func unloadExtensions()
     /// An extension was removed: forget what the engine kept about it (its address, its prepared copy).
     func forgetExtension(id: String)
+    /// Whether an extension runs in private windows. Off until you allow it, as in Chrome.
+    func extensionAllowedInPrivate(id: String) -> Bool
+    func setExtension(id: String, allowedInPrivate: Bool)
     /// The extension's toolbar button was clicked. Its popup, if it has one, appears at `anchor`.
     func performAction(extensionID: String, for page: (any EnginePage)?, anchor: PlatformView?)
     /// An extension's toolbar action as it stands for `page`: its label, badge and icon there.
@@ -73,6 +80,7 @@ public protocol BrowserEngine: AnyObject {
 
 public extension BrowserEngine {
     func deleteProfile(_ id: UUID) async {}
+    func cookies(for profile: BrowsingProfile, url: URL) async -> [HTTPCookie] { [] }
     var extensions: [EngineExtension] { [] }
     var extensionHost: (any EngineExtensionHost)? { get { nil } set {} }
     func loadInstalledExtensions() async -> [String] { [] }
@@ -82,6 +90,8 @@ public extension BrowserEngine {
     }
     func unloadExtensions() {}
     func forgetExtension(id: String) {}
+    func extensionAllowedInPrivate(id: String) -> Bool { false }
+    func setExtension(id: String, allowedInPrivate: Bool) {}
     func performAction(extensionID: String, for page: (any EnginePage)?, anchor: PlatformView?) {}
     func extensionActionState(extensionID: String, for page: (any EnginePage)?) -> EngineActionState? { nil }
     func pageDidBecomeActive(_ page: any EnginePage) {}
@@ -329,6 +339,9 @@ public protocol EnginePage: AnyObject {
     /// A picture of the visible page.
     func snapshot() async -> CGImage?
 
+    /// Plays, pauses or pops out the page's main video or audio. `state.media` says what there is.
+    func media(_ action: MediaAction)
+
     /// Stops everything and lets go of the engine's resources.
     func close()
 }
@@ -357,11 +370,45 @@ public final class PageState {
     public var isPlayingAudio = false
     /// Someone typed into a field on the page and it still holds text.
     public var hasUnsavedInput = false
+    /// The page's video and audio, for picture in picture and the sidebar's play button.
+    public var media = PageMedia()
 
     /// Unloading the page now would cut off a call, the music or a draft.
     public var isBusy: Bool { isCapturing || isPlayingAudio || hasUnsavedInput }
 
     public init() {}
+}
+
+/// What a page's video and audio are doing.
+public struct PageMedia: Equatable, Sendable {
+    /// A video big enough to pop out (not an icon-sized loop).
+    public var hasVideo = false
+    /// Something is playing, with sound or without.
+    public var isPlaying = false
+    /// Something played with sound since the page loaded, so a paused video still gets a play button.
+    public var hasPlayed = false
+    /// Something is playing with sound.
+    public var isAudible = false
+    /// A video with sound is playing: the one to pop out when you leave the tab.
+    public var isWatching = false
+    /// A video is in picture in picture.
+    public var isPictureInPicture = false
+
+    public init(hasVideo: Bool = false, isPlaying: Bool = false, hasPlayed: Bool = false, isAudible: Bool = false,
+                isWatching: Bool = false, isPictureInPicture: Bool = false) {
+        self.hasVideo = hasVideo
+        self.isPlaying = isPlaying
+        self.hasPlayed = hasPlayed
+        self.isAudible = isAudible
+        self.isWatching = isWatching
+        self.isPictureInPicture = isPictureInPicture
+    }
+}
+
+/// Something to do to a page's main video or audio.
+public enum MediaAction: Sendable {
+    case playPause
+    case togglePictureInPicture, enterPictureInPicture, exitPictureInPicture
 }
 
 /// A camera or microphone, as the page has it.
@@ -404,6 +451,9 @@ public protocol EnginePageDelegate: AnyObject {
     func page(_ page: any EnginePage, didStartDownload download: EngineDownload)
     /// The cookie-banner script declined a banner on this page.
     func pageDidDeclineCookieBanner(_ page: any EnginePage)
+    /// The video window's "back to tab" button was pressed for this page's video. The video only goes back
+    /// once the page is on screen, so show its tab.
+    func pageWantsVideoBack(_ page: any EnginePage)
     /// The page showed a web notification. The site already has permission. False if it couldn't be shown
     /// (notifications are off for the app in the system, say), which the page hears as an error.
     func page(_ page: any EnginePage, showNotification notification: WebNotification) async -> Bool
@@ -445,6 +495,7 @@ public struct FindMatches: Sendable, Equatable {
 
 public extension EnginePage {
     func findMatches(_ text: String) async -> FindMatches? { nil }
+    func media(_ action: MediaAction) {}
 }
 
 /// A site's notification (`new Notification(…)` or a service worker's `showNotification`).
@@ -498,6 +549,7 @@ public extension EnginePageDelegate {
     func page(_ page: any EnginePage, chooseFiles request: FileChooserRequest) async -> [URL]? { nil }
     func page(_ page: any EnginePage, didStartDownload download: EngineDownload) {}
     func pageDidDeclineCookieBanner(_ page: any EnginePage) {}
+    func pageWantsVideoBack(_ page: any EnginePage) {}
     func page(_ page: any EnginePage, showNotification notification: WebNotification) async -> Bool { false }
     func page(_ page: any EnginePage, closeNotification id: String, tag: String?) {}
 }
@@ -686,11 +738,69 @@ public struct CallAudioStats: Sendable, Equatable {
     }
 }
 
-/// Engines that can run Site Styles (`SiteStyle`).
+/// Engines that can run Boosts (`Boost`).
 @MainActor
-public protocol SiteStylesConfigurable: AnyObject {
+public protocol BoostsConfigurable: AnyObject {
     /// The ids of the styles turned on. Changes apply to open pages straight away, without a reload.
-    var enabledSiteStyles: Set<String> { get set }
+    var enabledBoosts: Set<String> { get set }
+    /// Boosts people made themselves, one per site, that are on. Pages loaded from now on get them; a page
+    /// open now gets a changed style straight away (`PageBoost.previewSource`), its script on the next load.
+    var userBoosts: [PageBoost] { get set }
+}
+
+/// A Boost someone made for one site: their own CSS and script. The script runs in its own world
+/// (`world`), so it sees the page's DOM but never the page's JavaScript.
+public struct PageBoost: Sendable, Equatable {
+    /// "example.com" also covers its subdomains.
+    public var host: String
+    public var css: String
+    public var script: String
+
+    public init(host: String, css: String, script: String) {
+        self.host = host
+        self.css = css
+        self.script = script
+    }
+
+    /// The world Boost styles and scripts run in.
+    public static let world = "browsa.boost"
+
+    /// Defines `__browsaBoostCSS(css)` in the Boost world: replaces the Boost's style sheet. A constructed
+    /// sheet isn't inline style, so sites' Content Security Policies don't block it; a <style> element is
+    /// the fallback.
+    public static let applyCSSFunction = """
+    globalThis.__browsaBoostCSS = globalThis.__browsaBoostCSS || ((css) => {
+      try {
+        let sheet = globalThis.__browsaBoostSheet;
+        if (!sheet) {
+          sheet = new CSSStyleSheet();
+          globalThis.__browsaBoostSheet = sheet;
+          document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+        }
+        sheet.replaceSync(css);
+      } catch (e) {
+        const put = () => {
+          let s = document.getElementById('__browsa_boost');
+          if (!s) { s = document.createElement('style'); s.id = '__browsa_boost'; (document.head || document.documentElement).appendChild(s); }
+          s.textContent = css;
+        };
+        if (document.documentElement) put(); else document.addEventListener('DOMContentLoaded', put, { once: true });
+      }
+    });
+    """
+
+    /// Shows `css` on a page that's open now, replacing what its Boost showed before. Run in `world`.
+    public static func previewSource(css: String) -> String {
+        applyCSSFunction + "\n__browsaBoostCSS(\(jsString(css))); return true;"
+    }
+
+    /// A Swift string as a JavaScript string literal.
+    public static func jsString(_ s: String) -> String {
+        let data = (try? JSONSerialization.data(withJSONObject: [s])) ?? Data("[\"\"]".utf8)
+        return String(String(decoding: data, as: UTF8.self).dropFirst().dropLast())
+    }
+
+    public func matches(_ host: String) -> Bool { host == self.host || host.hasSuffix("." + self.host) }
 }
 
 /// Engines that can run Browsa's call audio.

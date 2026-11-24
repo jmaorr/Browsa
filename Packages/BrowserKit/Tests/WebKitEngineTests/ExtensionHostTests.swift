@@ -65,6 +65,24 @@ import JavaScriptCore
         #expect(!ExtensionFetch.matches(cookie("claude.ai", secure: true), URL(string: "http://claude.ai/")!))
     }
 
+    @Test func extensionFetchRedirectsDropWhatBelongsToTheFirstSite() {
+        guard #available(macOS 15.4, *) else { return }
+        var post = URLRequest(url: URL(string: "https://claude.ai/login")!)
+        post.httpMethod = "POST"
+        post.httpBody = Data("x".utf8)
+        post.setValue("Bearer t", forHTTPHeaderField: "Authorization")
+        post.setValue("session=1", forHTTPHeaderField: "Cookie")
+        let elsewhere = ExtensionFetch.redirected(post, to: URL(string: "https://other.example/")!, status: 302)
+        #expect(elsewhere.httpMethod == "GET")
+        #expect(elsewhere.httpBody == nil)
+        #expect(elsewhere.value(forHTTPHeaderField: "Authorization") == nil)
+        #expect(elsewhere.value(forHTTPHeaderField: "Cookie") == nil)
+        let same = ExtensionFetch.redirected(post, to: URL(string: "https://claude.ai/home")!, status: 307)
+        #expect(same.httpMethod == "POST")
+        #expect(same.value(forHTTPHeaderField: "Authorization") == "Bearer t")
+        #expect(same.value(forHTTPHeaderField: "Cookie") == nil)
+    }
+
     @Test func clickIDsComeOffLinks() {
         let url = URL(string: "https://shop.example/item?id=7&gclid=abc&fbclid=x&utm_source=news")!
         #expect(PrivacySwitches.withoutClickIDs(url)?.absoluteString == "https://shop.example/item?id=7&utm_source=news")
