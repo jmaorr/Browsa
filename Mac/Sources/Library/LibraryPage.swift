@@ -218,6 +218,8 @@ struct LibraryView: View {
     @State private var problem: String?
     @FocusState private var searchFocused: Bool
     @State private var keys = LibraryKeys()
+    /// Set by browsa://library/live-folders: the list scrolls to Live Folders.
+    @State private var scrollToLive = false
 
     private var library: Library { browser.library }
 
@@ -260,7 +262,12 @@ struct LibraryView: View {
         }
         .background(Color(nsColor: .textBackgroundColor))
         .onChange(of: browser.libraryRequest, initial: true) {
-            detail = browser.libraryTarget
+            if browser.libraryTarget == "live-folders" {
+                detail = nil
+                scrollToLive = true
+            } else {
+                detail = browser.libraryTarget
+            }
             parentPack = nil
             browser.libraryTarget = nil
         }
@@ -294,6 +301,9 @@ struct LibraryView: View {
                         PackCard(pack: pack, isFocused: focused == .pack(pack.id)) { detail = pack.id }.id(LibraryItem.pack(pack.id))
                     }
                     pluginGrid(title: "Browsa Plugins", detail: "Made for Browsa.", plugins: tools)
+                    if matches("live folders", "pull requests", "github", "feed", "rss", "follow") {
+                        LiveFoldersSection().id("live-folders")
+                    }
                     pluginGrid(title: "Privacy", detail: "Built in, and on from the start.", plugins: privacy)
                     if !isSearching || !(verified.isEmpty && installed.isEmpty && safari.isEmpty) { extensionsSection }
                     if isSearching { storeSearch }
@@ -306,6 +316,11 @@ struct LibraryView: View {
             .onChange(of: focused) { _, item in
                 guard let item else { return }
                 withAnimation(Motion.snappy) { proxy.scrollTo(item, anchor: .center) }
+            }
+            .onChange(of: scrollToLive) { _, go in
+                guard go else { return }
+                scrollToLive = false
+                DispatchQueue.main.async { withAnimation(Motion.snappy) { proxy.scrollTo("live-folders", anchor: .top) } }
             }
         }
         .onAppear {

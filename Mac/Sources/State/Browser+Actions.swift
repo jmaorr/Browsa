@@ -55,8 +55,11 @@ extension Browser {
             if !tab.isPrivate {
                 out.append(BrowserCommand(id: "new-folder", title: tab.isPinned ? "New Folder with Tab" : "New Folder",
                                           keywords: ["pinned", "group", "tabs"]))
-                out.append(BrowserCommand(id: "new-live-folder", title: "New Live Folder…",
-                                          keywords: ["rss", "feed", "atom", "github", "pull requests", "issues", "auto"]))
+                if let feed = currentPageFeed {
+                    let following = library.feedFolder(feed.url, in: currentSpace) != nil
+                    out.append(BrowserCommand(id: "follow-site", title: following ? "Show \(feed.name) in Sidebar" : "Follow \(feed.name) in Sidebar",
+                                              keywords: ["rss", "feed", "atom", "subscribe", "live folder"]))
+                }
             }
             if let url = tab.url {
                 out.append(BrowserCommand(id: "copy-link", title: "Copy Link", subtitle: url.absoluteString, keywords: ["url", "share"]))
@@ -116,6 +119,13 @@ extension Browser {
             out.append(BrowserCommand(id: "downloads", title: "Show Downloads", subtitle: "\(downloads.count) files", keywords: ["files"]))
         }
         out.append(BrowserCommand(id: "archive", title: "Show Archive", subtitle: "\(archive.count) archived tabs", keywords: ["history", "closed"]))
+        if !currentSpace.isPrivate {
+            out.append(BrowserCommand(id: "pull-requests",
+                                      title: library.gitHubFolder(in: currentSpace) == nil ? "Show Pull Requests in Sidebar" : "Remove Pull Requests from Sidebar",
+                                      keywords: ["github", "pr", "review", "live folder"]))
+        }
+        out.append(BrowserCommand(id: "live-folders", title: "Live Folders", subtitle: "Library",
+                                  keywords: ["rss", "feed", "follow", "github", "pull requests"]))
         out.append(BrowserCommand(id: "library", title: "Library", keywords: ["extensions", "plugins", "add-ons", "packs", "manage extensions"]))
         out.append(BrowserCommand(id: "settings", title: "Settings", keywords: ["preferences", "search engine"]))
         out.append(BrowserCommand(id: "panel", title: panel == nil ? "Show Panel" : "Hide Panel", keywords: ["right", "side", "tools"]))
@@ -155,6 +165,7 @@ extension Browser {
         "downloads": "arrow.down.circle", "archive": "archivebox", "settings": "gearshape", "library": "square.grid.2x2", "space": "square.stack",
         "move": "arrow.right.square", "restore": "archivebox", "ext": "puzzlepiece.extension",
         "copy-markdown": "link.badge.plus", "split-view": "rectangle.split.2x1", "separate-split": "rectangle", "clear-today": "xmark.circle", "inspector": "hammer",
+        "follow-site": "dot.radiowaves.up.forward", "pull-requests": "arrow.triangle.pull", "live-folders": "folder.badge.gearshape",
     ]
 
     func run(command id: String) {
@@ -173,7 +184,9 @@ extension Browser {
         switch id {
         case "panel": togglePanel()
         case "pin": if let t = currentTab { togglePinned(t) }
-        case "new-live-folder": newLiveFolder()
+        case "follow-site": followCurrentPage()
+        case "pull-requests": togglePullRequests()
+        case "live-folders": openLibrary("live-folders")
         case "new-folder": withAnimation(Motion.snappy) { newPinnedFolder(holding: currentTab?.isPinned == true ? currentTab : nil) }
         case "favourite": if let t = currentTab, let url = t.url { addFavorite(url: url, title: t.displayTitle) }
         case "close": if let t = currentTab { close(t) }

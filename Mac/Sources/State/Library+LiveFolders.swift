@@ -4,11 +4,20 @@ import Security
 import SwiftUI
 import BrowserCore
 import BrowserEngine
+import Suggest
 
-/// Live Folders: pinned folders that fill themselves from a feed or a GitHub search (see
+/// The feed a page lists in its head, and the name to give its folder.
+struct PageFeed: Equatable {
+    let url: URL
+    let name: String
+}
+
+/// Live Folders: pinned folders that fill themselves from a feed or your GitHub pull requests (see
 /// `LiveFolders` for the rules). Each item is an ordinary pinned tab inside the folder, so opening,
-/// moving and unloading work as they do for any pinned tab. Folders check every 15 minutes, when
-/// Browsa starts, and when you open one that hasn't checked for a while.
+/// moving and unloading work as they do for any pinned tab. You turn them on rather than build
+/// them: Pull Requests from the Library or the Command Bar, a site from its own page ("Follow in
+/// Sidebar", offered only where the page lists a feed) or by its address in the Library.
+/// GitHub folders check every 2 minutes while Browsa is in front; feeds every 15 minutes.
 extension Library {
     /// How often the loop wakes. GitHub folders check this often while Browsa is in front (Dia's
     /// 2 minutes); feeds every 15 minutes.
@@ -62,23 +71,6 @@ extension Library {
         return folder.id
     }
 
-    /// Points a live folder somewhere else. What it held goes, and the new source fills it.
-    func changeLiveFolder(_ id: UUID, to kind: LiveSourceKind, name: String, in space: Space) {
-        guard let folder = PinnedOutline.folder(id, in: space.pinnedTree), let live = folder.live else { return }
-        if live.kind != kind { removeLiveTabs(live.items.map(\.tabID), in: space) }
-        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        setPinnedLayout(PinnedOutline.updating(id, in: space.pinnedTree) { f in
-            if !name.isEmpty { f.name = name }
-            if live.kind != kind { f.live = LiveSource(kind: kind) }
-        }, in: space)
-        if live.kind != kind { Task { await refreshLiveFolder(id, in: space) } }
-    }
-
-    /// The folder stops updating and keeps what it holds as ordinary pinned tabs.
-    func stopLiveFolder(_ id: UUID, in space: Space) {
-        setPinnedLayout(PinnedOutline.updating(id, in: space.pinnedTree) { $0.live = nil }, in: space)
-    }
-
     /// Takes a live folder away with the tabs it filled in. Tabs you put in it yourself stay pinned.
     func removeLiveFolder(_ id: UUID, in space: Space) {
         guard let live = PinnedOutline.folder(id, in: space.pinnedTree)?.live else {
@@ -119,7 +111,7 @@ extension Library {
             let jar = await engine.cookies(for: profile(for: space), url: URL(string: "https://github.com/pulls")!)
             cookies = HTTPCookie.requestHeaderFields(with: jar)
         }
-        let result = await Self.fetchLive(kind, cookies: cookies)
+        let result = await Self.fetchLive(kind, cookies: cookies, pullQueries: GitHubPulls.queries(for: gitHubFilters))
         // The folder may have changed (or gone) while that was in flight.
         guard let folder = PinnedOutline.folder(id, in: space.pinnedTree), let live = folder.live, live.kind == kind else { return }
         switch result {
@@ -193,13 +185,109 @@ extension Library {
         LiveFolders.liveFolders(in: space.pinnedTree).first { $0.live?.kind == .githubPullRequests }
     }
 
-    /// Adds the space's GitHub folder (Arc's "Pull Requests"), or takes it away with its items.
-    func toggleGitHubFolder(in space: Space) {
-        if let folder = gitHubFolder(in: space) {
+    /// Turns the space's Pull Requests folder on or off. Off takes it away with its items.
+    func setPullRequests(_ on: Bool, in space: Space) {
+        if on {
+            if gitHubFolder(in: space) == nil { newLiveFolder(.githubPullRequests, name: "Pull Requests", in: space) }
+        } else if let folder = gitHubFolder(in: space) {
             removeLiveFolder(folder.id, in: space)
-        } else {
-            newLiveFolder(.githubPullRequests, name: "Pull Requests", in: space)
         }
+    }
+
+    nonisolated static let gitHubFiltersKey = "liveFolders.gitHubFilters"
+
+    nonisolated static func savedGitHubFilters() -> Set<GitHubPulls.Filter> {
+        guard let saved = UserDefaults.standard.stringArray(forKey: gitHubFiltersKey) else { return Set(GitHubPulls.Filter.allCases) }
+        let filters = Set(saved.compactMap(GitHubPulls.Filter.init(rawValue:)))
+        return filters.isEmpty ? Set(GitHubPulls.Filter.allCases) : filters
+    }
+
+    /// Shows or hides one kind of pull request in every Pull Requests folder, straight away. The
+    /// last one stays on: a folder that shows nothing would just look broken.
+    func setGitHubFilter(_ filter: GitHubPulls.Filter, on: Bool) {
+        var next = gitHubFilters
+        if on { next.insert(filter) } else { next.remove(filter) }
+        guard !next.isEmpty, next != gitHubFilters else { return }
+        gitHubFilters = next
+        for space in regularSpaces {
+            guard let folder = gitHubFolder(in: space) else { continue }
+            Task { await refreshLiveFolder(folder.id, in: space) }
+        }
+    }
+
+    // MARK: Following a site
+
+    /// The space's folder for a feed, if it follows it already.
+    func feedFolder(_ url: URL, in space: Space) -> PinnedFolder? {
+        LiveFolders.liveFolders(in: space.pinnedTree).first { $0.live?.kind == .feed(url: url) }
+    }
+
+    /// Every site followed, across spaces, for the Library.
+    var followedSites: [(folder: PinnedFolder, space: Space, url: URL)] {
+        regularSpaces.flatMap { space in
+            LiveFolders.liveFolders(in: space.pinnedTree).compactMap { folder in
+                if case .feed(let url)? = folder.live?.kind { return (folder, space, url) }
+                return nil
+            }
+        }
+    }
+
+    /// A page finished loading: notes the feed its head lists, if any. Reads only what the page
+    /// already has, so it costs nothing on the network.
+    func detectPageFeed(_ page: any EnginePage, url: URL, in tab: BrowserTab) async {
+        guard !tab.isPrivate, url.scheme == "https" || url.scheme == "http" else {
+            pageFeeds[tab.id] = nil
+            return
+        }
+        var found: PageFeed?
+        if let raw = try? await page.evaluate(FeedDiscovery.pageScript, inWorld: "browsa.feeds") as? [Any],
+           raw.count == 2, let href = raw[0] as? String, let feed = URL(string: href),
+           feed.scheme == "https" || feed.scheme == "http" {
+            let name = (raw[1] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            found = PageFeed(url: feed, name: name.isEmpty ? URLNormalizer.displayHost(url) : String(name.prefix(40)))
+        }
+        if pageFeeds[tab.id] != found { pageFeeds[tab.id] = found }
+    }
+
+    /// Follows a feed in a space's sidebar: a folder at the top that fills with its latest posts.
+    /// Following it again shows the folder it has.
+    @discardableResult
+    func follow(_ feed: PageFeed, in space: Space, toastIn browser: Browser? = nil) -> UUID? {
+        if let existing = feedFolder(feed.url, in: space) {
+            setPinnedFolder(existing.id, open: true, in: space)
+            browser?.showToast("Already following \(existing.name)")
+            return existing.id
+        }
+        guard let id = withAnimation(Motion.snappy, { newLiveFolder(.feed(url: feed.url), name: feed.name, in: space) }) else { return nil }
+        browser?.showToast("Following \(feed.name)", actions: [
+            ToastAction(title: "Undo") { [weak self] in
+                withAnimation(Motion.snappy) { self?.removeLiveFolder(id, in: space) }
+            },
+        ])
+        return id
+    }
+
+    /// For the Library's "Follow a Site": an address you type, or a page's. Returns a problem to
+    /// show, or nil once it's followed.
+    func followSite(_ address: String, in space: Space) async -> String? {
+        var text = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        if !text.contains("://") { text = "https://" + text }
+        guard let url = URL(string: text), url.host() != nil else { return "That doesn't look like a web address." }
+        guard let found = await Self.resolveFeed(url) else {
+            return "\(URLNormalizer.displayHost(url)) doesn't have a feed to follow."
+        }
+        let name = found.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        follow(PageFeed(url: found.url, name: name.isEmpty ? URLNormalizer.displayHost(url) : String(name.prefix(40))), in: space)
+        return nil
+    }
+
+    /// The folder's items as a Markdown list, for pasting into notes or a chat.
+    func copyLinksAsMarkdown(_ folder: PinnedFolder, in space: Space) {
+        let tabs = PinnedOutline.tabIDs(folder.children).compactMap { id in space.pinned.first { $0.id == id } }
+        let lines = tabs.compactMap { tab in tab.url.map { "- [\(tab.displayTitle)](\($0.absoluteString))" } }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
     }
 
     /// A page finished loading. On github.com: offer the GitHub folder once, and check the space's
@@ -221,8 +309,8 @@ extension Library {
         makeGitHubFolderIfWanted(in: space, from: tab)
     }
 
-    /// Spaces that have had their GitHub folder made for them, so deleting it keeps it gone (it
-    /// comes back from Live Folders › GitHub Pull Requests).
+    /// Logins that have had their GitHub folder made for them, so removing it keeps it gone (it
+    /// comes back from the Library or the Command Bar).
     private static let gitHubAutoKey = "liveFolders.gitHubFolderMadeForProfiles"
 
     private static func profileKey(_ profile: BrowsingProfile) -> String {
@@ -249,7 +337,7 @@ extension Library {
             defer { gitHubAutoChecking = false }
             let jar = await engine.cookies(for: profile(for: space), url: URL(string: "https://github.com/pulls")!)
             let header = HTTPCookie.requestHeaderFields(with: jar)
-            guard case .success(let items)? = try? await Self.fetchGitHubPulls(GitHubPulls.arcQueries, cookies: header),
+            guard case .success(let items)? = try? await Self.fetchGitHubPulls(GitHubPulls.queries(for: gitHubFilters), cookies: header),
                   !items.isEmpty, gitHubFolder(in: space) == nil else { return }
             UserDefaults.standard.set(done + [key], forKey: Self.gitHubAutoKey)
             withAnimation(Motion.snappy) { _ = newLiveFolder(.githubPullRequests, name: "Pull Requests", in: space) }
@@ -314,11 +402,12 @@ extension Library {
         return .success(GitHubPulls.unique(items))
     }
 
-    nonisolated static func fetchLive(_ kind: LiveSourceKind, cookies: [String: String] = [:]) async -> Result<[FetchedItem], LiveError> {
+    nonisolated static func fetchLive(_ kind: LiveSourceKind, cookies: [String: String] = [:],
+                                      pullQueries: [String] = GitHubPulls.arcQueries) async -> Result<[FetchedItem], LiveError> {
         do {
             switch kind {
             case .githubPullRequests:
-                switch try await fetchGitHubPulls(GitHubPulls.arcQueries, cookies: cookies) {
+                switch try await fetchGitHubPulls(pullQueries, cookies: cookies) {
                 case .success(let items): return .success(items)
                 case .failure(let f): return .failure(LiveError(message: f.message))
                 }
@@ -363,7 +452,7 @@ extension Library {
         return nil
     }
 
-    /// For the new folder sheet: the feed a page or address leads to, and its title.
+    /// For "Follow a Site": the feed a page or address leads to, and its title.
     nonisolated static func resolveFeed(_ url: URL) async -> (url: URL, title: String)? {
         guard let page = try? await URLSession.shared.data(from: url) else { return nil }
         let base = page.1.url ?? url
