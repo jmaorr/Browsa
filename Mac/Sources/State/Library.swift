@@ -102,6 +102,9 @@ final class Library {
     private(set) var windows: [Browser] = []
     /// Live folders checking their source right now, by folder id.
     var liveRefreshing: Set<UUID> = []
+    /// When each live folder last checked, for checks that changed nothing: kept in memory so a quiet check
+    /// doesn't save the library and redraw the sidebar every two minutes.
+    @ObservationIgnored var liveChecked: [UUID: Date] = [:]
     /// Pinned tabs a live folder filled in that haven't been opened yet: they show a dot.
     var liveUnread: Set<UUID> = []
     @ObservationIgnored var liveTask: Task<Void, Never>?

@@ -295,7 +295,7 @@ private struct DraggableFolderRow: View {
 
     @ViewBuilder private var menu: some View {
         if let live = folder.live {
-            Text(live.lastError ?? live.lastChecked.map { "Updated " + Self.ago.localizedString(for: $0, relativeTo: .now) } ?? "Checking…")
+            Text(live.lastError ?? browser.library.lastChecked(live, folder: folder.id).map { "Updated " + Self.ago.localizedString(for: $0, relativeTo: .now) } ?? "Checking…")
             if live.kind == .githubPullRequests {
                 // These act on this folder (and any other Pull Requests folder) straight away.
                 ForEach(GitHubPulls.Filter.allCases, id: \.self) { filter in

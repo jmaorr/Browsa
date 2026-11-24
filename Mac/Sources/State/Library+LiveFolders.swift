@@ -56,7 +56,7 @@ extension Library {
             for folder in LiveFolders.liveFolders(in: space.pinnedTree) {
                 guard let live = folder.live else { continue }
                 if dueOnly {
-                    let age = live.lastChecked.map { Date.now.timeIntervalSince($0) } ?? .infinity
+                    let age = lastChecked(live, folder: folder.id).map { Date.now.timeIntervalSince($0) } ?? .infinity
                     if live.kind.usesGitHubLogin {
                         guard NSApp.isActive, age >= 110 else { continue }
                     } else if age < Self.feedInterval { continue }
@@ -123,6 +123,12 @@ extension Library {
         guard let folder = PinnedOutline.folder(id, in: space.pinnedTree), let live = folder.live, live.kind == kind else { return }
         switch result {
         case .failure(let error):
+            // The same failure as last time: nothing new to save.
+            if live.lastError == error.message {
+                liveChecked[id] = .now
+                return
+            }
+            liveChecked[id] = nil
             setPinnedLayout(PinnedOutline.updating(id, in: space.pinnedTree) { f in
                 f.live?.lastError = error.message
                 f.live?.lastChecked = .now
@@ -131,18 +137,31 @@ extension Library {
             apply(LiveFolders.plan(live, fetched: fetched,
                                    inFolder: Set(PinnedOutline.tabIDs(folder.children)),
                                    keep: Set(windows.flatMap(\.shownTabIDs))),
-                  to: id, in: space)
+                  previous: live, to: id, in: space)
         }
     }
 
     /// Refreshes a live folder you've just opened, if it hasn't checked in a few minutes.
     func refreshLiveFolderIfStale(_ id: UUID, in space: Space) {
         guard let live = PinnedOutline.folder(id, in: space.pinnedTree)?.live else { return }
-        if let last = live.lastChecked, Date.now.timeIntervalSince(last) < 120 { return }
+        if let last = lastChecked(live, folder: id), Date.now.timeIntervalSince(last) < 120 { return }
         Task { await refreshLiveFolder(id, in: space) }
     }
 
-    private func apply(_ plan: LivePlan, to id: UUID, in space: Space) {
+    /// When a live folder last checked its source, whether or not that changed anything.
+    func lastChecked(_ live: LiveSource, folder id: UUID) -> Date? {
+        [live.lastChecked, liveChecked[id]].compactMap { $0 }.max()
+    }
+
+    private func apply(_ plan: LivePlan, previous: LiveSource, to id: UUID, in space: Space) {
+        // Nothing new, gone or renamed: note the check in memory only.
+        var unchanged = plan.source
+        unchanged.lastChecked = previous.lastChecked
+        if plan.added.isEmpty, plan.removed.isEmpty, unchanged == previous {
+            liveChecked[id] = .now
+            return
+        }
+        liveChecked[id] = nil
         removeLiveTabs(plan.removed, in: space)
         // The layout before the new tabs are pinned, so they don't first land at the top level.
         var tree = space.pinnedTree
