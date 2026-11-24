@@ -263,7 +263,7 @@ struct CommandBar: View {
         VStack(spacing: 0) {
             fieldRow
             if showsChips {
-                chips.padding(.bottom, 10)
+                chips.padding(.top, -6).padding(.bottom, 4)
             }
             if showsCard {
                 card
@@ -653,13 +653,14 @@ private struct ChipRow<Content: View>: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal) {
-                GlassEffectContainer(spacing: 8) {
-                    HStack(spacing: 8) { content }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 3)
+                // No glass container: it merged neighbouring chips' glass and drew a second outline
+                // around a raised one. Room above and below so the lift's shadow isn't cut off.
+                HStack(spacing: 8) { content }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
             }
             .scrollIndicators(.never)
+            .scrollClipDisabled()
             .onChange(of: highlighted) { _, i in if let i { withAnimation(Motion.snappy) { proxy.scrollTo(i) } } }
         }
     }
@@ -707,7 +708,6 @@ private struct GlassChip<Icon: View>: View {
         }
         .glassEffect(raised ? .identity : .regular, in: .capsule)
         .overlay(Capsule().strokeBorder(raised ? RaisedFill.edge(scheme) : Color.primary.opacity(0.1)))
-        .scaleEffect(raised ? 1.03 : 1)
         .animation(Motion.quick, value: raised)
         .onHover { hovering = $0 }
     }
