@@ -59,7 +59,7 @@ struct LibraryArtView: View {
     }
 }
 
-private struct LoopingPlayer: NSViewRepresentable {
+struct LoopingPlayer: NSViewRepresentable {
     let url: URL
     var playing = true
 
