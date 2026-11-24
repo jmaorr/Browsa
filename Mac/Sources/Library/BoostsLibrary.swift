@@ -45,6 +45,8 @@ struct BoostsSettings: View {
                                 .disabled(address.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
                         if let problem { Text(problem).font(.caption).foregroundStyle(.secondary) }
+                        Button { importBoost() } label: { Label("Import Boost…", systemImage: "square.and.arrow.down") }
+                            .buttonStyle(.glass).buttonBorderShape(.capsule).controlSize(.small)
                         Text("A Boost opens beside its site, so you see each change on the real page. You can also Boost the site you're on from the site icon in the address bar.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
@@ -52,6 +54,33 @@ struct BoostsSettings: View {
                 }
             }
         }
+    }
+
+    /// A Boost someone shared. It comes in off and opens on its own page, so you can see what it
+    /// changes (and read any script) before turning it on.
+    private func importBoost() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "browsaboost") ?? .json, .json]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url, let data = try? Data(contentsOf: url) else { return }
+        guard let boost = BoostStore.importBoost(from: data) else {
+            problem = "That file isn't a Browsa Boost."
+            return
+        }
+        if store.boosts.contains(where: { $0.host == boost.host }) {
+            let alert = NSAlert()
+            alert.messageText = "Replace your Boost for \(boost.host)?"
+            alert.informativeText = "The one you're importing takes its place."
+            alert.addButton(withTitle: "Replace")
+            alert.addButton(withTitle: "Keep Mine")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        problem = nil
+        store.add(imported: boost)
+        open("boost:" + boost.id.uuidString)
+        browser.showToast(boost.script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                          ? "Imported. Turn it on when you're ready"
+                          : "Imported with a script. Read it before turning it on")
     }
 
     private func newBoost() {
@@ -94,6 +123,7 @@ private struct BoostRow: View {
         .contextMenu {
             Button("Open Beside \(boost.host)", systemImage: "sidebar.right", action: open)
             Button("Edit CSS and Script…", systemImage: "chevron.left.forwardslash.chevron.right", action: editCode)
+            Button("Export…", systemImage: "square.and.arrow.up") { exportBoost(boost) }
         }
         .help("Open \(boost.host) with its Boost beside it")
     }
@@ -168,6 +198,8 @@ struct BoostEditorPage: View {
                         .buttonStyle(.glass).buttonBorderShape(.capsule)
                     Spacer()
                     if store.boosts.contains(where: { $0.id == draft.id }) {
+                        Button { flush(); exportBoost(draft) } label: { Label("Export…", systemImage: "square.and.arrow.up") }
+                            .buttonStyle(.glass).buttonBorderShape(.capsule)
                         Button(role: .destructive) {
                             saveTask?.cancel(); saveTask = nil
                             store.remove(draft.id)
@@ -328,4 +360,14 @@ extension Browser {
             ZapPicker.zapOnCurrentPage(in: self)
         }
     }
+}
+
+/// Saves a Boost as a .browsaboost file to send to someone.
+@MainActor func exportBoost(_ boost: SiteBoost) {
+    guard let data = BoostStore.exportData(boost) else { return }
+    let panel = NSSavePanel()
+    panel.nameFieldStringValue = boost.host + ".browsaboost"
+    panel.allowedContentTypes = [UTType(filenameExtension: "browsaboost") ?? .json]
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    try? data.write(to: url, options: .atomic)
 }

@@ -194,6 +194,37 @@ final class BoostStore {
         return boostOrNew(for: URL(string: text))
     }
 
+    /// A Boost as a file to share: what it changes, without this Mac's id or dates.
+    struct SharedFile: Codable {
+        var browsaBoost = 1
+        var boost: SiteBoost
+    }
+
+    static func exportData(_ boost: SiteBoost) -> Data? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try? encoder.encode(SharedFile(boost: boost))
+    }
+
+    /// Reads a shared Boost. It comes in off, as a new Boost, so you see what it does before it runs.
+    static func importBoost(from data: Data) -> SiteBoost? {
+        guard let file = try? JSONDecoder().decode(SharedFile.self, from: data), file.browsaBoost == 1,
+              let host = SiteBoost.key(for: URL(string: "https://" + file.boost.host)) else { return nil }
+        var boost = file.boost
+        boost.id = UUID()
+        boost.host = host
+        boost.isOn = false
+        boost.created = Date()
+        return boost
+    }
+
+    /// Adds an imported Boost, replacing yours for the same site.
+    func add(imported boost: SiteBoost) {
+        boosts.removeAll { $0.host == boost.host }
+        boosts.append(boost)
+        changed()
+    }
+
     func remove(_ id: UUID) {
         boosts.removeAll { $0.id == id }
         changed()
