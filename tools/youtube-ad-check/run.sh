@@ -39,7 +39,10 @@ cases=(
   "repeat|pass|--url https://www.youtube.com/watch?v=dQw4w9WgXcQ --repeat"
   "search-click|pass|--url https://www.youtube.com/results?search_query=veritasium --click results"
   "related-click|pass|--url https://www.youtube.com/watch?v=dQw4w9WgXcQ --click related"
-  "playlist-mix|known|--url https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1"
+  "playlist-mix|pass|--url https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1"
+  "mix-next|known|--url https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&start_radio=1 --next --nexts 2"
+  "playlist-next|pass|--url https://www.youtube.com/watch?v=PUX1YnmGytM&list=PL0NlNYU99BSMfNcGaEWqBWAh7vOtSzUid&index=1 --next --nexts 2"
+  "search-mix|known|--url https://www.youtube.com/results?search_query=rick+astley+mix --click mix"
 )
 
 click_limit=6 load_limit=8
@@ -48,14 +51,14 @@ rows=()
 for c in $cases; do
   name=${c%%|*}; rest=${c#*|}; expected=${rest%%|*}; params=${rest#*|}
   echo "Running $name …"
-  for try in 1 2; do   # once more if the page gave nothing to click
+  for try in 1 2 3; do   # again if the page gave nothing to click, or YouTube served no ad (nothing tested)
     out=$($bin --case $name ${=params} $common 2>/dev/null | tee /dev/stderr | grep '^RESULT' | tail -1 || true)
-    [[ $out == *error:no_video_to_click* ]] || break
+    [[ $out == *error:no_video_to_click* || ( $out != *error:* && $out != *ads-cut* && $out != *server-wait* ) ]] || break
   done
   secs=$(echo $out | awk '{print $3}'); flags=$(echo $out | awk '{print $4}')
   [[ -z $out ]] && secs="-" flags="no-result"
-  limit=$load_limit; [[ $params == *--click* ]] && limit=$click_limit
-  if [[ $secs != "-" && $flags != *ad-showing* ]] && (( secs <= limit )); then
+  limit=$load_limit; [[ $params == *--click* || $params == *--next* ]] && limit=$click_limit
+  if [[ $secs != "-" && $flags != *ad-showing* && $flags != *-lost* && $flags != *next-stuck* ]] && (( secs <= limit )); then
     verdict=PASS
     [[ $flags == *ads-cut* || $flags == *server-wait* ]] || verdict="PASS (no ad served)"
   elif [[ $expected == known ]]; then
@@ -67,15 +70,17 @@ for c in $cases; do
 done
 
 echo
-printf "%-15s %-10s %-34s %s\n" "case" "play (s)" "flags" "result"
-printf "%-15s %-10s %-34s %s\n" "---------------" "--------" "--------------------------------" "------"
+printf "%-15s %-10s %-50s %s\n" "case" "play (s)" "flags" "result"
+printf "%-15s %-10s %-50s %s\n" "---------------" "--------" "------------------------------------------------" "------"
 for r in $rows; do
   IFS='|' read -r n s f v <<< $r
-  printf "%-15s %-10s %-34s %s\n" $n $s $f $v
+  printf "%-15s %-10s %-50s %s\n" $n $s $f $v
 done
 echo
-echo "PASS: plays within ${click_limit}s of a click (${load_limit}s of a page load), with no ad showing."
+echo "PASS: plays within ${click_limit}s of a click or Next (${load_limit}s of a page load), with no ad showing,"
+echo "and on a playlist the playlist is kept (list-ok; next-ok: every Next opened the playlist's next item)."
 echo "Flags: ads-cut = YouTube sent an ad and the script took it out; server-wait-Ns = the stream server asked"
-echo "the player to wait N s (the cut ad's length); ad-showing = an ad played; ad-data-left = ads got past the script."
+echo "the player to wait N s (the cut ad's length); ad-showing = an ad played; ad-data-left = ads got past the script;"
+echo "list-lost / next-lost = the playlist was dropped; next-stuck = Next didn't play the playlist's next item."
 echo "\"no ad served\" means YouTube sent no ad this time, so that case proves nothing: run again."
 exit $failed
