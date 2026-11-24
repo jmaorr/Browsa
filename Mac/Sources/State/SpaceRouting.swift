@@ -175,6 +175,11 @@ final class SpaceRouter {
         }
     }
 
+    /// Browsa's starting sets, shown greyed on the Library page before routing is first turned on.
+    static var previewSets: [RouteSet] {
+        StarterSet.all.filter(\.onByDefault).map { RouteSet(name: $0.title, sites: $0.patterns, spaceID: nil, templateID: $0.id) }
+    }
+
     static func namedSpace(for set: StarterSet, in spaces: [Space]) -> Space? {
         for name in set.spaceNames {
             if let s = spaces.first(where: { $0.name.trimmingCharacters(in: .whitespaces).lowercased() == name }) { return s }
@@ -421,9 +426,10 @@ struct SpaceRoutingSettings: View {
                     }
                 }
             }
-            if router.isEnabled {
+            // In the Library the page shows these (greyed) even while routing is off.
+            if router.isEnabled || !showsSwitch {
                 Section {
-                    ForEach(router.sets) { set in RouteSetRow(set: set) }
+                    ForEach(router.sets.isEmpty && !router.isEnabled ? SpaceRouter.previewSets : router.sets) { set in RouteSetRow(set: set) }
                     addSetMenu
                 } header: {
                     Text("Routing sets")

@@ -432,6 +432,20 @@ struct LibraryView: View {
 
     // MARK: Sections
 
+    /// Above a page's greyed-out settings while it's off.
+    private var offNote: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "eye").foregroundStyle(.secondary)
+            Text("A preview of what \(plugin.title) adds. Turn it on to use it.")
+                .font(.callout).foregroundStyle(.secondary)
+            Spacer()
+            Button("Turn On") { LibraryActions.set(plugin.id, on: true, in: browser) }
+                .buttonStyle(.glassProminent).buttonBorderShape(.capsule).controlSize(.small)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(.primary.opacity(0.035), in: .rect(cornerRadius: 12, style: .continuous))
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
@@ -984,19 +998,19 @@ private struct PluginDetail: View {
                     BackButton(title: backTitle, action: back)
                     header
                     Text(plugin.about).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
+                    if !on { offNote }
                 }
                 .frame(maxWidth: 720, alignment: .leading)
                 .padding(.horizontal, 40)
                 .padding(.top, 32)
                 .frame(maxWidth: .infinity)
-                if on {
-                    SpaceRoutingSettings(showsSwitch: false)
-                        .environment(browser.library)
-                        .frame(maxWidth: 760)
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Spacer()
-                }
+                // Off, still shown (greyed) so you can see what you'd be turning on.
+                SpaceRoutingSettings(showsSwitch: false)
+                    .environment(browser.library)
+                    .disabled(!on)
+                    .opacity(on ? 1 : 0.5)
+                    .frame(maxWidth: 760)
+                    .frame(maxWidth: .infinity)
             }
         } else {
             page
@@ -1021,6 +1035,7 @@ private struct PluginDetail: View {
             VStack(alignment: .leading, spacing: 24) {
                 BackButton(title: backTitle, action: back)
                 header
+                if !on { offNote }
                 Text(plugin.about).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
                 if plugin.id == "live-folders" {
                     LiveFoldersSettings()
