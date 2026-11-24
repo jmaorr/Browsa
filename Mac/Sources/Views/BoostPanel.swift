@@ -21,7 +21,10 @@ struct BoostPanel: View {
             if isPrivate {
                 PanelEmptyState(title: "Private Window", symbol: "eye.slash",
                                 message: "Boosts you already made still apply here, but Browsa doesn't save new ones from private tabs.")
-            } else if let draft = Binding($draft) {
+            } else if let current = draft {
+                // Not `Binding($draft)`: that force-unwraps, and views still reading it crash when the
+                // draft goes away (moving to a tab with no site). This one falls back to the last value.
+                let draft = Binding(get: { self.draft ?? current }, set: { self.draft = $0 })
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         header(draft)
