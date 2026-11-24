@@ -6,8 +6,8 @@ using namespace metal;
 // WebGL fragment shader to a SwiftUI colour effect. Three layers of 2D simplex noise, each pushed by
 // the last, blend four colours over a dark background, with a centre glow, a vignette and film
 // grain. Same noise and colour layering as the original. Changes: GLSL to Metal syntax, y flipped (SwiftUI's
-// origin is top-left), the noise zoomed out and the vignette softened so a small wide card fills
-// edge to edge, a dark-green floor instead of bare black, and a slow breath.
+// origin is top-left), the vignette measured on the card's own shape (Velaris's, on a wide card,
+// blacked out both sides and left a swirl in the middle), a faint green floor, and a slow breath.
 
 namespace velaris {
 
@@ -49,9 +49,9 @@ float snoise(float2 v) {
     float ratio = size.x / max(size.y, 1.0);
     float2 p = uv - 0.5;
     p.x *= ratio;
-    // The card is small and wide, so it looks at more of the noise than Velaris's full-screen canvas
-    // would; otherwise only one swirl shows, in the middle.
-    p *= 2.4;
+    // A little zoomed in, so the wide card shows two or three big sweeping shapes, as Velaris does
+    // on a full-size hero.
+    p *= 0.8;
 
     float t = time * 0.1;
     // Breathing: the whole field swells and settles about every 12 seconds.
@@ -63,23 +63,24 @@ float snoise(float2 v) {
 
     // Never bare black: under the colours sits a deep shade of the darker green, so the whole card
     // reads as the status colour.
-    float3 col = mix(bg, c2, 0.38);
+    float3 col = mix(bg, c2, 0.12);
 
     // Measured on the card itself (an ellipse to its edges), not the stretched noise space, and kept
     // gentle, so the colour reaches the corners.
     float dist = length((uv - 0.5) * 2.0);
-    float vignette = 1.0 - smoothstep(0.7, 1.5, dist);
+    float vignette = 1.0 - smoothstep(0.45, 1.45, dist);
 
-    float lift = 0.12 * breath;
-    col = mix(col, c0, smoothstep(-0.35 - lift, 0.5, n1) * 0.85);
-    col = mix(col, c1, smoothstep(-0.25 - lift, 0.6, n2) * 0.75);
+    float lift = 0.08 * breath;
+    col = mix(col, c0, smoothstep(-0.1 - lift, 0.6, n1) * 0.6);
+    col = mix(col, c1, smoothstep(0.0 - lift, 0.7, n2) * 0.55);
     col = mix(col, c2, smoothstep(-0.3, 0.4, n3) * 0.6);
-    col = mix(col, c3, smoothstep(0.0, 0.7, n1 * n2) * 0.35);
+    col = mix(col, c3, smoothstep(0.0, 0.7, n1 * n2) * 0.5);
 
-    float glow = smoothstep(1.3, 0.0, dist) * (0.18 + 0.12 * breath);
+    float glow = smoothstep(1.2, 0.0, dist) * (0.22 + 0.08 * breath);
     col += c1 * glow;
 
-    col = mix(col * 0.55, col, vignette);
+    // Kept dim overall, like Velaris on a big hero: mostly deep colour with lighter sweeps through it.
+    col = mix(col * 0.25, col, vignette) * 0.8;
 
     float g = fract(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453 + time);
     col += (g - 0.5) * grain * 0.1;
