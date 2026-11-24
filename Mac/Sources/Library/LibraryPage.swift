@@ -117,6 +117,10 @@ enum LibraryCatalog {
               blurb: "Sidebar folders that keep themselves up to date.",
               surfaces: ["Sidebar", "⌘K", "Site menu"],
               about: "Your GitHub pull requests and review requests appear in a Pull Requests folder, read with the GitHub account you're signed in to. Follow a site and its new posts appear in a folder too. Nothing checks while Live Folders is off."),
+        .init(id: "performance", title: "Performance Monitor", symbol: "gauge.with.dots.needle.33percent", tint: .red,
+              blurb: "See which tabs are slowing Browsa down.",
+              surfaces: ["Panel", "⌘K"],
+              about: "Shows CPU and memory for every tab and the helpers they share over the last five minutes, and points out a tab that's stuck so you can reload or close it."),
         .init(id: "privacy-blocking", title: "Ad & Tracker Blocker", symbol: "hand.raised.fill", tint: .blue,
               blurb: "Blocks ads and trackers on every site.",
               surfaces: ["Every page"], kind: .privacy,
@@ -133,10 +137,6 @@ enum LibraryCatalog {
               blurb: "Small fixes that make some sites run faster.",
               surfaces: ["Some sites"], kind: .privacy,
               about: "Browsa carries small fixes for sites that run slowly in WebKit, such as typing on ElevenLabs. They change how a page runs, never what it shows or sends. Turning this on or off applies to tabs you open next."),
-        .init(id: "performance", title: "Performance Monitor", symbol: "gauge.with.dots.needle.33percent", tint: .red,
-              blurb: "See which tabs are slowing Browsa down.",
-              surfaces: ["Panel", "⌘K"], kind: .privacy,
-              about: "Shows CPU and memory for every tab and the helpers they share over the last five minutes, and points out a tab that's stuck so you can reload or close it."),
     ]
 
     static var toolPlugins: [PluginInfo] { plugins.filter { $0.kind == .tool } }
@@ -1074,6 +1074,7 @@ private struct PluginDetail: View {
                 VStack(alignment: .leading, spacing: 24) {
                     BackButton(title: backTitle, action: back)
                     header
+                    DetailArt(id: plugin.id, height: 220)
                     Text(plugin.about).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
                     if !on { offNote }
                 }
@@ -1112,6 +1113,7 @@ private struct PluginDetail: View {
             VStack(alignment: .leading, spacing: 24) {
                 BackButton(title: backTitle, action: back)
                 header
+                DetailArt(id: plugin.id)
                 if !on { offNote }
                 Text(plugin.about).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
                 if plugin.id == "live-folders" {
@@ -1228,6 +1230,7 @@ private struct PackDetail: View {
                     Toggle("", isOn: Binding(get: { on }, set: { LibraryActions.togglePack(pack, on: $0, in: browser) }))
                         .toggleStyle(.switch).labelsHidden()
                 }
+                DetailArt(id: pack.id)
                 Text(pack.about).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
                 VStack(alignment: .leading, spacing: 8) {
                     Text("In this pack").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)

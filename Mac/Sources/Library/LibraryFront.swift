@@ -31,6 +31,11 @@ enum LibraryArt {
     static func clip(_ id: String) -> URL? { Bundle.main.url(forResource: "library-\(id)", withExtension: "mp4") }
     static func poster(_ id: String) -> NSImage? { Bundle.main.image(forResource: "library-\(id)") }
     static func has(_ id: String) -> Bool { clip(id) != nil || poster(id) != nil }
+    /// Width over height: card loops are 2:1, the hero's 16:10.
+    static func aspect(_ id: String) -> CGFloat {
+        guard let size = poster(id)?.size, size.height > 0 else { return 2 }
+        return size.width / size.height
+    }
 
     /// The poster, small and blurred, made once: a live blur on a big image costs every frame of a scroll.
     @MainActor static func blurred(_ id: String) -> NSImage? {
@@ -138,6 +143,13 @@ enum LoopPool {
                 _ = try? await asset.load(.isPlayable, .duration)
                 guard let self else { return }
                 self.looper = AVPlayerLooper(player: self.player, templateItem: AVPlayerItem(asset: asset))
+                // Each clip starts at its own point, so they don't all restart together.
+                let seconds = (try? await asset.load(.duration))?.seconds ?? 0
+                if seconds > 1 {
+                    let offset = Double(LoopPool.offsets.count % 5) / 5 * seconds
+                    LoopPool.offsets.append(url)
+                    _ = await self.player.seek(to: CMTime(seconds: offset, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .positiveInfinity)
+                }
                 self.sync()
             }
         }
@@ -148,12 +160,36 @@ enum LoopPool {
     }
 
     private static var loops: [URL: Loop] = [:]
+    /// The clips started so far, for spreading their start points.
+    static var offsets: [URL] = []
 
     static func loop(for url: URL) -> Loop {
         if let loop = loops[url] { return loop }
         let loop = Loop(url: url)
         loops[url] = loop
         return loop
+    }
+}
+
+/// A plugin's or pack's loop at the top of its page, larger than on its card.
+struct DetailArt: View {
+    let id: String
+    /// Fixed height, for pages whose settings need the room; otherwise it follows the clip's shape.
+    var height: CGFloat?
+
+    var body: some View {
+        if LibraryArt.has(id) {
+            let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+            Group {
+                if let height {
+                    LibraryArtView(id: id).frame(height: height).frame(maxWidth: .infinity)
+                } else {
+                    LibraryArtView(id: id).aspectRatio(LibraryArt.aspect(id), contentMode: .fit)
+                }
+            }
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(.primary.opacity(0.1), lineWidth: 0.5))
+        }
     }
 }
 
