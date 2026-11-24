@@ -45,7 +45,7 @@ struct PluginInfo: Identifiable, Hashable {
     enum Kind: Hashable {
         /// A workbench tool: panel, sidebar card, ⌘K rows.
         case tool
-        /// One of Browsa's privacy features, a setting under the hood.
+        /// Privacy and Performance: built-in features that work under the hood, listed in their own section.
         case privacy
     }
 
@@ -129,6 +129,14 @@ enum LibraryCatalog {
               blurb: "Removes tracking from links you open.",
               surfaces: ["Every link"], kind: .privacy,
               about: "Removes known tracking parameters before a page loads, so sites can't follow you from link to link."),
+        .init(id: "site-optimisations", title: "Site Optimisations", symbol: "bolt.fill", tint: .yellow,
+              blurb: "Small fixes that make some sites run faster.",
+              surfaces: ["Some sites"], kind: .privacy,
+              about: "Browsa carries small fixes for sites that run slowly in WebKit, such as typing on ElevenLabs. They change how a page runs, never what it shows or sends. Turning this on or off applies to tabs you open next."),
+        .init(id: "performance", title: "Performance Monitor", symbol: "gauge.with.dots.needle.33percent", tint: .red,
+              blurb: "See which tabs are slowing Browsa down.",
+              surfaces: ["Panel", "⌘K"], kind: .privacy,
+              about: "Shows CPU and memory for every tab and the helpers they share over the last five minutes, and points out a tab that's stuck so you can reload or close it."),
     ]
 
     static var toolPlugins: [PluginInfo] { plugins.filter { $0.kind == .tool } }
@@ -169,6 +177,7 @@ enum LibraryActions {
         case "privacy-blocking": return library.settings.blockContent
         case "privacy-cookies": return library.settings.declineCookieBanners
         case "privacy-links": return library.settings.cleanLinks
+        case "site-optimisations": return SiteOptimisationsSwitch.shared.isOn
         case "live-folders": return library.liveFoldersOn
         case "space-routing": return SpaceRouter.shared.isEnabled
         default: return library.workbench.isEnabled(id)
@@ -181,6 +190,7 @@ enum LibraryActions {
         case "privacy-blocking": library.settings.blockContent = on
         case "privacy-cookies": library.settings.declineCookieBanners = on
         case "privacy-links": library.settings.cleanLinks = on
+        case "site-optimisations": SiteOptimisationsSwitch.shared.isOn = on
         case "space-routing":
             SpaceRouter.shared.spacesProvider = { [library] in library.regularSpaces }
             SpaceRouter.shared.isEnabled = on
@@ -253,7 +263,7 @@ struct LibraryView: View {
                      "space-routing": "routing rules work personal air traffic"]
         return LibraryCatalog.toolPlugins.filter { matches($0.title, $0.blurb, extra[$0.id] ?? "") }
     }
-    private var privacy: [PluginInfo] { LibraryCatalog.privacyPlugins.filter { matches($0.title, $0.blurb, "privacy") } }
+    private var privacy: [PluginInfo] { LibraryCatalog.privacyPlugins.filter { matches($0.title, $0.blurb, "privacy performance speed") } }
     private var installed: [InstalledExtension] { library.extensionCatalog.items.filter { matches($0.name, $0.source.label) } }
     private var verified: [VerifiedExtension] { LibraryCatalog.verified.filter { matches($0.name, $0.blurb, $0.category) } }
     /// Safari extensions running from apps on this Mac; they aren't in the catalog.
@@ -375,7 +385,7 @@ struct LibraryView: View {
                     ForEach(shownPacks) { pack in
                         PackCard(pack: pack, isFocused: focused == .pack(pack.id)) { detail = pack.id }.id(LibraryItem.pack(pack.id))
                     }
-                    pluginGrid(title: "Privacy", detail: "Built in, and on from the start.", plugins: shownPrivacy)
+                    pluginGrid(title: "Privacy and Performance", detail: "Built in, and on from the start.", plugins: shownPrivacy)
                     if showsExtensions, !isSearching || !(verified.isEmpty && installed.isEmpty && safari.isEmpty) { extensionsSection }
                     if isSearching { storeSearch }
                     if order.isEmpty, !isSearching {
@@ -711,8 +721,10 @@ struct PluginIcon: View {
                         .offset(x: blob.1.x * size * 0.8, y: blob.1.y * size * 0.8)
                 }
             }
+            .frame(width: size, height: size)
             .blur(radius: size * 0.3)
             .opacity(scheme == .dark ? 0.32 : 0.24)
+            .drawingGroup()
             Image(systemName: symbol)
                 .font(.system(size: size * 0.42, weight: .medium))
                 .foregroundStyle(.primary.opacity(0.85))
@@ -767,7 +779,7 @@ private struct PackCard: View {
         .background { ZStack { Color(nsColor: .textBackgroundColor); PackGlow(pack: pack) } }
         .clipShape(.rect(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.primary.opacity(0.08)))
-        .shadow(color: .black.opacity(hovering ? 0.08 : 0.03), radius: hovering ? 8 : 3, y: 1)
+        .background(CardShadow(radius: 20, hovering: hovering))
         .contentShape(.rect)
         .onTapGesture(perform: open)
         .onHover { hovering = $0 }
@@ -809,6 +821,7 @@ struct PackGlow: View {
             .blur(radius: 60)
             .opacity(0.13)
         }
+        .drawingGroup()
     }
 }
 
@@ -839,7 +852,7 @@ private struct PluginCard: View {
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.primary.opacity(0.08)))
-        .shadow(color: .black.opacity(hovering ? 0.08 : 0.04), radius: hovering ? 8 : 3, y: 1)
+        .background(CardShadow(radius: 16, hovering: hovering))
         .contentShape(.rect)
         .onTapGesture(perform: open)
         .onHover { hovering = $0 }
@@ -1372,5 +1385,29 @@ private struct ExtensionDetail: View {
                 back()
             }
         } message: { Text("Browsa deletes its copy. You can add it again from the Library.") }
+    }
+}
+
+/// Site Optimisations' switch. The engine reads the `siteOptimisations` default when it makes a page; this
+/// keeps the Library's card in step with it.
+@MainActor @Observable
+final class SiteOptimisationsSwitch {
+    static let shared = SiteOptimisationsSwitch()
+    var isOn: Bool = UserDefaults.standard.object(forKey: "siteOptimisations") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(isOn, forKey: "siteOptimisations") }
+    }
+}
+
+/// A card's shadow, drawn by a plain shape behind it. A shadow on the card itself is worked out from
+/// everything inside it, art and glass included, on every frame of a scroll.
+struct CardShadow: View {
+    let radius: CGFloat
+    let hovering: Bool
+    var lift: CGFloat = 1
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(Color(nsColor: .textBackgroundColor))
+            .shadow(color: .black.opacity(hovering ? 0.08 * lift : 0.04 * lift), radius: hovering ? 8 * lift : 3 * lift, y: lift)
     }
 }

@@ -1,0 +1,85 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../../kit/kit.css"><link rel="stylesheet" href="../../kit/sites.css"><link rel="stylesheet" href="../shared/library.css"><script src="../../kit/kit.js"></script><script src="../../kit/sites.js"></script><script src="../shared/library.js"></script>
+<style>
+  .wall { background-image:url(../wallpapers/space-routing.jpg); }
+  .win { transition:none; }
+  .lists { position:relative; }
+  .lists > div { position:absolute; left:0; right:0; top:0; }
+  .caret { display:inline-block; width:2px; height:17px; background:#0a84ff; vertical-align:-3px; margin-left:1px; }
+  /* "Opens in Work": the routing pill, as the What's New clip shows it. */
+  .route { position:absolute; left:28px; top:22px; display:flex; align-items:center; gap:10px; height:40px; padding:0 16px 0 12px; border-radius:20px; font-size:16px; font-weight:600;
+    background: rgb(255 255 255 / .95); box-shadow: 0 0 0 1px rgb(0 0 0 / .08), 0 12px 26px -10px rgb(0 0 0 / .35); white-space:nowrap; z-index:2; }
+  .route svg { width:18px; height:18px; }
+  .blank { position:absolute; inset:0; background:#fff; padding:28px 34px; }
+  .blank .vid { height:420px; border-radius:16px; background: radial-gradient(circle at 70% 40%, #f4b39b 0, transparent 40%), linear-gradient(135deg,#2b2850,#6d4f86 60%,#d9877a); position:relative; }
+  .blank .vid i { position:absolute; left:22px; bottom:20px; padding:4px 10px; border-radius:8px; background:#e5302a; color:#fff; font-style:normal; font-size:14px; font-weight:600; }
+  .blank h2 { margin:20px 0 6px; font-size:24px; font-weight:600; letter-spacing:-.01em; }
+  .blank p { margin:0; color:#77736c; font-size:15px; }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="wall"></div>
+  <div class="win" id="win"><div class="side" id="side"></div><div class="page" id="page"></div></div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const HOME = `<svg viewBox="0 0 24 24" fill="#3f3db3"><path d="M4 11.2 12 4.5l8 6.7V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H5a1 1 0 0 1-1-1z"/></svg>`;
+const BAG = `<svg viewBox="0 0 24 24"><rect x="3.5" y="7.5" width="17" height="12" rx="2.5" fill="#b86a00"/><path d="M9 7.5V6a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 6v1.5" fill="none" stroke="#b86a00" stroke-width="1.8"/></svg>`;
+$("side").innerHTML = sidebar({
+  addr: `<span id="typed"></span>`,
+  favs: ["mail.google.com", "calendar.google.com", "youtube.com", "airbnb.com"],
+  space: 0, tint: "#5856d6",
+  body: `<div class="lists" id="lists">
+    <div id="lp"><div class="sect">Pinned</div>${R(img("aeon.co"), "Chasing light in Lofoten")}${R(img("bonappetit.com"), "Slow-roast tomatoes")}
+      <div class="sect">Today</div><div id="newp" style="overflow:hidden">${R(img("youtube.com"), "lofi hip hop radio · YouTube", "sel")}</div>${R(img("airbnb.com"), "Cabin in Lofoten · Airbnb")}</div>
+    <div id="lw"><div class="sect">Pinned</div>${R(img("linear.app"), "My issues · Linear")}${R(img("notion.so"), "Standup notes · Notion")}
+      <div class="sect">Today</div><div id="neww" style="overflow:hidden">${R(img("github.com"), "Pull requests · GitHub", "sel")}</div>${R(img("stripe.com"), "Payments · Stripe")}</div></div>`,
+  foot: {},
+}).replace('<div class="addr" id="addr">', '<div class="addr" id="addr">');
+$("side").style.position = "absolute";
+$("page").innerHTML = `<div id="gh">${site("github")}</div><div class="route" id="route"><span id="ricon"></span><span id="rtext"></span></div><div class="blank" id="blank"><div class="vid"><i>LIVE</i></div><h2>lofi hip hop radio: beats to relax and study to</h2><p>Lofi Girl · 31K watching</p></div>`;
+const favsEl = document.querySelector(".favs");
+const FAVS = { P: ["mail.google.com", "calendar.google.com", "youtube.com", "airbnb.com"], W: ["mail.google.com", "calendar.google.com", "figma.com", "notion.so"] };
+const dots = [...document.querySelectorAll(".spaces i")];
+
+// Personal (indigo) → type a GitHub link → it opens in Work (orange); then a YouTube link goes back to Personal.
+const A = "github.com/browsa/pulls", B = "youtube.com/watch?v=lofi";
+window.TOTAL = 10;
+const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const tint = (f) => { const a = hex("#5856d6"), b = hex("#ff9500"); return `rgb(${a.map((v, i) => Math.round(mix(v, b[i], f))).join(",")})`; };
+window.render = (t) => {
+  // How far into Work we are: 0 is Personal, 1 is Work.
+  const w = eio(ph(t, 2.6, 0.6)) * (1 - eio(ph(t, 7.4, 0.6)));
+  $("win").style.setProperty("--tint", tint(w));
+  $("lp").style.opacity = 1 - w; $("lw").style.opacity = w;
+  $("lp").style.transform = `translateX(${-w * 24}px)`; $("lw").style.transform = `translateX(${(1 - w) * 24}px)`;
+  dots.forEach((d, i) => d.style.background = i === 0 ? `rgb(88 86 214 / ${1 - w})` : i === 1 ? `rgb(255 149 0 / ${w})` : "");
+  [...favsEl.querySelectorAll("img")].forEach((im, i) => { const f = w > 0.5 ? FAVS.W[i] : FAVS.P[i]; if (!im.src.endsWith(f + ".png")) im.src = F(f); });
+
+  // Typing in the address bar.
+  let text = "", caret = false;
+  if (t > 0.8 && t < 2.4) { text = A.slice(0, Math.floor((t - 0.8) / 0.06)); caret = true; }
+  else if (t > 5.4 && t < 7.2) { text = B.slice(0, Math.floor((t - 5.4) / 0.06)); caret = true; }
+  else if (t >= 2.4 && t <= 5.4) text = `<span style="color:#5d5a55">github.com/browsa/pulls</span>`;
+  else text = `<span style="color:#5d5a55">youtube.com/watch?v=lofi</span>`;
+  $("typed").innerHTML = text + (caret ? `<span class="caret"></span>` : "");
+
+  // The routing pill.
+  const r1 = t > 2.1 && t < 3.9, r2 = t > 6.9 && t < 8.7;
+  const s = r1 ? ph(t, 2.1, 0.3) * (1 - ph(t, 3.6, 0.3)) : r2 ? ph(t, 6.9, 0.3) * (1 - ph(t, 8.4, 0.3)) : 0;
+  $("route").style.opacity = eo(s); $("route").style.transform = `translateY(${(1 - eo(s)) * -6}px)`;
+  $("ricon").innerHTML = r2 ? HOME : BAG; $("rtext").textContent = r2 ? "Opens in Personal" : "Opens in Work";
+  $("rtext").style.color = r2 ? "#3f3db3" : "#b86a00";
+
+  // New rows open at the top of Today in their Space.
+  const nw = eo(ph(t, 3.0, 0.4)) * (1 - ph(t, 9.4, 0.3));
+  $("neww").style.maxHeight = nw * 46 + "px";
+  const np = t < 5 ? 1 : eo(ph(t, 7.8, 0.4));
+  $("newp").style.maxHeight = np * 46 + "px";
+  // The page follows.
+  const showGH = t > 3.0 && t < 7.8;
+  $("gh").style.opacity = showGH ? ph(t, 3.0, 0.3) : 0;
+  $("blank").style.opacity = showGH ? 0 : 1;
+  $("stage").style.opacity = loopFade(t, TOTAL);
+};
+render(0);
+</script></body></html>
