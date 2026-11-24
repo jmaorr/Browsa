@@ -14,7 +14,9 @@ final class GlanceSession: Identifiable, EnginePageDelegate {
     init(url: URL, isPrivate: Bool, browser: Browser) {
         self.isPrivate = isPrivate
         self.browser = browser
-        page = browser.engine.makePage(options: PageOptions(profile: isPrivate ? .ephemeral : .standard, url: url),
+        // The space's profile, so the Glance is signed in the same way and can become a tab there.
+        let profile = isPrivate ? BrowsingProfile.ephemeral : browser.library.profile(for: browser.currentSpace)
+        page = browser.engine.makePage(options: PageOptions(profile: profile, url: url),
                                        delegate: GlanceSession.placeholder)
         page.delegate = self
     }
@@ -115,6 +117,10 @@ struct GlanceOverlay: View {
                 }
             }
             Spacer()
+            if let tab = browser.currentTab, !Welcome.isWelcome(tab.url), browser.shownTabs.count < SplitStore.maxPanes {
+                Button { browser.expandGlanceIntoSplit() } label: { Image(systemName: "rectangle.split.2x1") }
+                    .help("Open in Split View")
+            }
             Button { browser.expandGlance() } label: {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
             }

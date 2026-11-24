@@ -45,7 +45,7 @@ struct PluginInfo: Identifiable, Hashable {
     enum Kind: Hashable {
         /// A workbench tool: panel, sidebar card, ⌘K rows.
         case tool
-        /// One of Browsa's privacy features, a setting under the hood.
+        /// Privacy and Performance: built-in features that work under the hood, listed in their own section.
         case privacy
     }
 
@@ -105,6 +105,22 @@ enum LibraryCatalog {
               blurb: "Your local dev servers, one click away.",
               surfaces: ["Sidebar", "Panel", "⌘K"],
               about: "Finds the dev servers running on this Mac, names them by project and branch, and reloads a tab by itself when its server comes back."),
+        .init(id: "boosts", title: "Boosts", symbol: "paintbrush.pointed.fill", tint: .pink,
+              blurb: "Make any site look the way you like.",
+              surfaces: ["Site menu", "Panel", "⌘K"],
+              about: "Turn on Browsa's ready-made Boosts, or make your own for any site: a font, a tint, things zapped away, or your own CSS and script. Boosts change how a site looks, never what it sends, and stay on this Mac."),
+        .init(id: "space-routing", title: "Space Routing", symbol: "arrow.triangle.branch", tint: .cyan,
+              blurb: "Sites open in the Space they belong to.",
+              surfaces: ["New tabs", "⌘K"],
+              about: "New tabs for a site go to its Space, wherever you are: work tools in Work, the rest in Personal. Links you follow inside a tab stay put, and private tabs and Favourites never move."),
+        .init(id: "live-folders", title: "Live Folders", symbol: "folder.fill.badge.gearshape", tint: .purple,
+              blurb: "Sidebar folders that keep themselves up to date.",
+              surfaces: ["Sidebar", "⌘K", "Site menu"],
+              about: "Your GitHub pull requests and review requests appear in a Pull Requests folder, read with the GitHub account you're signed in to. Follow a site and its new posts appear in a folder too. Nothing checks while Live Folders is off."),
+        .init(id: "performance", title: "Performance Monitor", symbol: "gauge.with.dots.needle.33percent", tint: .red,
+              blurb: "See which tabs are slowing Browsa down.",
+              surfaces: ["Panel", "⌘K"],
+              about: "Shows CPU and memory for every tab and the helpers they share over the last five minutes, and points out a tab that's stuck so you can reload or close it."),
         .init(id: "privacy-blocking", title: "Ad & Tracker Blocker", symbol: "hand.raised.fill", tint: .blue,
               blurb: "Blocks ads and trackers on every site.",
               surfaces: ["Every page"], kind: .privacy,
@@ -117,6 +133,10 @@ enum LibraryCatalog {
               blurb: "Removes tracking from links you open.",
               surfaces: ["Every link"], kind: .privacy,
               about: "Removes known tracking parameters before a page loads, so sites can't follow you from link to link."),
+        .init(id: "site-optimisations", title: "Site Optimisations", symbol: "bolt.fill", tint: .yellow,
+              blurb: "Small fixes that make some sites run faster.",
+              surfaces: ["Some sites"], kind: .privacy,
+              about: "Browsa carries small fixes for sites that run slowly in WebKit, such as typing on ElevenLabs. They change how a page runs, never what it shows or sends. Turning this on or off applies to tabs you open next."),
     ]
 
     static var toolPlugins: [PluginInfo] { plugins.filter { $0.kind == .tool } }
@@ -157,6 +177,9 @@ enum LibraryActions {
         case "privacy-blocking": return library.settings.blockContent
         case "privacy-cookies": return library.settings.declineCookieBanners
         case "privacy-links": return library.settings.cleanLinks
+        case "site-optimisations": return SiteOptimisationsSwitch.shared.isOn
+        case "live-folders": return library.liveFoldersOn
+        case "space-routing": return SpaceRouter.shared.isEnabled
         default: return library.workbench.isEnabled(id)
         }
     }
@@ -167,6 +190,13 @@ enum LibraryActions {
         case "privacy-blocking": library.settings.blockContent = on
         case "privacy-cookies": library.settings.declineCookieBanners = on
         case "privacy-links": library.settings.cleanLinks = on
+        case "site-optimisations": SiteOptimisationsSwitch.shared.isOn = on
+        case "space-routing":
+            SpaceRouter.shared.spacesProvider = { [library] in library.regularSpaces }
+            SpaceRouter.shared.isEnabled = on
+        case "live-folders":
+            let space = browser.currentSpace.isPrivate ? browser.regularSpaces[0] : browser.currentSpace
+            withAnimation(Motion.snappy) { library.setLiveFolders(on, in: space) }
         default:
             library.workbench.setEnabled(id, on)
             if id == "agents" { library.agents.isEnabled = on }   // Agents is the MCP endpoint itself.
@@ -207,6 +237,7 @@ enum LibraryItem: Hashable {
 struct LibraryView: View {
     @Environment(Browser.self) private var browser
     @State private var search = ""
+    @State private var filter: LibraryFilter = .all
     /// The page open over the list: a plugin's or a pack's id.
     @State private var detail: String?
     /// The pack a plugin's page was opened from, so Back returns there.
@@ -227,8 +258,12 @@ struct LibraryView: View {
     }
 
     private var packs: [PluginPack] { LibraryCatalog.packs.filter { matches($0.title, $0.blurb, "pack") } }
-    private var tools: [PluginInfo] { LibraryCatalog.toolPlugins.filter { matches($0.title, $0.blurb) } }
-    private var privacy: [PluginInfo] { LibraryCatalog.privacyPlugins.filter { matches($0.title, $0.blurb, "privacy") } }
+    private var tools: [PluginInfo] {
+        let extra = ["live-folders": "github pull requests rss feed follow", "boosts": "site styles css script zap font",
+                     "space-routing": "routing rules work personal air traffic"]
+        return LibraryCatalog.toolPlugins.filter { matches($0.title, $0.blurb, extra[$0.id] ?? "") }
+    }
+    private var privacy: [PluginInfo] { LibraryCatalog.privacyPlugins.filter { matches($0.title, $0.blurb, "privacy performance speed") } }
     private var installed: [InstalledExtension] { library.extensionCatalog.items.filter { matches($0.name, $0.source.label) } }
     private var verified: [VerifiedExtension] { LibraryCatalog.verified.filter { matches($0.name, $0.blurb, $0.category) } }
     /// Safari extensions running from apps on this Mac; they aren't in the catalog.
@@ -237,10 +272,50 @@ struct LibraryView: View {
         return library.useSafariExtensions ? library.extensions.filter { !catalogued.contains($0.id) && matches($0.name) } : []
     }
 
+    // What the filter shows. The hero is the featured pack, so it isn't listed again under All.
+    private var heroPack: PluginPack { LibraryCatalog.agentPack }
+    private var showsHero: Bool { filter == .all && !isSearching }
+    private var shownPacks: [PluginPack] {
+        switch filter {
+        case .all: packs.filter { !showsHero || $0.id != heroPack.id }
+        case .packs: packs
+        case .on: packs.filter { LibraryActions.isPackOn($0, in: browser) }
+        default: []
+        }
+    }
+    private var shownTools: [PluginInfo] {
+        switch filter {
+        case .all, .plugins: tools
+        case .on: tools.filter { LibraryActions.isOn($0.id, in: browser) }
+        default: []
+        }
+    }
+    private var shownPrivacy: [PluginInfo] {
+        switch filter {
+        case .all, .privacy: privacy
+        case .on: privacy.filter { LibraryActions.isOn($0.id, in: browser) }
+        default: []
+        }
+    }
+    private var showsExtensions: Bool { filter == .all || filter == .extensions || filter == .on }
+    private var shownVerified: [VerifiedExtension] { filter == .on ? [] : verified }
+    private var shownInstalled: [InstalledExtension] { filter == .on ? installed.filter(\.isEnabled) : installed }
+
+    private func count(_ f: LibraryFilter) -> Int? {
+        switch f {
+        case .all: nil
+        case .plugins: tools.count
+        case .packs: packs.count
+        case .privacy: privacy.count
+        case .extensions: installed.count + verified.filter { v in !installed.contains { $0.source.key.lowercased().contains(v.id) } }.count
+        case .on: (tools + privacy).filter { LibraryActions.isOn($0.id, in: browser) }.count + installed.filter(\.isEnabled).count
+        }
+    }
+
     /// Everything the arrow keys move through, in reading order.
     private var order: [LibraryItem] {
-        packs.map { .pack($0.id) } + tools.map { .plugin($0.id) } + privacy.map { .plugin($0.id) }
-            + verified.map { .verified($0.id) } + installed.map { .installed($0.id) }
+        shownPacks.map { .pack($0.id) } + shownTools.map { .plugin($0.id) } + shownPrivacy.map { .plugin($0.id) }
+            + (showsExtensions ? shownVerified.map { .verified($0.id) } + shownInstalled.map { .installed($0.id) } : [])
     }
 
     var body: some View {
@@ -249,11 +324,15 @@ struct LibraryView: View {
                 ExtensionDetail(item: item) { close() }
             } else if let detail, let pack = LibraryCatalog.pack(detail) {
                 PackDetail(pack: pack) { id in parentPack = pack.id; self.detail = id } back: { close() }
+            } else if let detail, let boost = boostForEditor(detail) {
+                BoostEditorPage(boost: boost) { self.detail = "boosts" }.id(detail)
             } else if let detail, let plugin = LibraryCatalog.plugin(detail) {
-                PluginDetail(plugin: plugin, backTitle: parentPack.flatMap { LibraryCatalog.pack($0)?.title } ?? "Library") {
-                    self.detail = parentPack
-                    parentPack = nil
-                }
+                PluginDetail(plugin: plugin, backTitle: parentPack.flatMap { LibraryCatalog.pack($0)?.title } ?? "Library",
+                             open: { self.detail = $0 },
+                             back: {
+                                 self.detail = parentPack
+                                 parentPack = nil
+                             })
             } else {
                 list
             }
@@ -280,6 +359,15 @@ struct LibraryView: View {
         target.hasPrefix("ext:") ? library.extensionCatalog[String(target.dropFirst(4))] : library.extensionCatalog["chrome:" + target]
     }
 
+    /// "boost:<id>" opens one of your Boosts; "boost-new:<host>" a new one for a site.
+    private func boostForEditor(_ target: String) -> SiteBoost? {
+        if target.hasPrefix("boost:"), let id = UUID(uuidString: String(target.dropFirst(6))) {
+            return BoostStore.shared.boosts.first { $0.id == id }
+        }
+        if target.hasPrefix("boost-new:") { return SiteBoost(host: String(target.dropFirst(10))) }
+        return nil
+    }
+
     private func close() {
         detail = nil
         parentPack = nil
@@ -288,17 +376,24 @@ struct LibraryView: View {
     private var list: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 26) {
                     header
-                    ForEach(packs) { pack in
+                    if showsHero { LibraryHero(pack: heroPack) { detail = heroPack.id } }
+                    GlassTabs(selection: $filter.animation(Motion.snappy), options: LibraryFilter.allCases,
+                              title: \.title, count: { count($0) })
+                    pluginArtGrid(shownTools)
+                    ForEach(shownPacks) { pack in
                         PackCard(pack: pack, isFocused: focused == .pack(pack.id)) { detail = pack.id }.id(LibraryItem.pack(pack.id))
                     }
-                    pluginGrid(title: "Browsa Plugins", detail: "Made for Browsa.", plugins: tools)
-                    pluginGrid(title: "Privacy", detail: "Built in, and on from the start.", plugins: privacy)
-                    if !isSearching || !(verified.isEmpty && installed.isEmpty && safari.isEmpty) { extensionsSection }
+                    pluginGrid(title: "Privacy and Performance", detail: "Built in, and on from the start.", plugins: shownPrivacy)
+                    if showsExtensions, !isSearching || !(verified.isEmpty && installed.isEmpty && safari.isEmpty) { extensionsSection }
                     if isSearching { storeSearch }
+                    if order.isEmpty, !isSearching {
+                        Text(filter == .on ? "Nothing is on yet. Turn something on and it shows up here." : "Nothing here yet.")
+                            .font(.system(size: 14)).foregroundStyle(.secondary)
+                    }
                 }
-                .frame(maxWidth: 860, alignment: .leading)
+                .frame(maxWidth: 1040, alignment: .leading)
                 .padding(.horizontal, 40)
                 .padding(.vertical, 36)
                 .frame(maxWidth: .infinity)
@@ -410,19 +505,36 @@ struct LibraryView: View {
                     .buttonBorderShape(.capsule)
                     .sheet(isPresented: $importing) { ImportSheet().environment(browser.library) }
             }
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search plugins and extensions", text: $search)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 14))
-                    .focused($searchFocused)
-                if !search.isEmpty {
-                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain).foregroundStyle(.tertiary)
+            HStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Search plugins and extensions", text: $search)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 14))
+                        .focused($searchFocused)
+                    if !search.isEmpty {
+                        Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
+                            .buttonStyle(.plain).foregroundStyle(.tertiary)
+                    }
+                }
+                .padding(.horizontal, 14).frame(height: 38)
+                .glassEffect(.regular, in: .capsule)
+                Button { problem = nil; addingChrome = true } label: { Label("Add Extension", systemImage: "plus") }
+                    .buttonStyle(.glass).controlSize(.large).buttonBorderShape(.capsule)
+                    .help("Add an extension from the Chrome Web Store")
+            }
+        }
+    }
+
+    /// Browsa's plugins as art cards.
+    @ViewBuilder private func pluginArtGrid(_ plugins: [PluginInfo]) -> some View {
+        if !plugins.isEmpty {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 18)], spacing: 18) {
+                ForEach(plugins) { p in
+                    PluginArtCard(plugin: p, isFocused: focused == .plugin(p.id)) { detail = p.id }
+                        .id(LibraryItem.plugin(p.id))
                 }
             }
-            .padding(.horizontal, 14).frame(height: 38)
-            .glassEffect(.regular, in: .capsule)
         }
     }
 
@@ -445,33 +557,32 @@ struct LibraryView: View {
     private var extensionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .bottom) {
-                SectionTitle(title: "Extensions", detail: "From the Chrome Web Store.")
+                SectionTitle(title: "Extensions", detail: "From the Chrome Web Store. Most run in Browsa; the verified ones are tested by us.")
                 Spacer()
-                Button { problem = nil; addingChrome = true } label: { Label("Add Chrome Extension", systemImage: "plus") }
-                    .buttonStyle(.glass).controlSize(.large).buttonBorderShape(.capsule)
             }
             if let problem, !addingChrome { Text(problem).font(.caption).foregroundStyle(.red) }
-            if !verified.isEmpty {
+            if filter != .on {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Verified to work in Browsa").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14)], spacing: 14) {
-                        ForEach(verified) { v in
+                        ForEach(shownVerified) { v in
                             VerifiedCard(ext: v, isFocused: focused == .verified(v.id)) { fetch(v.storeURL.absoluteString) }
                                 .id(LibraryItem.verified(v.id))
                         }
+                        if !isSearching { AddExtensionSlot { problem = nil; addingChrome = true } }
                     }
                 }
             }
             VStack(alignment: .leading, spacing: 8) {
                 Text("Added").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                 VStack(spacing: 0) {
-                    if installed.isEmpty && safari.isEmpty {
+                    if shownInstalled.isEmpty && safari.isEmpty {
                         Text(search.isEmpty ? "Nothing added yet." : "No added extensions match.")
                             .font(.callout).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(14)
                     }
-                    ForEach(Array(installed.enumerated()), id: \.element.id) { i, item in
+                    ForEach(Array(shownInstalled.enumerated()), id: \.element.id) { i, item in
                         if i > 0 { Divider().padding(.leading, 58) }
                         ExtensionRow(item: item, isFocused: focused == .installed(item.id)) { detail = "ext:" + item.id }
                             .id(LibraryItem.installed(item.id))
@@ -610,8 +721,10 @@ struct PluginIcon: View {
                         .offset(x: blob.1.x * size * 0.8, y: blob.1.y * size * 0.8)
                 }
             }
+            .frame(width: size, height: size)
             .blur(radius: size * 0.3)
             .opacity(scheme == .dark ? 0.32 : 0.24)
+            .drawingGroup()
             Image(systemName: symbol)
                 .font(.system(size: size * 0.42, weight: .medium))
                 .foregroundStyle(.primary.opacity(0.85))
@@ -624,7 +737,7 @@ struct PluginIcon: View {
 }
 
 /// The keyboard's ring, in the system accent like its focus ring.
-private struct FocusRing: ViewModifier {
+struct FocusRing: ViewModifier {
     let on: Bool
     let radius: CGFloat
 
@@ -666,7 +779,7 @@ private struct PackCard: View {
         .background { ZStack { Color(nsColor: .textBackgroundColor); PackGlow(pack: pack) } }
         .clipShape(.rect(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.primary.opacity(0.08)))
-        .shadow(color: .black.opacity(hovering ? 0.08 : 0.03), radius: hovering ? 8 : 3, y: 1)
+        .background(CardShadow(radius: 20, hovering: hovering))
         .contentShape(.rect)
         .onTapGesture(perform: open)
         .onHover { hovering = $0 }
@@ -675,7 +788,7 @@ private struct PackCard: View {
 }
 
 /// A pack's plugins, fanned like a hand of cards.
-private struct PackFan: View {
+struct PackFan: View {
     let pack: PluginPack
     var size: CGFloat = 50
 
@@ -693,7 +806,7 @@ private struct PackFan: View {
 }
 
 /// The pack card's base: its plugins' colours, spread softly across the whole card.
-private struct PackGlow: View {
+struct PackGlow: View {
     let pack: PluginPack
     var body: some View {
         GeometryReader { g in
@@ -708,6 +821,7 @@ private struct PackGlow: View {
             .blur(radius: 60)
             .opacity(0.13)
         }
+        .drawingGroup()
     }
 }
 
@@ -738,7 +852,7 @@ private struct PluginCard: View {
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.primary.opacity(0.08)))
-        .shadow(color: .black.opacity(hovering ? 0.08 : 0.04), radius: hovering ? 8 : 3, y: 1)
+        .background(CardShadow(radius: 16, hovering: hovering))
         .contentShape(.rect)
         .onTapGesture(perform: open)
         .onHover { hovering = $0 }
@@ -933,25 +1047,84 @@ private struct PluginDetail: View {
     @Environment(Browser.self) private var browser
     let plugin: PluginInfo
     var backTitle = "Library"
+    /// Opens another page in the Library, such as one Boost's editor.
+    var open: (String) -> Void = { _ in }
     let back: () -> Void
     private var workbench: Workbench { browser.library.workbench }
     private var on: Bool { LibraryActions.isOn(plugin.id, in: browser) }
 
+    /// Above a page's greyed-out settings while it's off.
+    private var offNote: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "eye").foregroundStyle(.secondary)
+            Text("A preview of what \(plugin.title) adds. Turn it on to use it.")
+                .font(.callout).foregroundStyle(.secondary)
+            Spacer()
+            Button("Turn On") { LibraryActions.set(plugin.id, on: true, in: browser) }
+                .buttonStyle(.glassProminent).buttonBorderShape(.capsule).controlSize(.small)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(.primary.opacity(0.035), in: .rect(cornerRadius: 12, style: .continuous))
+    }
+
     var body: some View {
+        if plugin.id == "space-routing" {
+            // Its sets and rules are a long settings form that scrolls on its own, under the header.
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 24) {
+                    BackButton(title: backTitle, action: back)
+                    header
+                    DetailArt(id: plugin.id, height: 220)
+                    Text(plugin.about).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
+                    if !on { offNote }
+                }
+                .frame(maxWidth: 720, alignment: .leading)
+                .padding(.horizontal, 40)
+                .padding(.top, 32)
+                .frame(maxWidth: .infinity)
+                // Off, still shown (greyed) so you can see what you'd be turning on.
+                SpaceRoutingSettings(showsSwitch: false)
+                    .environment(browser.library)
+                    .disabled(!on)
+                    .opacity(on ? 1 : 0.5)
+                    .frame(maxWidth: 760)
+                    .frame(maxWidth: .infinity)
+            }
+        } else {
+            page
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 18) {
+            PluginIcon(plugin: plugin, size: 72)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(plugin.title).font(.system(size: 26, weight: .bold))
+                Text(plugin.blurb).font(.system(size: 14)).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(get: { on }, set: { LibraryActions.set(plugin.id, on: $0, in: browser) }))
+                .toggleStyle(.switch).labelsHidden()
+        }
+    }
+
+    private var page: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 BackButton(title: backTitle, action: back)
-                HStack(alignment: .center, spacing: 18) {
-                    PluginIcon(plugin: plugin, size: 72)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(plugin.title).font(.system(size: 26, weight: .bold))
-                        Text(plugin.blurb).font(.system(size: 14)).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle("", isOn: Binding(get: { on }, set: { LibraryActions.set(plugin.id, on: $0, in: browser) }))
-                        .toggleStyle(.switch).labelsHidden()
-                }
+                header
+                DetailArt(id: plugin.id)
+                if !on { offNote }
                 Text(plugin.about).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
+                if plugin.id == "live-folders" {
+                    LiveFoldersSettings()
+                        .disabled(!on)
+                        .opacity(on ? 1 : 0.5)
+                } else if plugin.id == "boosts" {
+                    BoostsSettings(open: open)
+                        .disabled(!on)
+                        .opacity(on ? 1 : 0.5)
+                } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Where it shows up").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                     VStack(spacing: 0) {
@@ -963,6 +1136,7 @@ private struct PluginDetail: View {
                     .background(.primary.opacity(0.035), in: .rect(cornerRadius: 12, style: .continuous))
                     .disabled(!on)
                     .opacity(on ? 1 : 0.5)
+                }
                 }
             }
             .frame(maxWidth: 720, alignment: .leading)
@@ -1021,7 +1195,7 @@ private struct PluginDetail: View {
     }
 }
 
-private struct BackButton: View {
+struct BackButton: View {
     let title: String
     let action: () -> Void
 
@@ -1056,6 +1230,7 @@ private struct PackDetail: View {
                     Toggle("", isOn: Binding(get: { on }, set: { LibraryActions.togglePack(pack, on: $0, in: browser) }))
                         .toggleStyle(.switch).labelsHidden()
                 }
+                DetailArt(id: pack.id)
                 Text(pack.about).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
                 VStack(alignment: .leading, spacing: 8) {
                     Text("In this pack").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
@@ -1112,6 +1287,7 @@ private struct ExtensionDetail: View {
     let item: InstalledExtension
     let back: () -> Void
     @State private var confirmingRemove = false
+    @State private var inPrivate: Bool?
 
     private var library: Library { browser.library }
     private var running: EngineExtension? { library.extensions.first { $0.id == item.id } }
@@ -1179,6 +1355,20 @@ private struct ExtensionDetail: View {
                     }
                     .background(.primary.opacity(0.035), in: .rect(cornerRadius: 12, style: .continuous))
                 }
+                HStack(spacing: 12) {
+                    Image(systemName: "eye.slash").font(.system(size: 14)).foregroundStyle(.secondary).frame(width: 20)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Allow in private windows").font(.system(size: 13, weight: .medium))
+                        Text("It could see what you do there. Off unless you need it, like a password manager.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: Binding(get: { inPrivate ?? library.isAllowedInPrivate(item.id) },
+                                             set: { inPrivate = $0; library.setAllowedInPrivate(item.id, $0) }))
+                        .toggleStyle(.switch).labelsHidden().controlSize(.small)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(.primary.opacity(0.035), in: .rect(cornerRadius: 12, style: .continuous))
                 if let lines = manifest?.permissionSummary, !lines.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("What it can do").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
@@ -1213,5 +1403,29 @@ private struct ExtensionDetail: View {
                 back()
             }
         } message: { Text("Browsa deletes its copy. You can add it again from the Library.") }
+    }
+}
+
+/// Site Optimisations' switch. The engine reads the `siteOptimisations` default when it makes a page; this
+/// keeps the Library's card in step with it.
+@MainActor @Observable
+final class SiteOptimisationsSwitch {
+    static let shared = SiteOptimisationsSwitch()
+    var isOn: Bool = UserDefaults.standard.object(forKey: "siteOptimisations") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(isOn, forKey: "siteOptimisations") }
+    }
+}
+
+/// A card's shadow, drawn by a plain shape behind it. A shadow on the card itself is worked out from
+/// everything inside it, art and glass included, on every frame of a scroll.
+struct CardShadow: View {
+    let radius: CGFloat
+    let hovering: Bool
+    var lift: CGFloat = 1
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(Color(nsColor: .textBackgroundColor))
+            .shadow(color: .black.opacity(hovering ? 0.08 * lift : 0.04 * lift), radius: hovering ? 8 * lift : 3 * lift, y: lift)
     }
 }

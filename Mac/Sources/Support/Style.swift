@@ -108,6 +108,8 @@ enum Motion {
 
     @MainActor static var spring: Animation { reduced ? calm : .interpolatingSpring(mass: 1, stiffness: 320, damping: 30) }
     @MainActor static var snappy: Animation { reduced ? calm : .snappy(duration: 0.26) }
+    /// Quick and light, for opening and closing things in the sidebar (pinned folders).
+    @MainActor static var quick: Animation { reduced ? calm : .snappy(duration: 0.2) }
     @MainActor static var bouncy: Animation { reduced ? calm : .bouncy(duration: 0.35, extraBounce: 0.08) }
     /// The sidebar docking or hiding. No overshoot: the page edge follows it and must not bounce.
     static let dockDuration = 0.3
@@ -413,4 +415,29 @@ struct WindowAccessor: NSViewRepresentable {
             if let window { configure?(window) }
         }
     }
+}
+
+/// A disclosure whose whole title line opens and closes it, not just the small arrow.
+struct RowDisclosureStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button { withAnimation(Motion.snappy) { configuration.isExpanded.toggle() } } label: {
+                HStack(spacing: 6) {
+                    configuration.label
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .rotationEffect(.degrees(configuration.isExpanded ? 90 : 0))
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 4)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            if configuration.isExpanded { configuration.content }
+        }
+    }
+}
+
+extension DisclosureGroupStyle where Self == RowDisclosureStyle {
+    static var row: RowDisclosureStyle { RowDisclosureStyle() }
 }

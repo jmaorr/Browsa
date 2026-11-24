@@ -52,6 +52,15 @@ extension Browser {
                                           keywords: ["favorite", "star", "bookmark"]))
             }
             out.append(BrowserCommand(id: "close", title: "Close Tab", keywords: ["tab"]))
+            if !tab.isPrivate {
+                out.append(BrowserCommand(id: "new-folder", title: tab.isPinned ? "New Folder with Tab" : "New Folder",
+                                          keywords: ["pinned", "group", "tabs"]))
+                if let feed = currentPageFeed {
+                    let following = library.feedFolder(feed.url, in: currentSpace) != nil
+                    out.append(BrowserCommand(id: "follow-site", title: following ? "Show \(feed.name) in Sidebar" : "Follow \(feed.name) in Sidebar",
+                                              keywords: ["rss", "feed", "atom", "subscribe", "live folder"]))
+                }
+            }
             if let url = tab.url {
                 out.append(BrowserCommand(id: "copy-link", title: "Copy Link", subtitle: url.absoluteString, keywords: ["url", "share"]))
                 out.append(BrowserCommand(id: "copy-markdown", title: "Copy Link as Markdown", keywords: ["url", "md", "share"]))
@@ -60,6 +69,11 @@ extension Browser {
                 out.append(BrowserCommand(id: "reader", title: isReaderShowing ? "Hide Reader" : "Show Reader",
                                           keywords: ["article", "reading", "clean"]))
                 out.append(BrowserCommand(id: "tab-window", title: "Move Tab to New Window", keywords: ["window", "detach"]))
+                if tab.media.hasVideo || tab.media.isPictureInPicture {
+                    out.append(BrowserCommand(id: "picture-in-picture",
+                                              title: tab.media.isPictureInPicture ? "Put Video Back in Page" : "Picture in Picture",
+                                              keywords: ["pip", "video", "float", "pop out", "mini player"]))
+                }
                 out.append(BrowserCommand(id: "zoom-in", title: "Zoom In", keywords: ["bigger", "larger", "text size"]))
                 out.append(BrowserCommand(id: "zoom-out", title: "Zoom Out", keywords: ["smaller", "text size"]))
                 out.append(BrowserCommand(id: "zoom-reset", title: "Actual Size", keywords: ["zoom", "reset"]))
@@ -73,6 +87,13 @@ extension Browser {
             for s in regularSpaces where s.id != selectedSpaceID && !tab.isPrivate {
                 out.append(BrowserCommand(id: "move:" + s.id.uuidString, title: "Move Tab to \(s.name)", subtitle: "Space", keywords: ["space"]))
             }
+        }
+        if let tab = currentTab, !Welcome.isWelcome(tab.url), shownTabs.count < SplitStore.maxPanes {
+            out.append(BrowserCommand(id: "split-view", title: isSplit ? "Add Tab to Split View" : "New Split View",
+                                      keywords: ["split", "side by side", "two pages", "tile"]))
+        }
+        if isSplit {
+            out.append(BrowserCommand(id: "separate-split", title: "Separate Split View", keywords: ["split", "unsplit"]))
         }
         if today(in: currentSpace).count > 1 {
             out.append(BrowserCommand(id: "close-others", title: "Close Other Tabs", keywords: ["tabs", "clean"]))
@@ -98,6 +119,13 @@ extension Browser {
             out.append(BrowserCommand(id: "downloads", title: "Show Downloads", subtitle: "\(downloads.count) files", keywords: ["files"]))
         }
         out.append(BrowserCommand(id: "archive", title: "Show Archive", subtitle: "\(archive.count) archived tabs", keywords: ["history", "closed"]))
+        if !currentSpace.isPrivate, library.liveFoldersOn {
+            out.append(BrowserCommand(id: "pull-requests",
+                                      title: library.gitHubFolder(in: currentSpace) == nil ? "Show Pull Requests in Sidebar" : "Remove Pull Requests from Sidebar",
+                                      keywords: ["github", "pr", "review", "live folder"]))
+        }
+        out.append(BrowserCommand(id: "live-folders", title: "Live Folders", subtitle: "Library",
+                                  keywords: ["rss", "feed", "follow", "github", "pull requests"]))
         out.append(BrowserCommand(id: "library", title: "Library", keywords: ["extensions", "plugins", "add-ons", "packs", "manage extensions"]))
         out.append(BrowserCommand(id: "settings", title: "Settings", keywords: ["preferences", "search engine"]))
         out.append(BrowserCommand(id: "panel", title: panel == nil ? "Show Panel" : "Hide Panel", keywords: ["right", "side", "tools"]))
@@ -129,14 +157,15 @@ extension Browser {
 
     private static let commandSymbols: [String: String] = [
         "pin": "pin", "favourite": "star", "close": "xmark", "copy-link": "link", "copy-text": "equal.circle", "reload": "arrow.clockwise",
-        "find": "text.magnifyingglass", "reader": "doc.plaintext", "tab-window": "macwindow.badge.plus",
+        "find": "text.magnifyingglass", "reader": "doc.plaintext", "picture-in-picture": "pip.enter", "tab-window": "macwindow.badge.plus",
         "new-window": "macwindow", "zoom-in": "plus.magnifyingglass", "zoom-out": "minus.magnifyingglass",
         "zoom-reset": "1.magnifyingglass", "blockers": "shield", "share": "square.and.arrow.up",
         "close-others": "xmark.square", "reopen": "arrow.uturn.backward", "sidebar": "sidebar.left",
         "panel": "sidebar.right", "private": "eye.slash", "close-private": "eye.slash", "new-space": "plus.rectangle.on.rectangle",
         "downloads": "arrow.down.circle", "archive": "archivebox", "settings": "gearshape", "library": "square.grid.2x2", "space": "square.stack",
         "move": "arrow.right.square", "restore": "archivebox", "ext": "puzzlepiece.extension",
-        "copy-markdown": "link.badge.plus", "clear-today": "xmark.circle", "inspector": "hammer",
+        "copy-markdown": "link.badge.plus", "split-view": "rectangle.split.2x1", "separate-split": "rectangle", "clear-today": "xmark.circle", "inspector": "hammer",
+        "follow-site": "dot.radiowaves.up.forward", "pull-requests": "arrow.triangle.pull", "live-folders": "folder.badge.gearshape",
     ]
 
     func run(command id: String) {
@@ -155,6 +184,10 @@ extension Browser {
         switch id {
         case "panel": togglePanel()
         case "pin": if let t = currentTab { togglePinned(t) }
+        case "follow-site": followCurrentPage()
+        case "pull-requests": togglePullRequests()
+        case "live-folders": openLibrary("live-folders")
+        case "new-folder": withAnimation(Motion.snappy) { newPinnedFolder(holding: currentTab?.isPinned == true ? currentTab : nil) }
         case "favourite": if let t = currentTab, let url = t.url { addFavorite(url: url, title: t.displayTitle) }
         case "close": if let t = currentTab { close(t) }
         case "copy-link": copyCurrentLink()
@@ -164,6 +197,7 @@ extension Browser {
         case "reload": reload()
         case "find": showFind()
         case "reader": toggleReader()
+        case "picture-in-picture": togglePictureInPicture()
         case "tab-window": if let t = currentTab { openInNewWindow(t) }
         case "new-window": library.openWindow()
         case "zoom-in": zoom(1)
@@ -172,6 +206,8 @@ extension Browser {
         case "blockers": toggleBlockingForCurrentSite()
         case "share": shareCurrentPage()
         case "close-others": if let t = currentTab { closeOtherTabs(than: t) }
+        case "split-view": newSplitPane()
+        case "separate-split": if let t = currentTab { withAnimation(Motion.snappy) { separateSplit(containing: t) } }
         case "reopen": reopenClosedTab()
         case "sidebar": toggleSidebar()
         case "private": newTab(url: nil, isPrivate: true); showCommandBar(.editCurrent)
@@ -276,6 +312,8 @@ extension Browser {
         case .pin: if let t = currentTab, !t.isPrivate { withAnimation(Motion.snappy) { togglePinned(t) } }
         case .favourite: toggleFavoriteForCurrentTab()
         case .archive: isArchivePresented = true
+        case .newFolder: withAnimation(Motion.snappy) { newPinnedFolder() }
+        case .splitView: newSplitPane()
         case .nextSpace: selectAdjacentSpace(1)
         case .previousSpace: selectAdjacentSpace(-1)
         case .sidebar: toggleSidebar()
@@ -294,7 +332,26 @@ extension Browser {
         case .copyMarkdown: copyCurrentLinkAsMarkdown()
         case .reader: toggleReader()
         case .inspector: showWebInspector()
+        case .pictureInPicture: togglePictureInPicture()
         }
+    }
+
+    // MARK: Picture in picture
+
+    /// The tab ⌥⌘P acts on: this one if it has a video, else a video that's out already (to put it back),
+    /// else a video playing in another tab.
+    var pictureInPictureTab: BrowserTab? {
+        if let tab = currentTab, tab.media.hasVideo || tab.media.isPictureInPicture { return tab }
+        let tabs = library.allTabs
+        return tabs.first { $0.media.isPictureInPicture } ?? tabs.first { $0.media.isWatching }
+    }
+
+    func togglePictureInPicture() {
+        guard let tab = pictureInPictureTab else {
+            showToast("No video to pop out")
+            return
+        }
+        library.videoPiP.toggle(tab)
     }
 
     func shareCurrentPage() {

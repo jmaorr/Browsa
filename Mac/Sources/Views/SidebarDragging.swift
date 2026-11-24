@@ -11,30 +11,40 @@ final class SidebarDragging {
     /// The window whose sidebar this is, for its own Today tabs. Set as a drag starts.
     @ObservationIgnored private weak var browser: Browser?
 
-    /// The Today rows this window's sidebar shows.
+    /// The Today rows this window's sidebar shows. A split is one row.
     private func listedToday(in space: Space) -> [BrowserTab] {
-        browser?.listedToday(in: space) ?? space.listedToday
+        browser?.todayRows(in: space) ?? space.listedToday
     }
 
     /// Where a dragged tab would land: a slot among the other tabs of a section, or among the
     /// favourites, where it becomes the favourite's own tab.
     enum Target: Equatable {
-        case pinned(Int)
+        /// A slot among the pinned section's lines as shown (`Browser.pinnedRows`), at a depth:
+        /// how many folders in. Moving the row left and right picks the depth, as in Arc.
+        case pinned(Int, depth: Int)
+        /// Into a pinned folder, at its end, by dropping on the middle of its line.
+        case folder(UUID)
         case today(Int)
         case favourite(Int)
         /// Another space, by dropping on its dot in the switcher.
         case space(UUID)
 
         var isPinned: Bool { if case .pinned = self { true } else { false } }
+        var isFolder: Bool { if case .folder = self { true } else { false } }
         var isToday: Bool { if case .today = self { true } else { false } }
         var isFavourite: Bool { if case .favourite = self { true } else { false } }
-        var index: Int { switch self { case .pinned(let i), .today(let i), .favourite(let i): i; case .space: 0 } }
+        var index: Int { switch self { case .pinned(let i, _), .today(let i), .favourite(let i): i; case .space, .folder: 0 } }
+        var depth: Int { if case .pinned(_, let d) = self { d } else { 0 } }
     }
 
+    /// How far each folder level sets its lines in.
+    nonisolated static let indent: CGFloat = 14
+
     struct Lift {
-        /// A tab's id, or a favourite's when `isFavourite`.
+        /// A tab's id, a favourite's when `isFavourite`, or a pinned folder's when `isFolder`.
         let tabID: UUID
         var isFavourite = false
+        var isFolder = false
         /// Where it came from, for a drag that ends nowhere useful.
         let origin: Target
         /// From the row's top-left corner to the pointer, so the row doesn't jump to the pointer.
@@ -109,6 +119,8 @@ final class SidebarDragging {
     #endif
 
     func isLifted(_ id: UUID) -> Bool { lift.map { !$0.isFavourite && $0.tabID == id } ?? false }
+    /// The tab or folder being dragged, when it's one of those.
+    var liftedID: UUID? { lift.flatMap { $0.isFavourite ? nil : $0.tabID } }
     func isLiftedFavourite(_ id: UUID) -> Bool { lift.map { $0.isFavourite && $0.tabID == id } ?? false }
 
     /// The top-left corner the lifted row is drawn at.
@@ -203,8 +215,18 @@ final class SidebarDragging {
         if target == nil { withAnimation(Motion.snappy) { target = lift.origin } }
         settling = true
         DispatchQueue.main.async { [self] in
-            let firstPin = target?.isPinned == true && space.pinned.isEmpty
+            let firstPin = target?.isPinned == true && browser.pinnedRows(in: space).isEmpty
             let landing = firstPin ? pinZoneFrame : gapFrame
+            if case .folder(let id)? = target, let row = rowFrames[id] {
+                withAnimation(Motion.snappy) {
+                    location = CGPoint(x: row.minX + lift.grab.width, y: row.minY + lift.grab.height)
+                    leaving = true
+                } completion: { [self] in
+                    commit(fav, in: space, browser: browser)
+                    leaving = false
+                }
+                return
+            }
             withAnimation(Motion.snappy) {
                 if target?.isFavourite == true {
                     location = CGPoint(x: landing.midX, y: landing.midY)
@@ -233,12 +255,17 @@ final class SidebarDragging {
             }
             // Down into the list: its own tab if it has one here, otherwise a new one, and it's no
             // longer a favourite.
-            let others = target.isPinned ? space.pinned : listedToday(in: space)
+            let place = pinnedPlace(for: target, hiding: nil, in: space, browser: browser)
+            let others = listedToday(in: space)
             let before = target.index < others.count ? others[target.index] : nil
             let tab = space.today.first { $0.favoriteID == fav.id && browser.lists($0) }
                 ?? browser.newTab(url: fav.url, in: space, source: .bookmark, select: false)
             browser.removeFavorite(fav)
-            browser.move(tab, before: before, pinned: target.isPinned)
+            if let place {
+                browser.pin(tab, in: space, at: place)
+            } else {
+                browser.move(tab, before: before, pinned: false)
+            }
         }
     }
 
@@ -253,10 +280,104 @@ final class SidebarDragging {
             return .favourite(before.count)
         }
         guard !space.isPrivate else { return nil }
-        let pinned = location.y < newTabFrame.midY
-        let others = pinned ? space.pinned : listedToday(in: space)
-        let index = others.filter { (rowFrames[$0.id]?.midY ?? .infinity) < location.y }.count
-        return pinned ? .pinned(index) : .today(index)
+        if location.y < newTabFrame.midY { return pinnedTarget(in: space) }
+        let index = listedToday(in: space).filter { (rowFrames[$0.id]?.midY ?? .infinity) < location.y }.count
+        return .today(index)
+    }
+
+    // MARK: Pinned folders
+
+    /// Where among the pinned the pointer is: on the middle of a folder's line (into it), or a slot
+    /// between lines, at the depth the dragged row's left edge has moved to.
+    private func pinnedTarget(in space: Space) -> Target {
+        let rows = browser?.pinnedRows(in: space, hiding: liftedID) ?? []
+        if let folder = rows.first(where: { r in
+            r.isFolder && (rowFrames[r.id].map { $0.insetBy(dx: 0, dy: $0.height * 0.25).contains(location) } ?? false)
+        }) {
+            return .folder(folder.id)
+        }
+        let index = rows.filter { (rowFrames[$0.id]?.midY ?? .infinity) < location.y }.count
+        let edge = (lift.map { $0.isFavourite ? location.x - $0.grab.width : liftedOrigin.x } ?? location.x) - newTabFrame.minX
+        let range = PinnedOutline.depths(at: index, in: rows)
+        let depth = min(max(Int((edge / Self.indent).rounded()), range.lowerBound), range.upperBound)
+        return .pinned(index, depth: depth)
+    }
+
+    /// Where a pinned target puts things, counted without the dragged entry. Nil for other targets.
+    private func pinnedPlace(for target: Target, hiding id: UUID?, in space: Space, browser: Browser) -> PinnedPlace? {
+        switch target {
+        case .folder(let folder):
+            return PinnedPlace(parent: folder, index: .max)
+        case .pinned(let index, let depth):
+            let rows = browser.pinnedRows(in: space, hiding: id)
+            let layout = id.map { PinnedOutline.removing($0, from: space.pinnedTree).0 } ?? space.pinnedTree
+            return PinnedOutline.place(at: index, depth: depth, rows: rows, layout: layout)
+        default:
+            return nil
+        }
+    }
+
+    /// A pinned folder picked up: it moves among the pinned, into other folders or out of them,
+    /// carrying what it holds.
+    func changed(folder id: UUID, from start: CGPoint, to point: CGPoint, in space: Space, browser: Browser) {
+        guard !settling else { return }
+        self.browser = browser
+        if lift == nil {
+            guard let frame = rowFrames[id] else { return }
+            let rows = browser.pinnedRows(in: space)
+            let i = rows.firstIndex { $0.id == id } ?? 0
+            let origin = Target.pinned(i, depth: rows.indices.contains(i) ? rows[i].depth : 0)
+            location = point
+            withAnimation(Motion.snappy) {
+                lift = Lift(tabID: id, isFolder: true, origin: origin,
+                            grab: CGSize(width: start.x - frame.minX, height: start.y - frame.minY),
+                            size: frame.size)
+                target = origin
+            }
+            return
+        }
+        location = point
+        retarget = { [weak self] in
+            guard let self, lift != nil, !settling else { return }
+            let next = pinnedTarget(in: space)
+            if next != target { withAnimation(Motion.snappy) { target = next } }
+        }
+        retarget?()
+    }
+
+    func ended(folder id: UUID, in space: Space, browser: Browser) {
+        guard let lift, lift.isFolder, !settling else { return }
+        settling = true
+        DispatchQueue.main.async { [self] in
+            if case .folder(let into)? = target, let row = rowFrames[into] {
+                withAnimation(Motion.snappy) {
+                    location = CGPoint(x: row.minX + lift.grab.width, y: row.minY + lift.grab.height)
+                    leaving = true
+                } completion: { [self] in
+                    commit(folder: id, in: space, browser: browser)
+                    leaving = false
+                }
+                return
+            }
+            withAnimation(Motion.snappy) {
+                location = CGPoint(x: gapFrame.minX + lift.grab.width, y: gapFrame.minY + lift.grab.height)
+            } completion: { [self] in
+                commit(folder: id, in: space, browser: browser)
+            }
+        }
+    }
+
+    private func commit(folder id: UUID, in space: Space, browser: Browser) {
+        defer {
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { lift = nil; target = nil; settling = false }
+        }
+        guard let lift, let target, target != lift.origin,
+              let place = pinnedPlace(for: target, hiding: id, in: space, browser: browser) else { return }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { browser.library.movePinned(id, to: place, in: space) }
     }
 
     // MARK: Ending a tab's drag
@@ -279,8 +400,18 @@ final class SidebarDragging {
             return
         }
         DispatchQueue.main.async { [self] in
-            let firstPin = target?.isPinned == true && !space.pinned.contains { $0.id != lift.tabID }
+            let firstPin = target?.isPinned == true && browser.pinnedRows(in: space, hiding: lift.tabID).isEmpty
             let landing = firstPin ? pinZoneFrame : gapFrame
+            if case .folder(let id)? = target, let row = rowFrames[id] {
+                withAnimation(Motion.snappy) {
+                    location = CGPoint(x: row.minX + lift.grab.width, y: row.minY + lift.grab.height)
+                    leaving = true
+                } completion: { [self] in
+                    commit(tab, in: space, browser: browser)
+                    leaving = false
+                }
+                return
+            }
             withAnimation(Motion.snappy) {
                 if target?.isFavourite == true {
                     tileSize = landing.size
@@ -311,9 +442,13 @@ final class SidebarDragging {
             withTransaction(quiet) { makeFavourite(tab, at: i, browser: browser) }
             return
         }
-        let others = (target.isPinned ? space.pinned : listedToday(in: space)).filter { $0.id != tab.id }
+        if let place = pinnedPlace(for: target, hiding: tab.id, in: space, browser: browser) {
+            withTransaction(quiet) { browser.pin(tab, in: space, at: place) }
+            return
+        }
+        let others = listedToday(in: space).filter { $0.id != tab.id }
         let before = target.index < others.count ? others[target.index] : nil
-        withTransaction(quiet) { browser.move(tab, before: before, pinned: target.isPinned) }
+        withTransaction(quiet) { browser.move(tab, before: before, pinned: false) }
     }
 
     /// The tab becomes a favourite at `index`, and the favourite's own tab, so it leaves the list
@@ -339,7 +474,9 @@ final class SidebarDragging {
     }
 
     private func slot(of tab: BrowserTab, in space: Space) -> Target {
-        if let i = space.pinned.firstIndex(where: { $0.id == tab.id }) { return .pinned(i) }
+        if tab.isPinned, let rows = browser?.pinnedRows(in: space), let i = rows.firstIndex(where: { $0.id == tab.id }) {
+            return .pinned(i, depth: rows[i].depth)
+        }
         return .today(listedToday(in: space).firstIndex { $0.id == tab.id } ?? 0)
     }
 
@@ -360,10 +497,10 @@ final class SidebarDragging {
             }
             return .favourite(before.count)
         }
-        let pinned = location.y < newTabFrame.midY && !space.isPrivate && !tab.isPrivate
-        let others = (pinned ? space.pinned : listedToday(in: space)).filter { $0.id != tab.id }
+        if location.y < newTabFrame.midY && !space.isPrivate && !tab.isPrivate { return pinnedTarget(in: space) }
+        let others = listedToday(in: space).filter { $0.id != tab.id }
         let index = others.filter { (rowFrames[$0.id]?.midY ?? .infinity) < location.y }.count
-        return pinned ? .pinned(index) : .today(index)
+        return .today(index)
     }
 }
 
@@ -376,6 +513,20 @@ struct LiftedTabRow: View {
     var body: some View {
         if let lift = dragging.lift, lift.isFavourite, let fav = browser.favorites.first(where: { $0.id == lift.tabID }) {
             liftedFavourite(fav, lift: lift)
+        } else if let lift = dragging.lift, lift.isFolder,
+                  let folder = PinnedOutline.folder(lift.tabID, in: browser.currentSpace.pinnedTree) {
+            FolderRowLabel(folder: folder, selected: !dragging.settling)
+                .frame(width: lift.size.width, height: lift.size.height)
+                .background(PanelFill(), in: .rect(cornerRadius: 9, style: .continuous))
+                .clipShape(.rect(cornerRadius: 9, style: .continuous))
+                .shadow(color: .black.opacity(dragging.settling ? 0.06 : 0.16), radius: dragging.settling ? 2 : 10,
+                        y: dragging.settling ? 1 : 5)
+                .scaleEffect(dragging.leaving ? 0.15 : dragging.settling ? 1 : 1.03, anchor: .init(
+                    x: lift.grab.width / max(lift.size.width, 1), y: lift.grab.height / max(lift.size.height, 1)))
+                .opacity(dragging.leaving ? 0 : 1)
+                .offset(x: dragging.liftedOrigin.x, y: dragging.liftedOrigin.y)
+                .allowsHitTesting(false)
+                .transition(.identity)
         } else if let lift = dragging.lift, !lift.isFavourite,
            let tab = browser.currentSpace.allTabs.first(where: { $0.id == lift.tabID }) {
             // Over the favourites it's a tile; over a space's dot, a small chip that leaves the dot in view.
@@ -389,7 +540,7 @@ struct LiftedTabRow: View {
             // Raised on a card while it moves; settles back to how the row really looks as it lands.
             let selected = tab.id == browser.selectedTabID(in: browser.currentSpace)
             ZStack {
-                TabRow(tab: tab, selected: selected || !dragging.settling, isLifted: true)
+                SidebarRow(tab: tab, selected: selected || !dragging.settling, isLifted: true)
                     .frame(width: lift.size.width, height: lift.size.height)
                     .opacity(asTile ? 0 : 1)
                 if let url = tab.url {
@@ -416,7 +567,7 @@ struct LiftedTabRow: View {
 
     /// A favourite under the pointer: its tile among the favourites, a tab row over the list.
     private func liftedFavourite(_ fav: Favorite, lift: SidebarDragging.Lift) -> some View {
-        let asRow = dragging.target?.isPinned == true || dragging.target?.isToday == true
+        let asRow = dragging.target?.isPinned == true || dragging.target?.isToday == true || dragging.target?.isFolder == true
         let size = asRow ? lift.size : dragging.tileSize
         let origin = asRow ? dragging.liftedOrigin
             : CGPoint(x: dragging.location.x - size.width / 2, y: dragging.location.y - size.height / 2)

@@ -1,0 +1,192 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../../kit/kit.css"><link rel="stylesheet" href="../../kit/sites.css"><script src="../../kit/kit.js"></script>
+<style>
+  /* The Library's Agent Pack loop: Radar finds a dev server, Claude Code opens it and works,
+     and a note you left gets answered and resolved. On a wallpaper, like a Mac desktop. */
+  html,body { background:#222; }
+  .wall { position:absolute; inset:0; background:url(../shared/wallpaper.jpg) center 35%/cover; }
+  .win { left:150px; top:96px; width:1300px; height:808px; --tint:#ff9500; }
+  .side { width:318px; display:flex; flex-direction:column; }
+  .page { left:330px; }
+  .addr { height:38px; margin:16px 4px 0; border-radius:12px; background:rgb(255 255 255 / .6); display:flex; align-items:center; gap:10px; padding:0 14px; font-size:16px; color:#5d5a55; }
+  .addr i { width:8px; height:8px; border-radius:50%; background:#30a46c; }
+  /* AgentDrivingPill: amber wash, who and what, Watch and Stop. */
+  .pill { display:flex; align-items:center; gap:12px; margin:12px 4px 0; padding:9px 9px 9px 13px; border-radius:15px;
+    background: rgb(245 182 11 / .12); box-shadow: inset 0 0 0 1.5px rgb(245 182 11 / .38); overflow:hidden; }
+  .pill .av { position:relative; width:24px; height:24px; border-radius:7px; background:#d97757; display:grid; place-items:center; flex:none; }
+  .pill .av::after { content:""; position:absolute; right:-3px; bottom:-3px; width:10px; height:10px; border-radius:50%; background:#f5b60b; box-shadow:0 0 0 1.5px #fff; }
+  .pill b { display:block; font-size:16px; font-weight:600; }
+  .pill span { display:block; font-size:14px; color:#5d5a55; white-space:nowrap; }
+  .pill .eye, .pill .stop { width:30px; height:30px; border-radius:50%; display:grid; place-items:center; flex:none; }
+  .pill .eye { background: rgb(0 0 0 / .08); } .pill .stop { background:#ff3b30; }
+  /* Radar's sidebar card. */
+  .tool { margin:auto 4px 10px; border-radius:16px; background: rgb(0 0 0 / .045); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .05); overflow:hidden; }
+  .tool .h { display:flex; align-items:center; gap:10px; height:44px; padding:0 14px; font-size:16px; font-weight:600; }
+  .tool .h em { margin-left:auto; font-style:normal; font-weight:500; font-size:14px; color:#5d5a55; }
+  .srv { display:flex; align-items:center; gap:10px; height:36px; margin:0 6px 4px; padding:0 10px; border-radius:10px; font-size:15px; }
+  .srv i { width:9px; height:9px; border-radius:50%; background:#30a46c; }
+  .srv small { margin-left:auto; color:#5d5a55; font-size:14px; font-variant-numeric:tabular-nums; }
+  .spaces { display:flex; justify-content:center; gap:14px; padding:4px 0 2px; }
+  .spaces i { width:10px; height:10px; border-radius:50%; background: rgb(0 0 0 / .18); }
+  /* The dev server's page: the real getjambora.com hero, served locally. */
+  .shop { position:absolute; inset:0; background:#0a0a0b; color:#f5f5f7; overflow:hidden; }
+  .shop::before { content:""; position:absolute; inset:0;
+    background: radial-gradient(ellipse 600px 400px at 50% 40%, rgba(255,255,255,.03), transparent),
+      repeating-linear-gradient(0deg, transparent, transparent 59px, rgba(255,255,255,.02) 59px, rgba(255,255,255,.02) 60px),
+      repeating-linear-gradient(90deg, transparent, transparent 59px, rgba(255,255,255,.02) 59px, rgba(255,255,255,.02) 60px);
+    -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 45%, #000 40%, transparent 100%); }
+  .jnav { position:absolute; left:0; right:0; top:0; display:flex; align-items:center; padding:16px 30px; letter-spacing:normal; }
+  .jnav .logo { display:flex; align-items:center; gap:10px; font-size:19px; font-weight:700; letter-spacing:-.5px; }
+  .jnav .logo img { width:28px; height:28px; border-radius:7px; }
+  .jnav .links { margin-left:auto; display:flex; gap:32px; font-size:15px; font-weight:500; color:#a1a1aa; }
+  .c { position:absolute; left:0; right:0; display:flex; justify-content:center; text-align:center; letter-spacing:normal; }
+  .hpill { display:inline-flex; align-items:center; gap:8px; font-size:14px; font-weight:500; color:#a1a1aa; padding:6px 16px; border-radius:100px; border:1px solid rgba(255,255,255,.15); background:#111113; }
+  .hpill i { width:6px; height:6px; border-radius:50%; background:#34d399; }
+  .jh1 { font-size:50px; font-weight:700; letter-spacing:-.04em; line-height:1.1; margin:0;
+    background:linear-gradient(180deg,#f5f5f7 0%,#71717a 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .jsub { font-size:18.5px; line-height:1.6; color:#a1a1aa; max-width:600px; margin:0; }
+  .appstore { display:inline-flex; align-items:center; gap:12px; padding:11px 26px 11px 22px; border-radius:14px; background:#f5f5f7; color:#0a0a0b; text-align:left; }
+  .appstore svg { width:22px; height:26px; }
+  .appstore span { display:flex; flex-direction:column; font-size:19px; font-weight:600; line-height:1.1; letter-spacing:-.01em; }
+  .appstore small { font-size:11px; font-weight:500; opacity:.75; }
+  .capt { font-size:13px; color:#71717a; }
+  .mock { width:380px; text-align:left; background:#111113; border:1px solid rgba(255,255,255,.15); border-radius:14px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.5); font-size:13px; }
+  .mock .hd { display:flex; align-items:center; gap:8px; padding:12px 16px; border-bottom:1px solid rgba(255,255,255,.08); }
+  .mock .hd i { width:10px; height:10px; border-radius:50%; }
+  .mock .hd em { margin-left:auto; font-style:normal; font-size:11px; color:#71717a; display:flex; align-items:center; gap:6px; }
+  .mock .hd em::before { content:""; width:6px; height:6px; border-radius:50%; background:#34d399; }
+  .mock .r { display:flex; align-items:center; gap:8px; padding:10px 16px; border-bottom:1px solid rgba(255,255,255,.08); font-weight:500; }
+  .mock .r .nm { flex:1; } .mock .r .f { opacity:.45; }
+  .mock .avs { display:flex; } .mock .avs img { width:24px; height:24px; border-radius:50%; border:2px solid #111113; margin-left:-7px; background:#2c2c33; object-fit:cover; }
+  .mock .avs img:first-child { margin-left:0; } .mock .avs img.ed { border-color:#60a5fa; }
+  .mock .st { display:flex; align-items:center; gap:5px; margin-left:8px; min-width:78px; font-size:11px; color:#71717a; }
+  .mock .st::before { content:""; width:6px; height:6px; border-radius:50%; background:#34d399; }
+  .cap { position:absolute; left:50%; top:22px; display:flex; align-items:center; gap:10px; height:40px; padding:0 18px; border-radius:20px; font-size:16px; font-weight:500;
+    background: rgb(255 248 230 / .92); box-shadow: 0 0 0 1px rgb(245 182 11 / .35), 0 10px 24px -10px rgb(0 0 0 / .3); white-space:nowrap; }
+  .cap i { width:9px; height:9px; border-radius:50%; background:#f5b60b; }
+  .ptr { position:absolute; width:30px; height:30px; }
+  .ptr .tag { position:absolute; left:26px; top:26px; padding:4px 10px; border-radius:10px; background:#d97757; color:#fff; font-size:14px; font-weight:600; white-space:nowrap; }
+  .ring { position:absolute; width:48px; height:48px; margin:-24px 0 0 -24px; border-radius:50%; border:3px solid rgb(217 119 87 / .7); }
+  .pin { position:absolute; width:30px; height:30px; border-radius:15px 15px 15px 3px; box-shadow:0 4px 10px rgb(0 0 0 / .25), inset 0 1px 0 rgb(255 255 255 / .5); }
+  .note { position:absolute; width:286px; padding:16px 18px; border-radius:16px; background:#fff; font-size:16px; line-height:1.4;
+    box-shadow: 0 0 0 1px rgb(0 0 0 / .08), 0 20px 40px -14px rgb(0 0 0 / .35); }
+  .note .who { display:flex; align-items:center; gap:8px; font-weight:600; font-size:15px; margin-bottom:4px; }
+  .note .who i { width:20px; height:20px; border-radius:50%; }
+  .note .rep { margin-top:12px; padding-top:12px; border-top:1px solid #eeede9; overflow:hidden; }
+  .note .done { display:inline-flex; align-items:center; gap:6px; margin-top:8px; color:#1a7f4b; font-weight:600; font-size:14px; }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="wall"></div>
+  <div class="win"><div class="side" id="side"></div><div class="page" id="page"></div></div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const F = (n) => `../../../../public/media/fav/${n}.png`;
+const R = (icon, title, cls = "", id = "") => `<div class="row ${cls}" ${id ? `id="${id}"` : ""}><div class="in">${icon}<span>${title}</span></div></div>`;
+const img = (n) => `<img src="${F(n)}">`;
+const CLAUDE = `<svg width="15" height="15" viewBox="0 0 24 24" fill="#fff"><path d="M12 2l1.6 6.2L20 6l-4.4 4.8L22 12l-6.4 1.2L20 18l-6.4-2.2L12 22l-1.6-6.2L4 18l4.4-4.8L2 12l6.4-1.2L4 6l6.4 2.2z"/></svg>`;
+
+$("side").innerHTML = `
+  <div class="lights"><i></i><i></i><i></i></div>
+  <div class="addr" id="addr"></div>
+  <div id="pillwrap" style="overflow:hidden"><div class="pill" id="pill">
+    <span class="av">${CLAUDE}</span>
+    <div style="flex:1;min-width:0"><b>Claude Code</b><span id="step"></span></div>
+    <span class="eye"><svg width="14" height="14" viewBox="0 0 24 24" fill="#161513"><path d="M12 5C6 5 2 12 2 12s4 7 10 7 10-7 10-7-4-7-10-7zm0 11a4 4 0 110-8 4 4 0 010 8z"/></svg></span>
+    <span class="stop"><svg width="10" height="10" viewBox="0 0 10 10"><rect width="10" height="10" rx="2" fill="#fff"/></svg></span>
+  </div></div>
+  <div class="favs">${["mail.google.com", "calendar.google.com", "figma.com", "notion.so"].map((f) => `<span>${img(f)}</span>`).join("")}</div>
+  <div class="sect">Pinned</div>
+  ${R(img("linear.app"), "My issues · Linear")}${R(img("github.com"), "Pull requests · GitHub")}${R(img("figma.com"), "Checkout · Figma")}
+  <div class="sect">Today</div>
+  ${R(img("stripe.com"), "Payments · Stripe")}
+  <div id="devrow" style="overflow:hidden">${R(`<img src="../shared/jambora/icon.png" style="border-radius:5px">`, "jambora-site", "", "devsel")}</div>
+  <div class="tool" id="tool">
+    <div class="h"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#5d5a55" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 000 8.4M16.2 7.8a6 6 0 010 8.4M5 5a10 10 0 000 14M19 5a10 10 0 010 14"/></svg>Radar<em id="count"></em></div>
+    <div class="srv" style="color:#5d5a55"><i style="background:#30a46c"></i>browsa-site<small>:8787</small></div>
+    <div id="newsrv" style="overflow:hidden"><div class="srv" id="srvrow"><i id="srvdot"></i><b style="font-weight:600">jambora-site</b><small>:5173 · dev</small></div></div>
+  </div>
+  <div class="spaces"><i></i><i style="background:#ff9500"></i><i></i></div>`;
+
+$("page").innerHTML = `
+    <div class="shop" id="shop">
+    <div class="jnav"><div class="logo"><img src="../shared/jambora/icon.png">Jambora</div><div class="links"><span>Features</span><span>How it Works</span><span>Download</span></div></div>
+    <div class="c" style="top:84px"><div class="hpill"><i></i>Now on the Mac App Store</div></div>
+    <div class="c" style="top:136px"><h1 class="jh1">Collaborate on AI prototypes<br>in real time.</h1></div>
+    <div class="c" id="subLong" style="top:272px"><p class="jsub">Jambora syncs your project folders across machines in real time. Work in Cursor, Windsurf, Claude Code, Xcode, any tool. Edits to different lines merge automatically; if two people change the same lines, both versions are kept side by side, and every file has version history.</p></div>
+    <div class="c" id="subShort" style="top:272px"><p class="jsub">Jambora syncs your project folders across Macs in real time. Work in any tool, and every file has version history.</p></div>
+    <div class="c" id="cta"><div style="display:flex;flex-direction:column;align-items:center;gap:12px"><div class="appstore" id="pay"><svg viewBox="0 0 384 512"><path fill="currentColor" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg><span><small>Download on the</small>Mac App Store</span></div><span class="capt">Requires macOS 26 or later</span></div></div>
+    <div class="c" id="shot"><div class="mock"><div class="hd"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><b style="margin-left:4px">Jambora</b><em>4 online</em></div>
+      <div class="r"><span class="f">📁</span><span class="nm">checkout-redesign</span><span class="avs"><img src="../shared/jambora/face-2.png"><img class="ed" src="../shared/jambora/face-1.png"></span><span class="st">Up to Date</span></div>
+      <div class="r"><span class="f">📁</span><span class="nm">design-system</span><span class="avs"><img src="../shared/jambora/face-4.png"></span><span class="st">Up to Date</span></div>
+      <div class="r"><span class="f">📁</span><span class="nm">landing-page</span><span class="avs"><img src="../shared/jambora/face-3.png"><img src="../shared/jambora/face-5.png"><img src="../shared/jambora/face-2.png"></span><span class="st">Up to Date</span></div></div></div>
+  </div>
+  <div class="cap" id="cap"><i></i><span id="captext"></span></div>
+  <div class="pin" id="pin"></div>
+  <div class="note" id="note"><div class="who"><i style="background:#c9b6e8"></i>You</div>The intro is long, so the App Store button falls below the fold on small windows.
+    <div class="rep" id="rep"><div class="who"><i style="background:#d97757"></i>Claude Code</div>Shortened the intro so the button sits higher. Checked it at 800 points wide.<div class="done">✓ Resolved</div></div></div>
+  <div class="ring" id="ring"></div>
+  <div class="ptr" id="ptr"><svg width="30" height="30" viewBox="0 0 22 30"><path d="M2 2v22l6-6 4 9 4-2-4-9h8z" fill="#d97757" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg><span class="tag">Claude Code</span></div>`;
+
+window.TOTAL = 13;
+window.render = (t) => {
+  // 1. Radar finds jambora-site (0.4 – 2.6 s).
+  const found = eo(ph(t, 0.5, 0.5));
+  $("newsrv").style.maxHeight = found * 44 + "px"; $("newsrv").style.opacity = found;
+  $("count").textContent = found > 0.5 ? "2 running" : "1 running";
+  const pulse = ph(t, 1.0, 1.2);
+  $("srvdot").style.boxShadow = `0 0 0 ${pulse * 10}px rgb(48 164 108 / ${0.45 * (1 - pulse)})`;
+  $("srvrow").style.background = t > 0.9 && t < 2.8 ? `rgb(48 164 108 / ${0.14 * (1 - ph(t, 2.4, 0.4))})` : "transparent";
+
+  // 2. Claude Code opens it and works (2.6 – 7.6 s).
+  const pillIn = eo(ph(t, 2.6, 0.45));
+  $("pillwrap").style.maxHeight = pillIn * 80 + "px"; $("pill").style.opacity = pillIn;
+  const steps = [[2.6, "Opening jambora-site"], [4.6, "Checking the App Store button"], [6.0, "Reading your note"], [7.4, "Editing src/index.ts"], [9.2, "Replying to your note"], [10.6, "Resolved your note"]];
+  $("step").textContent = (steps.filter(([a]) => t >= a).pop() || steps[0])[1];
+  const opened = eo(ph(t, 3.0, 0.4));
+  $("devrow").style.maxHeight = opened * 48 + "px"; $("devrow").style.opacity = opened;
+  $("devsel").classList.toggle("sel", t > 3.1);
+  $("addr").innerHTML = t > 3.1 ? `<i></i>jambora-site <span style="color:#a19d96">· localhost:5173</span>` : `Search or enter address`;
+  $("shop").style.opacity = ph(t, 3.3, 0.35);
+
+  const cap = t > 3.6 && t < 12.2;
+  $("cap").style.opacity = cap ? Math.min(eo(ph(t, 3.6, 0.3)), 1 - ph(t, 11.9, 0.3)) : 0;
+  $("cap").style.transform = `translateX(-50%) translateY(${(1 - eo(ph(t, 3.6, 0.3))) * -8}px)`;
+  $("captext").textContent = (steps.filter(([a]) => t >= a).pop() || steps[0])[1].replace("your note", "a note");
+
+  // The agent shortens the intro, so the App Store button comes up (8.2 s).
+  const fix = eio(ph(t, 8.2, 0.7));
+  $("subLong").style.opacity = 1 - ph(t, 8.2, 0.35); $("subShort").style.opacity = ph(t, 8.45, 0.4);
+  const payY = mix(452, 354, fix);
+  $("cta").style.top = payY + "px";
+  $("shot").style.top = payY + 118 + "px";
+  const hover = t > 4.7 && t < 5.6 ? eo(ph(t, 4.7, 0.2)) * (1 - ph(t, 5.4, 0.2)) : 0;
+  $("pay").style.transform = `translateY(${-2 * hover}px)`; $("pay").style.boxShadow = `0 10px 30px rgba(255,255,255,${0.12 * hover})`;
+  // Pointer: drift to Pay, click, then to the note.
+  const m1 = eio(ph(t, 3.9, 0.8)), m2 = eio(ph(t, 5.4, 0.6)), m3 = eio(ph(t, 9.0, 0.5));
+  let x = mix(700, 470, m1), y = mix(200, payY + 30, m1);
+  x = mix(x, 580, m2); y = mix(y, payY - 50, m2);
+  x = mix(x, 300, m3); y = mix(y, payY + 60, m3);
+  $("ptr").style.left = x + "px"; $("ptr").style.top = y + "px";
+  $("ptr").style.opacity = Math.min(ph(t, 3.7, 0.3), 1 - ph(t, 11.8, 0.4));
+  const ck = ph(t, 4.7, 0.45);
+  $("ring").style.left = "196px"; $("ring").style.top = 640 + 30 + "px";
+  $("ring").style.opacity = 0; $("ring").style.transform = `scale(${0.5 + ck})`;
+
+  // 3. Your note, answered and resolved (5.6 – 12 s).
+  $("pin").style.left = "604px"; $("pin").style.top = payY - 12 + "px";
+  $("pin").style.background = t > 10.6 ? "linear-gradient(#5fd08f,#2f9e63)" : "linear-gradient(#ffd34d,#f2a900)";
+  $("pin").style.opacity = ph(t, 5.6, 0.3) * (1 - ph(t, 12.2, 0.3));
+  const noteIn = eo(ph(t, 5.9, 0.4));
+  $("note").style.left = "614px"; $("note").style.top = payY + 2 + "px";
+  $("note").style.opacity = noteIn * (1 - ph(t, 12.0, 0.4));
+  $("note").style.transform = `translateY(${(1 - noteIn) * 10}px) scale(${0.97 + 0.03 * noteIn})`;
+  const rep = eo(ph(t, 9.3, 0.5));
+  $("rep").style.maxHeight = rep * 160 + "px"; $("rep").style.opacity = rep;
+  $("rep").querySelector(".done").style.opacity = ph(t, 10.6, 0.3);
+
+  // Only the window's contents fade at the loop point; the desktop and window stay put.
+  const lf = 0.15 + 0.85 * loopFade(t, TOTAL); $("side").style.opacity = lf; $("page").style.opacity = lf;
+};
+render(0);
+</script></body></html>

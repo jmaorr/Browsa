@@ -234,6 +234,9 @@ private struct PanelColumn: View {
 
     var body: some View {
         RightPanel(toolID: browser.panel ?? lastTool)
+            // Never wider than the column: content that wants more is clipped inside the card, so
+            // the card keeps its left edge and rounded corners at any width.
+            .frame(minWidth: 0, maxWidth: .infinity)
             .padding(.vertical, PageCard.inset)
             .padding(.trailing, PageCard.inset)
             .onChange(of: browser.panel) { _, new in if let new { lastTool = new } }

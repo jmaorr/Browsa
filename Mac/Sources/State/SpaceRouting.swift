@@ -11,7 +11,7 @@ import BrowserCore
 /// Off until you turn it on (Settings › Routing), or until you add a rule from ⌘K. Then your routing
 /// sets apply (Browsa adds its Work and Personal ones the first time), plus your custom rules.
 /// Only new tabs and links from other apps are routed. Following a link inside a tab never moves it,
-/// private tabs never move, and sign-in and checkout pages stay next to the tab that opened them.
+/// private tabs and Favourites never move, and sign-in and checkout pages stay next to the tab that opened them.
 struct RouteRule: Codable, Identifiable, Equatable {
     var id = UUID()
     /// "github.com" (and its subdomains), optionally with a path: "github.com/acme".
@@ -173,6 +173,11 @@ final class SpaceRouter {
         for template in StarterSet.all where template.onByDefault && !sets.contains(where: { $0.templateID == template.id }) {
             if let space = Self.namedSpace(for: template, in: spaces) { addSet(from: template, space: space) }
         }
+    }
+
+    /// Browsa's starting sets, shown greyed on the Library page before routing is first turned on.
+    static var previewSets: [RouteSet] {
+        StarterSet.all.filter(\.onByDefault).map { RouteSet(name: $0.title, sites: $0.patterns, spaceID: nil, templateID: $0.id) }
     }
 
     static func namedSpace(for set: StarterSet, in spaces: [Space]) -> Space? {
@@ -403,6 +408,8 @@ final class SpaceRouter {
 /// its sites), an Add Set menu, and custom rules (one address, one Space). Everything edits in place.
 struct SpaceRoutingSettings: View {
     @Environment(Library.self) private var library
+    /// The Library's page has its own switch above this.
+    var showsSwitch = true
     @State private var importFailed = false
 
     private var router: SpaceRouter { .shared }
@@ -411,15 +418,18 @@ struct SpaceRoutingSettings: View {
     var body: some View {
         @Bindable var router = SpaceRouter.shared
         Form {
-            Section {
-                Toggle(isOn: $router.isEnabled) {
-                    Text("Open sites in their Space")
-                    Text("New tabs for a site go to its Space, wherever you are. Links you follow inside a tab stay put, and private tabs never move.")
+            if showsSwitch {
+                Section {
+                    Toggle(isOn: $router.isEnabled) {
+                        Text("Open sites in their Space")
+                        Text("New tabs for a site go to its Space, wherever you are. Links you follow inside a tab stay put, and private tabs and Favourites never move.")
+                    }
                 }
             }
-            if router.isEnabled {
+            // In the Library the page shows these (greyed) even while routing is off.
+            if router.isEnabled || !showsSwitch {
                 Section {
-                    ForEach(router.sets) { set in RouteSetRow(set: set) }
+                    ForEach(router.sets.isEmpty && !router.isEnabled ? SpaceRouter.previewSets : router.sets) { set in RouteSetRow(set: set) }
                     addSetMenu
                 } header: {
                     Text("Routing sets")

@@ -36,7 +36,7 @@ final class TabController: EnginePageDelegate {
         guard let page else { return }
         withObservationTracking {
             let s = page.state
-            _ = (s.url, s.title, s.progress, s.isLoading, s.canGoBack, s.canGoForward, s.isSecure, s.camera, s.microphone)
+            _ = (s.url, s.title, s.progress, s.isLoading, s.canGoBack, s.canGoForward, s.isSecure, s.camera, s.microphone, s.media)
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.sync()
@@ -57,6 +57,14 @@ final class TabController: EnginePageDelegate {
         if tab.canGoForward != s.canGoForward { tab.canGoForward = s.canGoForward }
         let call = s.camera == .off && s.microphone == .off ? nil : TabCall(camera: s.camera == .on, microphone: s.microphone == .on)
         if tab.call != call { tab.call = call }
+        let m = s.media
+        let media = TabMedia(hasVideo: m.hasVideo, isPlaying: m.isPlaying, hasPlayed: m.hasPlayed,
+                             isAudible: m.isAudible, isWatching: m.isWatching, isPictureInPicture: m.isPictureInPicture)
+        if tab.media != media {
+            let wasOut = tab.media.isPictureInPicture
+            tab.media = media
+            if wasOut, !media.isPictureInPicture { library?.videoPiP.didLeavePictureInPicture(tab) }
+        }
     }
 
     func load(_ url: URL, source: Frecency.VisitSource) {
@@ -107,6 +115,10 @@ final class TabController: EnginePageDelegate {
 
     // MARK: EnginePageDelegate
 
+    func pageWantsVideoBack(_ page: any EnginePage) {
+        library?.videoPiP.bringBack(tab)
+    }
+
     func page(_ page: any EnginePage, decide request: NavigationRequest) async -> NavigationDecision {
         guard let library else { return .allow }
         if request.wantsGlance {
@@ -119,7 +131,7 @@ final class TabController: EnginePageDelegate {
             return .cancel
         }
         let scheme = request.url.scheme?.lowercased() ?? ""
-        guard ["http", "https", "about", "blob", "data", "file", "javascript", "webkit-extension"].contains(scheme) else {
+        guard ["http", "https", "about", "blob", "data", "file", "javascript", "webkit-extension", "chrome-extension"].contains(scheme) else {
             // mailto:, zoommtg:, App Store links and the like belong to other apps. Browsa asks first (as
             // Chrome does), so a page can't throw you into an app: Zoom's join page fires zoommtg: on its
             // own, and saying no keeps its "join from your browser" option. Email links just open.
@@ -140,8 +152,9 @@ final class TabController: EnginePageDelegate {
     }
 
     /// Hands a link to the app that opens it, asking first, as Safari and Chrome do: a page could
-    /// otherwise launch Zoom, FaceTime or the App Store by itself. The answer is kept per site and
-    /// per kind of link, like camera and microphone. A frame inside the page (an ad, an embed) only
+    /// otherwise launch Zoom, FaceTime or the App Store by itself. "Always Open" and "Don't Open" are
+    /// kept per site and per kind of link (Slite documents from slite.com, say). "Open" and "Not Now"
+    /// aren't kept, so the site asks again next time. A frame inside the page (an ad, an embed) only
     /// gets to ask when it was a click on a link. Email links open straight away.
     private func openInApp(_ request: NavigationRequest) async {
         let url = request.url
@@ -151,31 +164,106 @@ final class TabController: EnginePageDelegate {
             window?.showToast("No app on this Mac opens \(scheme): links")
             return
         }
-        // Typed into the address bar on an empty tab, or an email, phone or message link: no site to ask about.
-        guard !["mailto", "tel", "facetime", "sms"].contains(scheme), let host = page.state.url?.host() ?? tab.url?.host(), let library else {
+        // Typed into the address bar on an empty tab, an email link, or a phone, FaceTime or message link you
+        // clicked: nothing to ask. A page firing a call or message link by itself asks, as Safari does.
+        let clickedContact = ["tel", "facetime", "facetime-audio", "sms"].contains(scheme) && request.kind == .link
+        guard scheme != "mailto", !clickedContact, let host = page.state.url?.host() ?? tab.url?.host(), let library else {
             NSWorkspace.shared.open(url)
             return
         }
-        let key = Self.openAppKey(scheme)
-        if let saved = library.settings.sitePermissions[host]?[key] {
-            if saved { NSWorkspace.shared.open(url) }
-            return
-        }
-        guard let window else { return }
         let app = FileManager.default.displayName(atPath: appURL.path).replacingOccurrences(of: ".app", with: "")
-        let answer = await window.ask(.openApp(app: app, host: host), from: tab)
-        // Cancelled because the tab went away: don't remember a "no" the user never gave.
-        guard answer != .cancel || window.currentTab?.id == tab.id else { return }
-        let allowed = answer == .ok
-        library.settings.sitePermissions[host, default: [:]][key] = allowed
-        if allowed { NSWorkspace.shared.open(url) }
+        let isPrivate = tab.isPrivate
+        switch Self.openAppAnswer(library, host: host, scheme: scheme, isPrivate: tab.isPrivate) {
+        case true?:
+            NSWorkspace.shared.open(url)
+            window?.showToast("Opened in \(app)", actions: [
+                ToastAction(title: "Stop Always Opening") { [weak library] in
+                    library.map { Self.setOpenAppAnswer(nil, in: $0, host: host, scheme: scheme, isPrivate: isPrivate) }
+                }
+            ])
+            return
+        case false?:
+            // Said Don't Open. A click still says why nothing happened; a page firing it by itself stays quiet.
+            if request.kind == .link {
+                window?.showToast("\(host) can't open \(app)", actions: [
+                    ToastAction(title: "Ask Again") { [weak library] in
+                        library.map { Self.setOpenAppAnswer(nil, in: $0, host: host, scheme: scheme, isPrivate: isPrivate) }
+                    }
+                ])
+            }
+            return
+        case nil:
+            break
+        }
+        // A page that fires its app link by itself on every load (Zoom's join page) asks once per tab
+        // after "Not Now". A click on a link always asks.
+        let declineKey = host + " " + scheme
+        if request.kind != .link, declinedApps.contains(declineKey) { return }
+        // One question at a time: a page firing the link again while it's asking doesn't stack another.
+        guard !askingApps.contains(declineKey), let window else { return }
+        askingApps.insert(declineKey)
+        let answer = await window.ask(.openApp(app: app, appURL: appURL, host: host), from: tab)
+        askingApps.remove(declineKey)
+        switch answer {
+        case Prompt.alwaysOpen:
+            Self.setOpenAppAnswer(true, in: library, host: host, scheme: scheme, isPrivate: tab.isPrivate)
+            NSWorkspace.shared.open(url)
+        case Prompt.neverOpen:
+            Self.setOpenAppAnswer(false, in: library, host: host, scheme: scheme, isPrivate: tab.isPrivate)
+        case .ok:
+            NSWorkspace.shared.open(url)
+        default:
+            declinedApps.insert(declineKey)
+        }
     }
 
-    /// The saved-answer key for opening one kind of link in its app, such as "app:zoommtg".
-    static func openAppKey(_ scheme: String) -> String { "app:" + scheme }
+    /// "Not Now" answers in this tab, as "host scheme", so a page can't ask again by itself.
+    private var declinedApps: Set<String> = []
+    /// Open-in-app questions showing now, as "host scheme".
+    private var askingApps: Set<String> = []
+
+    /// Saved open-in-app answers live in the site's permissions as "open:slite" (true Always Open,
+    /// false Don't Open). Before these choices Browsa kept every answer as "app:slite", an Esc
+    /// included, so of those only a yes still counts.
+    static let openAppPrefix = "open:"
+    private static let legacyOpenAppPrefix = "app:"
+
+    /// Always Open (true), Don't Open (false), or ask (nil). A private tab also sees its own answers.
+    static func openAppAnswer(_ library: Library, host: String, scheme: String, isPrivate: Bool) -> Bool? {
+        let saved = library.sitePermissions(for: host, isPrivate: isPrivate)
+        if let answer = saved[openAppPrefix + scheme] { return answer }
+        return saved[legacyOpenAppPrefix + scheme] == true ? true : nil
+    }
+
+    /// Keeps an answer. From a private tab it lasts until the private space closes and isn't saved.
+    static func setOpenAppAnswer(_ answer: Bool?, in library: Library, host: String, scheme: String, isPrivate: Bool) {
+        if !isPrivate { library.setSitePermission(legacyOpenAppPrefix + scheme, nil, for: host, isPrivate: false) }
+        library.setSitePermission(openAppPrefix + scheme, answer, for: host, isPrivate: isPrivate)
+    }
+
+    /// A site's saved open-in-app answers (from its permissions), by kind of link ("slite"), ignoring an old saved "no".
+    static func openAppAnswers(_ saved: [String: Bool]) -> [String: Bool] {
+        var answers: [String: Bool] = [:]
+        for (key, value) in saved {
+            if key.hasPrefix(legacyOpenAppPrefix), value { answers[String(key.dropFirst(legacyOpenAppPrefix.count))] = true }
+        }
+        for (key, value) in saved where key.hasPrefix(openAppPrefix) {
+            answers[String(key.dropFirst(openAppPrefix.count))] = value
+        }
+        return answers
+    }
+
+    static func isOpenAppKey(_ key: String) -> Bool { key.hasPrefix(openAppPrefix) || key.hasPrefix(legacyOpenAppPrefix) }
+
+    /// The app that opens one kind of link ("slite" is Slite), or the kind of link when no app does now.
+    static func appName(forScheme scheme: String) -> String {
+        guard let url = URL(string: scheme + "://"), let app = NSWorkspace.shared.urlForApplication(toOpen: url) else { return scheme + ": links" }
+        return FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
+    }
 
     func page(_ page: any EnginePage, didCommit url: URL?) {
         tab.loadError = nil
+        if library?.pageFeeds[tab.id] != nil { library?.pageFeeds[tab.id] = nil }
         library?.windows.forEach { $0.cancelPrompts(for: tab.id) }
         if let host = url?.host() {
             let z = Preferences.zoom(for: host)
@@ -185,6 +273,11 @@ final class TabController: EnginePageDelegate {
 
     func page(_ page: any EnginePage, didFinish url: URL, title: String) {
         library?.scheduleSave()
+        library?.liveFolderPageFinished(url, in: tab)
+        Task { [weak self] in
+            guard let self else { return }
+            await self.library?.detectPageFeed(page, url: url, in: self.tab)
+        }
         guard !tab.isPrivate, let history = library?.history else { pendingSource = nil; return }
         let source = pendingSource ?? .link
         pendingSource = nil
@@ -235,8 +328,7 @@ final class TabController: EnginePageDelegate {
         guard let library else { return false }
         // Screen sharing is asked every time, like other browsers do.
         let remembers = permission != .screen
-        if remembers, tab.isPrivate, let answered = library.privatePermissions[host]?[permission.rawValue] { return answered }
-        if remembers, let saved = library.settings.sitePermissions[host]?[permission.rawValue] { return saved }
+        if remembers, let saved = library.sitePermissions(for: host, isPrivate: tab.isPrivate)[permission.rawValue] { return saved }
         guard let window else { return false }
         let answer = await window.ask(.permission(permission, host: host), from: tab)
         // Cancelled because the tab went away: don't remember a "no" the user never gave.
@@ -244,13 +336,7 @@ final class TabController: EnginePageDelegate {
         let granted = answer == .ok
         // A private tab's answer lasts until the private space closes, and isn't saved.
         if permission == .notifications, granted { SiteNotifications.shared.requestAuthorization(in: window) }
-        if remembers {
-            if tab.isPrivate {
-                library.privatePermissions[host, default: [:]][permission.rawValue] = granted
-            } else {
-                library.settings.sitePermissions[host, default: [:]][permission.rawValue] = granted
-            }
-        }
+        if remembers { library.setSitePermission(permission.rawValue, granted, for: host, isPrivate: tab.isPrivate) }
         return granted
     }
 

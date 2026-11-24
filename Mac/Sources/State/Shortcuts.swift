@@ -122,6 +122,8 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
     case close, reopen, closeOthers = "close-others", clearToday = "clear-today"
     case nextTab = "next-tab", previousTab = "previous-tab"
     case pin, favourite, archive
+    case newFolder = "new-folder"
+    case splitView = "split-view"
     // Spaces and window
     case nextSpace = "next-space", previousSpace = "previous-space"
     case sidebar, panel, notes, downloads
@@ -129,7 +131,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
     case back, forward, reload, hardReload = "hard-reload", stop
     case find, findNext = "find-next", findPrevious = "find-previous"
     case copyLink = "copy-link", copyMarkdown = "copy-markdown"
-    case reader, inspector
+    case reader, inspector, pictureInPicture = "picture-in-picture"
 
     var id: String { rawValue }
 
@@ -141,7 +143,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
     var group: Group {
         switch self {
         case .newTab, .openLocation, .commands, .newWindow, .privateTab, .close, .reopen, .closeOthers,
-             .clearToday, .nextTab, .previousTab, .pin, .favourite, .archive: .tabs
+             .clearToday, .nextTab, .previousTab, .pin, .favourite, .archive, .newFolder, .splitView: .tabs
         case .nextSpace, .previousSpace, .sidebar, .panel, .notes, .downloads: .spaces
         default: .page
         }
@@ -163,6 +165,8 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case .pin: "Pin Tab"
         case .favourite: "Add to Favourites"
         case .archive: "Archived Tabs"
+        case .newFolder: "New Folder"
+        case .splitView: "Add Split View"
         case .nextSpace: "Next Space"
         case .previousSpace: "Previous Space"
         case .sidebar: "Show or Hide Sidebar"
@@ -181,6 +185,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case .copyMarkdown: "Copy Link as Markdown"
         case .reader: "Show or Hide Reader"
         case .inspector: "Web Inspector"
+        case .pictureInPicture: "Picture in Picture"
         }
     }
 
@@ -212,6 +217,9 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case (.favourite, .browsa): return [k("d", shiftCmd)]
         case (.favourite, _): return [k("d")]
         case (.archive, _): return [k("y")]
+        case (.newFolder, _): return [k("n", optCmd)]
+        // Arc's key for it.
+        case (.splitView, _): return [k("=", [.control, .shift])]
         case (.nextSpace, .chrome): return [k("right", ctrlCmd)]
         case (.nextSpace, _): return [k("right", optCmd)]
         case (.previousSpace, .chrome): return [k("left", ctrlCmd)]
@@ -236,6 +244,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case (.reader, .chrome): return [k("r", optCmd)]
         case (.reader, _): return [k("r", shiftCmd)]
         case (.inspector, _): return [k("i", optCmd)]
+        case (.pictureInPicture, _): return [k("p", optCmd)]
         }
     }
 }

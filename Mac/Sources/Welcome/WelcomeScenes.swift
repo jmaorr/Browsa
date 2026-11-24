@@ -259,7 +259,7 @@ struct StopHero: View {
             case .commands: ShortcutHero(t: t, letter: "K", mode: .commands)
             case .importing: ImportHero(t: t, from: choice ?? "Chrome", result: result, playing: playing)
             case .tour: TourHero(t: t, playing: playing)
-            case .library: LibraryHero(t: t, kit: choice ?? "Developer")
+            case .library: WelcomeLibraryHero(t: t, kit: choice ?? "Developer")
             case .agents: AgentsHero(t: t, agent: choice ?? "Claude Code")
             case .makeDefault: DefaultHero(t: t)
             }
@@ -851,7 +851,7 @@ private struct TourHero: View {
 }
 
 /// The Library: a kit of verified extensions, one being added.
-private struct LibraryHero: View {
+private struct WelcomeLibraryHero: View {
     let t: Double
     let kit: String
 

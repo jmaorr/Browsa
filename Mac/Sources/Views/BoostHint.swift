@@ -12,7 +12,7 @@ extension Browser {
     /// The style to suggest on the current page: one that can run here, is off, and hasn't been suggested
     /// and answered before. Never in private tabs.
     var suggestedBoost: Boost? {
-        guard let tab = currentTab, !tab.isPrivate, !isReaderShowing else { return nil }
+        guard library.workbench.isEnabled("boosts"), let tab = currentTab, !tab.isPrivate, !isReaderShowing else { return nil }
         return Boost.available(for: tab.url).first {
             !library.boosts.contains($0.id) && !library.boostHintsDone.contains($0.id)
         }

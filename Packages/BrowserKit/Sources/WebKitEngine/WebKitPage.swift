@@ -97,10 +97,46 @@ public final class WebKitPage: NSObject, EnginePage {
     }
 
     private func updateActivity() {
-        let playing = frameActivity.values.contains { $0.audible }
-        let typed = frameActivity.values.contains { $0.typed }
+        let reports = frameActivity.values
+        let playing = reports.contains { $0.audible }
+        let typed = reports.contains { $0.typed }
         if state.isPlayingAudio != playing { state.isPlayingAudio = playing }
         if state.hasUnsavedInput != typed { state.hasUnsavedInput = typed }
+        let media = PageMedia(hasVideo: reports.contains { $0.video }, isPlaying: reports.contains { $0.playing },
+                              hasPlayed: reports.contains { $0.played }, isAudible: playing, isWatching: reports.contains { $0.watching },
+                              isPictureInPicture: reports.contains { $0.pip })
+        if state.media != media { state.media = media }
+    }
+
+    // MARK: Media
+
+    public func media(_ action: MediaAction) {
+        // The frame to act in: the one whose video is out, or playing with sound, or playing, or there at all.
+        let reports = Array(frameActivity.values)
+        func first(_ test: (PageActivity.Report) -> Bool) -> PageActivity.Report? { reports.first(where: test) }
+        let target: PageActivity.Report?
+        let script: String
+        switch action {
+        case .playPause:
+            target = first { $0.audible } ?? first { $0.played } ?? first { $0.video } ?? first { $0.playing }
+            script = "playpause"
+        case .enterPictureInPicture:
+            target = first { $0.watching } ?? first { $0.video && $0.playing } ?? first { $0.video }
+            script = "enter"
+        case .exitPictureInPicture:
+            target = first { $0.pip }
+            script = "exit"
+        case .togglePictureInPicture:
+            if let out = first({ $0.pip }) {
+                target = out
+                script = "exit"
+            } else {
+                target = first { $0.watching } ?? first { $0.video && $0.playing } ?? first { $0.video }
+                script = "enter"
+            }
+        }
+        guard let frame = target?.frameInfo else { return }
+        PageActivity.run(script, in: frame, of: webView)
     }
 
     // MARK: EnginePage
@@ -292,6 +328,20 @@ extension WebKitPage: WKNavigationDelegate {
         }
         if navigationAction.shouldPerformDownload { return (.download, preferences) }
         guard let url = navigationAction.request.url else { return (.allow, preferences) }
+        // Click IDs (gclid, fbclid, msclkid…) off a page's address before it loads (PrivacySwitches).
+        if navigationAction.targetFrame?.isMainFrame ?? true, (navigationAction.request.httpMethod ?? "GET") == "GET",
+           let clean = PrivacySwitches.withoutClickIDs(url) {
+            var request = navigationAction.request
+            request.url = clean
+            webView.load(request)
+            return (.cancel, preferences)
+        }
+        PrivacySwitches.globalPrivacyControl(engine?.sendsGlobalPrivacyControl ?? false, in: preferences)
+        // Chrome's sign-in redirect for extensions (https://<id>.chromiumapp.org/…), which never loads.
+        if #available(macOS 15.4, *), ExtensionAuth.redirectOwner(url) != nil, navigationAction.targetFrame?.isMainFrame ?? true {
+            if ExtensionAuth.isSimulated(url) { return (.allow, preferences) }
+            if ExtensionAuth.intercept(url, in: webView, page: self, host: engine?.webExtensions?.host) { return (.cancel, preferences) }
+        }
         let kind: NavigationRequest.Kind = switch navigationAction.navigationType {
         case .linkActivated: .link
         case .formSubmitted, .formResubmitted: .formSubmit
@@ -303,7 +353,7 @@ extension WebKitPage: WKNavigationDelegate {
         var newTab = kind == .link && (flags.contains(.command) || navigationAction.buttonNumber == 2)
         // An extension's page (its own web view setup) leaving for the web, e.g. 1Password's Sign In: the
         // web page goes in a normal tab, so it gets Browsa's usual web view.
-        let fromExtension = webView.url?.scheme == "webkit-extension" && (navigationAction.targetFrame?.isMainFrame ?? true)
+        let fromExtension = ExtensionAddress.isExtensionPage(webView.url) && (navigationAction.targetFrame?.isMainFrame ?? true)
             && (url.scheme == "http" || url.scheme == "https")
         if fromExtension { newTab = true }
         let request = NavigationRequest(url: url, kind: kind,
@@ -432,6 +482,14 @@ extension WebKitPage: WKNavigationDelegate {
 // MARK: - UI
 
 extension WebKitPage: WKUIDelegate {
+    /// WebKit's private UI delegate call for the picture in picture window's "back to tab" button (Safari uses it
+    /// to switch to the tab). WebKit waits for the page to be visible before putting the video back, so without
+    /// this, the button did nothing for a tab that wasn't on screen. The close button doesn't come here.
+    @objc(_webViewFullscreenMayReturnToInline:)
+    func webViewFullscreenMayReturnToInline(_ webView: WKWebView) {
+        delegate?.pageWantsVideoBack(self)
+    }
+
     public func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                         for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         guard let engine, let delegate else { return nil }

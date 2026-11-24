@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import BrowserCore
 import BrowserEngine
 
@@ -12,6 +13,14 @@ struct PromptSheet: View {
     @State private var password = ""
 
     var body: some View {
+        if case .openApp(let app, let appURL, let host) = prompt.kind {
+            OpenAppSheet(app: app, appURL: appURL, host: host) { browser.answer($0) }
+        } else {
+            dialog
+        }
+    }
+
+    private var dialog: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(title).font(.headline)
             if let message, !message.isEmpty {
@@ -45,7 +54,7 @@ struct PromptSheet: View {
             "Sign in to \(host)"
         case .permission(let p, let host):
             "Allow \(host) to \(p.phrase)?"
-        case .openApp(let app, let host):
+        case .openApp(let app, _, let host):
             "Allow \(host) to open \(app)?"
         case .agent(let caller, _, let host):
             "Let \(caller) act on \(host)?"
@@ -89,7 +98,7 @@ struct PromptSheet: View {
     private var okTitle: String {
         switch prompt.kind {
         case .permission: "Allow"
-        case .openApp(let app, _): "Open \(app)"
+        case .openApp(let app, _, _): "Open \(app)"
         case .agent: "Allow on This Site"
         case .dialog(.credentials): "Sign In"
         default: "OK"
@@ -102,6 +111,60 @@ struct PromptSheet: View {
         case .dialog(.credentials): .credentials(user: user, password: password)
         default: .ok
         }
+    }
+}
+
+/// A site handing a link to an app on this Mac (Slite, Zoom, Figma). Laid out like a macOS alert:
+/// the app's icon and the question centred, then four large rounded glass buttons in two rows:
+/// this time (Open, Not Now) above every time for this site (Always Open, Don't Open). Open is the
+/// default (Return), Not Now answers Esc.
+struct OpenAppSheet: View {
+    let app: String
+    let appURL: URL
+    let host: String
+    let answer: (EngineDialogResponse) -> Void
+
+    var body: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 6) {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: appURL.path))
+                    .resizable()
+                    .frame(width: 64, height: 64)
+                    .padding(.bottom, 4)
+                    .accessibilityHidden(true)
+                Text("Open in \(app)?")
+                    .font(.title3.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                Text("\(host) wants to open this link in \(app).")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                GridRow {
+                    Button { answer(.ok) } label: { Text("Open").frame(maxWidth: .infinity) }
+                        .buttonStyle(.glassProminent)
+                        .keyboardShortcut(.defaultAction)
+                    Button { answer(.cancel) } label: { Text("Not Now").frame(maxWidth: .infinity) }
+                        .buttonStyle(.glass)
+                        .keyboardShortcut(.cancelAction)
+                }
+                GridRow {
+                    Button { answer(Prompt.alwaysOpen) } label: { Text("Always Open").frame(maxWidth: .infinity) }
+                        .buttonStyle(.glass)
+                    Button { answer(Prompt.neverOpen) } label: { Text("Don\u{2019}t Open").frame(maxWidth: .infinity) }
+                        .buttonStyle(.glass)
+                }
+            }
+            .controlSize(.large)
+            .buttonBorderShape(.capsule)
+            Text("Always Open and Don\u{2019}t Open are remembered for \(host). Change them from the site menu or Settings › Privacy.")
+                .font(.caption).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(24)
+        .frame(width: 360)
     }
 }
 

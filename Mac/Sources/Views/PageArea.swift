@@ -6,62 +6,17 @@ import BrowserEngine
 import Extensibility
 
 /// The page, as a card inset into the window, with its progress line, error page, find bar and toasts.
+/// In Split View, two or three cards side by side (`SplitPages`).
 struct PageArea: View {
     @Environment(Browser.self) private var browser
 
     var body: some View {
-        ZStack {
-            if browser.currentTab.map({ Welcome.isWelcome($0.url) }) == true {
-                WelcomePage()
-            } else if browser.currentTab.map({ LibraryPage.isLibrary($0.url) }) == true {
-                LibraryView()
-            } else if let tab = browser.currentTab {
-                let focuses = browser.commandBar == nil && browser.find == nil && browser.glance == nil
-                if browser.isReaderShowing, let reader = browser.reader {
-                    PageHost(view: reader.page.view, focusesPage: focuses, holdsWidth: browser.isSidebarMoving)
-                } else {
-                    PageHost(view: browser.controller(for: tab).page.view, focusesPage: focuses,
-                             holdsWidth: browser.isSidebarMoving)
-                }
-                if let server = RadarStore.shared.server(for: tab.url), !server.isUp, !browser.isReaderShowing {
-                    RadarStoppedPage(server: server)
-                } else if let error = tab.loadError, !browser.isReaderShowing {
-                    ErrorPage(error: error)
-                }
+        let shown = browser.shownTabs
+        Group {
+            if shown.count > 1 {
+                SplitPages(tabs: shown)
             } else {
-                EmptyPage()
-            }
-        }
-        .clipShape(.rect(cornerRadius: PageCard.radius, style: .continuous))
-        // The shadow belongs to a plain shape behind the page. On the page itself it would be
-        // redrawn offscreen every frame while the page resizes.
-        .background {
-            RoundedRectangle(cornerRadius: PageCard.radius, style: .continuous)
-                .fill(Color(nsColor: .textBackgroundColor))
-                .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
-        }
-        .overlay(alignment: .top) {
-            // Clipped to the card, so the line follows its rounded top corners.
-            if let tab = browser.currentTab {
-                ProgressLine(isLoading: tab.isLoading, progress: tab.estimatedProgress)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .clipShape(.rect(cornerRadius: PageCard.radius, style: .continuous))
-                    .allowsHitTesting(false)
-            }
-        }
-        .overlay(alignment: .top) { AgentPageOverlay() }
-        .overlay(alignment: .top) {
-            if let url = browser.currentTab?.url, !browser.isReaderShowing { StoreInstallBanner(pageURL: url, pageTitle: browser.currentTab?.title ?? "").padding(.top, 10) }
-        }
-        .overlay(alignment: .topTrailing) {
-            if browser.isReaderShowing {
-                ReaderControls()
-                    .padding(10)
-                    .transition(.opacity)
-            } else if browser.find != nil {
-                FindBar()
-                    .padding(10)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                PageCardView(tab: browser.currentTab, isFront: true)
             }
         }
         .overlay(alignment: .bottom) {
@@ -96,6 +51,77 @@ struct PageArea: View {
         .animation(Motion.snappy, value: browser.toast)
         .animation(Motion.snappy, value: browser.find != nil)
         .animation(Motion.snappy, value: browser.isReaderShowing)
+    }
+}
+
+/// One tab's page as a card: the page itself (or Welcome, the Library, an error), its progress line,
+/// and, on the tab in front, Reader and the find bar.
+struct PageCardView: View {
+    @Environment(Browser.self) private var browser
+    let tab: BrowserTab?
+    /// The tab the address bar, find and Reader act on. Always true outside Split View.
+    let isFront: Bool
+    /// One of several panes in Split View.
+    var inSplit = false
+
+    var body: some View {
+        let reading = isFront && browser.isReaderShowing
+        ZStack {
+            if tab.map({ Welcome.isWelcome($0.url) }) == true {
+                WelcomePage()
+            } else if tab.map({ LibraryPage.isLibrary($0.url) }) == true {
+                LibraryView()
+            } else if let tab {
+                let focuses = isFront && browser.commandBar == nil && browser.find == nil && browser.glance == nil
+                // In a split each pane keeps its own width while the sidebar moves; it can't borrow the window's.
+                let holds = !inSplit && browser.isSidebarMoving
+                if reading, let reader = browser.reader {
+                    PageHost(view: reader.page.view, focusesPage: focuses, holdsWidth: holds)
+                } else {
+                    PageHost(view: browser.controller(for: tab).page.view, focusesPage: focuses, holdsWidth: holds,
+                             takesKeys: inSplit && isFront)
+                }
+                if let server = RadarStore.shared.server(for: tab.url), !server.isUp, !reading {
+                    RadarStoppedPage(server: server)
+                } else if let error = tab.loadError, !reading {
+                    ErrorPage(error: error)
+                }
+            } else {
+                EmptyPage()
+            }
+        }
+        .clipShape(.rect(cornerRadius: PageCard.radius, style: .continuous))
+        // The shadow belongs to a plain shape behind the page. On the page itself it would be
+        // redrawn offscreen every frame while the page resizes.
+        .background {
+            RoundedRectangle(cornerRadius: PageCard.radius, style: .continuous)
+                .fill(Color(nsColor: .textBackgroundColor))
+                .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+        }
+        .overlay(alignment: .top) {
+            // Clipped to the card, so the line follows its rounded top corners.
+            if let tab {
+                ProgressLine(isLoading: tab.isLoading, progress: tab.estimatedProgress)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .clipShape(.rect(cornerRadius: PageCard.radius, style: .continuous))
+                    .allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .top) { if isFront { AgentPageOverlay() } }
+        .overlay(alignment: .top) {
+            if let url = tab?.url, !reading { StoreInstallBanner(pageURL: url, pageTitle: tab?.title ?? "").padding(.top, 10) }
+        }
+        .overlay(alignment: .topTrailing) {
+            if reading {
+                ReaderControls()
+                    .padding(10)
+                    .transition(.opacity)
+            } else if isFront, browser.find != nil {
+                FindBar()
+                    .padding(10)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
     }
 }
 
@@ -137,12 +163,15 @@ struct PageHost: NSViewRepresentable {
     let view: NSView
     let focusesPage: Bool
     var holdsWidth = false
+    /// In Split View: becoming the pane in front gives this page the keys.
+    var takesKeys = false
 
     func makeNSView(context: Context) -> Container { Container() }
 
     func updateNSView(_ container: Container, context: Context) {
         container.show(view, focus: focusesPage)
         container.holdsWidth = holdsWidth
+        container.setTakesKeys(takesKeys && focusesPage)
     }
 
     final class Container: NSView {
@@ -159,6 +188,17 @@ struct PageHost: NSViewRepresentable {
         }
 
         required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+        private var takesKeys = false
+
+        /// A pane coming to the front in Split View (picked in the sidebar, say) takes the keys from the one before.
+        func setTakesKeys(_ takes: Bool) {
+            defer { takesKeys = takes }
+            guard takes, !takesKeys, let page = subviews.first, let window else { return }
+            var responder = window.firstResponder as? NSView
+            while let r = responder, r !== page { responder = r.superview }
+            if responder == nil { focusPage(page) }
+        }
 
         func show(_ page: NSView, focus: Bool) {
             if page.superview !== self {

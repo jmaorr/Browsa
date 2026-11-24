@@ -18,6 +18,8 @@ final class Library {
     /// Shared across spaces, like Arc's favourites row.
     var favorites: [Favorite]
     var archive: [BrowserTab] = []
+    /// Tabs shown side by side (Split View). Mac only, so kept apart from the state the iPhone shares.
+    let splits = SplitStore()
     var settings = BrowserSettings() {
         didSet {
             guard settings != oldValue else { return }
@@ -54,7 +56,7 @@ final class Library {
         didSet {
             guard boosts != oldValue else { return }
             Preferences.boosts = boosts
-            (engine as? BoostsConfigurable)?.enabledBoosts = boosts
+            applyBoostsSwitch()
             // Choosing one yourself answers its suggestion.
             boostHintsDone.formUnion(boosts.symmetricDifference(oldValue))
         }
@@ -65,6 +67,10 @@ final class Library {
     var callAudioStats: CallAudioStats?
     /// The extensions running now, for the toolbar.
     private(set) var extensions: [EngineExtension] = []
+    /// Side panel pages extensions set at run time (chrome.sidePanel.setOptions), shown instead of the manifest's.
+    var extensionPanelPages: [String: URL] = [:]
+    /// Extension side panel pages on screen now, by extension (ExtensionPanelView), for runtime.getContexts.
+    var shownExtensionPanels: [String: URL] = [:]
     /// Bumped when pins change or an extension updates its action, so the address pill redraws.
     var extensionPinsRevision = 0
     var extensionActionsRevision = 0
@@ -94,6 +100,30 @@ final class Library {
     @ObservationIgnored private var popupWindows: [PopupWindow] = []
     /// The open windows, most recently active first.
     private(set) var windows: [Browser] = []
+    /// Live folders checking their source right now, by folder id.
+    var liveRefreshing: Set<UUID> = []
+    /// When each live folder last checked, for checks that changed nothing: kept in memory so a quiet check
+    /// doesn't save the library and redraw the sidebar every two minutes.
+    @ObservationIgnored var liveChecked: [UUID: Date] = [:]
+    /// Pinned tabs a live folder filled in that haven't been opened yet: they show a dot.
+    var liveUnread: Set<UUID> = []
+    @ObservationIgnored var liveTask: Task<Void, Never>?
+    /// The last github.com page each tab showed, to notice a pull request just opened from its compare page.
+    @ObservationIgnored var lastGitHubPage: [UUID: String] = [:]
+    @ObservationIgnored var gitHubAutoChecking = false
+    @ObservationIgnored var gitHubAutoLastCheck: [UUID: Date] = [:]
+    @ObservationIgnored var liveFocusObserver: (any NSObjectProtocol)?
+    /// The feed each tab's page lists in its head, found when it loads (no requests). It's what
+    /// makes "Follow in Sidebar" appear, only where there's something to follow.
+    var pageFeeds: [UUID: PageFeed] = [:]
+    /// The Library's Live Folders switch. Off, nothing checks and nothing is offered.
+    var liveFoldersOn = UserDefaults.standard.bool(forKey: Library.liveFoldersKey) {
+        didSet { UserDefaults.standard.set(liveFoldersOn, forKey: Library.liveFoldersKey) }
+    }
+    /// What the Pull Requests folders show. Saved; all three to start, as in Arc.
+    var gitHubFilters: Set<GitHubPulls.Filter> = Library.savedGitHubFilters() {
+        didSet { UserDefaults.standard.set(gitHubFilters.map(\.rawValue), forKey: Library.gitHubFiltersKey) }
+    }
     /// Open windows, oldest first. The oldest one lists Today tabs that no open window owns.
     private(set) var windowsByAge: [Browser] = []
     /// Set once quitting is under way, so the windows going away keep their tabs for next time.
@@ -111,10 +141,23 @@ final class Library {
     /// that window for (the capsule leads back to them instead).
     var pipTabID: UUID?
     var pipClosedFor: Set<UUID> = []
+    /// Videos in picture in picture: popping out when you leave a tab, and back when you return (`VideoPiP`).
+    var videoPiP: VideoPiP {
+        if let made = madeVideoPiP { return made }
+        let made = VideoPiP(library: self)
+        madeVideoPiP = made
+        return made
+    }
+    @ObservationIgnored private var madeVideoPiP: VideoPiP?
+    /// The tab `close` is taking away right now, so leaving it doesn't pop its video out.
+    @ObservationIgnored private(set) var closingTabID: UUID?
     let history: HistoryStore
     @ObservationIgnored private(set) var suggest: SuggestEngine!
     /// Live pages, by tab. The least recently used are unloaded past `capacity`.
     @ObservationIgnored private(set) var controllers: [UUID: TabController] = [:]
+    /// The profile each live page was made in. A tab that moves to a space with another profile
+    /// gets a new page there.
+    @ObservationIgnored private var controllerProfiles: [UUID: BrowsingProfile] = [:]
     @ObservationIgnored private var lru: [UUID] = []
     @ObservationIgnored private let capacity = 24
     @ObservationIgnored private let snapshotURL: URL?
@@ -164,7 +207,8 @@ final class Library {
             calls.callAudio = callAudio
             calls.onCallAudioStats = { [weak self] in self?.callAudioStats = $0 }
         }
-        (engine as? BoostsConfigurable)?.enabledBoosts = boosts
+        BoostStore.shared.attach(engine: engine as? BoostsConfigurable)
+        applyBoostsSwitch()
         applyBlocking()
         shareNotificationPermissions()
         archiveStaleTabs()
@@ -172,17 +216,30 @@ final class Library {
         reloadExtensions()
         agents = AgentBridge(library: self)
         BuiltInTools.register(in: workbench)
+        PerformanceMonitor.shared.start(library: self)
         SpaceRouter.register(in: workbench, library: self)
         NotesUI.installPageMenu(library: self)
+        startLiveFolders()
         #if !SPIKE
         // SpikeBrowsa sets mock servers instead. Radar only looks at this Mac's ports while it's on
         // (it's in the Agent Pack, off for new installs).
         if workbench.isEnabled("radar") { startRadar() }
+        #endif
         workbench.onEnabledChange = { [weak self] id, on in
+            if id == "boosts" { self?.applyBoostsSwitch() }
+            #if !SPIKE
             guard id == "radar" else { return }
             if on { self?.startRadar() } else { RadarStore.shared.stopLive() }
+            #endif
         }
-        #endif
+    }
+
+    /// The Library's Boosts switch: off, no Boost applies (ready-made or your own), and they all
+    /// come back as they were when it's on again.
+    func applyBoostsSwitch() {
+        let on = workbench.isEnabled("boosts")
+        (engine as? BoostsConfigurable)?.enabledBoosts = on ? boosts : []
+        BoostStore.shared.paused = !on
     }
 
     #if !SPIKE
@@ -288,7 +345,7 @@ final class Library {
 
     /// The window showing a tab right now, if any. A tab is on screen in one window at most.
     func window(showing tab: BrowserTab) -> Browser? {
-        windows.first { $0.currentTab?.id == tab.id }
+        windows.first { $0.shownTabIDs.contains(tab.id) }
     }
 
     /// Opens a window through SwiftUI. Set by the first window that appears.
@@ -349,17 +406,24 @@ final class Library {
     func controller(for tab: BrowserTab) -> TabController {
         _ = pageSwaps
         touch(tab.id)
-        if let c = controllers[tab.id] { return c }
+        let profile = self.profile(for: tab)
+        if let c = controllers[tab.id] {
+            if controllerProfiles[tab.id] ?? profile == profile { return c }
+            // Its space uses another profile now: keep the back/forward list, reload with that profile's logins.
+            unload(tab.id)
+            touch(tab.id)
+        }
         let native = Welcome.isWelcome(tab.url) || LibraryPage.isLibrary(tab.url)
         let pageEngine = native ? engine : engine(for: tab, url: tab.url)
         let c = TabController(tab: tab, library: self, engineID: pageEngine.info.id) { delegate in
-            pageEngine.makePage(options: PageOptions(profile: tab.isPrivate ? .ephemeral : .standard,
+            pageEngine.makePage(options: PageOptions(profile: profile,
                                                  // The welcome tab is native; its page starts blank.
                                                  url: Welcome.isWelcome(tab.url) || LibraryPage.isLibrary(tab.url) ? nil : tab.url,
                                                  sessionState: tab.interactionState),
                             delegate: delegate)
         }
         controllers[tab.id] = c
+        controllerProfiles[tab.id] = profile
         evictIfNeeded(keeping: tab.id)
         return c
     }
@@ -380,12 +444,15 @@ final class Library {
             old.page.close()
             controllers[tab.id] = nil
             tab.call = nil
+            tab.media = TabMedia()
         }
         tab.interactionState = nil
+        let profile = self.profile(for: tab)
         let c = TabController(tab: tab, library: self, engineID: target.info.id) { delegate in
-            target.makePage(options: PageOptions(profile: tab.isPrivate ? .ephemeral : .standard), delegate: delegate)
+            target.makePage(options: PageOptions(profile: profile), delegate: delegate)
         }
         controllers[tab.id] = c
+        controllerProfiles[tab.id] = profile
         touch(tab.id)
         c.load(url, source: source)
         pageSwaps += 1
@@ -393,6 +460,7 @@ final class Library {
 
     private func adopt(_ controller: TabController) {
         controllers[controller.tab.id] = controller
+        controllerProfiles[controller.tab.id] = profile(for: controller.tab)
         touch(controller.tab.id)
         evictIfNeeded(keeping: controller.tab.id)
     }
@@ -406,7 +474,7 @@ final class Library {
     /// that's busy: a call, music or a half-written message would be lost, so those stay loaded
     /// even if that means more than `capacity` live pages for a while.
     private func evictIfNeeded(keeping id: UUID) {
-        let onScreen = Set(windows.compactMap { $0.currentTab?.id })
+        let onScreen = Set(windows.flatMap { $0.shownTabIDs })
         // Never unloaded: pages on another engine (call tabs, on Chromium), which would end a call,
         // and busy pages (a call, playing audio, a half-written message).
         let evictable = { (t: UUID) in
@@ -420,13 +488,15 @@ final class Library {
     }
 
     /// Saves a page's back/forward list onto its tab and lets the page go.
-    private func unload(_ id: UUID) {
+    func unload(_ id: UUID) {
         if let c = controllers[id] {
             c.freeze()
             c.page.close()
             c.tab.call = nil
+            c.tab.media = TabMedia()
         }
         controllers[id] = nil
+        controllerProfiles[id] = nil
         lru.removeAll { $0 == id }
     }
 
@@ -469,6 +539,7 @@ final class Library {
     /// A window moved to another tab: a run of links from the old one is over.
     func selectionChanged(to tab: BrowserTab?) {
         if let run = linkRun, run.opener != tab?.id { linkRun = nil }
+        if let tab { markLiveItemRead(tab) }
     }
 
     /// Cmd-click on a link: a new today tab just under the one it came from.
@@ -482,6 +553,20 @@ final class Library {
     }
 
     /// A page opened a window. It becomes a tab right after its opener, in front.
+    /// A window an extension's side panel opened (Raindrop's Sign in), as a tab at the top of the window in
+    /// front. The page is kept, so window.opener still reaches the panel.
+    func openPanelPopup(page: any EnginePage, url: URL?) -> TabController? {
+        guard let window = activeWindow else { return nil }
+        let tab = BrowserTab(url: url, isPrivate: window.currentSpace.isPrivate)
+        tab.windowKey = window.windowKey
+        window.currentSpace.today.insert(tab, at: 0)
+        let c = TabController(tab: tab, library: self) { _ in page }
+        adopt(c)
+        window.select(tab)
+        scheduleSave()
+        return c
+    }
+
     func openPopup(from opener: BrowserTab, page: any EnginePage, url: URL?) -> TabController {
         let space = space(containing: opener) ?? regularSpaces[0]
         let tab = BrowserTab(url: url, isPrivate: opener.isPrivate)
@@ -530,7 +615,9 @@ final class Library {
         }
         guard let space else { return }
         // Windows showing it move on first, while it's still in the list to measure from.
+        closingTabID = tab.id
         for w in windows where w.currentTab?.id == tab.id { w.moveOff(tab, in: space) }
+        closingTabID = nil
         space.today.removeAll { $0.id == tab.id }
         if space.selectedTabID == tab.id { space.selectedTabID = nil }
         if index == nil, tab.isPinned {
@@ -588,6 +675,7 @@ final class Library {
             tab.windowKey = activeWindow?.windowKey ?? target?.windowKey
         }
         if from.id != to.id { for w in windows { w.tabLeft(tab, space: from) } }
+        reloadIfProfileChanged(tab)
         scheduleSave()
     }
 
@@ -600,6 +688,7 @@ final class Library {
         if tab.isPinned { tab.windowKey = activeWindow?.windowKey }
         tab.isPinned = false
         space.today.insert(tab, at: 0)
+        reloadIfProfileChanged(tab)
         scheduleSave()
     }
 
@@ -678,6 +767,100 @@ final class Library {
         scheduleSave()
     }
 
+    // MARK: Site permissions
+
+    /// A site's answers (camera, microphone, open in app…) as a tab sees them: a private tab's own answers
+    /// on top of the saved ones.
+    func sitePermissions(for host: String, isPrivate: Bool) -> [String: Bool] {
+        let saved = settings.sitePermissions[host] ?? [:]
+        guard isPrivate else { return saved }
+        return saved.merging(privatePermissions[host] ?? [:]) { _, mine in mine }
+    }
+
+    /// Keeps (or with nil, forgets) one answer. One given in a private tab lasts until the private space
+    /// closes and is never written to disk, so the site doesn't show up in Settings afterwards.
+    func setSitePermission(_ key: String, _ value: Bool?, for host: String, isPrivate: Bool) {
+        if isPrivate {
+            var answers = privatePermissions[host] ?? [:]
+            answers[key] = value
+            privatePermissions[host] = answers.isEmpty ? nil : answers
+        } else {
+            var answers = settings.sitePermissions[host] ?? [:]
+            answers[key] = value
+            settings.sitePermissions[host] = answers.isEmpty ? nil : answers
+        }
+    }
+
+    // MARK: Profiles
+
+    /// The cookies and logins a tab's page uses: its space's profile, or private.
+    func profile(for tab: BrowserTab) -> BrowsingProfile {
+        if tab.isPrivate { return .ephemeral }
+        return space(containing: tab).map(profile(for:)) ?? .standard
+    }
+
+    func profile(for space: Space) -> BrowsingProfile {
+        if space.isPrivate { return .ephemeral }
+        guard let id = space.profileID, settings.profiles.contains(where: { $0.id == id }) else { return .standard }
+        return .persistent(id)
+    }
+
+    /// The profile's name, for Settings and the sidebar. Nil id is the default profile.
+    func profileName(_ id: UUID?) -> String {
+        id.flatMap { id in settings.profiles.first { $0.id == id }?.name } ?? "Default"
+    }
+
+    /// A profile just added from Settings, whose name field should take focus with the name selected.
+    /// Not saved.
+    var renamingProfileID: UUID?
+
+    @discardableResult
+    func addProfile(named name: String? = nil) -> SpaceProfile {
+        let profile = SpaceProfile(name: name ?? "Profile \(settings.profiles.count + 2)")
+        settings.profiles.append(profile)
+        scheduleSave()
+        return profile
+    }
+
+    func renameProfile(_ id: UUID, to name: String) {
+        guard let i = settings.profiles.firstIndex(where: { $0.id == id }) else { return }
+        settings.profiles[i].name = name
+        scheduleSave()
+    }
+
+    /// Moves a space to another profile. Its open pages reload signed in as that profile.
+    func setProfile(_ id: UUID?, for space: Space) {
+        guard !space.isPrivate, space.profileID != id else { return }
+        space.profileID = id
+        space.allTabs.forEach(reloadIfProfileChanged)
+        scheduleSave()
+    }
+
+    /// Deletes a profile and everything it stored. Spaces that used it go back to the default profile.
+    func deleteProfile(_ id: UUID) async {
+        for space in regularSpaces where space.profileID == id { setProfile(nil, for: space) }
+        for (tabID, profile) in controllerProfiles where profile == .persistent(id) { unload(tabID) }
+        settings.profiles.removeAll { $0.id == id }
+        scheduleSave()
+        await engine.deleteProfile(id)
+    }
+
+    /// Spaces using a profile, for Settings. Nil id is the default profile.
+    func spaces(using id: UUID?) -> [Space] {
+        let known = Set(settings.profiles.map(\.id))
+        return regularSpaces.filter { space in
+            guard let own = space.profileID, known.contains(own) else { return id == nil }
+            return own == id
+        }
+    }
+
+    /// A tab whose space changed profile drops its page; windows showing it make a new one.
+    private func reloadIfProfileChanged(_ tab: BrowserTab) {
+        guard let had = controllerProfiles[tab.id], had != profile(for: tab) else { return }
+        unload(tab.id)
+        pageSwaps += 1
+    }
+
     func openPrivateSpace() -> Space {
         if let privateSpace { return privateSpace }
         let space = Space(name: "Private", symbol: "eye.slash", colorIndex: 0, isPrivate: true)
@@ -704,7 +887,7 @@ final class Library {
 
     /// Today tabs left alone for longer than the setting go to the archive, like Arc.
     func archiveStaleTabs(now: Date = .now) {
-        let onScreen = Set(windows.compactMap { $0.currentTab?.id })
+        let onScreen = Set(windows.flatMap { $0.shownTabIDs })
         for space in spaces where !space.isPrivate {
             let stale = space.today.filter {
                 !onScreen.contains($0.id) && $0.id != space.selectedTabID
@@ -778,6 +961,7 @@ final class Library {
 
     func clearWebsiteData() async {
         await engine.clearWebsiteData(for: .standard)
+        for profile in settings.profiles { await engine.clearWebsiteData(for: .persistent(profile.id)) }
         for w in windows where w.currentTab?.isPrivate == false { w.currentController?.page.reload() }
     }
 
@@ -838,6 +1022,7 @@ final class Library {
 
     func saveNow() {
         guard let snapshotURL else { return }
+        pruneSplits()
         for c in controllers.values { c.freeze() }
         // Next launch opens on the space the active window shows (never Private).
         let shown = activeWindow?.currentSpace
@@ -871,11 +1056,22 @@ extension Library: EngineExtensionHost {
     }
 
     /// chrome.sidePanel.open, or a toolbar click on an extension that asked for its panel instead.
-    func showExtensionPanel(extensionID: String) -> Bool {
+    func showExtensionPanel(extensionID: String, url: URL?) -> Bool {
         let id = "ext:" + extensionID
+        if let url {
+            extensionPanelPages[extensionID] = url
+            // An extension with no panel in its manifest (Claude) gets its panel tool now.
+            if workbench.tool(id) == nil, let ext = extensions.first(where: { $0.id == extensionID }) {
+                BuiltInTools.registerPanel(for: ext, in: workbench)
+            }
+        }
         guard workbench.tool(id) != nil, let window = activeWindow else { return false }
         window.showPanel(id)
         return true
+    }
+
+    func openExtensionPanels(extensionID: String) -> [URL] {
+        shownExtensionPanels[extensionID].map { [$0] } ?? []
     }
 
     func focusExtensionWindow(_ id: UUID) {

@@ -1,0 +1,62 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../../kit/kit.css"><link rel="stylesheet" href="../shared/library.css"><script src="../../kit/kit.js"></script><script src="../shared/library.js"></script>
+<style>
+  .wall { background-image:url(../shared/wallpaper.jpg); background-position:center 35%; }
+  .win { --tint:#5856d6; }
+  .down { position:absolute; inset:0; display:grid; place-items:center; text-align:center; color:#77736c; font-size:20px; background:#fafaf9; }
+  .down b { display:block; color:#161513; font-size:26px; margin:16px 0 6px; }
+  .site { position:absolute; inset:0; padding:56px 80px; }
+  .site h1 { font-size:58px; letter-spacing:-.03em; margin:70px 0 14px; line-height:1.02; }
+  .site p { font-size:21px; color:#77736c; margin:0; max-width:560px; line-height:1.45; }
+  .load { position:absolute; left:0; top:0; height:3px; background:#5856d6; border-radius:0 2px 2px 0; }
+  .toast { position:absolute; left:50%; bottom:28px; display:flex; align-items:center; gap:10px; height:42px; padding:0 18px; border-radius:21px; font-size:16px; font-weight:500;
+    background: rgb(255 255 255 / .9); box-shadow: 0 0 0 1px rgb(0 0 0 / .08), 0 12px 30px -10px rgb(0 0 0 / .35); white-space:nowrap; }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="wall"></div>
+  <div class="win"><div class="side" id="side"></div><div class="page" id="page"></div></div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+$("side").innerHTML = sidebar({
+  addr: `<i id="adot"></i>browsa-site <span style="color:#a19d96">· localhost:8787</span>`,
+  space: 0, tint: "#5856d6",
+  body: `<div class="sect">Pinned</div>${R(img("linear.app"), "My issues · Linear")}${R(img("github.com"), "Pull requests · GitHub")}
+    <div class="sect">Today</div>${R(DEV("#5856d6", "#0a84ff"), "browsa-site", "sel")}${R(img("vercel.com"), "Deployments · Vercel")}`,
+  foot: { bottom: `<div class="tool" style="margin:0 4px 10px">
+    <div class="h">${RADAR_ICON}Radar<em id="count"></em></div>
+    <div class="srv" id="s1"><i id="d1"></i><b style="font-weight:600">browsa-site</b><small id="st1"></small></div>
+    <div class="srv"><i></i>jambora-site<small>:5173 · dev</small></div>
+    <div class="srv" style="color:#a19d96"><i style="background:#c9c6c0"></i>audio-bench<small>Stopped</small></div></div>` },
+});
+$("page").innerHTML = `
+  <div class="site" id="site"><div class="shop"><div class="brand" style="display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px"><i style="width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#5856d6,#0a84ff)"></i>Browsa</div></div>
+    <h1>A browser that<br>feels like a Mac.</h1><p>Spaces, a sidebar that stays out of the way, and the extensions you already use.</p>
+    <div style="margin-top:40px;height:250px;border-radius:18px;background:linear-gradient(135deg,#e7e6f7,#e3eefb)"></div></div>
+  <div class="down" id="down"><div><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#b9b5ae" stroke-width="1.6" stroke-linecap="round"><path d="M2 8.5a15 15 0 0120 0M5 12a10 10 0 0114 0M8.5 15.5a5 5 0 017 0"/><path d="M3 3l18 18"/></svg>
+    <b>browsa-site isn't running</b>Radar will reload this tab when it's back.</div></div>
+  <div class="load" id="load"></div>
+  <div class="toast" id="toast">${RADAR_ICON}Reloaded when browsa-site came back</div>`;
+
+window.TOTAL = 7.5;
+window.render = (t) => {
+  const up = t > 2.2;
+  $("d1").style.background = up ? "#30a46c" : "#c9c6c0";
+  $("adot").style.background = up ? "#30a46c" : "#c9c6c0";
+  $("st1").textContent = up ? ":8787 · main" : "Stopped";
+  $("count").textContent = up ? "2 running" : "1 running";
+  const p = ph(t, 2.2, 1.2);
+  $("d1").style.boxShadow = `0 0 0 ${p * 11}px rgb(48 164 108 / ${0.5 * (1 - p)})`;
+  $("s1").style.background = `rgb(48 164 108 / ${0.15 * Math.min(ph(t, 2.2, 0.3), 1 - ph(t, 4.2, 0.6))})`;
+  // The tab reloads by itself.
+  const l = ph(t, 2.6, 0.9);
+  $("load").style.width = eo(l) * 100 + "%"; $("load").style.opacity = t > 2.6 && t < 3.7 ? 1 : 0;
+  $("down").style.opacity = 1 - ph(t, 3.2, 0.35);
+  const ti = eo(ph(t, 3.7, 0.4));
+  $("toast").style.opacity = ti * (1 - ph(t, 6.4, 0.4));
+  $("toast").style.transform = `translateX(-50%) translateY(${(1 - ti) * 10}px)`;
+  // Only the window's contents fade at the loop point; the desktop and window stay put.
+  const lf = 0.15 + 0.85 * loopFade(t, TOTAL); $("side").style.opacity = lf; $("page").style.opacity = lf;
+};
+render(0);
+</script></body></html>

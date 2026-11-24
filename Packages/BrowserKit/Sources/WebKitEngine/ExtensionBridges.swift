@@ -19,12 +19,12 @@ enum ExtensionBridges {
     static let downloads = "browsa.downloads"
     static let names: Set<String> = [notifications, sidePanel, downloads]
 
-    static func handle(_ name: String, message: Any, extensionID: String, displayName: String,
+    static func handle(_ name: String, message: Any, extensionID: String, displayName: String, baseURL: URL? = nil,
                        host: (any EngineExtensionHost)?, reply: @escaping (Any?, (any Error)?) -> Void) {
         let body = message as? [String: Any] ?? [:]
         switch name {
         case notifications: notify(body, extensionID: extensionID, from: displayName, reply: reply)
-        case sidePanel: panel(body, extensionID: extensionID, host: host, reply: reply)
+        case sidePanel: panel(body, extensionID: extensionID, baseURL: baseURL, host: host, reply: reply)
         case downloads: download(body, extensionID: extensionID, host: host, reply: reply)
         default: reply(nil, error("Unknown bridge \(name)"))
         }
@@ -71,11 +71,22 @@ enum ExtensionBridges {
         UserDefaults.standard.bool(forKey: "sidePanelOnAction." + extensionID)
     }
 
-    private static func panel(_ body: [String: Any], extensionID: String, host: (any EngineExtensionHost)?,
+    /// Side panel pages extensions set with `chrome.sidePanel.setOptions({ path })`, by extension. One
+    /// per extension: Browsa's panel isn't per tab, so the latest wins.
+    static var panelPages: [String: URL] = [:]
+
+    private static func panel(_ body: [String: Any], extensionID: String, baseURL: URL?, host: (any EngineExtensionHost)?,
                               reply: @escaping (Any?, (any Error)?) -> Void) {
         switch body["action"] as? String {
+        case "options":
+            if let path = body["path"] as? String, let baseURL, let url = WebKitExtensions.page(path, in: baseURL) {
+                panelPages[extensionID] = url
+            }
+            reply(true, nil)
+        case "contexts":
+            reply((host?.openExtensionPanels(extensionID: extensionID) ?? []).map(\.absoluteString), nil)
         case "open":
-            let shown = host?.showExtensionPanel(extensionID: extensionID) ?? false
+            let shown = host?.showExtensionPanel(extensionID: extensionID, url: panelPages[extensionID]) ?? false
             shown ? reply(true, nil) : reply(nil, error("This extension has no side panel"))
         case "behavior":
             UserDefaults.standard.set(body["openPanelOnActionClick"] as? Bool ?? false, forKey: "sidePanelOnAction." + extensionID)
