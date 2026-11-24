@@ -266,7 +266,18 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         for m in ext.allRequestedMatchPatterns where !Self.reachesExtensionPages(m) && !m.matchesAllURLs {
             context.setPermissionStatus(.grantedExplicitly, for: m)
         }
-        if let every = Self.everyWebsite { context.setPermissionStatus(.grantedExplicitly, for: every) }
+        // Every website only for an extension that asks for it (<all_urls>, or *://*/*). One that lists
+        // a few sites gets those sites, as in Chrome, so `browsa.fetch` can't reach the rest.
+        if Self.asksForEveryWebsite(ext), let every = Self.everyWebsite {
+            context.setPermissionStatus(.grantedExplicitly, for: every)
+        }
+    }
+
+    /// Whether the manifest asks for every website: <all_urls>, or a pattern for any host on http(s).
+    static func asksForEveryWebsite(_ ext: WKWebExtension) -> Bool {
+        ext.allRequestedMatchPatterns.contains { m in
+            m.matchesAllURLs || m.matchesAllHosts
+        }
     }
 
     /// A pattern naming extension pages (another extension's, or all of them). Never granted, as in
@@ -426,16 +437,18 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             return
         }
         if applicationIdentifier == ExtensionFetch.bridgeName {
-            // Only for a site the extension has been given access to, as Chrome sends cookies only there.
-            // (Native messages come from the extension's own background and pages, never content scripts.)
-            let body = message as? [String: Any] ?? [:]
-            guard let target = (body["url"] as? String).flatMap(URL.init(string:)),
-                  ExtensionFetch.allowed(target, hasAccess: { extensionContext.hasAccess(to: $0) }) else {
-                replyHandler(nil, NSError(domain: "Browsa.Fetch", code: 2,
-                                          userInfo: [NSLocalizedDescriptionKey: "This extension doesn't have access to that site"]))
+            // Only for sites the extension has been given access to, as Chrome sends cookies only there,
+            // and with the cookies of the profile the extension is working in: the focused window's tab.
+            // Private windows send none. (Native messages come from the extension's own background and
+            // pages, never content scripts.)
+            guard let store = fetchCookieStore(for: extensionContext) else {
+                replyHandler(nil, NSError(domain: "Browsa.Fetch", code: 3,
+                                          userInfo: [NSLocalizedDescriptionKey: "Signed-in requests aren't made from private windows"]))
                 return
             }
-            ExtensionFetch.handle(body, reply: replyHandler)
+            ExtensionFetch.handle(message as? [String: Any] ?? [:], store: store,
+                                  hasAccess: { [weak extensionContext] in extensionContext?.hasAccess(to: $0) ?? false },
+                                  reply: replyHandler)
             return
         }
         if applicationIdentifier == ExtensionAuth.bridgeName {
@@ -457,6 +470,16 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             return
         }
         ExtensionNativeHosts.send(message, to: name, origin: origin, reply: replyHandler)
+    }
+
+    /// The cookies `browsa.fetch` uses: those of the profile the focused window's tab is in (a Space's own
+    /// profile, say). Nil in a private window, which has no logins to lend.
+    private func fetchCookieStore(for context: WKWebExtensionContext) -> WKHTTPCookieStore? {
+        let window = currentWindows().first
+        if window?.isPrivate(for: context) == true { return nil }
+        guard let page = window?.activeTab(for: context) as? WebKitPage else { return WKWebsiteDataStore.default().httpCookieStore }
+        let store = page.webView.configuration.websiteDataStore
+        return store.isPersistent ? store.httpCookieStore : nil
     }
 
     /// The origin a native messaging host is told, for an extension that may start one: a Chrome Web
