@@ -109,6 +109,10 @@ final class Library {
     /// The feed each tab's page lists in its head, found when it loads (no requests). It's what
     /// makes "Follow in Sidebar" appear, only where there's something to follow.
     var pageFeeds: [UUID: PageFeed] = [:]
+    /// The Library's Live Folders switch. Off, nothing checks and nothing is offered.
+    var liveFoldersOn = UserDefaults.standard.bool(forKey: Library.liveFoldersKey) {
+        didSet { UserDefaults.standard.set(liveFoldersOn, forKey: Library.liveFoldersKey) }
+    }
     /// What the Pull Requests folders show. Saved; all three to start, as in Arc.
     var gitHubFilters: Set<GitHubPulls.Filter> = Library.savedGitHubFilters() {
         didSet { UserDefaults.standard.set(gitHubFilters.map(\.rawValue), forKey: Library.gitHubFiltersKey) }

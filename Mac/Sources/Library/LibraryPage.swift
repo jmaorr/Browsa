@@ -105,6 +105,10 @@ enum LibraryCatalog {
               blurb: "Your local dev servers, one click away.",
               surfaces: ["Sidebar", "Panel", "⌘K"],
               about: "Finds the dev servers running on this Mac, names them by project and branch, and reloads a tab by itself when its server comes back."),
+        .init(id: "live-folders", title: "Live Folders", symbol: "folder.fill.badge.gearshape", tint: .purple,
+              blurb: "Sidebar folders that keep themselves up to date.",
+              surfaces: ["Sidebar", "⌘K", "Site menu"],
+              about: "Your GitHub pull requests and review requests appear in a Pull Requests folder, read with the GitHub account you're signed in to. Follow a site and its new posts appear in a folder too. Nothing checks while Live Folders is off."),
         .init(id: "privacy-blocking", title: "Ad & Tracker Blocker", symbol: "hand.raised.fill", tint: .blue,
               blurb: "Blocks ads and trackers on every site.",
               surfaces: ["Every page"], kind: .privacy,
@@ -157,6 +161,7 @@ enum LibraryActions {
         case "privacy-blocking": return library.settings.blockContent
         case "privacy-cookies": return library.settings.declineCookieBanners
         case "privacy-links": return library.settings.cleanLinks
+        case "live-folders": return library.liveFoldersOn
         default: return library.workbench.isEnabled(id)
         }
     }
@@ -167,6 +172,9 @@ enum LibraryActions {
         case "privacy-blocking": library.settings.blockContent = on
         case "privacy-cookies": library.settings.declineCookieBanners = on
         case "privacy-links": library.settings.cleanLinks = on
+        case "live-folders":
+            let space = browser.currentSpace.isPrivate ? browser.regularSpaces[0] : browser.currentSpace
+            withAnimation(Motion.snappy) { library.setLiveFolders(on, in: space) }
         default:
             library.workbench.setEnabled(id, on)
             if id == "agents" { library.agents.isEnabled = on }   // Agents is the MCP endpoint itself.
@@ -218,8 +226,6 @@ struct LibraryView: View {
     @State private var problem: String?
     @FocusState private var searchFocused: Bool
     @State private var keys = LibraryKeys()
-    /// Set by browsa://library/live-folders: the list scrolls to Live Folders.
-    @State private var scrollToLive = false
 
     private var library: Library { browser.library }
 
@@ -229,7 +235,9 @@ struct LibraryView: View {
     }
 
     private var packs: [PluginPack] { LibraryCatalog.packs.filter { matches($0.title, $0.blurb, "pack") } }
-    private var tools: [PluginInfo] { LibraryCatalog.toolPlugins.filter { matches($0.title, $0.blurb) } }
+    private var tools: [PluginInfo] {
+        LibraryCatalog.toolPlugins.filter { matches($0.title, $0.blurb, $0.id == "live-folders" ? "github pull requests rss feed follow" : "") }
+    }
     private var privacy: [PluginInfo] { LibraryCatalog.privacyPlugins.filter { matches($0.title, $0.blurb, "privacy") } }
     private var installed: [InstalledExtension] { library.extensionCatalog.items.filter { matches($0.name, $0.source.label) } }
     private var verified: [VerifiedExtension] { LibraryCatalog.verified.filter { matches($0.name, $0.blurb, $0.category) } }
@@ -262,12 +270,7 @@ struct LibraryView: View {
         }
         .background(Color(nsColor: .textBackgroundColor))
         .onChange(of: browser.libraryRequest, initial: true) {
-            if browser.libraryTarget == "live-folders" {
-                detail = nil
-                scrollToLive = true
-            } else {
-                detail = browser.libraryTarget
-            }
+            detail = browser.libraryTarget
             parentPack = nil
             browser.libraryTarget = nil
         }
@@ -301,9 +304,6 @@ struct LibraryView: View {
                         PackCard(pack: pack, isFocused: focused == .pack(pack.id)) { detail = pack.id }.id(LibraryItem.pack(pack.id))
                     }
                     pluginGrid(title: "Browsa Plugins", detail: "Made for Browsa.", plugins: tools)
-                    if matches("live folders", "pull requests", "github", "feed", "rss", "follow") {
-                        LiveFoldersSection().id("live-folders")
-                    }
                     pluginGrid(title: "Privacy", detail: "Built in, and on from the start.", plugins: privacy)
                     if !isSearching || !(verified.isEmpty && installed.isEmpty && safari.isEmpty) { extensionsSection }
                     if isSearching { storeSearch }
@@ -316,11 +316,6 @@ struct LibraryView: View {
             .onChange(of: focused) { _, item in
                 guard let item else { return }
                 withAnimation(Motion.snappy) { proxy.scrollTo(item, anchor: .center) }
-            }
-            .onChange(of: scrollToLive) { _, go in
-                guard go else { return }
-                scrollToLive = false
-                DispatchQueue.main.async { withAnimation(Motion.snappy) { proxy.scrollTo("live-folders", anchor: .top) } }
             }
         }
         .onAppear {
@@ -967,6 +962,11 @@ private struct PluginDetail: View {
                         .toggleStyle(.switch).labelsHidden()
                 }
                 Text(plugin.about).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
+                if plugin.id == "live-folders" {
+                    LiveFoldersSettings()
+                        .disabled(!on)
+                        .opacity(on ? 1 : 0.5)
+                } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Where it shows up").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                     VStack(spacing: 0) {
@@ -978,6 +978,7 @@ private struct PluginDetail: View {
                     .background(.primary.opacity(0.035), in: .rect(cornerRadius: 12, style: .continuous))
                     .disabled(!on)
                     .opacity(on ? 1 : 0.5)
+                }
                 }
             }
             .frame(maxWidth: 720, alignment: .leading)
