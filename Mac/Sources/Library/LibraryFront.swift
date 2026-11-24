@@ -70,22 +70,21 @@ private struct LoopingPlayer: NSViewRepresentable {
     let url: URL
     var playing = true
 
-    func makeNSView(context: Context) -> PlayerView { PlayerView(url: url) }
+    func makeNSView(context: Context) -> PlayerView { PlayerView(loop: LoopPool.loop(for: url)) }
     func updateNSView(_ view: PlayerView, context: Context) { view.wantsToPlay = playing }
-    static func dismantleNSView(_ view: PlayerView, coordinator: ()) { view.stop() }
+    static func dismantleNSView(_ view: PlayerView, coordinator: ()) { view.detach() }
 
+    /// Shows one of the pool's loops. Making a view is just a layer: the player already exists.
     final class PlayerView: NSView {
-        private let player = AVQueuePlayer()
-        private var looper: AVPlayerLooper?
+        private let loop: LoopPool.Loop
         private let playerLayer = AVPlayerLayer()
+        private var counted = false
 
-        init(url: URL) {
+        init(loop: LoopPool.Loop) {
+            self.loop = loop
             super.init(frame: .zero)
             wantsLayer = true
-            player.isMuted = true
-            player.preventsDisplaySleepDuringVideoPlayback = false
-            looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
-            playerLayer.player = player
+            playerLayer.player = loop.player
             playerLayer.videoGravity = .resizeAspectFill
             layer?.addSublayer(playerLayer)
         }
@@ -101,21 +100,60 @@ private struct LoopingPlayer: NSViewRepresentable {
         /// False while scrolled out of sight.
         var wantsToPlay = true { didSet { if wantsToPlay != oldValue { update() } } }
 
-        // Plays only while it's in a window and on screen.
+        // Counts as a viewer only while it's in a window and on screen.
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             update()
         }
 
         private func update() {
-            if window != nil, wantsToPlay, looper != nil { player.play() } else { player.pause() }
+            let watching = window != nil && wantsToPlay
+            guard watching != counted else { return }
+            counted = watching
+            loop.viewers += watching ? 1 : -1
         }
 
-        func stop() {
-            player.pause()
-            looper?.disableLooping()
-            looper = nil
+        func detach() {
+            if counted { counted = false; loop.viewers -= 1 }
+            playerLayer.player = nil
         }
+    }
+}
+
+/// One player per clip for the life of the app, so cards scrolling in and out (and the hero and its
+/// demo sheet) reuse it instead of making a player on the main thread each time. The clip's file is
+/// opened off the main thread; a loop plays while at least one view on screen shows it.
+@MainActor
+enum LoopPool {
+    @MainActor final class Loop {
+        let player = AVQueuePlayer()
+        private var looper: AVPlayerLooper?
+        var viewers = 0 { didSet { sync() } }
+
+        init(url: URL) {
+            player.isMuted = true
+            player.preventsDisplaySleepDuringVideoPlayback = false
+            let asset = AVURLAsset(url: url)
+            Task { @MainActor [weak self] in
+                _ = try? await asset.load(.isPlayable, .duration)
+                guard let self else { return }
+                self.looper = AVPlayerLooper(player: self.player, templateItem: AVPlayerItem(asset: asset))
+                self.sync()
+            }
+        }
+
+        private func sync() {
+            if viewers > 0, looper != nil { player.play() } else { player.pause() }
+        }
+    }
+
+    private static var loops: [URL: Loop] = [:]
+
+    static func loop(for url: URL) -> Loop {
+        if let loop = loops[url] { return loop }
+        let loop = Loop(url: url)
+        loops[url] = loop
+        return loop
     }
 }
 
