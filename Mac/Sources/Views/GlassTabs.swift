@@ -61,7 +61,16 @@ struct GlassTabs<Option: Hashable>: View {
             } else {
                 // One glass capsule and nothing drawn around it: an extra hairline outside the
                 // glass's own edge read as a second container.
-                row.glassEffect(.regular, in: Capsule())
+                row
+                    // A soft inner shadow along the top edge, so the track reads as sunken into the
+                    // glass. Drawn over the glass and under the options.
+                    .background(
+                        Capsule().fill(
+                            Color.primary.opacity(scheme == .dark ? 0.04 : 0.025)
+                                .shadow(.inner(color: .black.opacity(scheme == .dark ? 0.5 : 0.16), radius: 2.5, y: 1))
+                        )
+                    )
+                    .glassEffect(.regular, in: Capsule())
             }
         }
         .fixedSize()
