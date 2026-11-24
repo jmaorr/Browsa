@@ -281,6 +281,13 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
         if #available(macOS 15.4, *) { webExtensions?.forget(id) }
     }
 
+    public func extensionAllowedInPrivate(id: String) -> Bool { WebKitExtensionsPrivacy.isAllowed(id) }
+
+    public func setExtension(id: String, allowedInPrivate: Bool) {
+        WebKitExtensionsPrivacy.set(id, allowed: allowedInPrivate)
+        if #available(macOS 15.4, *) { webExtensions?.applyPrivateAccess(id) }
+    }
+
     public func performAction(extensionID: String, for page: (any EnginePage)?, anchor: NSView?) {
         if #available(macOS 15.4, *) { webExtensions?.performAction(extensionID: extensionID, for: page as? WebKitPage, anchor: anchor) }
     }
