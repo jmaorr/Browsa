@@ -36,7 +36,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
     /// processing, which lets echo through and over-boosts some audio interfaces. Applies to pages
     /// loaded after it changes.
     public var callAudioProcessing = true {
-        didSet { if callAudioProcessing != oldValue { for controller in allContentControllers { install(on: controller) } } }
+        didSet { if callAudioProcessing != oldValue { for controller in allContentControllers { install(on: controller, rules: false) } } }
     }
     /// Settings › Audio. Pages read it about once a second while a call runs, so changes apply live;
     /// switching processing to the system's applies to pages loaded after.
@@ -49,7 +49,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
     public var enabledBoosts: Set<String> = [] {
         didSet {
             guard enabledBoosts != oldValue else { return }
-            for controller in allContentControllers { install(on: controller) }
+            for controller in allContentControllers { install(on: controller, rules: false) }
             let changed = enabledBoosts.symmetricDifference(oldValue)
             for page in livePages.values.compactMap(\.page) {
                 for style in Boost.all where changed.contains(style.id) && style.matches(page.webView.url) {
@@ -63,7 +63,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
     public var userBoosts: [PageBoost] = [] {
         didSet {
             guard userBoosts != oldValue else { return }
-            for controller in allContentControllers { install(on: controller) }
+            for controller in allContentControllers { install(on: controller, rules: false) }
         }
     }
     private static let callAudioScript: WKUserScript? = {
@@ -93,7 +93,7 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
     private let notificationControllers = NSHashTable<WKUserContentController>.weakObjects()
 
     public var notificationPermissions: [String: Bool] = [:] {
-        didSet { if notificationPermissions != oldValue { for controller in allContentControllers { install(on: controller) } } }
+        didSet { if notificationPermissions != oldValue { for controller in allContentControllers { install(on: controller, rules: false) } } }
     }
 
     public func notificationClicked(_ id: String, on page: any EnginePage) {
@@ -342,9 +342,14 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
             .filter { seen.insert(ObjectIdentifier($0)).inserted }
     }
 
-    private func install(on controller: WKUserContentController) {
-        controller.removeAllContentRuleLists()
-        ruleLists.forEach(controller.add)
+    /// Puts Browsa's rule lists and scripts on a content controller. `rules: false` swaps only the scripts,
+    /// for changes that don't touch blocking (a Boost, call audio, notification answers): re-adding every
+    /// rule list makes every open page's process take them again.
+    private func install(on controller: WKUserContentController, rules: Bool = true) {
+        if rules {
+            controller.removeAllContentRuleLists()
+            ruleLists.forEach(controller.add)
+        }
         controller.removeAllUserScripts()
         controller.removeScriptMessageHandler(forName: CookieBannerHandler.messageName, contentWorld: CookieBannerHandler.world)
         let cookieScripts = blocking.declineCookieBanners ? CookieBannerHandler.scripts(skipping: blocking.allowlist) : []
