@@ -116,7 +116,18 @@ struct BoostPanel: View {
     }
 
     private func tintRow(_ draft: Binding<SiteBoost>) -> some View {
-        section("Tint") { BoostTintPicker(tint: draft.tint) }
+        VStack(alignment: .leading, spacing: 18) {
+            section("Look") {
+                GlassTabs(selection: draft.look, options: BoostColour.Look.allCases, size: .small) { $0.title }
+            }
+            section("Accent") {
+                VStack(alignment: .leading, spacing: 6) {
+                    BoostTintPicker(tint: draft.tint)
+                    Text("Swaps the site's own brand colour (links, buttons, highlights) for this one.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
     }
 
     private func zapRow(_ draft: Binding<SiteBoost>) -> some View {
@@ -224,7 +235,7 @@ struct BoostPanel: View {
     }
 }
 
-/// A Boost's tint: Original, the Space theme presets, then any hue on the strip.
+/// A Boost's accent: Original, the Space theme presets, then any hue on the strip.
 struct BoostTintPicker: View {
     @Binding var tint: Double?
 

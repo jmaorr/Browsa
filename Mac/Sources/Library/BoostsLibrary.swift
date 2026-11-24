@@ -131,7 +131,10 @@ struct BoostEditorPage: View {
                 LibraryGroup(title: "Font", detail: nil) {
                     GlassTabs(selection: $draft.font, options: SiteBoost.Font.allCases, size: .small) { $0.title }
                 }
-                LibraryGroup(title: "Tint", detail: nil) {
+                LibraryGroup(title: "Look", detail: "Dark turns the site dark and leaves photos and video as they are. Muted calms its colours.") {
+                    GlassTabs(selection: $draft.look, options: BoostColour.Look.allCases, size: .small) { $0.title }
+                }
+                LibraryGroup(title: "Accent", detail: "Swaps the site's own brand colour (links, buttons, highlights) for this one. Greys, text and photos stay as they are.") {
                     BoostTintPicker(tint: $draft.tint).frame(maxWidth: 420)
                 }
                 LibraryGroup(title: "Zapped", detail: draft.zaps.isEmpty ? "Things you zap away on the page show here." : nil) {

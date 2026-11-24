@@ -38,8 +38,11 @@ struct SiteBoost: Codable, Identifiable, Equatable {
     var host: String
     var isOn = true
     var font: Font = .site
-    /// A soft wash of colour over the page, by hue (0–360). Nil keeps the site's own colours.
+    /// The site's accent colour swapped for this hue (0–360). Nil keeps the site's own. Stored as
+    /// "tint", its name when it was a wash over the page.
     var tint: Double?
+    /// Dark or Muted, or the site as it comes.
+    var look: BoostColour.Look = .original
     /// Elements picked with Zap, hidden on every visit.
     var zaps: [Zap] = []
     var css = ""
@@ -55,18 +58,32 @@ struct SiteBoost: Codable, Identifiable, Equatable {
 
     init(host: String) { self.host = host }
 
+    private enum CodingKeys: String, CodingKey {
+        case id, host, isOn, font, tint, look, zaps, css, script, created
+    }
+
+    /// Boosts saved before a setting existed still load, with that setting at its default.
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        host = try c.decode(String.self, forKey: .host)
+        isOn = try c.decodeIfPresent(Bool.self, forKey: .isOn) ?? true
+        font = (try? c.decodeIfPresent(Font.self, forKey: .font)) ?? .site
+        tint = try c.decodeIfPresent(Double.self, forKey: .tint)
+        look = (try? c.decodeIfPresent(BoostColour.Look.self, forKey: .look)) ?? .original
+        zaps = try c.decodeIfPresent([Zap].self, forKey: .zaps) ?? []
+        css = try c.decodeIfPresent(String.self, forKey: .css) ?? ""
+        script = try c.decodeIfPresent(String.self, forKey: .script) ?? ""
+        created = try c.decodeIfPresent(Date.self, forKey: .created) ?? Date()
+    }
+
     /// Everything the choices add up to, as one style sheet.
     var effectiveCSS: String {
         var parts: [String] = []
         if let family = font.family {
             parts.append(":where(body, p, li, h1, h2, h3, h4, h5, h6, a, td, th, dd, dt, blockquote, input, textarea, button, label, figcaption) { font-family: \(family) !important; }")
         }
-        if let tint {
-            // A pale wash multiplied over everything: white turns a soft tint, text stays dark, and pictures
-            // only shift a little. Never catches the mouse.
-            let hue = Int(tint.rounded())
-            parts.append("html::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; background: hsl(\(hue) 70% 90%); mix-blend-mode: multiply; }")
-        }
+        if let look = look.css { parts.append(look) }
         if !zaps.isEmpty {
             parts.append(zaps.map(\.selector).joined(separator: ",\n") + " { display: none !important; }")
         }
@@ -74,8 +91,16 @@ struct SiteBoost: Codable, Identifiable, Equatable {
         return parts.joined(separator: "\n")
     }
 
+    /// The accent swap (it reads the page, so it's a script), then the script you wrote.
+    var effectiveScript: String {
+        var parts: [String] = []
+        if let tint { parts.append(BoostColour.accentOnLoad(tint)) }
+        if !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { parts.append(script) }
+        return parts.joined(separator: "\n")
+    }
+
     var isEmpty: Bool {
-        font == .site && tint == nil && zaps.isEmpty
+        font == .site && tint == nil && look == .original && zaps.isEmpty
             && css.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -84,7 +109,8 @@ struct SiteBoost: Codable, Identifiable, Equatable {
     var summary: String {
         var parts: [String] = []
         if font != .site { parts.append(font.title) }
-        if tint != nil { parts.append("Tint") }
+        if look != .original { parts.append(look.title) }
+        if tint != nil { parts.append("Accent") }
         if !zaps.isEmpty { parts.append("\(zaps.count) zapped") }
         if !css.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { parts.append("CSS") }
         if !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { parts.append("Script") }
@@ -110,6 +136,9 @@ final class BoostStore {
     @ObservationIgnored private weak var engine: (any BoostsConfigurable)?
     @ObservationIgnored private let fileURL = AppFolders.support.appending(path: "Browser/boosts.json")
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    /// The accent last previewed on each open page, so turning it off puts the page back.
+    @ObservationIgnored private var lastPreviewAccent: [ObjectIdentifier: Double] = [:]
+    @ObservationIgnored private var accentTasks: [ObjectIdentifier: Task<Void, Never>] = [:]
     /// The Library's Boosts switch is off: nothing applies, nothing is lost.
     var paused = false {
         didSet { if paused != oldValue { push() } }
@@ -185,13 +214,26 @@ final class BoostStore {
     }
 
     private func push() {
-        engine?.userBoosts = paused ? [] : boosts.filter(\.isOn).map { PageBoost(host: $0.host, css: $0.effectiveCSS, script: $0.script) }
+        engine?.userBoosts = paused ? [] : boosts.filter(\.isOn).map { PageBoost(host: $0.host, css: $0.effectiveCSS, script: $0.effectiveScript) }
     }
 
     /// Shows a Boost's style on a page now, without reloading. Its script runs on the next load.
     func preview(_ boost: SiteBoost?, on page: any EnginePage) async {
-        let css = boost.map { $0.isOn ? $0.effectiveCSS : "" } ?? ""
+        let on = boost?.isOn == true
+        let css = on ? boost?.effectiveCSS ?? "" : ""
         _ = try? await page.evaluate(PageBoost.previewSource(css: css), inWorld: PageBoost.world)
+        // The accent swap reads the page; only worth running if it's on, or was.
+        let hue = on ? boost?.tint : nil
+        let key = ObjectIdentifier(page)
+        guard hue != nil || lastPreviewAccent[key] != nil, hue != lastPreviewAccent[key] else { return }
+        lastPreviewAccent[key] = hue
+        // Dragging along the strip changes it every frame: recolour once it settles a moment.
+        accentTasks[key]?.cancel()
+        accentTasks[key] = Task {
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled else { return }
+            _ = try? await page.evaluate(BoostColour.accentSource(hue) + "\nreturn true;", inWorld: PageBoost.world)
+        }
     }
 }
 
