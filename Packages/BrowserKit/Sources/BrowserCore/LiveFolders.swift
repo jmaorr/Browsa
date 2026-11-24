@@ -371,8 +371,9 @@ public enum FeedDiscovery {
 // MARK: GitHub
 
 public enum GitHubSearch {
-    /// The search API request for a query. `@me` needs a token.
-    public static func request(query: String, token: String?) -> URLRequest {
+    /// The public search API request for a query, with no sign-in. Searches about you (`@me`) go through
+    /// github.com with the Space's own login instead (`GitHubPulls`).
+    public static func request(query: String) -> URLRequest {
         var c = URLComponents(string: "https://api.github.com/search/issues")!
         c.queryItems = [URLQueryItem(name: "q", value: query), URLQueryItem(name: "sort", value: "updated"),
                         URLQueryItem(name: "order", value: "desc"), URLQueryItem(name: "per_page", value: "\(LiveFolders.limit)")]
@@ -380,7 +381,6 @@ public enum GitHubSearch {
         r.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         r.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
         r.setValue("Browsa", forHTTPHeaderField: "User-Agent")
-        if let token, !token.isEmpty { r.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         return r
     }
 
