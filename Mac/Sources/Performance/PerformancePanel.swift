@@ -6,7 +6,16 @@ import BrowserCore
 /// and a way out when a tab gets stuck.
 struct PerformancePanel: View {
     @Environment(Browser.self) private var browser
-    @State private var metric: PerformanceMetric = .cpu
+    /// What you picked in Sort by, until the panel closes. Nil follows the load: memory, which is
+    /// steadier, unless Browsa is busy or a tab is stuck, then CPU.
+    @State private var chosenMetric: PerformanceMetric?
+    private var metric: PerformanceMetric {
+        if let chosenMetric { return chosenMetric }
+        switch monitor.health {
+        case .busy, .stuck: return .cpu
+        case .calm, .heavyMemory: return .memory
+        }
+    }
     private var monitor: PerformanceMonitor { .shared }
 
     var body: some View {
@@ -23,7 +32,7 @@ struct PerformancePanel: View {
                     Text("Using the Most")
                         .font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
                     Spacer()
-                    GlassTabs(selection: $metric, options: [.cpu, .memory], size: .small) { $0 == .cpu ? "CPU" : "Memory" }
+                    GlassTabs(selection: Binding(get: { metric }, set: { chosenMetric = $0 }), options: [.cpu, .memory], size: .small) { $0 == .cpu ? "CPU" : "Memory" }
                         .help("Sort by")
                 }
                 .padding(.top, 4)
