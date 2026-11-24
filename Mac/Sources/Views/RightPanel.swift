@@ -26,7 +26,7 @@ struct RightPanel: View {
                 }
             }
             .id(toolID)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(PanelFill(), in: .rect(cornerRadius: PageCard.radius, style: .continuous))
         .clipShape(.rect(cornerRadius: PageCard.radius, style: .continuous))
@@ -76,6 +76,7 @@ struct RightPanel: View {
         }
         .padding(.leading, 12)
         .padding(.trailing, 6)
+        .frame(minWidth: 0, maxWidth: .infinity)
         .frame(height: 38)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }

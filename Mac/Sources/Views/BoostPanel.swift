@@ -114,7 +114,14 @@ struct BoostPanel: View {
 
     private func fontRow(_ draft: Binding<SiteBoost>) -> some View {
         section("Font") {
-            GlassTabs(selection: draft.font, options: SiteBoost.Font.allCases, size: .small) { $0.title }
+            // Five choices need room: a narrow panel gets a menu instead.
+            ViewThatFits(in: .horizontal) {
+                GlassTabs(selection: draft.font, options: SiteBoost.Font.allCases, size: .small) { $0.title }
+                Picker("Font", selection: draft.font) {
+                    ForEach(SiteBoost.Font.allCases) { Text($0.title).tag($0) }
+                }
+                .labelsHidden().pickerStyle(.menu).fixedSize()
+            }
         }
     }
 
