@@ -321,8 +321,7 @@ struct CommandBar: View {
             }
             if mode == .commands {
                 GlassTabs(selection: Binding(get: { place }, set: { setPlace($0, refocus: true) }),
-                          options: CommandPlace.allCases, size: .large, title: { $0.rawValue }, symbol: { $0.symbol },
-                          onGlass: true)
+                          options: CommandPlace.allCases, size: .large, title: { $0.rawValue }, symbol: { $0.symbol })
             }
         }
         .padding(.leading, 20)

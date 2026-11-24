@@ -98,7 +98,7 @@ struct GlassTabs<Option: Hashable>: View {
                     Capsule()
                         .fill(RaisedFill.color(scheme))
                         // A tight shadow that stays inside the track's 3pt inset, so it isn't cut off.
-                        .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.12), radius: 1.5, y: 0.5)
+                        .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.12), radius: 2, y: 1)
                         .matchedGeometryEffect(id: "selection", in: namespace)
                 }
             }
