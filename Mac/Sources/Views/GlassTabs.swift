@@ -66,8 +66,11 @@ struct GlassTabs<Option: Hashable>: View {
                     // glass. Drawn over the glass and under the options.
                     .background(
                         Capsule().fill(
-                            Color.primary.opacity(scheme == .dark ? 0.04 : 0.025)
-                                .shadow(.inner(color: .black.opacity(scheme == .dark ? 0.5 : 0.16), radius: 2.5, y: 1))
+                            // Dark mode: a black shadow barely shows on dark glass, so the track is
+                            // darkened a touch and gets a faint light lip along its bottom edge.
+                            (scheme == .dark ? Color.black.opacity(0.22) : Color.primary.opacity(0.025))
+                                .shadow(.inner(color: .black.opacity(scheme == .dark ? 0.75 : 0.16), radius: 2.5, y: 1))
+                                .shadow(.inner(color: .white.opacity(scheme == .dark ? 0.1 : 0), radius: 1, y: -1))
                         )
                     )
                     .glassEffect(.regular, in: Capsule())
