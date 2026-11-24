@@ -1,7 +1,6 @@
 #if os(macOS)
 import AppKit
 import WebKit
-import CryptoKit
 import BrowserEngine
 import BrowserCore
 
@@ -18,6 +17,9 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         // pause it mid-task. Extension web views are never paused (see also startKeepAlive).
         let configuration = WKWebExtensionController.Configuration.default()
         configuration.webViewConfiguration?.preferences.inactiveSchedulingPolicy = .none
+        // The same user agent as tabs: a background whose user agent differs from the pages' can be
+        // stopped for good by WebKit (found by Search).
+        configuration.webViewConfiguration?.applicationNameForUserAgent = SafariUserAgent.applicationName
         return WKWebExtensionController(configuration: configuration)
     }()
     weak var host: (any EngineExtensionHost)?
@@ -29,9 +31,34 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
 
     static let extensionPoint = "com.apple.Safari.web-extension"
 
+    /// Catalog ids ("chrome:<id>") by WebKit's uniqueIdentifier, which is the bare Chrome id for
+    /// extensions on chrome-extension:// addresses (see ExtensionAddress).
+    private var catalogIDs: [String: String] = [:]
+    /// Catalog ids of extensions whose own manifest asks for nativeMessaging. Browsa's compat layer adds
+    /// the permission to every extension for its own bridges; only these may start an app on the Mac.
+    private var asksForNativeMessaging: Set<String> = []
+
     override init() {
+        // Chrome's address for extension pages, so WebKit accepts chrome-extension:// in match patterns
+        // and serves extensions there (ExtensionAddress).
+        WKWebExtension.MatchPattern.registerCustomURLScheme(ExtensionAddress.chromeScheme)
         super.init()
         controller.delegate = self
+    }
+
+    /// The catalog id for a context: what the rest of Browsa knows the extension by.
+    /// Each loaded extension's `externally_connectable` patterns, by its runtime id (ExtensionExternal).
+    var externalListings: [String: [String]] {
+        var found: [String: [String]] = [:]
+        for context in contexts.values {
+            let listed = context.webExtension.manifest["externally_connectable"] as? [String: Any]
+            if let patterns = listed?["matches"] as? [String], !patterns.isEmpty { found[context.uniqueIdentifier] = patterns }
+        }
+        return found
+    }
+
+    func catalogID(for context: WKWebExtensionContext) -> String {
+        catalogIDs[context.uniqueIdentifier] ?? context.uniqueIdentifier
     }
 
     // MARK: Finding and loading
@@ -69,14 +96,19 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             let id = folder.id
             guard contexts[id] == nil else { continue }
             do {
+                // Decided before the copy below is made: an extension an earlier build prepared keeps its
+                // old address (ExtensionAddress).
+                let identity = ExtensionAddress.identity(for: id)
+                if Self.manifestAsksForNativeMessaging(folder.url) { asksForNativeMessaging.insert(id) }
                 // Chrome extensions run from a copy with Browsa's compat script in front of the background.
                 let url = try ExtensionCompat.prepare(folder.url, id: id,
                                                       in: AppFolders.support.appending(path: "Extensions (WebKit)"))
                 let ext = try await WKWebExtension(resourceBaseURL: url)
                 let context = WKWebExtensionContext(for: ext)
-                context.uniqueIdentifier = id
+                context.uniqueIdentifier = identity.uniqueIdentifier
+                catalogIDs[identity.uniqueIdentifier] = id
                 // The same address every launch, so restored tabs showing the extension's pages still work.
-                context.baseURL = Self.stableBaseURL(for: id)
+                context.baseURL = identity.baseURL
                 context.isInspectable = true
                 grantEverything(context)
                 try controller.load(context)
@@ -103,7 +135,7 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
                 context.uniqueIdentifier = id
                 // Without a fixed address WebKit picks a new one each launch, sees the change and
                 // deletes the extension's local storage and IndexedDB, so its settings and sign-ins go.
-                context.baseURL = Self.stableBaseURL(for: id)
+                context.baseURL = ExtensionAddress.legacyBaseURL(for: id)
                 context.isInspectable = true
                 grantEverything(context)
                 try controller.load(context)
@@ -134,12 +166,22 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         return head.trimmingCharacters(in: .whitespaces).lowercased()
     }
 
+    /// An extension page named in its manifest, under its base URL. The name may carry a query or a
+    /// fragment (Raindrop's popup is "index.html?action"), which appending it as a path would escape
+    /// into a file that doesn't exist.
+    nonisolated static func page(_ name: String, in base: URL) -> URL? {
+        let relative = name.hasPrefix("/") ? String(name.dropFirst()) : name
+        return URL(string: relative, relativeTo: base)?.absoluteURL
+    }
+
     private func describe(_ ext: WKWebExtension, context: WKWebExtensionContext, id: String) -> EngineExtension {
         let icon = ext.icon(for: CGSize(width: 32, height: 32))?.cgImage(forProposedRect: nil, context: nil, hints: nil)
         let manifest = ext.manifest
-        let panelPath = ((manifest["side_panel"] as? [String: Any])?["default_path"] as? String)
-            ?? ((manifest["sidebar_action"] as? [String: Any])?["default_panel"] as? String)
-        let panelURL = panelPath.map { context.baseURL.appending(path: $0.hasPrefix("/") ? String($0.dropFirst()) : $0) }
+        let panelPath = (((manifest["side_panel"] as? [String: Any])?["default_path"] as? String)
+            ?? ((manifest["sidebar_action"] as? [String: Any])?["default_panel"] as? String))
+            // A placeholder for a panel the extension has switched off (Bitwarden's sidepanel-disabled.html).
+            .flatMap { $0.lowercased().contains("disabled") ? nil : $0 }
+        let panelURL = panelPath.flatMap { Self.page($0, in: context.baseURL) }
         return EngineExtension(id: id, name: ext.displayName ?? id, version: ext.version ?? "",
                                icon: icon, hasAction: context.action(for: nil) != nil, panelURL: panelURL,
                                optionsURL: context.optionsPageURL)
@@ -151,7 +193,7 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         contexts.map { id, context in
             let m = context.webExtension.manifest
             let action = (m["action"] as? [String: Any]) ?? (m["browser_action"] as? [String: Any])
-            let popup = (action?["default_popup"] as? String).map { context.baseURL.appending(path: $0.hasPrefix("/") ? String($0.dropFirst()) : $0) }
+            let popup = (action?["default_popup"] as? String).flatMap { Self.page($0, in: context.baseURL) }
             let errors = (context.webExtension.errors + context.errors).map { "\($0.localizedDescription) \((($0 as NSError).userInfo[NSDebugDescriptionErrorKey] as? String) ?? "")" }
             return (id, context.webExtension.displayName ?? id, popup, m, errors)
         }
@@ -200,28 +242,49 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         #endif
     }
 
-    /// webkit-extension://<uuid>/ derived from the extension's id.
-    static func stableBaseURL(for id: String) -> URL {
-        var bytes = Array(SHA256.hash(data: Data(id.utf8)).prefix(16))
-        bytes[6] = (bytes[6] & 0x0F) | 0x50
-        bytes[8] = (bytes[8] & 0x3F) | 0x80
-        let uuid = NSUUID(uuidBytes: bytes) as UUID
-        return URL(string: "webkit-extension://\(uuid.uuidString.lowercased())/")!
+    /// Whether the extension's own manifest (not Browsa's prepared copy) asks for nativeMessaging,
+    /// required or optional (Bitwarden asks for it as optional).
+    static func manifestAsksForNativeMessaging(_ folder: URL) -> Bool {
+        guard let data = try? Data(contentsOf: folder.appending(path: "manifest.json")),
+              let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        let asked = (manifest["permissions"] as? [String] ?? []) + (manifest["optional_permissions"] as? [String] ?? [])
+        return asked.contains("nativeMessaging")
     }
+
+    /// Every website: what an extension asking for <all_urls> is given. Not <all_urls> itself: with
+    /// chrome-extension:// registered, WebKit counts other extensions' pages in it, and one extension's
+    /// content scripts (Grammarly's, say) would run inside another's popup. Chrome never allows that.
+    /// The compat script answers permissions.contains(<all_urls>) from this (as Search does, see
+    /// ExtensionAddress).
+    static let everyWebsite = try? WKWebExtension.MatchPattern(string: "*://*/*")
 
     private func grantEverything(_ context: WKWebExtensionContext) {
         let ext = context.webExtension
         for p in ext.requestedPermissions.union(ext.optionalPermissions) {
             context.setPermissionStatus(.grantedExplicitly, for: p)
         }
-        for m in ext.allRequestedMatchPatterns { context.setPermissionStatus(.grantedExplicitly, for: m) }
-        context.setPermissionStatus(.grantedExplicitly, for: WKWebExtension.MatchPattern.allURLs())
+        for m in ext.allRequestedMatchPatterns where !Self.reachesExtensionPages(m) && !m.matchesAllURLs {
+            context.setPermissionStatus(.grantedExplicitly, for: m)
+        }
+        if let every = Self.everyWebsite { context.setPermissionStatus(.grantedExplicitly, for: every) }
+    }
+
+    /// A pattern naming extension pages (another extension's, or all of them). Never granted, as in
+    /// Chrome; an extension's own pages are its own without asking.
+    static func reachesExtensionPages(_ pattern: WKWebExtension.MatchPattern) -> Bool {
+        ExtensionAddress.schemes.contains(pattern.scheme?.lowercased() ?? "")
     }
 
     func unloadAll() {
+        ExtensionNativeHosts.stopAll()
         for c in contexts.values { ExtensionOffscreen.close(for: c); try? controller.unload(c) }
         contexts = [:]
         loaded = []
+    }
+
+    /// The extension was removed: added again, it starts afresh on Chrome's address.
+    func forget(_ catalogID: String) {
+        ExtensionAddress.forget(catalogID)
     }
 
     // MARK: Actions
@@ -244,18 +307,21 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             || (manifest["sidebar_action"] as? [String: Any])?["default_panel"] != nil
         let hasPopup = context.action(for: page)?.presentsPopup ?? false
         if ExtensionBridges.opensPanelOnAction(extensionID) || (hasPanel && !hasPopup),
-           host?.showExtensionPanel(extensionID: extensionID) == true { return }
+           host?.showExtensionPanel(extensionID: extensionID, url: ExtensionBridges.panelPages[extensionID]) == true { return }
         popupAnchor = anchor
         context.performAction(for: page)
     }
 
     /// Extension pages (popups aside) only load in web views made from their extension's configuration.
     func configuration(for url: URL) -> WKWebViewConfiguration? {
-        guard url.scheme == "webkit-extension" else { return nil }
-        return contexts.values.first { $0.baseURL.host() == url.host() }?.webViewConfiguration
+        guard ExtensionAddress.isExtensionPage(url) else { return nil }
+        return contexts.values.first { $0.baseURL.scheme == url.scheme && $0.baseURL.host() == url.host() }?.webViewConfiguration
     }
 
     // MARK: Tabs and windows
+
+    /// The window in front, as extensions see it.
+    func frontWindow() -> ExtensionWindow? { host?.extensionWindows.first.map { window($0.id) } }
 
     func window(_ id: UUID) -> ExtensionWindow {
         if let w = windows[id] { return w }
@@ -359,13 +425,45 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             ExtensionOffscreen.writeClipboard(message, for: extensionContext, reply: replyHandler)
             return
         }
-        if let name = applicationIdentifier, ExtensionBridges.names.contains(name) {
-            ExtensionBridges.handle(name, message: message, extensionID: extensionContext.uniqueIdentifier,
-                                    displayName: extensionContext.webExtension.displayName ?? "An extension",
-                                    host: host, reply: replyHandler)
+        if applicationIdentifier == ExtensionFetch.bridgeName {
+            // Only for a site the extension has been given access to, as Chrome sends cookies only there.
+            // (Native messages come from the extension's own background and pages, never content scripts.)
+            let body = message as? [String: Any] ?? [:]
+            guard let target = (body["url"] as? String).flatMap(URL.init(string:)),
+                  ExtensionFetch.allowed(target, hasAccess: { extensionContext.hasAccess(to: $0) }) else {
+                replyHandler(nil, NSError(domain: "Browsa.Fetch", code: 2,
+                                          userInfo: [NSLocalizedDescriptionKey: "This extension doesn't have access to that site"]))
+                return
+            }
+            ExtensionFetch.handle(body, reply: replyHandler)
             return
         }
-        replyHandler(nil, Self.noNativeMessaging(applicationIdentifier))
+        if applicationIdentifier == ExtensionAuth.bridgeName {
+            let id = catalogID(for: extensionContext)
+            ExtensionAuth.handle(message as? [String: Any] ?? [:], storeID: id.hasPrefix("chrome:") ? String(id.dropFirst(7)) : nil,
+                                 host: host, reply: replyHandler)
+            return
+        }
+        if let name = applicationIdentifier, ExtensionBridges.names.contains(name) {
+            ExtensionBridges.handle(name, message: message, extensionID: catalogID(for: extensionContext),
+                                    displayName: extensionContext.webExtension.displayName ?? "An extension",
+                                    baseURL: extensionContext.baseURL, host: host, reply: replyHandler)
+            return
+        }
+        // Anything else: an app on this Mac registered as a Chrome native messaging host.
+        let id = catalogID(for: extensionContext)
+        guard let name = applicationIdentifier, let origin = nativeOrigin(for: id) else {
+            replyHandler(nil, Self.noNativeMessaging(applicationIdentifier))
+            return
+        }
+        ExtensionNativeHosts.send(message, to: name, origin: origin, reply: replyHandler)
+    }
+
+    /// The origin a native messaging host is told, for an extension that may start one: a Chrome Web
+    /// Store extension whose own manifest asks for nativeMessaging.
+    private func nativeOrigin(for catalogID: String) -> String? {
+        guard asksForNativeMessaging.contains(catalogID) else { return nil }
+        return ExtensionAddress.chromeOrigin(for: catalogID)
     }
 
     func webExtensionController(_ controller: WKWebExtensionController, connectUsing port: WKWebExtension.MessagePort,
@@ -376,7 +474,18 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             completionHandler(nil)
             return
         }
-        completionHandler(Self.noNativeMessaging(port.applicationIdentifier))
+        let id = catalogID(for: extensionContext)
+        guard let origin = nativeOrigin(for: id) else {
+            completionHandler(Self.noNativeMessaging(port.applicationIdentifier))
+            return
+        }
+        do {
+            try ExtensionNativeHosts.connect(port, origin: origin, extensionID: id)
+            completionHandler(nil)
+        } catch {
+            engineLog.info("extension: \(id, privacy: .public) couldn't reach \(port.applicationIdentifier ?? "", privacy: .public): \(error.localizedDescription, privacy: .public)")
+            completionHandler(error)
+        }
     }
 
     private static func noNativeMessaging(_ name: String?) -> NSError {
@@ -391,13 +500,22 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
 
     func webExtensionController(_ controller: WKWebExtensionController, presentActionPopup action: WKWebExtension.Action,
                                 for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
-        guard let popover = action.popupPopover,
-              let anchor = popupAnchor ?? NSApp.keyWindow?.contentView else {
+        guard let anchor = popupAnchor ?? NSApp.keyWindow?.contentView else {
             completionHandler(nil)
             return
         }
-        popover.behavior = .transient
-        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        // Browsa's own popover, with a view from the extension's configuration (ExtensionPopup): from
+        // WebKit's, some extensions' messages never reach their background (Bitwarden spun for ever).
+        // WebKit's popup page only tells which page it is.
+        let manifest = context.webExtension.manifest
+        let declared = ((manifest["action"] as? [String: Any]) ?? (manifest["browser_action"] as? [String: Any]))?["default_popup"] as? String
+        if let url = action.popupWebView?.url ?? declared.flatMap({ Self.page($0, in: context.baseURL) }) {
+            action.closePopup()
+            ExtensionPopup.shared.show(url, for: context, from: anchor, host: host, extensions: self)
+        } else if let popover = action.popupPopover {
+            popover.behavior = .transient
+            popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        }
         completionHandler(nil)
     }
 }

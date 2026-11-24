@@ -67,6 +67,10 @@ final class Library {
     var callAudioStats: CallAudioStats?
     /// The extensions running now, for the toolbar.
     private(set) var extensions: [EngineExtension] = []
+    /// Side panel pages extensions set at run time (chrome.sidePanel.setOptions), shown instead of the manifest's.
+    var extensionPanelPages: [String: URL] = [:]
+    /// Extension side panel pages on screen now, by extension (ExtensionPanelView), for runtime.getContexts.
+    var shownExtensionPanels: [String: URL] = [:]
     /// Bumped when pins change or an extension updates its action, so the address pill redraws.
     var extensionPinsRevision = 0
     var extensionActionsRevision = 0
@@ -546,6 +550,20 @@ final class Library {
     }
 
     /// A page opened a window. It becomes a tab right after its opener, in front.
+    /// A window an extension's side panel opened (Raindrop's Sign in), as a tab at the top of the window in
+    /// front. The page is kept, so window.opener still reaches the panel.
+    func openPanelPopup(page: any EnginePage, url: URL?) -> TabController? {
+        guard let window = activeWindow else { return nil }
+        let tab = BrowserTab(url: url, isPrivate: window.currentSpace.isPrivate)
+        tab.windowKey = window.windowKey
+        window.currentSpace.today.insert(tab, at: 0)
+        let c = TabController(tab: tab, library: self) { _ in page }
+        adopt(c)
+        window.select(tab)
+        scheduleSave()
+        return c
+    }
+
     func openPopup(from opener: BrowserTab, page: any EnginePage, url: URL?) -> TabController {
         let space = space(containing: opener) ?? regularSpaces[0]
         let tab = BrowserTab(url: url, isPrivate: opener.isPrivate)
@@ -1011,11 +1029,22 @@ extension Library: EngineExtensionHost {
     }
 
     /// chrome.sidePanel.open, or a toolbar click on an extension that asked for its panel instead.
-    func showExtensionPanel(extensionID: String) -> Bool {
+    func showExtensionPanel(extensionID: String, url: URL?) -> Bool {
         let id = "ext:" + extensionID
+        if let url {
+            extensionPanelPages[extensionID] = url
+            // An extension with no panel in its manifest (Claude) gets its panel tool now.
+            if workbench.tool(id) == nil, let ext = extensions.first(where: { $0.id == extensionID }) {
+                BuiltInTools.registerPanel(for: ext, in: workbench)
+            }
+        }
         guard workbench.tool(id) != nil, let window = activeWindow else { return false }
         window.showPanel(id)
         return true
+    }
+
+    func openExtensionPanels(extensionID: String) -> [URL] {
+        shownExtensionPanels[extensionID].map { [$0] } ?? []
     }
 
     func focusExtensionWindow(_ id: UUID) {

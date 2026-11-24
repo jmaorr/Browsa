@@ -65,6 +65,8 @@ public protocol BrowserEngine: AnyObject {
     func loadInstalledExtensions(folders: [ExtensionFolder], includeApps: Bool) async -> [String]
     /// Stops every extension.
     func unloadExtensions()
+    /// An extension was removed: forget what the engine kept about it (its address, its prepared copy).
+    func forgetExtension(id: String)
     /// The extension's toolbar button was clicked. Its popup, if it has one, appears at `anchor`.
     func performAction(extensionID: String, for page: (any EnginePage)?, anchor: PlatformView?)
     /// An extension's toolbar action as it stands for `page`: its label, badge and icon there.
@@ -84,6 +86,7 @@ public extension BrowserEngine {
         return await loadInstalledExtensions()
     }
     func unloadExtensions() {}
+    func forgetExtension(id: String) {}
     func performAction(extensionID: String, for page: (any EnginePage)?, anchor: PlatformView?) {}
     func extensionActionState(extensionID: String, for page: (any EnginePage)?) -> EngineActionState? { nil }
     func pageDidBecomeActive(_ page: any EnginePage) {}
@@ -162,13 +165,19 @@ public protocol EngineExtensionHost: AnyObject {
     /// An extension changed its toolbar action (badge, icon, label) for some page.
     func extensionActionsDidChange()
     /// `chrome.sidePanel.open`, or a toolbar click with `openPanelOnActionClick`: show the extension's
-    /// side panel page. False if it has none.
-    func showExtensionPanel(extensionID: String) -> Bool
+    /// side panel page, `url` when the extension set one with `sidePanel.setOptions` (Claude has none in
+    /// its manifest), else its manifest's. False if it has none.
+    func showExtensionPanel(extensionID: String, url: URL?) -> Bool
+    /// The extension's side panel pages showing now, for `runtime.getContexts` (Claude checks it is in
+    /// a side panel before it starts).
+    func openExtensionPanels(extensionID: String) -> [URL]
 }
 
 public extension EngineExtensionHost {
     func extensionActionsDidChange() {}
-    func showExtensionPanel(extensionID: String) -> Bool { false }
+    func showExtensionPanel(extensionID: String, url: URL?) -> Bool { false }
+    func openExtensionPanels(extensionID: String) -> [URL] { [] }
+    func showExtensionPanel(extensionID: String) -> Bool { showExtensionPanel(extensionID: extensionID, url: nil) }
 }
 
 /// An extension's toolbar action for one page.

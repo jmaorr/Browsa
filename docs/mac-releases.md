@@ -18,6 +18,21 @@ In this order, so nothing points at a page that isn't there yet:
 3. `tools/release-mac.sh 1.0`
 4. `tools/publish-mac.sh 1.0`
 
+## Before shipping the 1Password desktop-app unlock
+
+**Release blocker.** The extension work on `claude/project-thread-himevy` (PR #105) lets 1Password's extension unlock
+through the 1Password Mac app, but only after the user adds Browsa in 1Password › Settings › Browser › Add Browser.
+Don't release it without the onboarding for that step:
+
+- Detect the refusal: the 1Password helper's reply `BrowserVerificationFailed` with `UnknownBrowser`, seen as it passes
+  through `ExtensionNativeHosts`, triggers the guidance. A successful connection dismisses it.
+- A card for that moment: "In 1Password, open Settings › Browser › Add Browser and choose Browsa", with a button that
+  opens 1Password, and a short clip of the steps.
+- New users: a step in the welcome flow when the 1Password app is installed.
+- Existing users: the same card on the first refusal after updating, plus a What's New line.
+- Releases are Developer ID signed, which 1Password requires; an Apple Development build is always refused.
+- Ask 1Password to list Browsa as a known browser (draft in ~/Developer/Browsa/outreach), which would remove the step.
+
 ## Making a release
 
 ```sh

@@ -328,6 +328,20 @@ extension WebKitPage: WKNavigationDelegate {
         }
         if navigationAction.shouldPerformDownload { return (.download, preferences) }
         guard let url = navigationAction.request.url else { return (.allow, preferences) }
+        // Click IDs (gclid, fbclid, msclkid…) off a page's address before it loads (PrivacySwitches).
+        if navigationAction.targetFrame?.isMainFrame ?? true, (navigationAction.request.httpMethod ?? "GET") == "GET",
+           let clean = PrivacySwitches.withoutClickIDs(url) {
+            var request = navigationAction.request
+            request.url = clean
+            webView.load(request)
+            return (.cancel, preferences)
+        }
+        PrivacySwitches.globalPrivacyControl(engine?.sendsGlobalPrivacyControl ?? false, in: preferences)
+        // Chrome's sign-in redirect for extensions (https://<id>.chromiumapp.org/…), which never loads.
+        if #available(macOS 15.4, *), ExtensionAuth.redirectOwner(url) != nil, navigationAction.targetFrame?.isMainFrame ?? true {
+            if ExtensionAuth.isSimulated(url) { return (.allow, preferences) }
+            if ExtensionAuth.intercept(url, in: webView, page: self, host: engine?.webExtensions?.host) { return (.cancel, preferences) }
+        }
         let kind: NavigationRequest.Kind = switch navigationAction.navigationType {
         case .linkActivated: .link
         case .formSubmitted, .formResubmitted: .formSubmit
@@ -339,7 +353,7 @@ extension WebKitPage: WKNavigationDelegate {
         var newTab = kind == .link && (flags.contains(.command) || navigationAction.buttonNumber == 2)
         // An extension's page (its own web view setup) leaving for the web, e.g. 1Password's Sign In: the
         // web page goes in a normal tab, so it gets Browsa's usual web view.
-        let fromExtension = webView.url?.scheme == "webkit-extension" && (navigationAction.targetFrame?.isMainFrame ?? true)
+        let fromExtension = ExtensionAddress.isExtensionPage(webView.url) && (navigationAction.targetFrame?.isMainFrame ?? true)
             && (url.scheme == "http" || url.scheme == "https")
         if fromExtension { newTab = true }
         let request = NavigationRequest(url: url, kind: kind,
