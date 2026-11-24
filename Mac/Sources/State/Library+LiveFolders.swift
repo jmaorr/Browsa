@@ -5,6 +5,13 @@ import BrowserCore
 import BrowserEngine
 import Suggest
 
+/// A space's GitHub organisations: every owner its pull requests have come from (so a switch stays
+/// listed while it's off), and the ones turned off. New ones show until you turn them off.
+struct GitHubOwners: Codable, Equatable {
+    var seen: [String] = []
+    var hidden: Set<String> = []
+}
+
 /// The feed a page lists in its head, and the name to give its folder.
 struct PageFeed: Equatable {
     let url: URL
@@ -133,7 +140,15 @@ extension Library {
                 f.live?.lastError = error.message
                 f.live?.lastChecked = .now
             }, in: space)
-        case .success(let fetched):
+        case .success(var fetched):
+            if kind == .githubPullRequests {
+                // Remember who these come from (for the Organisations switches), then leave out the
+                // ones turned off in this space.
+                var owners = gitHubOwners[space.id] ?? GitHubOwners()
+                for owner in GitHubPulls.owners(in: fetched) where !owners.seen.contains(owner) { owners.seen.append(owner) }
+                if owners != gitHubOwners[space.id] { gitHubOwners[space.id] = owners }
+                fetched = GitHubPulls.hiding(owners.hidden, from: fetched)
+            }
             apply(LiveFolders.plan(live, fetched: fetched,
                                    inFolder: Set(PinnedOutline.tabIDs(folder.children)),
                                    keep: Set(windows.flatMap(\.shownTabIDs))),
@@ -236,6 +251,23 @@ extension Library {
     }
 
     nonisolated static let gitHubFiltersKey = "liveFolders.gitHubFilters"
+
+    nonisolated static let gitHubOwnersKey = "liveFolders.gitHubOwners"
+
+    nonisolated static func savedGitHubOwners() -> [UUID: GitHubOwners] {
+        guard let data = UserDefaults.standard.data(forKey: gitHubOwnersKey),
+              let saved = try? JSONDecoder().decode([UUID: GitHubOwners].self, from: data) else { return [:] }
+        return saved
+    }
+
+    /// Shows or hides one organisation's pull requests in a space's Pull Requests folder, straight away.
+    func setGitHubOwner(_ owner: String, shown: Bool, in space: Space) {
+        var owners = gitHubOwners[space.id] ?? GitHubOwners()
+        if shown { owners.hidden.remove(owner) } else { owners.hidden.insert(owner) }
+        guard owners != gitHubOwners[space.id] else { return }
+        gitHubOwners[space.id] = owners
+        if let folder = gitHubFolder(in: space) { Task { await refreshLiveFolder(folder.id, in: space) } }
+    }
 
     nonisolated static func savedGitHubFilters() -> Set<GitHubPulls.Filter> {
         guard let saved = UserDefaults.standard.stringArray(forKey: gitHubFiltersKey) else { return Set(GitHubPulls.Filter.allCases) }

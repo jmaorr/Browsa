@@ -1,0 +1,71 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../../kit/kit.css"><link rel="stylesheet" href="../../kit/sites.css"><link rel="stylesheet" href="../../library/shared/library.css"><link rel="stylesheet" href="../shared/scene.css"><script src="../../kit/kit.js"></script><script src="../../kit/sites.js"></script><script src="../../library/shared/library.js"></script><script src="../shared/scene.js"></script>
+<style>
+  .win { --tint:#0a84ff; }
+  .page { background:transparent; box-shadow:none; overflow:visible; }
+  .pane { position:absolute; top:0; bottom:0; border-radius:14px; background:#fff; overflow:hidden; box-shadow:0 0 0 1px rgb(22 21 19 / .08); }
+  .pane .site { position:absolute; inset:0; }
+  .pane.focus { box-shadow:0 0 0 2px rgb(10 132 255 / .55); }
+  .handle { position:absolute; top:6px; width:44px; height:14px; margin-left:-22px; border-radius:7px; display:flex; gap:4px; justify-content:center; align-items:center; z-index:5; }
+  .handle i { width:5px; height:5px; border-radius:50%; background:rgb(0 0 0 / .35); }
+  .split .in { padding:0 5px; gap:5px; }
+  .split .half { flex:1; display:flex; align-items:center; gap:10px; height:30px; padding:0 9px; border-radius:8px; font-size:17px; min-width:0; overflow:hidden; }
+  .split .half + .half { box-shadow: inset 1px 0 0 rgb(0 0 0 / .08); border-radius:0 8px 8px 0; }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="wall"></div>
+  <div class="win"><div class="side" id="side"></div><div class="page" id="page"></div></div>
+  <div class="menu" id="menu"><div>Rename</div><div>Pin</div><div>Add to Favourites</div><hr><div id="mi">Add to Split View</div><div>Copy Link</div><hr><div>Close Tab</div></div>
+  <div class="ring" id="ring"></div><div class="ptr" id="ptr"></div>
+</div>
+<script>
+const LIN = img("linear.app"), GH = img("github.com");
+$("side").innerHTML = sidebar({
+  addr: `${LIN.replace("<img", '<img style="width:18px;height:18px;border-radius:4px"')}linear.app/browsa/my-issues`, space: 1, tint: "#0a84ff",
+  body: `<div class="sect">Pinned</div>${R(img("vercel.com"), "Deployments · Vercel")}${R(img("figma.com"), "Library · Figma")}
+    <div class="sect">Today</div>
+    <div id="pair" style="position:relative">
+      <div id="solo">${R(LIN, "My issues · Linear", "sel", "rl")}${R(GH, "Browsa · GitHub", "", "rg")}</div>
+      <div id="joined" class="row split sel" style="position:absolute;left:0;right:0;top:0"><div class="in"><span class="half">${LIN}<span>My issues</span></span><span class="half">${GH}<span>Browsa</span></span></div></div>
+    </div>
+    ${R(img("notion.so"), "Standup notes · Notion")}${R(img("youtube.com"), "lofi hip hop radio")}`,
+  foot: {},
+});
+$("page").innerHTML = `<div class="pane" id="pl">${site("linear")}</div><div class="pane" id="pr">${site("github")}</div>
+  <div class="handle" id="hl"><i></i><i></i><i></i></div><div class="handle" id="hr"><i></i><i></i><i></i></div>`;
+document.querySelector(".gh h1").innerHTML = `Split View: tabs side by side <span>#108</span>`;
+document.querySelector(".gh .cmt .t").innerHTML = `<p>Two or three tabs side by side, kept together as one row in the sidebar.</p><p>Drag between them to change the widths.</p>`;
+document.querySelector(".gh .state").innerHTML = `<b class="open">Open</b> jmaorr wants to merge 9 commits into main`;
+$("ptr").innerHTML = POINTER("#161513");
+const stage = $("stage");
+const W = $("page").offsetWidth, GAP = 10;
+const RG = box($("rg"), stage);
+const MI = () => box($("mi"), stage);
+$("menu").style.left = RG.x + 150 + "px"; $("menu").style.top = RG.cy + 4 + "px";
+const pageBox = box($("page"), stage);
+window.TOTAL = 9.5;
+window.render = (t) => {
+  const m = shown(t, 1.45, 2.35, 0.15);
+  $("menu").style.opacity = m; $("menu").style.transform = `scale(${0.96 + 0.04 * m})`;
+  $("mi").classList.toggle("on", t > 1.95 && t < 2.35);
+  // Split arrives at 2.35, the divider is dragged at 4.6–5.6, then it settles.
+  const s = eio(ph(t, 2.35, 0.6)) * (1 - eio(ph(t, 8.6, 0.5)));
+  const drag = eio(ph(t, 4.7, 0.9));
+  const frac = mix(1, 0.5 + 0.1 * drag, s);
+  const lw = frac * W - (s > 0 ? GAP / 2 * s : 0);
+  $("pl").style.left = "0px"; $("pl").style.width = lw + "px";
+  $("pr").style.left = lw + GAP + "px"; $("pr").style.width = Math.max(0, W - lw - GAP) + "px";
+  $("pr").style.opacity = s; $("pr").style.transform = `translateX(${(1 - s) * 40}px)`;
+  $("hl").style.left = lw / 2 + "px"; $("hr").style.left = lw + GAP + (W - lw - GAP) / 2 + "px";
+  $("hl").style.opacity = $("hr").style.opacity = s;
+  $("pr").classList.toggle("focus", t > 6.9 && t < 8.6); $("pl").classList.toggle("focus", false);
+  // Sidebar: the two rows become one.
+  const j = eo(ph(t, 2.5, 0.45)) * (1 - ph(t, 8.6, 0.4));
+  $("solo").style.opacity = 1 - j; $("joined").style.opacity = j;
+  $("pair").style.height = mix(88, 44, j) + "px";
+  const div = [pageBox.x + lw + GAP / 2, pageBox.y + 380];
+  pointer(t, [[0.5, [900, 620]], [1.3, [RG.cx + 40, RG.cy]], [1.9, [MI().cx - 40, MI().cy]], [4.5, [pageBox.x + W / 2, pageBox.y + 380]], [5.7, [pageBox.x + (0.6) * W, pageBox.y + 380]], [6.8, [pageBox.x + W * 0.8, pageBox.y + 300]], [8.2, [1000, 700]]], [1.35, 2.3, 4.6, 6.85], 8.2);
+  const lf = 0.15 + 0.85 * loopFade(t, TOTAL); $("side").style.opacity = lf; $("page").style.opacity = lf;
+};
+render(0);
+</script></body></html>

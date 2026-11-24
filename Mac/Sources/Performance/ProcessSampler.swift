@@ -71,6 +71,20 @@ enum ProcessSampler {
         pid(webView, "_webProcessIdentifier")
     }
 
+    /// False when a page can't answer key presses: it has no process (it crashed) and isn't loading
+    /// a new one, or WebKit has marked it unresponsive. A WebKit without these SPIs counts as fine.
+    @MainActor static func pageCanTakeKeys(_ webView: WKWebView) -> Bool {
+        if !webView.isLoading, webView.responds(to: NSSelectorFromString("_webProcessIdentifier")),
+           let pid = webView.value(forKey: "_webProcessIdentifier") as? NSNumber, pid.int32Value <= 0 {
+            return false
+        }
+        if webView.responds(to: NSSelectorFromString("_webProcessIsResponsive")),
+           let responsive = webView.value(forKey: "_webProcessIsResponsive") as? Bool, !responsive {
+            return false
+        }
+        return true
+    }
+
     /// The graphics process, shared by every tab.
     @MainActor static func graphicsProcess(of webView: WKWebView) -> pid_t? {
         pid(webView, "_gpuProcessIdentifier")

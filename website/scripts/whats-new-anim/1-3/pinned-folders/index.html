@@ -1,0 +1,69 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../../kit/kit.css"><link rel="stylesheet" href="../../kit/sites.css"><link rel="stylesheet" href="../../library/shared/library.css"><link rel="stylesheet" href="../shared/scene.css"><script src="../../kit/kit.js"></script><script src="../../kit/sites.js"></script><script src="../../library/shared/library.js"></script><script src="../shared/scene.js"></script>
+<style>
+  .win { --tint:#34c759; }
+  #list { position:relative; height:300px; }
+  #list > div { position:absolute; left:0; right:0; }
+  #V { z-index:3; }
+  .fold .in { font-weight:500; }
+  .fold .n { margin-left:auto; min-width:22px; height:22px; padding:0 7px; box-sizing:border-box; border-radius:11px; background:rgb(0 0 0 / .07); color:#5d5a55; font-size:13px; font-weight:600; display:grid; place-items:center; }
+  .guide { position:absolute; left:22px; width:1.5px; background:rgb(0 0 0 / .1); }
+  .lift .in { background:rgb(255 255 255 / .95); box-shadow:0 10px 24px -8px rgb(0 0 0 / .35), 0 0 0 1px rgb(0 0 0 / .06); }
+  .slot { position:absolute; height:38px; border-radius:11px; background:rgb(0 0 0 / .05); box-shadow: inset 0 2px 4px rgb(0 0 0 / .12), inset 0 -1px 0 rgb(255 255 255 / .6); }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="wall"></div>
+  <div class="win"><div class="side" id="side"></div><div class="page" id="page"></div></div>
+  <div class="menu" id="menu"><div>Rename</div><div>Unpin</div><div>Add to Favourites</div><hr><div id="mi">New Folder with Tab</div><div>Move to</div><hr><div>Copy Link</div><div>Close Tab</div></div>
+  <div class="ring" id="ring"></div><div class="ptr" id="ptr"></div>
+</div>
+<script>
+const FOLDER = (open) => `<svg width="22" height="22" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 014.5 5h4.6l2 2.2h8.4A1.5 1.5 0 0121 8.7v9.8a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 18.5z" fill="#34c759" opacity=".85"/></svg>`;
+$("side").innerHTML = sidebar({
+  addr: `${img("linear.app").replace("<img", '<img style="width:18px;height:18px;border-radius:4px"')}linear.app/browsa/my-issues`, space: 1, tint: "#34c759",
+  body: `<div class="sect">Pinned</div><div id="list">
+    <div class="guide" id="guide"></div><div class="slot" id="slot"></div>
+    <div id="F" class="row fold"><div class="in">${FOLDER()}<span>Work</span><span class="n" id="n">2</span></div></div>
+    <div id="L">${R(img("linear.app"), "My issues · Linear", "sel")}</div>
+    <div id="G">${R(img("github.com"), "Pull requests · GitHub")}</div>
+    <div id="V">${R(img("vercel.com"), "Deployments · Vercel")}</div>
+    <div id="Fi">${R(img("figma.com"), "Library · Figma")}</div>
+    <div id="S">${R(img("stripe.com"), "Payments · Stripe")}</div></div>
+    <div class="sect" id="today">Today</div>${R(img("notion.so"), "Standup notes · Notion")}${R(img("youtube.com"), "lofi hip hop radio")}`,
+  foot: {},
+});
+$("page").innerHTML = site("linear");
+$("ptr").innerHTML = POINTER("#161513");
+const stage = $("stage"), RH = 44, IND = 24;
+const list = box($("list"), stage);
+const P = (row, ind = 0) => [list.x + 120 + ind * IND, list.y + row * RH + RH / 2];
+$("menu").style.left = list.x + 150 + "px"; $("menu").style.top = list.y + RH / 2 + 4 + "px";
+const place = (id, row, ind, op = 1) => { const e = $(id); e.style.top = row * RH + "px"; e.style.left = ind * IND + "px"; e.style.opacity = op; };
+window.TOTAL = 9.5;
+window.render = (t) => {
+  const m = shown(t, 1.45, 2.35, 0.15);
+  $("menu").style.opacity = m; $("menu").style.transform = `scale(${0.96 + 0.04 * m})`;
+  $("mi").classList.toggle("on", t > 1.95 && t < 2.35);
+  const f = eio(ph(t, 2.35, 0.5));                 // folder made with Linear inside
+  const d = eio(ph(t, 3.7, 1.0));                  // Vercel dragged in under Linear
+  const c = eio(ph(t, 6.0, 0.5));                  // folder closed: Linear stays, Vercel tucks away
+  const end = ph(t, 8.9, 0.4);
+  place("F", 0, 0, f * (1 - end));
+  place("L", f, f, 1);
+  // Vercel: from row 3 (after GitHub) to row 2 (inside the folder), lifted while it moves.
+  const vRow = mix(2 + f, 2, d), vInd = d;
+  place("V", mix(vRow, 1, c), vInd, 1 - c);
+  $("V").firstElementChild.classList.toggle("lift", t > 3.5 && t < 4.8);
+  const gRow = 1 + f + d - c;
+  place("G", gRow, 0, 1);
+  place("Fi", 3 + f - c, 0, 1); place("S", 4 + f - c, 0, 1);
+  $("slot").style.left = IND + "px"; $("slot").style.right = "0"; $("slot").style.top = 2 * RH + 3 + "px";
+  $("slot").style.opacity = shown(t, 3.8, 4.7, 0.2);
+  $("guide").style.top = RH + 6 + "px"; $("guide").style.height = Math.max(0, (f + d - c) * RH - 12) + "px"; $("guide").style.opacity = f;
+  $("n").style.opacity = c;
+  $("list").style.height = (5 + f - c) * RH + "px";
+  pointer(t, [[0.5, [900, 600]], [1.3, P(0)], [1.9, [box($("mi"), stage).cx - 40, box($("mi"), stage).cy]], [3.5, P(3)], [4.8, P(2, 1)], [5.9, [list.x + 70, list.y + RH / 2]], [7.6, [900, 640]]], [1.35, 2.3, 3.55, 5.95], 7.8);
+  const lf = 0.15 + 0.85 * loopFade(t, TOTAL); $("side").style.opacity = lf; $("page").style.opacity = lf;
+};
+render(0);
+</script></body></html>
