@@ -38,14 +38,15 @@ enum ProcessSampler {
     static func name(_ pid: pid_t) -> String {
         var buffer = [CChar](repeating: 0, count: 256)
         let length = proc_name(pid, &buffer, UInt32(buffer.count))
-        return length > 0 ? String(cString: buffer) : ""
+        guard length > 0 else { return "" }
+        return String(decoding: buffer.prefix(Int(length)).map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 
     private typealias ResponsibleFunction = @convention(c) (pid_t) -> pid_t
     /// macOS records which app is responsible for each XPC helper; that's how Activity Monitor groups
     /// WebKit's processes under the app. The call isn't in a public header, so it's looked up at run time
     /// and the panel falls back to the processes it can name from tabs when it isn't there.
-    nonisolated(unsafe) private static let responsibleProcess: ResponsibleFunction? = {
+    private static let responsibleProcess: ResponsibleFunction? = {
         guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_get_pid_responsible_for_pid") else { return nil }
         return unsafeBitCast(symbol, to: ResponsibleFunction.self)
     }()

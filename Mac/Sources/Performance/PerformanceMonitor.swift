@@ -62,6 +62,9 @@ final class PerformanceMonitor {
     /// Average total CPU over the last 30 seconds.
     private(set) var recentCPU: Double = 0
 
+    /// A tab pretending to be stuck, for trying the panel out (Simulate Stuck Tab).
+    private(set) var simulatedTab: UUID?
+
     var totalCPU: Double { history.last?.cpu ?? 0 }
     var totalMemory: UInt64 { history.last?.memory ?? 0 }
     var isSamplingFast: Bool { viewers > 0 }
@@ -70,6 +73,8 @@ final class PerformanceMonitor {
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var previous: [pid_t: (cpu: UInt64, at: UInt64)] = [:]
     @ObservationIgnored private var busySince: [pid_t: Date] = [:]
+    @ObservationIgnored private var simulationStarted: Date?
+    @ObservationIgnored private var simulationEnd: Task<Void, Never>?
     private var viewers = 0
 
     func start(library: Library) {
@@ -88,6 +93,33 @@ final class PerformanceMonitor {
     }
 
     func tab(_ id: UUID) -> BrowserTab? { library?.controllers[id]?.tab }
+
+    /// Makes a loaded tab look stuck at about 110% CPU for a minute, as if it had been for 4 minutes,
+    /// so the red card, the sidebar dot and Unload Tab can be tried. Picks the most recent tab that
+    /// isn't on screen, so Unload Tab works on it.
+    func simulateStuckTab() {
+        guard let library else { return }
+        let loaded = library.controllers.values.map(\.tab)
+        let offScreen = loaded.filter { library.window(showing: $0) == nil && $0.call == nil }
+        guard let tab = (offScreen.isEmpty ? loaded : offScreen).max(by: { $0.lastActive < $1.lastActive }) else { return }
+        simulatedTab = tab.id
+        simulationStarted = Date().addingTimeInterval(-240)
+        simulationEnd?.cancel()
+        simulationEnd = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(60))
+            guard !Task.isCancelled else { return }
+            self?.endSimulation()
+        }
+        sample()
+    }
+
+    func endSimulation() {
+        simulationEnd?.cancel()
+        simulationEnd = nil
+        simulatedTab = nil
+        simulationStarted = nil
+        sample()
+    }
 
     private func restart() {
         loop?.cancel()
@@ -148,6 +180,19 @@ final class PerformanceMonitor {
         }
         next += shared.values.sorted { $0.id < $1.id }
         previous = readings
+
+        // Simulating: that tab's process reads as flat out since the simulation's pretend start.
+        if let simulated = simulatedTab, let started = simulationStarted {
+            if let i = next.firstIndex(where: { $0.tabIDs.contains(simulated) }) {
+                next[i].cpu = 104 + Double.random(in: 0...12)
+                busySince[next[i].id] = started
+            } else {
+                // Unloaded or closed: nothing left to pretend about.
+                simulatedTab = nil
+                simulationStarted = nil
+                simulationEnd?.cancel()
+            }
+        }
 
         // Stuck: a tab's process above the line for long enough. Calls and helpers are never "stuck".
         var stuck: Set<UUID> = []
