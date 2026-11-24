@@ -339,7 +339,14 @@ struct LibraryView: View {
         }
         .background(Color(nsColor: .textBackgroundColor))
         .onChange(of: browser.libraryRequest, initial: true) {
-            detail = browser.libraryTarget
+            // "add:<id>" comes from ⌘K's Library: ask to add that verified extension, from the list.
+            if let target = browser.libraryTarget, target.hasPrefix("add:"),
+               let v = LibraryCatalog.verified.first(where: { $0.id == String(target.dropFirst(4)) }) {
+                detail = nil
+                fetch(v.storeURL.absoluteString)
+            } else {
+                detail = browser.libraryTarget
+            }
             parentPack = nil
             browser.libraryTarget = nil
         }

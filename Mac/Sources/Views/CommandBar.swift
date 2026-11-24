@@ -160,6 +160,9 @@ final class CommandBarModel {
 
     func highlight(_ i: Int?) { highlighted = i; if i != nil { toolHighlighted = nil } }
 
+    /// Back to nothing picked, as when ⌘K switches between Search and Library.
+    func resetHighlight() { highlighted = nil; toolHighlighted = nil }
+
     /// What Return does with the field's contents.
     func submitAction(fieldText: String) -> SuggestionAction? {
         if let highlighted, rows.indices.contains(highlighted) { return rows[highlighted].action }
@@ -174,28 +177,51 @@ final class CommandBarModel {
     }
 }
 
-/// Cmd-T / Cmd-L / Cmd-K: a floating field over the page.
+/// Cmd-T / Cmd-L / Cmd-K: a Liquid Glass sheet over the page.
 ///
-/// Cmd-T and Cmd-L lead with the web: suggestions, open tabs, then matching commands.
-/// Cmd-K leads with Browsa: a row of tools, then commands, with a web search as the last row.
+/// The frame is glass, tinted and pinned to the app's appearance, so the field and chips read the
+/// same over any page. The results sit on a solid card inside it, so rows never take their colour
+/// from the page behind (why this sheet used to be solid). The card has an even glass gutter on its
+/// sides and bottom, and teaches the keys in its footer.
+///
+/// Cmd-T and Cmd-L lead with the web: favourites as glass chips, then open tabs and suggestions.
+/// Cmd-K has two places, switched from the field or with Tab: Search (tools as chips, then
+/// commands) and Library (everything you can add, with a preview of the one you're on).
 /// Typing ">" as the first character in Cmd-T or Cmd-L switches to Cmd-K.
 struct CommandBar: View {
     @Environment(Browser.self) private var browser
+    @Environment(\.colorScheme) private var scheme
     let mode: CommandBarMode
     @State private var model: CommandBarModel?
     @State private var fieldText = ""
+    /// ⌘K only: Search or Library.
+    @State private var place = CommandPlace.search
+    /// The Library row the arrows are on.
+    @State private var libraryIndex = 0
+    /// Bumped to put the caret back in the field, after a click on the Search / Library switch.
+    @State private var focusRequest = 0
+    /// The sheet settles in from a touch smaller. Only the sheet: the dimming just fades, so its
+    /// edges never visibly grow.
+    @State private var settled = false
+
+    enum CommandPlace: String, CaseIterable {
+        case search = "Search", library = "Library"
+        var symbol: String { self == .search ? "magnifyingglass" : "books.vertical" }
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
             // Click outside to dismiss.
-            Color.black.opacity(0.18)
+            Color.black.opacity(scheme == .dark ? 0.3 : 0.14)
                 .contentShape(.rect)
                 .onTapGesture { close() }
 
-            panel
+            sheet
                 .padding(.top, 96)
                 .padding(.horizontal, 40)
+                .scaleEffect(settled ? 1 : 0.98, anchor: .top)
         }
+        .onAppear { withAnimation(Motion.snappy) { settled = true } }
         .task {
             let m = mode == .commands
                 ? CommandBarModel(engine: browser.suggest, isPrivate: browser.currentSpace.isPrivate,
@@ -209,11 +235,12 @@ struct CommandBar: View {
     /// What ⌘K suggests before you type.
     static let featured = ["panel", "tool:agents:space", "reopen", "new-space", "sidebar", "settings"]
 
+    private var isLibrary: Bool { mode == .commands && place == .library }
+
     private var icon: String {
         switch mode {
-        case .newTab: "plus.magnifyingglass"
-        case .editCurrent: "magnifyingglass"
-        case .commands: "command"
+        case .newTab, .editCurrent: "magnifyingglass"
+        case .commands: isLibrary ? "books.vertical" : "command"
         }
     }
 
@@ -221,64 +248,141 @@ struct CommandBar: View {
         switch mode {
         case .newTab: "Search or enter address"
         case .editCurrent: "Search, enter address, or type a command"
-        case .commands: "Open a tool or run a command"
+        case .commands: isLibrary ? "Search the Library" : "Search tools and commands"
         }
     }
 
-    private var panel: some View {
+    // MARK: Sheet
+
+    /// Light enough to feel like glass, solid enough that the page behind never decides the text colour.
+    private var shellTint: Color {
+        scheme == .dark ? Color(white: 0.16).opacity(0.62) : Color(white: 0.97).opacity(0.6)
+    }
+
+    private var sheet: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 16, weight: .medium))
+            fieldRow
+            if showsChips {
+                chips.padding(.top, -6).padding(.bottom, 4)
+            }
+            if showsCard {
+                card
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 8)
+            }
+        }
+        // The glass would pick light or dark content from the page behind; keep the app's.
+        .environment(\.colorScheme, scheme)
+        .frame(maxWidth: mode == .commands ? 680 : 640)
+        .glassEffect(.regular.tint(shellTint), in: .rect(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(.primary.opacity(scheme == .dark ? 0.12 : 0.08)))
+        .shadow(color: .black.opacity(0.22), radius: 30, y: 14)
+        .animation(Motion.snappy, value: place)
+    }
+
+    private var fieldRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(.secondary)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 20)
+            CommandField(
+                initialText: mode == .editCurrent ? (browser.currentTab?.url?.absoluteString ?? "") : "",
+                placeholder: placeholder,
+                inline: isLibrary ? nil : model?.inline,
+                focusRequest: focusRequest,
+                onChange: { text, inserted in
+                    if mode != .commands, text == ">" { browser.commandBar = .commands; return }
+                    fieldText = text
+                    libraryIndex = 0
+                    model?.textChanged(text, lastEditWasInsertion: inserted)
+                },
+                onMove: { delta in
+                    if isLibrary { moveLibrary(delta) } else { model?.moveHighlight(delta) }
+                },
+                onHorizontal: { isLibrary ? false : (model?.moveToolHighlight($0) ?? false) },
+                onTab: {
+                    // ⌘K: Tab switches between Search and Library. Elsewhere it's left to the field.
+                    guard mode == .commands else { return false }
+                    setPlace(place == .search ? .library : .search, refocus: false)
+                    return true
+                },
+                onSubmit: { text in
+                    if isLibrary { if let item = pickedLibraryItem { primary(item) } } else { submit(text) }
+                },
+                onCancel: { close() })
+                .frame(height: 26)
+            if browser.currentSpace.isPrivate {
+                Label("Private", systemImage: "eye.slash")
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                CommandField(
-                    initialText: mode == .editCurrent ? (browser.currentTab?.url?.absoluteString ?? "") : "",
-                    placeholder: placeholder,
-                    inline: model?.inline,
-                    onChange: { text, inserted in
-                        if mode != .commands, text == ">" { browser.commandBar = .commands; return }
-                        fieldText = text
-                        model?.textChanged(text, lastEditWasInsertion: inserted)
-                    },
-                    onMove: { model?.moveHighlight($0) },
-                    onHorizontal: { model?.moveToolHighlight($0) ?? false },
-                    onSubmit: { text in submit(text) },
-                    onCancel: { close() })
-                    .frame(height: 24)
-                if browser.currentSpace.isPrivate {
-                    Label("Private", systemImage: "eye.slash")
-                        .labelStyle(.titleAndIcon)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            }
+            if mode == .commands {
+                GlassTabs(selection: Binding(get: { place }, set: { setPlace($0, refocus: true) }),
+                          options: CommandPlace.allCases, size: .large, title: { $0.rawValue }, symbol: { $0.symbol })
+            }
+        }
+        .padding(.leading, 20)
+        .padding(.trailing, mode == .commands ? 10 : 20)
+        .frame(height: 60)
+    }
+
+    // MARK: Chips
+
+    private var showsChips: Bool {
+        guard model?.isTyping != true else { return false }
+        switch mode {
+        case .commands: return place == .search
+        case .newTab: return !browser.library.favorites.isEmpty
+        case .editCurrent: return false
+        }
+    }
+
+    @ViewBuilder private var chips: some View {
+        if mode == .commands {
+            ToolChips(highlighted: model?.toolHighlighted) { close() }
+                // Library first, then the panel tools.
+                .onAppear { model?.toolCount = browser.library.workbench.panelTools.count + 1 }
+        } else {
+            // Favourites up top, so they're a keystroke away even in full screen with the sidebar hidden.
+            FavouriteChips(highlighted: model?.toolHighlighted) { close() }
+                .onAppear {
+                    model?.toolCount = browser.library.favorites.count
+                    model?.favouritesInRow = true
                 }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+        }
+    }
 
-            if mode == .commands, model?.isTyping != true {
-                Divider().opacity(0.6)
-                ToolStrip(highlighted: model?.toolHighlighted) { close() }
-                    .onAppear { model?.toolCount = browser.library.workbench.panelTools.count + 1 }
-            } else if mode == .newTab, model?.isTyping != true, !browser.library.favorites.isEmpty {
-                // Favourites across the top, so they're a keystroke away even in full screen with the sidebar hidden.
-                Divider().opacity(0.6)
-                FavouritesStrip(highlighted: model?.toolHighlighted) { close() }
-                    .onAppear {
-                        model?.toolCount = browser.library.favorites.count
-                        model?.favouritesInRow = true
-                    }
-            }
+    // MARK: Card
 
-            if let model, !model.rows.isEmpty {
-                // With nothing picked, the row Return would open shows as selected, like Arc.
-                // The field shows the inline completion too, so Return's target includes it.
-                let target = model.toolHighlighted != nil ? nil : (model.highlighted ?? model.implicitTarget)
-                Divider().opacity(0.6)
-                ScrollViewReader { proxy in
+    private var showsCard: Bool { isLibrary || !(model?.rows.isEmpty ?? true) }
+
+    private var card: some View {
+        VStack(spacing: 0) {
+            if isLibrary {
+                CommandLibraryPane(items: libraryItems, index: $libraryIndex,
+                                   isOn: isOn, primaryTitle: primaryTitle, primary: primary, openInLibrary: openInLibrary)
+            } else {
+                results
+            }
+            footer
+        }
+        .background(PanelFill(), in: .rect(cornerRadius: 15, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).strokeBorder(.primary.opacity(0.08)))
+    }
+
+    @ViewBuilder private var results: some View {
+        if let model, !model.rows.isEmpty {
+            // With nothing picked, the row Return would open shows as selected, like Arc.
+            // The field shows the inline completion too, so Return's target includes it.
+            let target = model.toolHighlighted != nil ? nil : (model.highlighted ?? model.implicitTarget)
+            ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(spacing: 2) {
+                    VStack(spacing: 1) {
                         if !model.isTyping {
-                            sectionLabel(mode == .commands ? "Commands" : model.rows.first?.kind == .favorite ? "Favourites" : "Jump back in")
+                            sectionLabel(mode == .commands ? "Suggested" : model.rows.first?.kind == .favorite ? "Favourites" : "Jump back in")
                         }
                         ForEach(Array(model.rows.enumerated()), id: \.element.id) { i, row in
                             SuggestionRow(suggestion: row, highlighted: target == i,
@@ -292,18 +396,47 @@ struct CommandBar: View {
                 }
                 // The arrow keys keep the picked row in view.
                 .onChange(of: model.highlighted) { _, i in if let i { proxy.scrollTo(i) } }
-                }
-                .scrollIndicators(.never)
-                .frame(maxHeight: 420)
-                .fixedSize(horizontal: false, vertical: true)
             }
+            .scrollIndicators(.never)
+            .frame(maxHeight: 420)
+            .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: 640)
-        // Solid rather than glass: glass picks dark or light text from the page behind it, which made
-        // the rows unreadable in dark mode over a white page.
-        .background(PanelFill(), in: .rect(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.primary.opacity(0.1)))
-        .shadow(color: .black.opacity(0.18), radius: 24, y: 10)
+    }
+
+    /// The keys for what's on screen, inside the card.
+    private var footer: some View {
+        HStack(spacing: 16) {
+            ForEach(hints, id: \.self) { hint in
+                HStack(spacing: 6) {
+                    KeyCap(hint.key)
+                    Text(hint.label)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: 11.5))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 14)
+        .frame(height: 34)
+        .overlay(alignment: .top) { Divider().opacity(0.6) }
+    }
+
+    private struct KeyHint: Hashable {
+        let key: String
+        let label: String
+        init(_ key: String, _ label: String) { self.key = key; self.label = label }
+    }
+
+    private var hints: [KeyHint] {
+        if isLibrary {
+            return [KeyHint("↵", pickedLibraryItem.map(primaryTitle) ?? "Add"), KeyHint("⇥", "Search"), KeyHint("esc", "Close")]
+        }
+        switch mode {
+        case .commands: return [KeyHint("↵", "Run"), KeyHint("⇥", "Library"), KeyHint("esc", "Close")]
+        case .newTab, .editCurrent:
+            let third = model?.inline != nil ? KeyHint("⇥", "Complete") : KeyHint(">", "Commands")
+            return [KeyHint("↵", "Open"), third, KeyHint("esc", "Close")]
+        }
     }
 
     private func commandSymbol(_ row: Suggestion) -> String? {
@@ -325,7 +458,70 @@ struct CommandBar: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10)
             .padding(.top, 4)
+            .padding(.bottom, 2)
     }
+
+    // MARK: Search / Library
+
+    private func setPlace(_ new: CommandPlace, refocus: Bool) {
+        guard new != place else { return }
+        place = new
+        libraryIndex = 0
+        model?.resetHighlight()
+        if refocus { focusRequest += 1 }
+    }
+
+    private var libraryItems: [CommandLibraryItem] {
+        CommandLibraryItem.all(matching: fieldText)
+    }
+
+    private var pickedLibraryItem: CommandLibraryItem? {
+        let items = libraryItems
+        return items.isEmpty ? nil : items[min(libraryIndex, items.count - 1)]
+    }
+
+    private func moveLibrary(_ delta: Int) {
+        let count = libraryItems.count
+        guard count > 0 else { return }
+        libraryIndex = max(0, min(count - 1, libraryIndex + delta))
+    }
+
+    private func isOn(_ item: CommandLibraryItem) -> Bool {
+        switch item.kind {
+        case .pack: LibraryCatalog.pack(item.id).map { LibraryActions.isPackOn($0, in: browser) } ?? false
+        case .plugin: LibraryActions.isOn(item.id, in: browser)
+        case .verified: browser.library.extensionCatalog.items.contains { $0.source.key.lowercased().contains(item.id.lowercased()) }
+        }
+    }
+
+    private func primaryTitle(_ item: CommandLibraryItem) -> String {
+        switch item.kind {
+        case .pack, .plugin: isOn(item) ? "Turn Off" : "Add"
+        case .verified: isOn(item) ? "Show in Library" : "Add"
+        }
+    }
+
+    /// Return, or the preview's main button: packs and tools switch on and off right here; an
+    /// extension goes to the Library, which asks before adding it.
+    private func primary(_ item: CommandLibraryItem) {
+        let on = isOn(item)
+        switch item.kind {
+        case .pack:
+            if let pack = LibraryCatalog.pack(item.id) { LibraryActions.togglePack(pack, on: !on, in: browser) }
+        case .plugin:
+            LibraryActions.set(item.id, on: !on, in: browser)
+        case .verified:
+            close()
+            browser.openLibrary(on ? nil : "add:" + item.id)
+        }
+    }
+
+    private func openInLibrary(_ item: CommandLibraryItem) {
+        close()
+        browser.openLibrary(item.kind == .verified ? nil : item.id)
+    }
+
+    // MARK: Actions
 
     private func submit(_ text: String) {
         if let t = model?.toolHighlighted, mode == .newTab {
@@ -335,9 +531,10 @@ struct CommandBar: View {
             return
         }
         if let t = model?.toolHighlighted {
-            close()
             let tools = browser.library.workbench.panelTools
-            if tools.indices.contains(t) { browser.showPanel(tools[t].id) } else { browser.openLibrary() }
+            close()
+            if t == 0 { browser.openLibrary(nil) }
+            else if tools.indices.contains(t - 1) { browser.showPanel(tools[t - 1].id) }
             return
         }
         if let action = model?.submitAction(fieldText: text) {
@@ -358,7 +555,30 @@ struct CommandBar: View {
     }
 }
 
+/// The grey behind the row the arrows are on. A fixed grey rather than a vibrant primary tint,
+/// which all but disappeared on the card inside the glass.
+enum RowHighlight {
+    static func color(_ scheme: ColorScheme) -> Color { scheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.085) }
+}
+
+/// A key, drawn as a small cap.
+private struct KeyCap: View {
+    let key: String
+    init(_ key: String) { self.key = key }
+
+    var body: some View {
+        Text(key)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .frame(minWidth: 18)
+            .background(.primary.opacity(0.07), in: .rect(cornerRadius: 5, style: .continuous))
+    }
+}
+
 private struct SuggestionRow: View {
+    @Environment(\.colorScheme) private var scheme
     let suggestion: Suggestion
     let highlighted: Bool
     let inSearch: Bool
@@ -383,16 +603,16 @@ private struct SuggestionRow: View {
                     .background(.primary.opacity(0.06), in: .capsule)
             }
             if let hint {
-                Text(hint).font(.system(size: 12)).foregroundStyle(.secondary)
+                KeyCap(hint)
             }
             if highlighted {
-                Image(systemName: "return").font(.caption).foregroundStyle(.secondary)
+                KeyCap("↵")
             }
         }
         .font(.system(size: 13))
         .padding(.horizontal, 10)
         .frame(height: suggestion.subtitle == nil ? 34 : 42)
-        .background(highlighted ? AnyShapeStyle(.primary.opacity(0.08)) : AnyShapeStyle(.clear),
+        .background(highlighted ? RowHighlight.color(scheme) : .clear,
                     in: .rect(cornerRadius: 9, style: .continuous))
         .contentShape(.rect)
     }
@@ -419,105 +639,333 @@ private struct SuggestionRow: View {
     }
 }
 
-// MARK: - Tools
+// MARK: - Chips
 
-/// ⌘K's top row: every panel tool, one click to open it beside the page.
-private struct ToolStrip: View {
-    @Environment(Browser.self) private var browser
-    /// The item the arrow keys are on (the last index is Get More).
+/// A row of glass capsules under the field: ⌘K's tools, ⌘T's favourites. Scrolls sideways when
+/// there are more than fit, keeping the one the arrows are on in view.
+private struct ChipRow<Content: View>: View {
     var highlighted: Int?
-    let done: () -> Void
+    let content: Content
 
-    var body: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                ForEach(Array(browser.library.workbench.panelTools.enumerated()), id: \.element.id) { i, tool in
-                    Button {
-                        done()
-                        browser.showPanel(tool.id)
-                    } label: {
-                        VStack(spacing: 6) {
-                            Image(systemName: tool.symbol)
-                                .font(.system(size: 17, weight: .medium))
-                                .frame(width: 40, height: 40)
-                                .background(.primary.opacity(browser.panel == tool.id ? 0.12 : 0.06), in: .rect(cornerRadius: 10, style: .continuous))
-                            Text(tool.title).font(.caption).lineLimit(1)
-                        }
-                        .frame(width: 72)
-                        .padding(.vertical, 4)
-                        .background(highlighted == i ? AnyShapeStyle(.primary.opacity(0.08)) : AnyShapeStyle(.clear),
-                                    in: .rect(cornerRadius: 10, style: .continuous))
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .help(tool.summary)
-                    .id(i)
-                }
-                Button {
-                    done()
-                    browser.openLibrary()
-                } label: {
-                    VStack(spacing: 6) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 15, weight: .medium))
-                            .frame(width: 40, height: 40)
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.primary.opacity(0.15), style: .init(lineWidth: 1, dash: [3])))
-                        Text("Get More").font(.caption).foregroundStyle(.secondary)
-                    }
-                    .frame(width: 72)
-                    .padding(.vertical, 4)
-                    .background(highlighted == browser.library.workbench.panelTools.count ? AnyShapeStyle(.primary.opacity(0.08)) : AnyShapeStyle(.clear),
-                                in: .rect(cornerRadius: 10, style: .continuous))
-                    .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .help("Find tools and extensions in the Library")
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-        }
-        .scrollIndicators(.never)
+    init(highlighted: Int?, @ViewBuilder content: () -> Content) {
+        self.highlighted = highlighted
+        self.content = content()
     }
-}
-
-/// ⌘T's top row: your favourites, one click (or arrows and Return) to open one.
-private struct FavouritesStrip: View {
-    @Environment(Browser.self) private var browser
-    /// The favourite the arrow keys are on.
-    var highlighted: Int?
-    let done: () -> Void
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    ForEach(Array(browser.library.sortedFavorites.enumerated()), id: \.element.id) { i, favorite in
-                        Button {
-                            done()
-                            browser.open(favorite)
-                        } label: {
-                            VStack(spacing: 6) {
-                                FaviconView(url: favorite.url, size: 22, chip: true, letter: favorite.customName ?? favorite.title)
-                                    .frame(width: 40, height: 40)
-                                    .background(.primary.opacity(0.06), in: .rect(cornerRadius: 10, style: .continuous))
-                                Text(favorite.displayName).font(.caption).lineLimit(1)
-                            }
-                            .frame(width: 72)
-                            .padding(.vertical, 4)
-                            .background(highlighted == i ? AnyShapeStyle(.primary.opacity(0.08)) : AnyShapeStyle(.clear),
-                                        in: .rect(cornerRadius: 10, style: .continuous))
-                            .contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
-                        .help(favorite.displayName)
-                        .id(i)
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 10)
+                // No glass container: it merged neighbouring chips' glass and drew a second outline
+                // around a raised one. Room above and below so the lift's shadow isn't cut off.
+                HStack(spacing: 8) { content }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
             }
             .scrollIndicators(.never)
+            .scrollClipDisabled()
             .onChange(of: highlighted) { _, i in if let i { withAnimation(Motion.snappy) { proxy.scrollTo(i) } } }
+        }
+    }
+}
+
+/// One capsule: an icon in a small circle, then a name. Glass at rest; under the pointer or the
+/// arrow keys it turns solid white (black in dark mode) and lifts off the sheet.
+private struct GlassChip<Icon: View>: View {
+    let title: String
+    var highlighted = false
+    let icon: Icon
+    let action: () -> Void
+    @Environment(\.colorScheme) private var scheme
+    @State private var hovering = false
+
+    private var raised: Bool { highlighted || hovering }
+
+    init(title: String, highlighted: Bool, @ViewBuilder icon: () -> Icon, action: @escaping () -> Void) {
+        self.title = title
+        self.highlighted = highlighted
+        self.icon = icon()
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                icon.frame(width: 22, height: 22)
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+            }
+            .padding(.leading, 6)
+            .padding(.trailing, 13)
+            .frame(height: 34)
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        // One shape per chip. Glass here sat on the sheet's own glass and, with an outline on top,
+        // read as a box in a box. At rest a soft sunken fill; raised, solid with a shadow.
+        .background {
+            if raised {
+                Capsule()
+                    .fill(RaisedFill.color(scheme))
+                    .shadow(color: .black.opacity(scheme == .dark ? 0.32 : 0.1), radius: 4, y: 1)
+            } else {
+                Capsule().fill(Color.primary.opacity(scheme == .dark ? 0.08 : 0.05))
+            }
+        }
+        .animation(Motion.quick, value: raised)
+        .onHover { hovering = $0 }
+    }
+}
+
+/// ⌘K's chips: the Library first, then every panel tool, one click to open it beside the page.
+private struct ToolChips: View {
+    @Environment(Browser.self) private var browser
+    var highlighted: Int?
+    let done: () -> Void
+
+    var body: some View {
+        ChipRow(highlighted: highlighted) {
+            // First: a quick way into the Library.
+            GlassChip(title: "Library", highlighted: highlighted == 0) {
+                Image(systemName: "books.vertical.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 22, height: 22)
+                    .background(Color.accentColor.opacity(0.2), in: .circle)
+            } action: {
+                done()
+                browser.openLibrary(nil)
+            }
+            .help("Open the Library")
+            .id(0)
+            ForEach(Array(browser.library.workbench.panelTools.enumerated()), id: \.element.id) { n, tool in
+                let i = n + 1
+                let tint = LibraryCatalog.plugin(tool.id)?.tint ?? .secondary
+                GlassChip(title: tool.title, highlighted: highlighted == i) {
+                    Image(systemName: tool.symbol)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(tint)
+                        .frame(width: 22, height: 22)
+                        .background(tint.opacity(0.2), in: .circle)
+                } action: {
+                    done()
+                    browser.showPanel(tool.id)
+                }
+                .help(tool.summary)
+                .id(i)
+            }
+        }
+    }
+}
+
+/// ⌘T's chips: your favourites, one click (or arrows and Return) to open one.
+private struct FavouriteChips: View {
+    @Environment(Browser.self) private var browser
+    var highlighted: Int?
+    let done: () -> Void
+
+    var body: some View {
+        ChipRow(highlighted: highlighted) {
+            ForEach(Array(browser.library.sortedFavorites.enumerated()), id: \.element.id) { i, favorite in
+                GlassChip(title: favorite.displayName, highlighted: highlighted == i) {
+                    FaviconView(url: favorite.url, size: 18, chip: true, letter: favorite.customName ?? favorite.title)
+                } action: {
+                    done()
+                    browser.open(favorite)
+                }
+                .help(favorite.displayName)
+                .id(i)
+            }
+        }
+    }
+}
+
+// MARK: - Library
+
+/// One thing ⌘K's Library can show: a pack, a Browsa tool, or a verified extension.
+struct CommandLibraryItem: Identifiable {
+    enum Kind { case pack, plugin, verified }
+
+    let id: String
+    let kind: Kind
+    let title: String
+    let blurb: String
+    let about: String
+    let symbol: String
+    let tint: Color
+    var icon: NSImage?
+
+    var section: String {
+        switch kind {
+        case .pack: "Packs"
+        case .plugin: "Tools"
+        case .verified: "Extensions"
+        }
+    }
+
+    var kindLabel: String {
+        switch kind {
+        case .pack: "Pack"
+        case .plugin: "Tool"
+        case .verified: "Verified extension"
+        }
+    }
+
+    /// Packs, then tools, then verified extensions, matching what's typed.
+    @MainActor static func all(matching query: String) -> [CommandLibraryItem] {
+        let packs = LibraryCatalog.packs.map {
+            CommandLibraryItem(id: $0.id, kind: .pack, title: $0.title, blurb: $0.blurb, about: $0.about,
+                               symbol: $0.id == LibraryCatalog.agentPack.id ? AgentIdentity.symbol : "hand.raised.fill",
+                               tint: $0.id == LibraryCatalog.agentPack.id ? .orange : .blue)
+        }
+        let tools = LibraryCatalog.toolPlugins.map {
+            CommandLibraryItem(id: $0.id, kind: .plugin, title: $0.title, blurb: $0.blurb, about: $0.about,
+                               symbol: $0.symbol, tint: $0.tint)
+        }
+        let extensions = LibraryCatalog.verified.map {
+            CommandLibraryItem(id: $0.id, kind: .verified, title: $0.name, blurb: $0.blurb, about: "",
+                               symbol: "puzzlepiece.extension.fill", tint: $0.color, icon: $0.icon)
+        }
+        let q = query.trimmingCharacters(in: .whitespaces)
+        let everything = packs + tools + extensions
+        guard !q.isEmpty else { return everything }
+        return everything.filter { $0.title.localizedCaseInsensitiveContains(q) || $0.blurb.localizedCaseInsensitiveContains(q) }
+    }
+}
+
+/// ⌘K's Library place: the list on the left, a preview of the picked one on the right.
+private struct CommandLibraryPane: View {
+    @Environment(\.colorScheme) private var scheme
+    let items: [CommandLibraryItem]
+    @Binding var index: Int
+    let isOn: (CommandLibraryItem) -> Bool
+    let primaryTitle: (CommandLibraryItem) -> String
+    let primary: (CommandLibraryItem) -> Void
+    let openInLibrary: (CommandLibraryItem) -> Void
+
+    var body: some View {
+        if items.isEmpty {
+            Text("Nothing in the Library matches.")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 140)
+        } else {
+            let picked = items[min(index, items.count - 1)]
+            HStack(spacing: 0) {
+                list
+                    .frame(width: 290)
+                Divider().opacity(0.6)
+                preview(picked)
+            }
+            .frame(height: 380)
+        }
+    }
+
+    private var list: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 1) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
+                        if i == 0 || items[i - 1].section != item.section {
+                            Text(item.section)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 10)
+                                .padding(.top, i == 0 ? 4 : 10)
+                                .padding(.bottom, 3)
+                        }
+                        row(item, highlighted: i == min(index, items.count - 1))
+                            .id(item.id)
+                            .onTapGesture { index = i }
+                            .onHover { if $0 { index = i } }
+                    }
+                }
+                .padding(6)
+            }
+            .scrollIndicators(.never)
+            .onChange(of: index) { _, i in if items.indices.contains(i) { proxy.scrollTo(items[i].id) } }
+        }
+    }
+
+    private func row(_ item: CommandLibraryItem, highlighted: Bool) -> some View {
+        HStack(spacing: 10) {
+            ItemIcon(item: item, size: 24)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                Text(isOn(item) ? "\(item.kindLabel) · Added" : item.kindLabel)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 40)
+        // Grey, like every other list in the sheet.
+        .background(highlighted ? RowHighlight.color(scheme) : .clear,
+                    in: .rect(cornerRadius: 10, style: .continuous))
+        .contentShape(.rect)
+    }
+
+    private func preview(_ item: CommandLibraryItem) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Group {
+                if LibraryArt.has(item.id) {
+                    LibraryArtView(id: item.id)
+                } else {
+                    ZStack {
+                        item.tint.opacity(0.18)
+                        ItemIcon(item: item, size: 56)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 150)
+            .clipShape(.rect(cornerRadius: 12, style: .continuous))
+            .id(item.id)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.title).font(.system(size: 15, weight: .semibold))
+                Text(isOn(item) ? "\(item.kindLabel) · Added" : item.kindLabel)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            Text(item.about.isEmpty ? item.blurb : item.about)
+                .font(.system(size: 12.5))
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            HStack(spacing: 8) {
+                Button(primaryTitle(item)) { primary(item) }
+                    .buttonStyle(.glassProminent)
+                Button("Open in Library") { openInLibrary(item) }
+                    .buttonStyle(.glass)
+            }
+            .buttonBorderShape(.capsule)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+/// A Library item's icon: an extension's store icon, or the symbol on its tint.
+private struct ItemIcon: View {
+    let item: CommandLibraryItem
+    let size: CGFloat
+
+    var body: some View {
+        if let icon = item.icon {
+            Image(nsImage: icon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+                .clipShape(.rect(cornerRadius: size * 0.25, style: .continuous))
+        } else {
+            Image(systemName: item.symbol)
+                .font(.system(size: size * 0.5, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: size, height: size)
+                .background(item.tint, in: .rect(cornerRadius: size * 0.28, style: .continuous))
         }
     }
 }
@@ -530,10 +978,14 @@ struct CommandField: NSViewRepresentable {
     let initialText: String
     let placeholder: String
     let inline: InlineCompletion?
+    /// Bump it to put the caret back in the field, at the end (after a click elsewhere in the sheet).
+    var focusRequest = 0
     let onChange: (String, Bool) -> Void
     let onMove: (Int) -> Void
     /// ← and →: true when handled (⌘K's tool row), false to leave them to the field.
     var onHorizontal: (Int) -> Bool = { _ in false }
+    /// Tab: true when handled (⌘K switching Search and Library). Otherwise Tab accepts the inline completion.
+    var onTab: () -> Bool = { false }
     let onSubmit: (String) -> Void
     let onCancel: () -> Void
 
@@ -544,7 +996,7 @@ struct CommandField: NSViewRepresentable {
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 17)
+        field.font = .systemFont(ofSize: 19)
         field.placeholderString = placeholder
         field.stringValue = initialText
         field.lineBreakMode = .byTruncatingTail
@@ -552,12 +1004,21 @@ struct CommandField: NSViewRepresentable {
         field.delegate = context.coordinator
         context.coordinator.parent = self
         context.coordinator.typed = initialText
+        context.coordinator.focusRequest = focusRequest
         return field
     }
 
     func updateNSView(_ field: FocusingField, context: Context) {
         context.coordinator.parent = self
+        // ⌘K's Search and Library each have their own placeholder.
+        if field.placeholderString != placeholder { field.placeholderString = placeholder }
         context.coordinator.applyInline(inline, to: field)
+        if context.coordinator.focusRequest != focusRequest {
+            context.coordinator.focusRequest = focusRequest
+            field.window?.makeFirstResponder(field)
+            let end = (field.stringValue as NSString).length
+            field.currentEditor()?.selectedRange = NSRange(location: end, length: 0)
+        }
     }
 
     final class FocusingField: NSTextField {
@@ -575,6 +1036,7 @@ struct CommandField: NSViewRepresentable {
         var parent: CommandField?
         /// What the user typed, without the completion.
         var typed = ""
+        var focusRequest = 0
         private var lastInline: InlineCompletion?
 
         func controlTextDidChange(_ obj: Notification) {
@@ -605,6 +1067,7 @@ struct CommandField: NSViewRepresentable {
             case #selector(NSResponder.insertNewline(_:)): parent?.onSubmit(textView.string); return true
             case #selector(NSResponder.cancelOperation(_:)): parent?.onCancel(); return true
             case #selector(NSResponder.insertTab(_:)):
+                if parent?.onTab() == true { return true }
                 // Tab accepts the inline completion.
                 if textView.selectedRange().length > 0 {
                     textView.setSelectedRange(NSRange(location: (textView.string as NSString).length, length: 0))
