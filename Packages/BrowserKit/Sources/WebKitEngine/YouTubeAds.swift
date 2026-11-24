@@ -28,8 +28,11 @@ import WebKit
 //   so the player never schedules an ad. Answers of any other shape pass through untouched, so a change at
 //   YouTube leaves videos playing, with ads, rather than broken. It also answers YouTube's ad-blocker probes
 //   (ad id, ad reports, which the filter rules block anyway) with an empty 200 so nothing fails, keeps the
-//   "ad blockers violate" wall from replacing a playable answer, and restarts the first watch-page video
-//   once if YouTube holds it at 0:00 for the pre-roll that was taken out.
+//   "ad blockers violate" wall from replacing a playable answer, and restarts a watch-page video once if
+//   YouTube holds it at 0:00 for the pre-roll that was taken out. The restart runs on the first page and
+//   on every in-page navigation (yt-navigate-finish): the player streams over SABR, whose first answer
+//   carries a server backoff the length of the cut ad, and asking the player for the video again starts a
+//   stream without it. Playlists are left alone, since the player would drop the playlist.
 // - In Browsa's own world (pages can't see it): if an ad plays anyway, it is muted and played at 16x while
 //   the player says `ad-showing`, then sound and speed are put back. It never seeks.
 //
@@ -76,6 +79,8 @@ enum YouTubeAds {
               define = Object.defineProperty, isArray = Array.isArray;
           var ads = ['adPlacements', 'adSlots', 'playerAds', 'adBreakHeartbeatParams'];
           var marks = ['responseContext', 'playabilityStatus', 'streamingData', 'videoDetails'];
+          // Videos whose ad schedule was taken out, by id.
+          var cutIds = Object.create(null);
           function plain(o) { return o !== null && typeof o === 'object' && !isArray(o); }
           function youtubes(o) {
             for (var i = 0; i < marks.length; i++) if (apply(owns, o, [marks[i]])) return true;
@@ -86,6 +91,7 @@ enum YouTubeAds {
             if (!plain(o) || !youtubes(o)) return false;
             var cut = false;
             for (var i = 0; i < ads.length; i++) if (apply(owns, o, [ads[i]])) { delete o[ads[i]]; cut = true; }
+            if (cut && plain(o.videoDetails) && typeof o.videoDetails.videoId === 'string') cutIds[o.videoDetails.videoId] = true;
             return cut;
           }
           // The wall, written over an answer that said OK: the answer keeps
@@ -198,7 +204,6 @@ enum YouTubeAds {
           } catch (e) {}
           // The first page's data is a script's `var ytInitial… = {…}`: a
           // setter already there is what that assignment goes through.
-          var cutFirst = false;
           ['ytInitialPlayerResponse', 'ytInitialData'].forEach(function (name) {
             try {
               if (apply(owns, window, [name])) return;
@@ -207,7 +212,7 @@ enum YouTubeAds {
                 get: function () { return held; },
                 set: function (value) {
                   if (name === 'ytInitialPlayerResponse') {
-                    try { if (strip(value)) cutFirst = true; } catch (e) {}
+                    try { strip(value); } catch (e) {}
                   }
                   held = prune(value);
                 },
@@ -215,36 +220,44 @@ enum YouTubeAds {
               });
             } catch (e) {}
           });
-          // The first video, held at 0:00 for its missing pre-roll, started
-          // again by the player itself: once, and only that video.
+          // A video whose pre-roll was taken out is held at 0:00 for the ad's
+          // length anyway: YouTube's stream server waits it out. Asking the
+          // player for the video again starts a stream without the wait. Once
+          // per page or in-page navigation, only for a video whose ads were
+          // cut, and not in playlists (the player would drop the playlist).
           function seconds(t) {
             if (!t) return 0;
             if (/^\\d+$/.test(t)) return +t;
             var m = /^(?:(\\d+)h)?(?:(\\d+)m)?(?:(\\d+)s)?$/.exec(t);
             return m ? (+(m[1] || 0)) * 3600 + (+(m[2] || 0)) * 60 + (+(m[3] || 0)) : 0;
           }
+          function restart() {
+            try {
+              if (location.pathname !== '/watch' || location.hostname.indexOf('music.') === 0) return;
+              var query = new URLSearchParams(location.search), id = query.get('v');
+              if (!id || query.get('list') || !cutIds[id]) return;
+              delete cutIds[id];
+              var at = seconds(query.get('t') || query.get('start')), href = location.href;
+              var until = Date.now() + 10000;
+              (function look() {
+                if (location.href !== href || Date.now() > until) return;
+                var player = document.getElementById('movie_player'), data = null;
+                try { data = player && typeof player.getVideoData === 'function' ? player.getVideoData() : null; } catch (e) {}
+                // After an in-page navigation the player can still hold the last video.
+                if (player && typeof player.loadVideoById === 'function' && (!data || data.video_id === id)) {
+                  // Already playing: nothing held.
+                  var video = player.querySelector('video');
+                  if (video && !video.paused && video.currentTime > 0) return;
+                  try { player.loadVideoById(id, at); } catch (e) {}
+                  return;
+                }
+                setTimeout(look, 100);
+              })();
+            } catch (e) {}
+          }
           try {
-            document.addEventListener('DOMContentLoaded', function () {
-              try {
-                if (!cutFirst || location.pathname !== '/watch' || location.hostname.indexOf('music.') === 0) return;
-                var query = new URLSearchParams(location.search), id = query.get('v');
-                if (!id || query.get('list')) return;
-                var at = seconds(query.get('t') || query.get('start')), href = location.href;
-                var until = Date.now() + 10000;
-                (function look() {
-                  if (location.href !== href || Date.now() > until) return;
-                  var player = document.getElementById('movie_player');
-                  if (player && typeof player.loadVideoById === 'function') {
-                    // Already playing: nothing held.
-                    var video = player.querySelector('video');
-                    if (video && !video.paused && video.currentTime > 0) return;
-                    try { player.loadVideoById(id, at); } catch (e) {}
-                    return;
-                  }
-                  setTimeout(look, 100);
-                })();
-              } catch (e) {}
-            }, { once: true });
+            document.addEventListener('DOMContentLoaded', restart, { once: true });
+            document.addEventListener('yt-navigate-finish', restart);
           } catch (e) {}
         })();
         """
