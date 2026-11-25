@@ -1,0 +1,22 @@
+# Browsa
+
+> A free, open source (MIT) web browser for Mac, written in Swift on WebKit, with Arc's way of working: a sidebar,
+> Spaces, Favourites, pinned tabs, Split View, Glance, Boosts and Arc's keyboard shortcuts. Current release: 1.3
+> (25 November 2026), for macOS 26 or later.
+
+For a feature-by-feature account of the released Mac app, with the version each feature arrived in and the source
+files, tests and clips that show it, read the feature list first. It says No where the answer is no.
+
+## Start here
+
+- [Feature list with evidence](https://github.com/jmaorr/Browsa/blob/main/docs/features.md): every feature, the version it arrived in, where to check it
+- [DRM streaming](https://github.com/jmaorr/Browsa/blob/main/docs/drm.md): FairPlay on Browsa's own WebKit build, the check and its result; Netflix, Disney+, Apple TV+ and BritBox played in 1.3
+- [Extensions tested](https://github.com/jmaorr/Browsa/blob/main/docs/web-extensions.md): which Chrome extensions work and which don't
+- [What's New](https://browsa.app/whats-new/): each release's features, with a short clip of each
+- [Release notes](https://github.com/jmaorr/Browsa/tree/main/docs/release-notes/mac)
+
+## Facts
+
+- [Download](https://browsa.app/download/) and [update feed](https://browsa.app/mac/appcast.xml)
+- [Privacy](https://browsa.app/privacy/): no account, analytics or sync
+- [Source](https://github.com/jmaorr/Browsa)

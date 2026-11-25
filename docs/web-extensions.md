@@ -65,7 +65,19 @@ which Browsa can't connect it to.
    websites still see Browsa's. The compat script is also loaded into the extension's own HTML pages
    (popup, options), which use the same missing APIs.
 
-## Compatibility (2026-11-09)
+## Compatibility
+
+### In the released app (1.3, November 2026)
+
+Tried by hand by the maker in Browsa 1.3, signed in. This is the current state; the two passes below are the
+history, and where they disagree with this table, this table is right.
+
+| Extension | Result | Status |
+|---|---|---|
+| Grammarly | Signs in and checks writing in text fields. It didn't work before 1.3 (see the passes below). | ✅ Works |
+| 1Password | Signs in, fills, and can unlock with the 1Password app | ✅ Works |
+
+### First pass (2026-11-09)
 
 Installed from the Chrome Web Store through Browsa's own add flow and checked with the debug harness
 (`BROWSA_EXT_COMPAT_CHECK`, see `Mac/Sources/Support/ExtensionCompatCheck.swift`). Nobody was signed in.
@@ -75,7 +87,7 @@ Installed from the Chrome Web Store through Browsa's own add flow and checked wi
 | 1Password | 8.12.44.33 | ✅ | ✅ | Sign-in, sync, fill, passkeys (tested signed in) | ✅ Works |
 | LastPass | 4.157.0 | ✅ | ✅ log-in screen | Its field icons appear on login pages | ✅ Ready for sign-in |
 | Dashlane | 6.2645.0 | ✅ | ✅ log-in screen | Marks login forms (`data-dashlane-rid`) | ✅ Ready for sign-in |
-| Grammarly | 14.1345.0 | ✅ | ✅ sign-up screen | Attaches to text areas (`grammarly-extension`) | ❌ Not supported (see 2026-11-11) |
+| Grammarly | 14.1345.0 | ✅ | ✅ sign-up screen | Attaches to text areas (`grammarly-extension`) | ❌ then; ✅ works since 1.3 (table above) |
 | uBlock Origin Lite | 2026.1103 | ✅ | ✅ | Blocks ad and tracker scripts (googlesyndication, google-analytics) | ✅ Works |
 | Dark Reader | 4.9.135 | ✅ | ✅ | Pages go dark | ✅ Works |
 | Paper Snapshot | 0.4.13 | ✅ | button, no popup | The button starts its element picker ("click to start") | ✅ Works; pasting into Paper not tried |

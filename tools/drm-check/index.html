@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Browsa DRM check</title>
+<style>body{font:14px/1.5 -apple-system,sans-serif;max-width:720px;margin:40px auto;padding:0 16px}pre{background:#8881;padding:12px;border-radius:8px;overflow:auto}</style>
+<h1>DRM check</h1>
+<p>Asks this browser's engine which DRM systems it offers to web pages (Encrypted Media Extensions). It plays nothing
+and needs no account. See <code>docs/drm.md</code>.</p>
+<pre id="out">running…</pre>
+<script>
+// window.drmCheck() returns the result; the page also prints it.
+window.drmCheck = async function () {
+  const video = [{ contentType: 'video/mp4; codecs="avc1.42E01E"' }, { contentType: 'video/mp4; codecs="hvc1.1.6.L93.B0"' }];
+  const audio = [{ contentType: 'audio/mp4; codecs="mp4a.40.2"' }];
+  const systems = {
+    'com.apple.fps': ['sinf', 'skd', 'cenc'],          // FairPlay Streaming (what Apple TV+, Disney+, Netflix use in Safari)
+    'com.apple.fps.1_0': ['sinf', 'skd', 'cenc'],
+    'com.widevine.alpha': ['cenc'],                     // Chromium's; not expected on WebKit
+    'com.microsoft.playready': ['cenc'],                // Edge's; not expected on WebKit
+    'org.w3.clearkey': ['cenc', 'keyids'],
+  };
+  const result = { userAgent: navigator.userAgent, secureContext: isSecureContext, when: new Date().toISOString(), systems: {} };
+  for (const [name, initDataTypes] of Object.entries(systems)) {
+    const entry = { offered: false };
+    try {
+      const access = await navigator.requestMediaKeySystemAccess(name, [{ initDataTypes, videoCapabilities: video, audioCapabilities: audio }]);
+      const config = access.getConfiguration();
+      entry.offered = true;
+      entry.initDataTypes = config.initDataTypes;
+      entry.video = (config.videoCapabilities || []).map(c => c.contentType);
+      entry.audio = (config.audioCapabilities || []).map(c => c.contentType);
+      try { const keys = await access.createMediaKeys(); entry.mediaKeysCreated = !!keys; } catch (e) { entry.mediaKeysCreated = false; entry.mediaKeysError = String(e); }
+    } catch (e) { entry.error = e.name; }
+    result.systems[name] = entry;
+  }
+  result.legacyWebKitMediaKeys = typeof WebKitMediaKeys === 'function'
+    ? WebKitMediaKeys.isTypeSupported('com.apple.fps.1_0', 'video/mp4') : null;
+  result.hevcDecode = document.createElement('video').canPlayType('video/mp4; codecs="hvc1.1.6.L93.B0"');
+  return result;
+};
+drmCheck().then(r => { document.getElementById('out').textContent = JSON.stringify(r, null, 2); });
+</script>
