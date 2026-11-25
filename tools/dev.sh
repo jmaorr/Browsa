@@ -90,13 +90,18 @@ build() {  # build <source dir> <derived data dir> <note>; prints the built app'
   xcodebuild -project "$src/Browsa.xcodeproj" -scheme BrowsaMac -configuration Debug \
     -destination 'platform=macOS' -derivedDataPath "$dd" -allowProvisioningUpdates -quiet build \
     "BROWSA_BUILD_NOTE=$note" > "$dd.log" 2>&1 || { grep -E "error:|\*\* BUILD FAILED" "$dd.log" | head -20 >&2; echo "   full log: $dd.log" >&2; return 1; }
-  built="$dd/Build/Products/Debug/Browsa Dev.app"
-  [[ -d "$built" ]] || built="$(print -l "$dd"/Build/Products/Debug/*.app(N) | head -1)"
+  built="$dd/Build/Products/Debug/Browsa.app"
   [[ -d "$built" && "$(defaults read "$built/Contents/Info.plist" CFBundleIdentifier)" == "$bundle_id" ]] \
     || { echo "the build didn't give an app with the ID $bundle_id" >&2; return 1; }
-  # Xcode registers what it builds. Only the installed copy should be known to macOS.
-  "$lsregister" -u "$built" >/dev/null 2>&1
+  forget_built "$dd"
   return 0
+}
+
+# Xcode registers what it builds (the app and the helper apps inside it). Only the installed copy should be
+# known to macOS, so every app under a build folder is unregistered.
+forget_built() {
+  local a
+  for a in "$1"/Build/Products/*/*.app(N) "$1"/Build/Products/*/*.app/Contents/**/*.app(N); do "$lsregister" -u "$a" >/dev/null 2>&1; done
 }
 
 running() { [[ "$(osascript -e "application id \"$bundle_id\" is running" 2>/dev/null)" == true ]]; }
@@ -113,6 +118,7 @@ install() {  # install <launch: auto|yes|no>
   echo "==> Installing $app"
   mkdir -p "$app"
   rsync -a --delete "$built/" "$app/" || die "couldn't copy the build to $app"
+  forget_built "$home/build"
   "$lsregister" -f "$app" >/dev/null 2>&1
   { echo "built $(date '+%Y-%m-%d %H:%M') from main $base"; (( ${#merged} )) && print -l -- "+ "${^merged}; } > "$manifest"
   if [[ "$launch" == yes || ( "$launch" == auto && $was_running == 1 ) ]]; then open "$app"; echo "==> Browsa Dev reopened"
@@ -185,7 +191,7 @@ case "$cmd" in
     set_without "$b"
     if [[ -n "$wt" && "$wt" != "$main_checkout" ]]; then
       [[ "${PWD:A}" == "${wt:A}"* ]] && cd "$main_checkout"
-      for built_app in "$wt"/.build/*/Build/Products/*/*.app(N); do "$lsregister" -u "$built_app" >/dev/null 2>&1; done
+      for dd in "$wt"/.build/*(N/); do forget_built "$dd"; done
       g worktree remove --force "$wt" && echo "==> Removed worktree $wt"
     fi
     g rev-parse --verify --quiet "refs/heads/$b" >/dev/null && g branch --quiet -D "$b" && echo "==> Removed local branch $b"
