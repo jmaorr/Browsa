@@ -67,6 +67,12 @@ public protocol BrowserEngine: AnyObject {
     func unloadExtensions()
     /// An extension was removed: forget what the engine kept about it (its address, its prepared copy).
     func forgetExtension(id: String)
+    /// An extension installed before Browsa served Chrome's addresses, still on its old one. Apps on the
+    /// Mac that check which extension is calling (1Password's) don't know it there.
+    func extensionUsesOldAddress(id: String) -> Bool
+    /// Moves it onto Chrome's address. It starts afresh there (you sign in to it again). Unloads every
+    /// extension; load them again after.
+    func moveExtensionToNewAddress(id: String)
     /// Whether an extension runs in private windows. Off until you allow it, as in Chrome.
     func extensionAllowedInPrivate(id: String) -> Bool
     func setExtension(id: String, allowedInPrivate: Bool)
@@ -90,6 +96,8 @@ public extension BrowserEngine {
     }
     func unloadExtensions() {}
     func forgetExtension(id: String) {}
+    func extensionUsesOldAddress(id: String) -> Bool { false }
+    func moveExtensionToNewAddress(id: String) {}
     func extensionAllowedInPrivate(id: String) -> Bool { false }
     func setExtension(id: String, allowedInPrivate: Bool) {}
     func performAction(extensionID: String, for page: (any EnginePage)?, anchor: PlatformView?) {}
@@ -176,12 +184,16 @@ public protocol EngineExtensionHost: AnyObject {
     /// The extension's side panel pages showing now, for `runtime.getContexts` (Claude checks it is in
     /// a side panel before it starts).
     func openExtensionPanels(extensionID: String) -> [URL]
+    /// An app on the Mac that an extension talks to (1Password's, for its extension) refused Browsa
+    /// (`trusted` false: it doesn't know Browsa as a browser yet) or accepted it.
+    func extensionAppAnswered(extensionID: String, app: String, trusted: Bool)
 }
 
 public extension EngineExtensionHost {
     func extensionActionsDidChange() {}
     func showExtensionPanel(extensionID: String, url: URL?) -> Bool { false }
     func openExtensionPanels(extensionID: String) -> [URL] { [] }
+    func extensionAppAnswered(extensionID: String, app: String, trusted: Bool) {}
     func showExtensionPanel(extensionID: String) -> Bool { showExtensionPanel(extensionID: extensionID, url: nil) }
 }
 

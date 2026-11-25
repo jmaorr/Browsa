@@ -113,6 +113,26 @@ enum ExtensionAddress {
         return r.legacy.contains(catalogID)
     }
 
+    /// Whether an installed extension still runs on Browsa's old id and address. 1Password's app only
+    /// talks to its extension on Chrome's (`chrome-extension://<id>/`), so an old one can't unlock with it.
+    static func usesLegacyAddress(_ catalogID: String) -> Bool {
+        guard chromeID(fromCatalogID: catalogID) != nil, !UserDefaults.standard.bool(forKey: allKey) else { return false }
+        return load().legacy.contains(catalogID)
+    }
+
+    /// Moves an installed extension onto Chrome's id and address. What it kept under the old ones stays
+    /// behind, so it starts as if newly added (1Password asks you to sign in once). Call with the
+    /// extension unloaded; it loads from a fresh copy next time.
+    static func moveToChromeAddress(_ catalogID: String) {
+        var r = load()
+        r.legacy.remove(catalogID)
+        r.known.insert(catalogID)
+        save(r)
+        let copy = AppFolders.support.appending(path: "Extensions (WebKit)")
+            .appending(path: ExtensionCompat.folderName(for: catalogID))
+        try? FileManager.default.removeItem(at: copy)
+    }
+
     /// The extension was removed: added again, it starts afresh under Chrome's address.
     static func forget(_ catalogID: String) {
         var r = load()

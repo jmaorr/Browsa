@@ -749,6 +749,7 @@ struct AddExtensionSheet: View {
                     .background(.quaternary.opacity(0.6), in: .rect(cornerRadius: 14))
                 }
             }
+            if preview.item.id == OnePasswordSetup.catalogID { OnePasswordTip() }
             if preview.item.source.isFromStore {
                 Text("Browsa keeps it up to date, and asks again if an update wants more.")
                     .font(.caption).foregroundStyle(.secondary)

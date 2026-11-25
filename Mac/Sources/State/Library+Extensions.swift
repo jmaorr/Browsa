@@ -99,6 +99,13 @@ extension Library {
         reloadExtensions()
     }
 
+    /// Onto Chrome's extension address (see OnePasswordSetup): every extension restarts, and this one
+    /// starts afresh.
+    func moveExtensionToNewAddress(id: String) {
+        engine.moveExtensionToNewAddress(id: id)
+        reloadExtensions()
+    }
+
     func isAllowedInPrivate(_ id: String) -> Bool { engine.extensionAllowedInPrivate(id: id) }
 
     func setAllowedInPrivate(_ id: String, _ allowed: Bool) { engine.setExtension(id: id, allowedInPrivate: allowed) }

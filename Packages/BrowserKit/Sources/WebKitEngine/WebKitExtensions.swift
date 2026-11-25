@@ -44,6 +44,9 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
         WKWebExtension.MatchPattern.registerCustomURLScheme(ExtensionAddress.chromeScheme)
         super.init()
         controller.delegate = self
+        ExtensionNativeHosts.onVerdict = { [weak self] id, name, trusted in
+            self?.host?.extensionAppAnswered(extensionID: id, app: name, trusted: trusted)
+        }
     }
 
     /// The catalog id for a context: what the rest of Browsa knows the extension by.
@@ -296,6 +299,15 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
     }
 
     /// The extension was removed: added again, it starts afresh on Chrome's address.
+    func usesLegacyAddress(_ catalogID: String) -> Bool { ExtensionAddress.usesLegacyAddress(catalogID) }
+
+    /// Onto Chrome's address (ExtensionAddress.moveToChromeAddress). Everything is unloaded first; the
+    /// app loads them again.
+    func moveToChromeAddress(_ catalogID: String) {
+        unloadAll()
+        ExtensionAddress.moveToChromeAddress(catalogID)
+    }
+
     func forget(_ catalogID: String) {
         ExtensionAddress.forget(catalogID)
         WebKitExtensionsPrivacy.set(catalogID, allowed: false)
@@ -477,7 +489,7 @@ final class WebKitExtensions: NSObject, WKWebExtensionControllerDelegate {
             replyHandler(nil, Self.noNativeMessaging(applicationIdentifier))
             return
         }
-        ExtensionNativeHosts.send(message, to: name, origin: origin, reply: replyHandler)
+        ExtensionNativeHosts.send(message, to: name, origin: origin, extensionID: id, reply: replyHandler)
     }
 
     /// The cookies `browsa.fetch` uses: those of the profile the focused window's tab is in (a Space's own

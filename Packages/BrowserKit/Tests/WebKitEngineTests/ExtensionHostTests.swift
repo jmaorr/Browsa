@@ -106,6 +106,14 @@ import JavaScriptCore
         #expect(getpgid(host.processIdentifier) == getpgrp())
     }
 
+    @Test func spotsAnAppRefusingBrowsa() {
+        guard #available(macOS 15.4, *) else { return }
+        #expect(ExtensionNativeHosts.isRefusal(["type": "error", "error": ["kind": "BrowserVerificationFailed", "reason": "UnknownBrowser"]]))
+        #expect(ExtensionNativeHosts.isRefusal("UnknownBrowser"))
+        #expect(!ExtensionNativeHosts.isRefusal(["type": "hello", "browser_state": "Known"]))
+        #expect(!ExtensionNativeHosts.isRefusal(NSNumber(value: 3)))
+    }
+
     @MainActor @Test func throttleHoldsOffRapidRestarts() throws {
         guard #available(macOS 15.4, *) else { return }
         do {
