@@ -20,7 +20,13 @@ final class OnePasswordSetup {
     static let catalogID = "chrome:aeblfdkhhhdcdjpifhhbdiojplfjncoa"
     static let appBundleID = "com.1password.1password"
 
-    enum Stage: String { case move, signIn, addBrowser, done }
+    enum Stage: String, CaseIterable { case move, signIn, addBrowser, done }
+
+    /// Help › Preview 1Password Card (Debug builds): shows a card whatever the real state, and its
+    /// buttons step through the flow without moving the extension.
+    var preview: Stage? {
+        didSet { if preview == .done { finishPreviewSoon() } }
+    }
 
     /// The app refused Browsa and hasn't accepted it since. Kept across launches.
     private(set) var refused: Bool {
@@ -49,6 +55,7 @@ final class OnePasswordSetup {
     /// The card to show now, if any.
     func stage(in library: Library) -> Stage? {
         _ = revision
+        if let preview { return preview }
         guard appURL != nil, library.extensions.contains(where: { $0.id == Self.catalogID }) else { return nil }
         let next: Stage? = if accepted { .done }
             else if moved { .signIn }
@@ -77,7 +84,22 @@ final class OnePasswordSetup {
         }
     }
 
+    private func finishPreviewSoon() {
+        Task {
+            try? await Task.sleep(for: .seconds(5))
+            if preview == .done { withAnimation(Motion.snappy) { preview = nil } }
+        }
+    }
+
+    /// A card's button while previewing: on to the next card.
+    func advancePreview() {
+        guard let preview, let i = Stage.allCases.firstIndex(of: preview) else { return }
+        let next = Stage.allCases.index(after: i)
+        withAnimation(Motion.snappy) { self.preview = next < Stage.allCases.endIndex ? Stage.allCases[next] : nil }
+    }
+
     func move(in library: Library) {
+        if preview != nil { return advancePreview() }
         library.moveExtensionToNewAddress(id: Self.catalogID)
         withAnimation(Motion.snappy) {
             moved = true
@@ -86,10 +108,12 @@ final class OnePasswordSetup {
     }
 
     func signedIn() {
+        if preview != nil { return advancePreview() }
         withAnimation(Motion.snappy) { moved = false }
     }
 
     func dismiss(_ stage: Stage) {
+        if preview != nil { return withAnimation(Motion.snappy) { preview = nil } }
         withAnimation(Motion.snappy) {
             if stage == .done { accepted = false } else { dismissed.insert(stage.rawValue) }
             if stage == .signIn { moved = false }
@@ -191,7 +215,13 @@ struct OnePasswordCard: View {
         switch stage {
         case .move: ("Update 1Password", { setup.move(in: browser.library) })
         case .signIn: ("Sign In", signIn)
-        case .addBrowser: ("Open 1Password", { setup.openApp() })
+        case .addBrowser: ("Open 1Password", {
+            setup.openApp()
+            // Previewing: stands in for 1Password accepting Browsa a moment later.
+            if setup.preview != nil {
+                Task { try? await Task.sleep(for: .seconds(3)); setup.advancePreview() }
+            }
+        })
         case .done: nil
         }
     }
