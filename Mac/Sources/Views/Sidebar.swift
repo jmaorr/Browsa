@@ -1,5 +1,6 @@
 import SwiftUI
 import BrowserCore
+import BrowserEngine
 import Suggest
 
 /// Arc-style sidebar: navigation, address, favourites, then the current space's pinned and today
@@ -39,6 +40,8 @@ struct Sidebar: View {
             } else {
                 SidebarIconButton(symbol: "arrow.clockwise", help: "Reload (⌘R)", enabled: browser.currentTab?.url != nil) { browser.reload() }
             }
+            Spacer(minLength: 0)
+            ExtensionButtons()
         }
         .padding(.horizontal, 8)
         .frame(height: isFloating ? 36 : 28)
@@ -96,6 +99,54 @@ struct SidebarIconButton: View {
         .disabled(!enabled)
         .onHover { hovering = $0 }
         .help(help)
+    }
+}
+
+// MARK: - Extensions
+
+/// A button per extension with a toolbar action. Clicking runs the action; a popup opens under the button.
+struct ExtensionButtons: View {
+    @Environment(Browser.self) private var browser
+
+    var body: some View {
+        ForEach(browser.library.extensions.filter(\.hasAction)) { ext in
+            ExtensionButton(ext: ext) { anchor in
+                browser.engine.performAction(extensionID: ext.id, for: browser.currentController?.page, anchor: anchor)
+            }
+            .frame(width: 28, height: 26)
+            .help(ext.name)
+        }
+    }
+}
+
+/// An AppKit button, so the popup has a view to anchor to.
+private struct ExtensionButton: NSViewRepresentable {
+    let ext: EngineExtension
+    let action: (NSView) -> Void
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton(image: image, target: context.coordinator, action: #selector(Coordinator.click(_:)))
+        button.isBordered = false
+        button.imageScaling = .scaleProportionallyDown
+        return button
+    }
+
+    func updateNSView(_ button: NSButton, context: Context) {
+        context.coordinator.action = action
+        button.image = image
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(action: action) }
+
+    private var image: NSImage {
+        if let icon = ext.icon { return NSImage(cgImage: icon, size: NSSize(width: 16, height: 16)) }
+        return NSImage(systemSymbolName: "puzzlepiece.extension", accessibilityDescription: ext.name) ?? NSImage()
+    }
+
+    @MainActor final class Coordinator: NSObject {
+        var action: (NSView) -> Void
+        init(action: @escaping (NSView) -> Void) { self.action = action }
+        @objc func click(_ sender: NSButton) { action(sender) }
     }
 }
 

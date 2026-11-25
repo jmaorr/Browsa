@@ -30,7 +30,7 @@ public final class WebKitEngine: BrowserEngine {
         configuration.preferences.setValue(on, forKey: "developerExtrasEnabled")
     }
 
-    private let standardConfiguration: WKWebViewConfiguration
+    private var standardConfiguration: WKWebViewConfiguration
     private var ephemeralConfiguration: WKWebViewConfiguration
     /// For pages the app renders (Reader): no storage, no JavaScript, no rules or scripts.
     private let staticConfiguration: WKWebViewConfiguration
@@ -41,6 +41,10 @@ public final class WebKitEngine: BrowserEngine {
     private var rulesReady = false
     private var waitingForRules: [() -> Void] = []
     let downloads = DownloadBridge()
+    /// `WebKitExtensions` on macOS 15.4 and later. Typed loosely: stored properties can't be gated by OS version.
+    private let extensionSupport: AnyObject?
+    @available(macOS 15.4, *)
+    var webExtensions: WebKitExtensions? { extensionSupport as? WebKitExtensions }
 
     public init(downloadsDirectory: URL = URL.downloadsDirectory) {
         self.downloadsDirectory = downloadsDirectory
@@ -48,9 +52,28 @@ public final class WebKitEngine: BrowserEngine {
         var caps: EngineCapabilities = [.contentBlocking, .isolatedScripts, .sessionRestore, .pageZoom, .findInPage, .developerTools]
         // WebKit only runs passkeys for apps Apple has granted the web browser entitlement.
         if Bundle.main.object(forInfoDictionaryKey: "BrowsaHasBrowserEntitlement") as? Bool == true { caps.insert(.passkeys) }
-        info = EngineInfo(id: "webkit", name: "WebKit", version: "macOS \(os.majorVersion).\(os.minorVersion)", capabilities: caps)
         standardConfiguration = Self.makeConfiguration(store: .default())
         ephemeralConfiguration = Self.makeConfiguration(store: .nonPersistent())
+        // Extensions only reach web views made from a configuration that already has the controller.
+        if #available(macOS 15.4, *) {
+            let ext = WebKitExtensions()
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["BROWSA_TABS_FROM_CONTROLLER"] != nil,
+               let base = ext.controller.configuration.webViewConfiguration.copy() as? WKWebViewConfiguration {
+                // Spike: tabs built on the extension controller's own web view configuration.
+                base.websiteDataStore = .default()
+                Self.apply(to: base)
+                standardConfiguration = base
+            }
+            #endif
+            standardConfiguration.webExtensionController = ext.controller
+            ephemeralConfiguration.webExtensionController = ext.controller
+            extensionSupport = ext
+            caps.insert(.webExtensions)
+        } else {
+            extensionSupport = nil
+        }
+        info = EngineInfo(id: "webkit", name: "WebKit", version: "macOS \(os.majorVersion).\(os.minorVersion)", capabilities: caps)
         staticConfiguration = Self.makeConfiguration(store: .nonPersistent())
         staticConfiguration.defaultWebpagePreferences.allowsContentJavaScript = false
         downloads.engine = self
@@ -59,6 +82,11 @@ public final class WebKitEngine: BrowserEngine {
     static func makeConfiguration(store: WKWebsiteDataStore) -> WKWebViewConfiguration {
         let c = WKWebViewConfiguration()
         c.websiteDataStore = store
+        apply(to: c)
+        return c
+    }
+
+    static func apply(to c: WKWebViewConfiguration) {
         c.upgradeKnownHostsToHTTPS = true
         c.mediaTypesRequiringUserActionForPlayback = .all
         c.defaultWebpagePreferences.preferredContentMode = .desktop
@@ -69,7 +97,6 @@ public final class WebKitEngine: BrowserEngine {
         // WKWebView's default user agent leaves out Safari's "Version/… Safari/…" tokens, and some
         // sites then serve older pages or call the browser unsupported.
         c.applicationNameForUserAgent = SafariUserAgent.applicationName
-        return c
     }
 
     // MARK: Pages
@@ -81,7 +108,10 @@ public final class WebKitEngine: BrowserEngine {
             if let url = options.url { page.load(url) }
             return page
         }
-        let configuration = options.profile == .ephemeral ? ephemeralConfiguration : standardConfiguration
+        var configuration = options.profile == .ephemeral ? ephemeralConfiguration : standardConfiguration
+        if #available(macOS 15.4, *), let url = options.url, let own = webExtensions?.configuration(for: url) {
+            configuration = own
+        }
         let page = WebKitPage(configuration: configuration, engine: self, profile: options.profile)
         page.delegate = delegate
         register(page)
@@ -110,10 +140,58 @@ public final class WebKitEngine: BrowserEngine {
         livePages = livePages.filter { $0.value.page != nil }
         // A popup can bring its own content controller; give it the current rules and scripts.
         install(on: page.webView.configuration.userContentController)
+        if #available(macOS 15.4, *) { webExtensions?.pageOpened(page) }
     }
 
     func unregister(_ page: WebKitPage) {
         livePages[ObjectIdentifier(page.webView)] = nil
+        if #available(macOS 15.4, *) { webExtensions?.pageClosed(page) }
+    }
+
+    func extensionPageChanged(_ page: WebKitPage) {
+        if #available(macOS 15.4, *) { webExtensions?.pageChanged(page) }
+    }
+
+    // MARK: Extensions
+
+    public var extensions: [EngineExtension] {
+        if #available(macOS 15.4, *) { return webExtensions?.loaded ?? [] }
+        return []
+    }
+
+    public var extensionHost: (any EngineExtensionHost)? {
+        get {
+            if #available(macOS 15.4, *) { return webExtensions?.host }
+            return nil
+        }
+        set {
+            if #available(macOS 15.4, *) { webExtensions?.host = newValue }
+        }
+    }
+
+    public func loadInstalledExtensions() async -> [String] {
+        guard #available(macOS 15.4, *), let ext = webExtensions else { return ["needs macOS 15.4"] }
+        return await ext.loadInstalled()
+    }
+
+    public func unloadExtensions() {
+        if #available(macOS 15.4, *) { webExtensions?.unloadAll() }
+    }
+
+    public func performAction(extensionID: String, for page: (any EnginePage)?, anchor: NSView?) {
+        if #available(macOS 15.4, *) { webExtensions?.performAction(extensionID: extensionID, for: page as? WebKitPage, anchor: anchor) }
+    }
+
+    #if DEBUG
+    public func debugExtensionBackground(_ extensionID: String, _ body: String) async -> String {
+        guard #available(macOS 15.4, *), let ext = webExtensions else { return "unavailable" }
+        return await ext.debugBackground(extensionID: extensionID, body)
+    }
+    #endif
+
+    public func pageDidBecomeActive(_ page: any EnginePage) {
+        guard #available(macOS 15.4, *), let page = page as? WebKitPage else { return }
+        webExtensions?.pageActivated(page)
     }
 
     func page(for webView: WKWebView) -> WebKitPage? { livePages[ObjectIdentifier(webView)]?.page }
@@ -153,6 +231,13 @@ public final class WebKitEngine: BrowserEngine {
     }
 
     private func install(on controller: WKUserContentController) {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["BROWSA_NO_BLOCKING"] != nil {
+            controller.removeAllContentRuleLists()
+            controller.removeAllUserScripts()
+            return
+        }
+        #endif
         controller.removeAllContentRuleLists()
         ruleLists.forEach(controller.add)
         controller.removeAllUserScripts()

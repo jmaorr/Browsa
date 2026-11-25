@@ -98,7 +98,7 @@ final class TabController: EnginePageDelegate {
             return .cancel
         }
         let scheme = request.url.scheme?.lowercased() ?? ""
-        guard ["http", "https", "about", "blob", "data", "file", "javascript"].contains(scheme) else {
+        guard ["http", "https", "about", "blob", "data", "file", "javascript", "webkit-extension"].contains(scheme) else {
             // mailto:, zoommtg:, App Store links and the like belong to other apps.
             NSWorkspace.shared.open(request.url)
             return .cancel

@@ -276,6 +276,17 @@ private struct EngineSettings: View {
                     }
                 }
             }
+            if info.capabilities.contains(.webExtensions) {
+                Section {
+                    Toggle("Use installed Safari extensions", isOn: Bindable(browser).useSafariExtensions)
+                    ForEach(browser.extensions) { ext in
+                        LabeledContent(ext.name, value: ext.version)
+                    }
+                } footer: {
+                    Text("Runs the Safari web extensions that apps on this Mac include, such as 1Password for Safari.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
             if info.capabilities.contains(.developerTools) {
                 Section {
                     Toggle("Show Inspect Element in the page menu", isOn: Bindable(browser).developerTools)

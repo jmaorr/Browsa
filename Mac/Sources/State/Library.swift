@@ -36,6 +36,12 @@ final class Library {
     var developerTools: Bool {
         didSet { Preferences.developerTools = developerTools; engine.developerToolsEnabled = developerTools }
     }
+    /// Safari web extensions installed on this Mac, run in every page.
+    var useSafariExtensions: Bool {
+        didSet { Preferences.useSafariExtensions = useSafariExtensions; reloadExtensions() }
+    }
+    /// The extensions running now, for the toolbar.
+    private(set) var extensions: [EngineExtension] = []
     var downloads: [EngineDownload] = []
     var filterStatus = FilterStatus()
     /// Tabs closed this session, newest last, for Shift-Cmd-T. Never private tabs.
@@ -67,6 +73,7 @@ final class Library {
         globalPrivacyControl = Preferences.globalPrivacyControl
         clearDataOnQuit = Preferences.clearDataOnQuit
         developerTools = Preferences.developerTools
+        useSafariExtensions = Preferences.useSafariExtensions
         if let snapshotURL, let data = try? Data(contentsOf: snapshotURL),
            let snap = try? JSONDecoder().decode(BrowserSnapshot.self, from: data), !snap.spaces.isEmpty {
             spaces = snap.spaces.map(Space.init)
@@ -85,6 +92,22 @@ final class Library {
         engine.developerToolsEnabled = developerTools
         applyBlocking()
         archiveStaleTabs()
+        engine.extensionHost = self
+        reloadExtensions()
+    }
+
+    func reloadExtensions() {
+        engine.unloadExtensions()
+        extensions = []
+        guard useSafariExtensions, engine.info.capabilities.contains(.webExtensions) else { return }
+        Task {
+            // Extensions expect a browser window to exist when they start (chrome.windows.getCurrent).
+            while windows.isEmpty { try? await Task.sleep(for: .milliseconds(100)) }
+            let problems = await engine.loadInstalledExtensions()
+            extensions = engine.extensions
+            if !problems.isEmpty { print("[extensions] " + problems.joined(separator: "\n[extensions] ")) }
+            print("[extensions] loaded: \(extensions.map { "\($0.name) \($0.version)" })")
+        }
     }
 
     private static let starterFavorites: [Favorite] = [
@@ -535,5 +558,52 @@ final class Library {
         try? FileManager.default.createDirectory(at: snapshotURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: snapshotURL, options: .atomic)
         Task { await history.saveNow() }
+    }
+}
+
+// MARK: - Extensions
+
+/// Windows and tabs as extensions see them: each window's current space, its live tabs in order.
+extension Library: EngineExtensionHost {
+    var extensionWindows: [EngineWindowInfo] {
+        let focused = activeWindow
+        let ordered = focused.map { f in [f] + windows.filter { $0 !== f } } ?? windows
+        return ordered.map { w in
+            let space = w.currentSpace
+            return EngineWindowInfo(id: w.id,
+                                    pages: space.allTabs.compactMap { existingController(for: $0)?.page },
+                                    activePage: w.currentTab.flatMap { existingController(for: $0)?.page },
+                                    isFocused: w === focused, isPrivate: space.isPrivate,
+                                    frame: w.nsWindow?.frame ?? .zero)
+        }
+    }
+
+    func focusExtensionWindow(_ id: UUID) {
+        windows.first { $0.id == id }?.nsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    func openExtensionTab(url: URL?, windowID: UUID?, active: Bool) -> (any EnginePage)? {
+        guard let window = windows.first(where: { $0.id == windowID }) ?? activeWindow else { return nil }
+        // The page is made with its URL, so an extension page gets the web view setup it needs.
+        let tab = BrowserTab(url: url, isPrivate: window.currentSpace.isPrivate)
+        window.currentSpace.today.insert(tab, at: 0)
+        let page = controller(for: tab).page
+        if active { window.select(tab) }
+        scheduleSave()
+        return page
+    }
+
+    func activateExtensionTab(_ page: any EnginePage) {
+        guard let tab = tab(showing: page) else { return }
+        (window(showing: tab) ?? activeWindow)?.select(tab)
+    }
+
+    func closeExtensionTab(_ page: any EnginePage) {
+        guard let tab = tab(showing: page) else { return }
+        (window(showing: tab) ?? activeWindow)?.close(tab)
+    }
+
+    private func tab(showing page: any EnginePage) -> BrowserTab? {
+        controllers.values.first { $0.page === page }?.tab
     }
 }

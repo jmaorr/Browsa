@@ -44,6 +44,83 @@ public protocol BrowserEngine: AnyObject {
 
     /// Developer tools on every page (with `.developerTools`): Inspect Element in the context menu.
     var developerToolsEnabled: Bool { get set }
+
+    // Extensions (with `.webExtensions`). Engines without them keep the defaults below.
+
+    /// The extensions running now, in toolbar order.
+    var extensions: [EngineExtension] { get }
+    /// The app's windows and tabs, as extensions see them. Set before loading extensions.
+    var extensionHost: (any EngineExtensionHost)? { get set }
+    /// Finds and starts the extensions installed on this machine. Returns what couldn't load, for logs.
+    func loadInstalledExtensions() async -> [String]
+    /// Stops every extension.
+    func unloadExtensions()
+    /// The extension's toolbar button was clicked. Its popup, if it has one, appears at `anchor`.
+    func performAction(extensionID: String, for page: (any EnginePage)?, anchor: PlatformView?)
+    /// A tab came to the front of its window, or its window came to the front.
+    func pageDidBecomeActive(_ page: any EnginePage)
+}
+
+public extension BrowserEngine {
+    var extensions: [EngineExtension] { [] }
+    var extensionHost: (any EngineExtensionHost)? { get { nil } set {} }
+    func loadInstalledExtensions() async -> [String] { [] }
+    func unloadExtensions() {}
+    func performAction(extensionID: String, for page: (any EnginePage)?, anchor: PlatformView?) {}
+    func pageDidBecomeActive(_ page: any EnginePage) {}
+}
+
+// MARK: - Extensions
+
+/// A browser extension, for the toolbar and Settings.
+public struct EngineExtension: Identifiable {
+    /// Stable across launches, e.g. the extension's bundle identifier.
+    public let id: String
+    public let name: String
+    public let version: String
+    public let icon: CGImage?
+    /// It has a toolbar button (a browser action).
+    public let hasAction: Bool
+
+    public init(id: String, name: String, version: String, icon: CGImage?, hasAction: Bool) {
+        self.id = id
+        self.name = name
+        self.version = version
+        self.icon = icon
+        self.hasAction = hasAction
+    }
+}
+
+/// One window as extensions see it: its tabs' pages in order and the one in front.
+public struct EngineWindowInfo {
+    public let id: UUID
+    public let pages: [any EnginePage]
+    public let activePage: (any EnginePage)?
+    public let isFocused: Bool
+    public let isPrivate: Bool
+    /// In screen coordinates.
+    public let frame: CGRect
+
+    public init(id: UUID, pages: [any EnginePage], activePage: (any EnginePage)?, isFocused: Bool, isPrivate: Bool, frame: CGRect) {
+        self.id = id
+        self.pages = pages
+        self.activePage = activePage
+        self.isFocused = isFocused
+        self.isPrivate = isPrivate
+        self.frame = frame
+    }
+}
+
+/// The app's side of extensions: its windows and tabs, and what extensions may do with them.
+@MainActor
+public protocol EngineExtensionHost: AnyObject {
+    /// Open windows, the focused one first.
+    var extensionWindows: [EngineWindowInfo] { get }
+    func focusExtensionWindow(_ id: UUID)
+    /// A new tab, in `windowID` or the focused window. Returns its page.
+    func openExtensionTab(url: URL?, windowID: UUID?, active: Bool) -> (any EnginePage)?
+    func activateExtensionTab(_ page: any EnginePage)
+    func closeExtensionTab(_ page: any EnginePage)
 }
 
 public struct EngineInfo: Sendable, Equatable {

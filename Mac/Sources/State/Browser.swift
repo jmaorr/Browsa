@@ -9,6 +9,8 @@ import Suggest
 @MainActor @Observable
 final class Browser {
     let library: Library
+    /// Stable for the window's life, for extensions.
+    let id = UUID()
     var selectedSpaceID: UUID
     /// The tab this window shows in each space it has visited. Two windows never show the same tab.
     private var tabSelection: [UUID: UUID] = [:]
@@ -172,6 +174,7 @@ final class Browser {
         tabSelection[space.id] = tab?.id
         // Remembered with the space, for the next launch.
         space.selectedTabID = tab?.id
+        if let tab, let c = library.existingController(for: tab) { engine.pageDidBecomeActive(c.page) }
     }
 
     /// `tab` is going away from this window (closed, moved, or opened in another window).
@@ -409,6 +412,18 @@ enum Preferences {
     static var clearDataOnQuit: Bool {
         get { d.bool(forKey: "clearDataOnQuit") }
         set { d.set(newValue, forKey: "clearDataOnQuit") }
+    }
+
+    /// Safari web extensions installed on this Mac (1Password for Safari and the like). On in Debug builds.
+    static var useSafariExtensions: Bool {
+        get {
+            #if DEBUG
+            d.object(forKey: "useSafariExtensions") as? Bool ?? true
+            #else
+            d.bool(forKey: "useSafariExtensions")
+            #endif
+        }
+        set { d.set(newValue, forKey: "useSafariExtensions") }
     }
 
     /// Inspect Element in the page's context menu. On in Debug builds.
