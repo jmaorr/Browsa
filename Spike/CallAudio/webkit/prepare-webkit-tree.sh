@@ -2,7 +2,7 @@
 # Puts a WebKit source tree at the commit Browsa builds from: upstream WebKit at WEBKIT_BASE plus Browsa's own
 # fixes in fixes/ (commits that aren't upstream, so they exist nowhere but here).
 #
-#   Spike/CallAudio/webkit/prepare-webkit-tree.sh <webkit source tree>     # e.g. ~/Developer/BrowsaWebKit-release
+#   Spike/CallAudio/webkit/prepare-webkit-tree.sh <webkit source tree>     # e.g. ~/Developer/Browsa/webkit/release
 #
 # The tree must have no uncommitted changes (webkit.patch and the headers go on afterwards, README.md).
 # The result's files match WEBKIT_TREE; its commit hash only matches WEBKIT_COMMIT on the Mac that made the

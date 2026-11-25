@@ -4,11 +4,11 @@
 # patched WebKit's capture unit is the only processing. Hardened runtime is off so DYLD_FRAMEWORK_PATH
 # reaches the app. Also writes run.sh, which starts it against a WebKit build.
 #   Spike/CallAudio/webkit/build-browsa.sh
-# Env: OUT (default ~/Developer/Browsa/derived/webkit-spike), WEBKIT (default ~/Developer/BrowsaWebKit),
+# Env: OUT (default ~/Developer/Browsa/derived/webkit-spike), WEBKIT (default ~/Developer/Browsa/webkit/source),
 set -eu
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 OUT=${OUT:-$HOME/Developer/Browsa/derived/webkit-spike}
-WEBKIT=${WEBKIT:-$HOME/Developer/BrowsaWebKit}
+WEBKIT=${WEBKIT:-$HOME/Developer/Browsa/webkit/source}
 BUNDLE=com.orriginal.browsa.webkitspike
 
 cd "$ROOT"

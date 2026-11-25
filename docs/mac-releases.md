@@ -80,12 +80,12 @@ details and the reasoning are in `Spike/CallAudio/webkit/BUNDLING.md`. (The Chro
    fixes; `Spike/CallAudio/webkit/prepare-webkit-tree.sh <tree>` makes one from a fresh clone), with `webkit.patch` applied and
    the two headers from `Spike/CallAudio/core` copied in (that folder's README), and **without**
    `BrowsaCallAudioRecording.h`, so no call recording code is compiled in. For example a worktree:
-   `git -C ~/Developer/BrowsaWebKit worktree add --detach ~/Developer/BrowsaWebKit-release <commit>`.
+   `git -C ~/Developer/Browsa/webkit/source worktree add --detach ~/Developer/Browsa/webkit/release <commit>`.
 2. One release WebKit per macOS major (about an hour and 30 GB each, Apple silicon only):
 
    ```sh
-   Spike/CallAudio/webkit/build-release-webkit.sh ~/Developer/BrowsaWebKit-release 26
-   Spike/CallAudio/webkit/build-release-webkit.sh ~/Developer/BrowsaWebKit-release 27
+   Spike/CallAudio/webkit/build-release-webkit.sh ~/Developer/Browsa/webkit/release 26
+   Spike/CallAudio/webkit/build-release-webkit.sh ~/Developer/Browsa/webkit/release 27
    ```
 
    Each lands in `<tree>/WebKitBuild-release-<major>.0/Release`, targets `<major>.0`, is checked for the
@@ -93,7 +93,7 @@ details and the reasoning are in `Spike/CallAudio/webkit/BUNDLING.md`. (The Chro
 3. Release with them:
 
    ```sh
-   BROWSA_BUNDLE_WEBKIT="26=$HOME/Developer/BrowsaWebKit-release/WebKitBuild-release-26.0/Release 27=$HOME/Developer/BrowsaWebKit-release/WebKitBuild-release-27.0/Release" \
+   BROWSA_BUNDLE_WEBKIT="26=$HOME/Developer/Browsa/webkit/release/WebKitBuild-release-26.0/Release 27=$HOME/Developer/Browsa/webkit/release/WebKitBuild-release-27.0/Release" \
      tools/release-mac.sh --local 1.1 origin/main     # first: local only, nothing sent to Apple
    BROWSA_BUNDLE_WEBKIT="…same…" tools/release-mac.sh 1.1 origin/main
    ```

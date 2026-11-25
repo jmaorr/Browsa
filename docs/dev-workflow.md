@@ -40,6 +40,19 @@ Only commits are built, never uncommitted changes.
 
 ## Where things are
 
+Everything for Browsa is under one folder, `~/Developer/Browsa`:
+
+| folder | what |
+|---|---|
+| `DuoBrowser/` | the main checkout, always on `main`. It owns the worktrees; nobody edits in it. |
+| `worktrees/` | one per feature in progress |
+| `dev/` | the integration tree and the one build folder behind Browsa Dev |
+| `webkit/source/`, `webkit/release/` | the WebKit checkout, and its worktree with the engines the release ships |
+| `releases/`, `assets/`, `backups/`, `archive/`, `research/`, `outreach/` | what shipped, marketing material, app-data backups, old material, notes |
+
+Nothing Browsa lives beside it in `~/Developer`, and build output never goes anywhere but a worktree's own
+`.build/` and `dev/build`.
+
 `dev/` beside the main checkout (`BROWSA_DEV_HOME`): `tree/` is the integration worktree, rebuilt from scratch
 each time and never merged anywhere; `build/` is its one build folder; `branches` is the Dev set;
 `installed.txt` is what the installed app was built from. All of it can be deleted; the next sync makes it again.

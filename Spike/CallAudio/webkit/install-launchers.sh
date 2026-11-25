@@ -31,7 +31,7 @@ if pgrep -f "Browsa WebKit Spike.app/Contents/MacOS/Browsa" >/dev/null; then
 fi
 unset BROWSA_AUDIO_BENCH BROWSA_AUDIO_BENCH_URL BROWSA_AUDIO_BENCH_CALL_TABS BROWSA_AUDIO_BENCH_CALL_AUDIO BROWSA_CALL_AUDIO
 # Pinned to the WebKit build of 3a31ddd (an APFS clone made before newer WebKit rebuilds); drop this to use WebKitBuild/Release.
-export BROWSA_SPIKE_WEBKIT="$HOME/Developer/BrowsaWebKit/WebKitBuild/Release-meeting"
+export BROWSA_SPIKE_WEBKIT="$HOME/Developer/Browsa/webkit/source/WebKitBuild/Release-meeting"
 export BROWSA_CALL_AUDIO_DUMP=1
 echo "=== $(date) start (meeting)" >>"$HOME/Library/Logs/Browsa WebKit Spike.log"
 "$OPEN" >/dev/null && echo "Started Browsa WebKit Spike. You can close this window."
@@ -56,7 +56,7 @@ if pgrep -f "Browsa WebKit Spike.app/Contents/MacOS/Browsa" >/dev/null; then
   open -a "$HOME/Developer/Browsa/derived/webkit-spike/Browsa WebKit Spike.app" "$URL"
 else
   unset BROWSA_AUDIO_BENCH BROWSA_AUDIO_BENCH_URL BROWSA_CALL_AUDIO
-  export BROWSA_SPIKE_WEBKIT="$HOME/Developer/BrowsaWebKit/WebKitBuild/Release-meeting"
+  export BROWSA_SPIKE_WEBKIT="$HOME/Developer/Browsa/webkit/source/WebKitBuild/Release-meeting"
   echo "=== $(date) start (camera & mic check)" >>"$HOME/Library/Logs/Browsa WebKit Spike.log"
   "$OPEN" "$URL" >/dev/null
 fi
