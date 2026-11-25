@@ -65,14 +65,21 @@ integrate() {
   git -C "$tree" checkout --quiet --detach origin/main && git -C "$tree" reset --quiet --hard origin/main || die "couldn't reset $tree"
   base="$(g rev-parse --short origin/main)"
   merged=(); skipped=()
-  local b ref files
+  local b ref files before
   for b in $(read_set); do
     if g rev-parse --verify --quiet "refs/heads/$b" >/dev/null; then ref="$b"
     elif g rev-parse --verify --quiet "refs/remotes/origin/$b" >/dev/null; then ref="origin/$b"
     else skipped+=("$b: no such branch any more (removed from the set)"); continue; fi
     if g merge-base --is-ancestor "$ref" origin/main; then skipped+=("$b: already in main (removed from the set)"); continue; fi
+    before="$(git -C "$tree" rev-parse HEAD)"
     if git -C "$tree" merge --quiet --no-ff --no-edit "$ref" >/dev/null 2>&1; then
-      merged+=("$b")
+      # A branch whose PR was squash-merged adds nothing: same files with it as without.
+      if [[ "$(git -C "$tree" rev-parse 'HEAD^{tree}')" == "$(git -C "$tree" rev-parse "$before^{tree}")" ]]; then
+        git -C "$tree" reset --quiet --hard "$before"
+        skipped+=("$b: adds nothing main doesn't have (removed from the set)")
+      else
+        merged+=("$b")
+      fi
     else
       files="$(git -C "$tree" diff --name-only --diff-filter=U | head -5 | tr '\n' ' ')"
       git -C "$tree" merge --abort 2>/dev/null
