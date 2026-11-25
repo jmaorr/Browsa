@@ -44,7 +44,7 @@ Everything for Browsa is under one folder, `~/Developer/Browsa`:
 
 | folder | what |
 |---|---|
-| `DuoBrowser/` | the main checkout, always on `main`. It owns the worktrees; nobody edits in it. |
+| `repo/` | the main checkout, always on `main`. It owns the worktrees; nobody edits in it. |
 | `worktrees/` | one per feature in progress |
 | `dev/` | the integration tree and the one build folder behind Browsa Dev |
 | `webkit/source/`, `webkit/release/` | the WebKit checkout, and its worktree with the engines the release ships |
