@@ -22,7 +22,7 @@ struct LiveFoldersSettings: View {
                 card { spaces }
             }
             group("Show in Pull Requests", detail: nil) { card { filters } }
-            if browser.regularSpaces.contains(where: { (library.gitHubOwners[$0.id]?.seen.count ?? 0) > 1 }) {
+            if !organisationSpaces.isEmpty {
                 group("Organisations", detail: "Where each Space's pull requests come from. Turn one off to keep, say, work pull requests out of Personal.") {
                     card { organisations }
                 }
@@ -48,9 +48,17 @@ struct LiveFoldersSettings: View {
     }
 
     /// Per Space, a switch for each organisation (or person) its pull requests come from.
+    /// Spaces with something to choose: Pull Requests is on there, and they've come from more than one
+    /// organisation. A Space with Pull Requests off keeps its choices for when it's back on, unshown.
+    private var organisationSpaces: [Space] {
+        browser.regularSpaces.filter {
+            library.gitHubFolder(in: $0) != nil && (library.gitHubOwners[$0.id]?.seen.count ?? 0) > 1
+        }
+    }
+
     private var organisations: some View {
         VStack(alignment: .leading, spacing: 0) {
-            let spaces = browser.regularSpaces.filter { (library.gitHubOwners[$0.id]?.seen.count ?? 0) > 1 }
+            let spaces = organisationSpaces
             ForEach(Array(spaces.enumerated()), id: \.element.id) { i, s in
                 if i > 0 { Divider() }
                 Label(s.name, systemImage: s.symbol)
