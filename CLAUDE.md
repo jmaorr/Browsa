@@ -35,7 +35,7 @@ The full workflow and folder layout: `docs/dev-workflow.md`.
 ## Conventions
 
 - Pull requests are squash-merged with `[skip ci]` at the end of the subject. CI runs only when started by hand.
-- The repository is `jmaorr/Browsa` (the old name, `DuoBrowser`, still redirects and is the main checkout's folder name).
+- The repository is `jmaorr/Browsa` (its old name, `DuoBrowser`, still redirects). The main checkout is `~/Developer/Browsa/repo`.
 - Scripts are zsh. Two traps: `$h:refs` applies the `:r` modifier (write `${h}:refs`), and an unquoted variable
   isn't split into words.
 - Docs and comments are written in plain English for a reader who wasn't there.
