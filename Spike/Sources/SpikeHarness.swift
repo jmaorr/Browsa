@@ -295,6 +295,12 @@ enum SpikeHarness {
             browser.select(browser.orderedTabs[n])
         case "panel":
             withAnimation(Motion.dock) { browser.panel = j["tool"] as? String }
+        case "glance":
+            // {"url":"…"} opens Glance as an Option-click would; {} closes it.
+            if let url = (j["url"] as? String).flatMap(URL.init(string:)) { browser.openGlance(url, isPrivate: false) } else { browser.closeGlance() }
+        case "routing":
+            // {"on":true}: the Settings switch "Open sites in their Space".
+            SpaceRouter.shared.isEnabled = j["on"] as? Bool ?? true
         case "toggleSidebar":
             browser.toggleSidebar()
         case "toast":
