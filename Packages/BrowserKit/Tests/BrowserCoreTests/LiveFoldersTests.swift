@@ -153,4 +153,15 @@ import Testing
         """
         #expect(FeedDiscovery.feedLinks(inHTML: html, base: URL(string: "https://example.com/")!).first?.absoluteString == "https://example.com/feed")
     }
+
+    @Test func pullRequestsFilterByOwner() {
+        let items = [
+            FetchedItem(key: "1", title: "A", url: URL(string: "https://github.com/Acme/app/pull/1")!),
+            FetchedItem(key: "2", title: "B", url: URL(string: "https://github.com/jmaorr/site/pull/2")!),
+            FetchedItem(key: "3", title: "C", url: URL(string: "https://github.com/acme/api/pull/3")!),
+        ]
+        #expect(GitHubPulls.owners(in: items) == ["acme", "jmaorr"])
+        #expect(GitHubPulls.hiding(["acme"], from: items).map(\.key) == ["2"])
+        #expect(GitHubPulls.hiding([], from: items).count == 3)
+    }
 }

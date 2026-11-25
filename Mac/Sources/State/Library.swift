@@ -121,6 +121,13 @@ final class Library {
         didSet { UserDefaults.standard.set(liveFoldersOn, forKey: Library.liveFoldersKey) }
     }
     /// What the Pull Requests folders show. Saved; all three to start, as in Arc.
+    /// Per space: the organisations its pull requests come from, and the ones turned off there.
+    var gitHubOwners: [UUID: GitHubOwners] = Library.savedGitHubOwners() {
+        didSet {
+            guard gitHubOwners != oldValue, let data = try? JSONEncoder().encode(gitHubOwners) else { return }
+            UserDefaults.standard.set(data, forKey: Library.gitHubOwnersKey)
+        }
+    }
     var gitHubFilters: Set<GitHubPulls.Filter> = Library.savedGitHubFilters() {
         didSet { UserDefaults.standard.set(gitHubFilters.map(\.rawValue), forKey: Library.gitHubFiltersKey) }
     }
@@ -1053,6 +1060,12 @@ extension Library: EngineExtensionHost {
                                     isFocused: w === focused, isPrivate: space.isPrivate,
                                     frame: w.nsWindow?.frame ?? .zero)
         }
+    }
+
+    /// 1Password's app refused Browsa or accepted it (OnePasswordCard).
+    func extensionAppAnswered(extensionID: String, app: String, trusted: Bool) {
+        guard extensionID == OnePasswordSetup.catalogID else { return }
+        OnePasswordSetup.shared.heard(trusted: trusted)
     }
 
     /// chrome.sidePanel.open, or a toolbar click on an extension that asked for its panel instead.

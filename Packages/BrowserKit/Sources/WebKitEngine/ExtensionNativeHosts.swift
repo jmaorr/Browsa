@@ -104,12 +104,67 @@ enum ExtensionNativeHosts {
         starts[key] = recent
     }
 
+    // MARK: Whether the app trusts Browsa
+
+    /// What an app made of Browsa, for the app to guide you: 1Password's refuses a browser you haven't
+    /// added under 1Password › Settings › Browser (its reply says `BrowserVerificationFailed`,
+    /// `UnknownBrowser`) and closes; once you have, it keeps talking. Called on the main thread, once per
+    /// connection: false on a refusal, true once a connection has stayed open `trustedAfter` seconds.
+    static var onVerdict: ((_ extensionID: String, _ host: String, _ trusted: Bool) -> Void)?
+    static let trustedAfter: TimeInterval = 8
+    private static var awaiting: Set<ObjectIdentifier> = []
+    private static var settled: Set<ObjectIdentifier> = []
+
+    nonisolated static func isRefusal(_ message: Any) -> Bool {
+        let text: String
+        if let s = message as? String {
+            text = s
+        } else {
+            guard JSONSerialization.isValidJSONObject(message),
+                  let data = try? JSONSerialization.data(withJSONObject: message),
+                  let s = String(data: data, encoding: .utf8) else { return false }
+            text = s
+        }
+        return text.contains("UnknownBrowser") || text.contains("BrowserVerificationFailed")
+    }
+
+    /// Each message from a connected host until the connection is judged.
+    private static func judge(_ key: ObjectIdentifier, _ message: Any, host: String, extensionID: String) {
+        guard onVerdict != nil, !settled.contains(key) else { return }
+        if isRefusal(message) {
+            settled.insert(key)
+            log.notice("host \(host, privacy: .public) refused Browsa: it isn't one of the app's browsers yet")
+            onVerdict?(extensionID, host, false)
+            return
+        }
+        guard !awaiting.contains(key) else { return }
+        awaiting.insert(key)
+        DispatchQueue.main.asyncAfter(deadline: .now() + trustedAfter) {
+            MainActor.assumeIsolated {
+                awaiting.remove(key)
+                guard !settled.contains(key), let item = live[key], !item.port.isDisconnected else { return }
+                settled.insert(key)
+                onVerdict?(extensionID, host, true)
+            }
+        }
+    }
+
+    private static func forgetVerdict(_ key: ObjectIdentifier) {
+        awaiting.remove(key)
+        settled.remove(key)
+    }
+
     // MARK: runtime.sendNativeMessage
 
     private static var replies: [ObjectIdentifier: (pipe: HostPipe, reply: (Any?, (any Error)?) -> Void)] = [:]
 
     /// Run, send one message, hand back the first answer, stop.
-    static func send(_ message: Any, to name: String, origin: String, reply: @escaping (Any?, (any Error)?) -> Void) {
+    static func send(_ message: Any, to name: String, origin: String, extensionID: String,
+                     reply given: @escaping (Any?, (any Error)?) -> Void) {
+        let reply: (Any?, (any Error)?) -> Void = { message, error in
+            if let message, isRefusal(message) { onVerdict?(extensionID, name, false) }
+            given(message, error)
+        }
         let pipe: HostPipe
         do {
             let program = try program(for: name, origin: origin)
@@ -161,13 +216,17 @@ enum ExtensionNativeHosts {
         }
         pipe.onMessage = { message in
             DispatchQueue.main.async {
-                MainActor.assumeIsolated { live[key]?.port.sendMessage(message.value, completionHandler: nil) }
+                MainActor.assumeIsolated {
+                    live[key]?.port.sendMessage(message.value, completionHandler: nil)
+                    judge(key, message.value, host: name, extensionID: extensionID)
+                }
             }
         }
         pipe.onExit = {
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     alive.removeValue(forKey: key)?.invalidate()
+                    forgetVerdict(key)
                     guard let ended = live.removeValue(forKey: key) else { return }
                     if !ended.port.isDisconnected { ended.port.disconnect() }
                 }
@@ -208,6 +267,7 @@ enum ExtensionNativeHosts {
     static func stopAll(for extensionID: String? = nil) {
         for (key, item) in live where extensionID == nil || item.extensionID == extensionID {
             live[key] = nil
+            forgetVerdict(key)
             item.port.disconnectHandler = nil
             item.pipe.stop()
             if !item.port.isDisconnected { item.port.disconnect() }

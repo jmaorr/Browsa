@@ -1,0 +1,77 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../../kit/kit.css"><link rel="stylesheet" href="../../kit/sites.css"><link rel="stylesheet" href="../../library/shared/library.css"><link rel="stylesheet" href="../shared/scene.css"><script src="../../kit/kit.js"></script><script src="../../kit/sites.js"></script><script src="../../library/shared/library.js"></script><script src="../shared/scene.js"></script>
+<style>
+  .win { background: color-mix(in srgb, var(--tint) 9%, #ecebe8); }
+  .side, .page { overflow:hidden; }
+  .sl { position:absolute; inset:0; }
+  .side .sl { padding:18px 14px; box-sizing:border-box; display:flex; flex-direction:column; }
+  .side { padding:0 !important; }
+  .spname { display:flex; align-items:center; gap:10px; margin:18px 8px 0; font-size:17px; font-weight:600; }
+  .spname i { width:12px; height:12px; border-radius:4px; }
+  .spname small { margin-left:auto; font-size:13px; font-weight:500; color:#5d5a55; display:flex; align-items:center; gap:6px; }
+  .gm { position:absolute; inset:0; background:#f6f8fc; font-size:15px; }
+  .gm .top { height:64px; display:flex; align-items:center; gap:16px; padding:0 20px; }
+  .gm .logo { display:flex; align-items:center; gap:8px; font-size:22px; color:#444; width:190px; }
+  .gm .logo img { width:30px; height:30px; }
+  .gm .q { flex:1; height:46px; border-radius:23px; background:#e9eef6; display:flex; align-items:center; padding:0 20px; color:#5f6368; }
+  .gm .av { width:36px; height:36px; border-radius:50%; color:#fff; font-weight:600; display:grid; place-items:center; font-size:16px; }
+  .gm .nav { position:absolute; left:12px; top:76px; width:200px; }
+  .gm .nav .cmp { display:inline-flex; height:54px; padding:0 22px; align-items:center; gap:10px; border-radius:16px; background:#c2e7ff; font-weight:500; margin:0 0 14px 6px; }
+  .gm .nav p { margin:0; height:32px; padding:0 22px; display:flex; align-items:center; border-radius:0 16px 16px 0; color:#202124; }
+  .gm .nav p.on { background:#d3e3fd; font-weight:700; }
+  .gm .box { position:absolute; left:220px; right:16px; top:76px; bottom:16px; background:#fff; border-radius:16px; overflow:hidden; }
+  .gm .tb { height:48px; border-bottom:1px solid #eee; display:flex; align-items:center; padding:0 18px; color:#5f6368; font-size:14px; gap:8px; }
+  .gm .tb b { color:#202124; }
+  .gm .m { display:flex; align-items:center; height:44px; padding:0 18px; border-bottom:1px solid #f1f1f1; gap:16px; white-space:nowrap; }
+  .gm .m .f { width:170px; flex:none; font-weight:700; overflow:hidden; text-overflow:ellipsis; }
+  .gm .m .s { flex:1; overflow:hidden; text-overflow:ellipsis; color:#5f6368; } .gm .m .s b { color:#202124; }
+  .gm .m .d { font-size:13px; font-weight:700; }
+  .gm .m.r .f, .gm .m.r .d { font-weight:400; } .gm .m.r { background:#f2f6fc; }
+</style></head>
+<body><div class="stage" id="stage">
+  <div class="wall"></div>
+  <div class="win" id="win"><div class="side" id="side"></div><div class="page" id="page"></div></div>
+  <div class="cap2" id="cap" style="top:40px"><span id="capt"></span></div>
+  <div class="ring" id="ring"></div><div class="ptr" id="ptr"></div>
+</div>
+<script>
+const SP = [
+  { name: "Work", tint: "#0a84ff", prof: "Work profile", who: "ada@northwind.studio", av: "#0b57d0", ini: "A",
+    pin: [["linear.app", "My issues · Linear"], ["figma.com", "Library · Figma"]], today: [["notion.so", "Standup notes · Notion"]],
+    mail: [["Grace Hopper", "Launch review", "Notes from today and the two things left before Friday", "10:42"], ["Linear", "BRW-212 assigned to you", "Mini-player keeps mute and leave in reach", "9:15"], ["Figma", "Katherine commented", "Library cards: can the art go edge to edge?", "8:03"], ["Calendar", "Invitation: Design crit", "Thursday 2 pm, Room 4", "Yesterday", 1], ["Vercel", "Deployment ready", "browsa-site is live on production", "Yesterday", 1], ["Stripe", "Your weekly summary", "Payments up 12% on last week", "Mon", 1]] },
+  { name: "Personal", tint: "#ff9500", prof: "Personal profile", who: "ada.lovelace@gmail.com", av: "#e8710a", ini: "A",
+    pin: [["spotify.com", "Discover Weekly · Spotify"], ["youtube.com", "Watch later · YouTube"]], today: [["airbnb.com", "Trips · Airbnb"]],
+    mail: [["Mum", "Sunday lunch?", "Bring the good bread if you're coming", "11:20"], ["Airbnb", "Your trip to Hobart", "Check-in is from 3 pm on 12 December", "8:45"], ["Bon Appétit", "This week's recipes", "Five dinners in under 30 minutes", "7:02"], ["Spotify", "Discover Weekly is ready", "Thirty new songs picked for you", "Yesterday", 1], ["Running club", "Saturday 7 am", "Meet at the boatshed, 8 km loop", "Yesterday", 1], ["Apple", "Your receipt", "iCloud+ 200 GB", "Sun", 1]] },
+];
+const sideFor = (s) => `<div class="sl">${sidebar({
+  addr: `${img("mail.google.com").replace("<img", '<img style="width:18px;height:18px;border-radius:4px"')}mail.google.com/mail/u/0`, space: SP.indexOf(s) + 1, tint: s.tint,
+  body: `<div class="spname"><i style="background:${s.tint}"></i>${s.name}<small><svg width="14" height="14" viewBox="0 0 24 24" fill="#5d5a55"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0z"/></svg>${s.prof}</small></div>
+    <div class="sect">Pinned</div>${s.pin.map(([i, t]) => R(img(i), t)).join("")}<div class="sect">Today</div>${s.today.map(([i, t]) => R(img(i), t)).join("")}`,
+  foot: {} }).replace('class="favs"', 'class="favs" style="--x:0"').replace("<span>", '<span style="background:#fff;box-shadow:0 0 0 2px ' + s.tint + '55">')}</div>`;
+const pageFor = (s) => `<div class="sl"><div class="gm"><div class="top"><div class="logo">${img("mail.google.com")}Gmail</div><div class="q">Search mail</div><span class="av" style="background:${s.av}">${s.ini}</span></div>
+  <div class="nav"><span class="cmp">✎ Compose</span><p class="on">Inbox</p><p>Starred</p><p>Snoozed</p><p>Sent</p><p>Drafts</p></div>
+  <div class="box"><div class="tb">Signed in as <b>${s.who}</b></div>${s.mail.map(([f, sub, sn, d, r]) => `<div class="m ${r ? "r" : ""}"><span class="f">${f}</span><span class="s"><b>${sub}</b> – ${sn}</span><span class="d">${d}</span></div>`).join("")}</div></div></div>`;
+$("side").innerHTML = SP.map(sideFor).join("");
+$("page").innerHTML = SP.map(pageFor).join("");
+$("ptr").innerHTML = POINTER("#161513");
+const stage = $("stage");
+const dots = (i) => box($("side").children[0].querySelectorAll(".spaces i")[i], stage);
+window.TOTAL = 9.5;
+window.render = (t) => {
+  // Personal at 3.2, back to Work at 7.0.
+  const k = eio(ph(t, 3.2, 0.6)) - eio(ph(t, 7.0, 0.6));
+  const sw = $("side").offsetWidth, pw = $("page").offsetWidth;
+  [...$("side").children].forEach((e, i) => { e.style.transform = `translateX(${(i - k) * sw}px)`; });
+  [...$("page").children].forEach((e, i) => { e.style.transform = `translateX(${(i - k) * (pw + 40)}px)`; });
+  $("win").style.setProperty("--tint", k < 0.5 ? SP[0].tint : SP[1].tint);
+  $("win").style.background = `color-mix(in srgb, color-mix(in srgb, ${SP[1].tint} ${k * 100}%, ${SP[0].tint}) 9%, #ecebe8)`;
+  const s = SP[k < 0.5 ? 0 : 1];
+  $("capt").innerHTML = `<span style="width:10px;height:10px;border-radius:50%;background:${s.tint}"></span>${s.name} · signed in as ${s.who}`;
+  $("cap").style.opacity = shown(t, 0.8, 9.0) * (1 - 0.9 * Math.min(ph(t, 3.0, 0.2), 1 - ph(t, 3.9, 0.2)) - 0.9 * Math.min(ph(t, 6.8, 0.2), 1 - ph(t, 7.7, 0.2)));
+  $("cap").style.left = "960px";
+  const d2 = dots(2), d1 = dots(1);
+  pointer(t, [[0.5, [900, 640]], [3.0, [d2.cx, d2.cy]], [5.0, [d2.cx + 520, d2.cy - 200]], [6.8, [d1.cx, d1.cy]], [8.3, [d1.cx + 200, d1.cy - 200]]], [3.15, 6.95], 8.4);
+  const lf = 0.15 + 0.85 * loopFade(t, TOTAL); $("side").style.opacity = lf; $("page").style.opacity = lf;
+};
+render(0);
+</script></body></html>

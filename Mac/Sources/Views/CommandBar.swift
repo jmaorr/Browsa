@@ -662,7 +662,13 @@ private struct ChipRow<Content: View>: View {
                     .padding(.vertical, 8)
             }
             .scrollIndicators(.never)
-            .scrollClipDisabled()
+            // Clipped to the sheet, with the ends fading out so a row that runs on reads as more to
+            // scroll to. The vertical padding above keeps the raised chip's shadow inside the clip.
+            .mask {
+                LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.025),
+                                       .init(color: .black, location: 0.975), .init(color: .clear, location: 1)],
+                               startPoint: .leading, endPoint: .trailing)
+            }
             .onChange(of: highlighted) { _, i in if let i { withAnimation(Motion.snappy) { proxy.scrollTo(i) } } }
         }
     }
@@ -767,7 +773,7 @@ private struct FavouriteChips: View {
     var body: some View {
         ChipRow(highlighted: highlighted) {
             ForEach(Array(browser.library.sortedFavorites.enumerated()), id: \.element.id) { i, favorite in
-                GlassChip(title: favorite.displayName, highlighted: highlighted == i) {
+                GlassChip(title: favorite.chipName, highlighted: highlighted == i) {
                     FaviconView(url: favorite.url, size: 18, chip: true, letter: favorite.customName ?? favorite.title)
                 } action: {
                     done()
@@ -1078,5 +1084,38 @@ struct CommandField: NSViewRepresentable {
             default: return false
             }
         }
+    }
+}
+
+extension Favorite {
+    /// A short name for a chip: the name you gave it, else the site's own name ("Calendar",
+    /// "GitHub") rather than its host ("calendar.google.com").
+    var chipName: String {
+        if let customName, !customName.isEmpty { return customName }
+        var labels = URLNormalizer.displayHost(url).lowercased().split(separator: ".").map(String.init)
+        if labels.first == "www" { labels.removeFirst() }
+        guard labels.count > 1 else { return labels.first.map(Self.titled) ?? displayName }
+        // Google's apps go by their subdomain: mail, calendar, docs, drive, meet.
+        if labels.suffix(2) == ["google", "com"], labels.count > 2 {
+            let app = labels[0]
+            return Self.googleApps[app] ?? Self.titled(app)
+        }
+        // The name before the suffix, minding two-part ones like .com.au and .co.uk.
+        let generic: Set<String> = ["co", "com", "org", "net", "gov", "edu", "ac"]
+        let i = labels.count > 2 && generic.contains(labels[labels.count - 2]) ? labels.count - 3 : labels.count - 2
+        return Self.titled(labels[i])
+    }
+
+    private static let googleApps = ["mail": "Gmail", "calendar": "Calendar", "docs": "Docs", "drive": "Drive",
+                                     "meet": "Meet", "sheets": "Sheets", "slides": "Slides", "photos": "Photos",
+                                     "maps": "Maps", "keep": "Keep", "chat": "Chat", "gemini": "Gemini"]
+
+    /// Brands whose names aren't just a capital first letter.
+    private static let brands = ["github": "GitHub", "gitlab": "GitLab", "youtube": "YouTube", "linkedin": "LinkedIn",
+                                 "chatgpt": "ChatGPT", "openai": "OpenAI", "icloud": "iCloud", "paypal": "PayPal",
+                                 "elevenlabs": "ElevenLabs", "posthog": "PostHog", "figma": "Figma", "x": "X"]
+
+    private static func titled(_ label: String) -> String {
+        brands[label] ?? label.prefix(1).uppercased() + label.dropFirst()
     }
 }

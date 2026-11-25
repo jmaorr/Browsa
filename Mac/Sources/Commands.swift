@@ -208,6 +208,16 @@ struct BrowserCommands: Commands {
         CommandGroup(replacing: .help) {
             Button("Welcome to Browsa") { browser?.openWelcome(playingIntro: true) }
                 .disabled(browser == nil)
+            #if DEBUG
+            Menu("Preview 1Password Card") {
+                Button("Update 1Password (old address)") { OnePasswordSetup.shared.preview = .move }
+                Button("Sign In Once") { OnePasswordSetup.shared.preview = .signIn }
+                Button("Add Browsa to 1Password") { OnePasswordSetup.shared.preview = .addBrowser }
+                Button("Connected") { OnePasswordSetup.shared.preview = .done }
+                Divider()
+                Button("Stop Previewing") { OnePasswordSetup.shared.preview = nil }
+            }
+            #endif
         }
 
         CommandGroup(before: .windowList) {
