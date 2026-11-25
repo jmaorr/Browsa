@@ -126,7 +126,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
     case splitView = "split-view"
     // Spaces and window
     case nextSpace = "next-space", previousSpace = "previous-space"
-    case sidebar, panel, notes, downloads
+    case sidebar, panel, notes, comment, downloads
     // Page
     case back, forward, reload, hardReload = "hard-reload", stop
     case find, findNext = "find-next", findPrevious = "find-previous"
@@ -144,7 +144,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .newTab, .openLocation, .commands, .newWindow, .privateTab, .close, .reopen, .closeOthers,
              .clearToday, .nextTab, .previousTab, .pin, .favourite, .archive, .newFolder, .splitView: .tabs
-        case .nextSpace, .previousSpace, .sidebar, .panel, .notes, .downloads: .spaces
+        case .nextSpace, .previousSpace, .sidebar, .panel, .notes, .comment, .downloads: .spaces
         default: .page
         }
     }
@@ -172,6 +172,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case .sidebar: "Show or Hide Sidebar"
         case .panel: "Show or Hide Panel"
         case .notes: "Notes"
+        case .comment: "Comment on Page"
         case .downloads: "Downloads"
         case .back: "Back"
         case .forward: "Forward"
@@ -228,6 +229,8 @@ enum ShortcutAction: String, CaseIterable, Identifiable, Sendable {
         case (.sidebar, _): return [k("s")]
         case (.panel, _): return [k("s", optCmd)]
         case (.notes, _): return [k("m", shiftCmd)]
+        // One hand, and near Figma's C. Option makes characters, so the key monitor leaves it alone while you type.
+        case (.comment, _): return [k("c", .option)]
         case (.downloads, .safari): return [k("l", optCmd)]
         case (.downloads, _): return [k("j", shiftCmd)]
         case (.back, _): return [k("[")]

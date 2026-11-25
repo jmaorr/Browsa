@@ -251,12 +251,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return false
         }
+        if shortcuts.matches(.comment, event), browser.commandBar == nil, browser.canComment {
+            return comment(event, in: window, browser: browser)
+        }
         if flags.isEmpty, event.keyCode == 53 {   // Escape
+            // The comment tool, wherever the keyboard is: the page only hears Escape while it has the keys.
+            if NotesUI.shared.picking.contains(browser.id) {
+                withAnimation(Motion.snappy) { _ = NotesUI.shared.picking.remove(browser.id) }
+                return true
+            }
             if browser.find != nil { browser.closeFind(); return true }
             if browser.isReaderShowing, browser.commandBar == nil { browser.closeReader(); return true }
             if browser.currentTab?.isLoading == true, browser.commandBar == nil { browser.stopLoading(); return false }
         }
         return false
+    }
+
+    /// The comment tool's key. It's a key that types (⌥C is "ç"), so anywhere you're typing it's left
+    /// alone: a text field of Browsa's, or a field, editor or terminal on the page. The page has to be
+    /// asked, so its key is held for that moment and handed on if it was for the page after all.
+    private func comment(_ event: NSEvent, in window: NSWindow, browser: Browser) -> Bool {
+        var view = window.firstResponder as? NSView
+        if let text = view as? NSText, text.isEditable { return false }
+        while let v = view, !(v is WKWebView) { view = v.superview }
+        guard let web = view as? WKWebView else { browser.toggleCommentMode(); return true }
+        // Another web view (an extension's panel, the Library): its key.
+        guard let page = browser.currentController?.page, web === page.view || web.isDescendant(of: page.view) else { return false }
+        Task { @MainActor in
+            let typing = (try? await page.evaluate(NotePicker.isTypingScript, inWorld: "browsa.margin")) as? Bool ?? true
+            if typing { web.keyDown(with: event) } else { browser.toggleCommentMode() }
+        }
+        return true
     }
 
     /// A web view keeps every key press while it's first responder, menu keys included, and hands

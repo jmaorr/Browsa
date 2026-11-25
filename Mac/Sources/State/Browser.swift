@@ -691,6 +691,12 @@ enum Preferences {
         set { d.set(newValue, forKey: "settingsTab") }
     }
 
+    /// Notes: the comment tool stays on after each note, for a run of them.
+    static var notesStayInCommentMode: Bool {
+        get { d.bool(forKey: "notesStayInCommentMode") }
+        set { d.set(newValue, forKey: "notesStayInCommentMode") }
+    }
+
     static var panelWidth: CGFloat {
         get { (d.object(forKey: "panelWidth") as? Double).map { CGFloat($0) } ?? 320 }
         set { d.set(Double(newValue), forKey: "panelWidth") }
