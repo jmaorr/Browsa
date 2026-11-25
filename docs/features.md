@@ -46,7 +46,7 @@ from the repository root.
 | Feature | In 1.3 | Since | Evidence |
 |---|---|---|---|
 | Import from Arc (Spaces, pinned and open tabs, favourites) | Yes | 1.0 | `Mac/Sources/Import/BrowserImport.swift` |
-| Chrome Web Store extensions | Yes | 1.0 | `Packages/BrowserKit/Sources/WebKitEngine/WebKitExtensions.swift`, `ExtensionCompat.swift`; tested extensions and results, failures included: [`docs/web-extensions.md`](web-extensions.md) |
+| Chrome Web Store extensions | Yes | 1.0 | `Packages/BrowserKit/Sources/WebKitEngine/WebKitExtensions.swift`, `ExtensionCompat.swift`; tested extensions and results, failures included: [`docs/web-extensions.md`](web-extensions.md). 1Password, Grammarly, uBlock Origin Lite and Dark Reader work; Proton Pass doesn't. |
 | **DRM streaming** (FairPlay) | **Yes** | 1.0 | [`docs/drm.md`](drm.md): FairPlay is offered by Browsa's own bundled WebKit (a check anyone can run, `tools/drm-check`), and Netflix, Disney+, Apple TV+ and BritBox were played in 1.3 |
 | Passkeys | Partly | | WebKit's own passkeys need Apple's browser entitlement, which the build doesn't have (`Packages/BrowserKit/Sources/WebKitEngine/WebKitEngine.swift`). Passkeys through 1Password's extension work ([`docs/web-extensions.md`](web-extensions.md)). |
 | Sync between devices | No | | No account, no iCloud ([privacy](https://browsa.app/privacy/)) |
