@@ -120,6 +120,17 @@ final class OnePasswordSetup {
         }
     }
 
+    private var lastRetry = Date.distantPast
+
+    /// Back in Browsa with the add-browser card up, perhaps from adding Browsa in 1Password: the
+    /// extension may not ask the app again for a while, so its connection is started over now (by
+    /// reloading extensions), and the app's answer ticks the card. At most every 20 seconds.
+    func retryIfWaiting(in library: Library) {
+        guard preview == nil, stage(in: library) == .addBrowser, Date().timeIntervalSince(lastRetry) > 20 else { return }
+        lastRetry = Date()
+        library.reloadExtensions()
+    }
+
     func openApp() {
         guard let appURL else { return }
         NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration())
@@ -141,6 +152,9 @@ struct OnePasswordCard: View {
             }
         }
         .animation(Motion.snappy, value: setup.stage(in: browser.library))
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            setup.retryIfWaiting(in: browser.library)
+        }
     }
 
     private func card(_ stage: Stage) -> some View {
