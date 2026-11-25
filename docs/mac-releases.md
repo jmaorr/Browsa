@@ -76,7 +76,8 @@ asked; without `BROWSA_BUNDLE_WEBKIT` the app is exactly as before and uses Appl
 details and the reasoning are in `Spike/CallAudio/webkit/BUNDLING.md`. (The Chromium call tabs are gone,
 1954f68: the app carries no CEF.)
 
-1. A clean WebKit source tree at `Spike/CallAudio/webkit/WEBKIT_COMMIT`, with `webkit.patch` applied and
+1. A clean WebKit source tree at `Spike/CallAudio/webkit/WEBKIT_COMMIT` (upstream WebKit plus Browsa's own
+   fixes; `Spike/CallAudio/webkit/prepare-webkit-tree.sh <tree>` makes one from a fresh clone), with `webkit.patch` applied and
    the two headers from `Spike/CallAudio/core` copied in (that folder's README), and **without**
    `BrowsaCallAudioRecording.h`, so no call recording code is compiled in. For example a worktree:
    `git -C ~/Developer/BrowsaWebKit worktree add --detach ~/Developer/BrowsaWebKit-release <commit>`.

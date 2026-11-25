@@ -7,6 +7,15 @@ availability guards so it also builds for macOS 26.0 (see BUNDLING.md).
 `git apply` works; `BrowsaAudioTimeline.h` and `BrowsaCallGuard.h` still come from `../core/AudioTimeline.h` and
 `../core/CallGuard.h`:
 
+`WEBKIT_COMMIT` is not an upstream commit: it is upstream WebKit at `WEBKIT_BASE` plus Browsa's own fixes, kept
+as patches in `fixes/` because they can't be pushed to WebKit's repository. `prepare-webkit-tree.sh <tree>` checks
+out the base and applies them, and checks the result against `WEBKIT_TREE`. When a fix is added or the base moves,
+update `fixes/`, `WEBKIT_BASE`, `WEBKIT_COMMIT` and `WEBKIT_TREE` together.
+
+| fix | why |
+|---|---|
+| `0001-first-line-max-content-cache.patch` | a crash on pages with `::first-line` styles (telstra.com.au): the cached max-content line kept a style its layout box had freed |
+
 1. Copy `BrowsaCallAudioInternalUnit.h`, `BrowsaSideSpeakers.h`, `../core/AudioTimeline.h` (as `BrowsaAudioTimeline.h`) and
    `../core/CallGuard.h` (as `BrowsaCallGuard.h`) into
    `Source/WebCore/platform/mediastream/cocoa/`.
