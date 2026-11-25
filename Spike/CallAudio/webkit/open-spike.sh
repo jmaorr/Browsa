@@ -11,7 +11,7 @@
 set -eu
 APP="$HOME/Developer/Browsa/derived/webkit-spike/Browsa WebKit Spike.app"
 BIN="$APP/Contents/MacOS/Browsa"
-FW="${BROWSA_SPIKE_WEBKIT:-$HOME/Developer/BrowsaWebKit/WebKitBuild/Release}"
+FW="${BROWSA_SPIKE_WEBKIT:-$HOME/Developer/Browsa/webkit/source/WebKitBuild/Release}"
 LOG="${BROWSA_SPIKE_LOG:-$HOME/Library/Logs/Browsa WebKit Spike.log}"
 [ -d "$FW/WebKit.framework" ] || { echo "No WebKit build at $FW" >&2; exit 1; }
 [ -x "$BIN" ] || { echo "No app at $APP (Spike/CallAudio/webkit/build-browsa.sh)" >&2; exit 1; }

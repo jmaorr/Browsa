@@ -1,10 +1,10 @@
 #!/bin/sh
 # Builds apm-replay-webkit (../replay/webkit_main.cc) against the patched WebKit's libwebrtc, so offline replays
 # of a unit dump run the exact processing the call ran. Output: ~/Developer/Browsa/derived/audio-lab/apm-replay-webkit.
-# Env: WEBKIT (default ~/Developer/BrowsaWebKit), FW (default $WEBKIT/WebKitBuild/Release), OUT.
+# Env: WEBKIT (default ~/Developer/Browsa/webkit/source), FW (default $WEBKIT/WebKitBuild/Release), OUT.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
-WEBKIT=${WEBKIT:-$HOME/Developer/BrowsaWebKit}
+WEBKIT=${WEBKIT:-$HOME/Developer/Browsa/webkit/source}
 FW=${FW:-$WEBKIT/WebKitBuild/Release}
 OUT=${OUT:-$HOME/Developer/Browsa/derived/audio-lab}
 SRC="$WEBKIT/Source/ThirdParty/libwebrtc/Source"

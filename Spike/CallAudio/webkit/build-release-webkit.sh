@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Builds a release WebKit for one macOS major, for bundling into Browsa (BUNDLING.md, tools/release-mac.sh).
 #
-#   Spike/CallAudio/webkit/build-release-webkit.sh <webkit source tree> <major>     # e.g. ~/Developer/BrowsaWebKit-release 26
+#   Spike/CallAudio/webkit/build-release-webkit.sh <webkit source tree> <major>     # e.g. ~/Developer/Browsa/webkit/release 26
 #
 # The tree must be the commit in WEBKIT_COMMIT with webkit.patch applied and BrowsaAudioTimeline.h / BrowsaCallGuard.h
 # copied in (README.md), and must NOT have BrowsaCallAudioRecording.h: that dev-only file compiles in the call dump.

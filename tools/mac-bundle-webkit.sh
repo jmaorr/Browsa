@@ -3,7 +3,7 @@
 # archived app before the Developer ID export). See Spike/CallAudio/webkit/BUNDLING.md.
 #
 #   tools/mac-bundle-webkit.sh <Browsa.app> <signing identity> <major>=<webkit build folder> [...]
-#   e.g. tools/mac-bundle-webkit.sh Browsa.app "Apple Development" 26=~/Developer/BrowsaWebKit-release/WebKitBuild-release-26.0/Release
+#   e.g. tools/mac-bundle-webkit.sh Browsa.app "Apple Development" 26=~/Developer/Browsa/webkit/release/WebKitBuild-release-26.0/Release
 #
 # Afterwards the app's executables are:
 #   Contents/MacOS/Browsa                 the launcher (Spike/CallAudio/webkit/launcher/main.c), universal: picks one of

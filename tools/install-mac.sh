@@ -8,6 +8,10 @@
 #                                     # signed so it may run on Browsa's own WebKit build
 #                                     # (Mac/BrowsaLocalWebKit.entitlements; see Mac/Sources/PatchedWebKit.swift)
 #
+# Since 1.3 the daily Browsa on a development Mac is the released app (browsa.app, updated by Sparkle), not a
+# build from this script, and features are tried in Browsa Dev (tools/dev.sh, docs/dev-workflow.md). This stays
+# for the rare case where a Release build of a ref has to be run locally; it replaces the released app.
+#
 # Builds from a clean export of the ref, so it doesn't matter which branch this checkout (or any
 # worktree) is on, or what's uncommitted in it. Website data, sign-ins, tabs and extensions live
 # in the sandbox container for com.orriginal.browsa, which reinstalling never touches. Xcode's

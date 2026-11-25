@@ -1,4 +1,7 @@
 #!/bin/zsh
+# Not part of the normal workflow since 1.3: the daily Browsa is the released app, which carries its own WebKit,
+# and the local "Browsa-daily" engine builds this script expects were removed. Kept for engine work only
+# (docs/dev-workflow.md, docs/mac-releases.md).
 # Moves the everyday Browsa (~/Applications/Browsa.app, com.orriginal.browsa) onto Browsa's own WebKit build, with a
 # backup first and a way back. Nothing here runs by itself: each step is a subcommand.
 #
@@ -18,7 +21,7 @@ repo="${0:A:h:h}"
 bundle_id="com.orriginal.browsa"
 app="$HOME/Applications/Browsa.app"
 backups="$HOME/Developer/Browsa/backups"
-webkit="$HOME/Developer/BrowsaWebKit/WebKitBuild/Browsa-daily"
+webkit="$HOME/Developer/Browsa/webkit/source/WebKitBuild/Browsa-daily"
 # Everything that holds Browsa's state, as installed today (unsandboxed; SandboxMigration moved it out).
 data=(
   "$HOME/Library/WebKit/$bundle_id"

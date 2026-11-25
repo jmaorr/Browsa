@@ -13,7 +13,7 @@ enum PatchedWebKit {
 
     /// The pinned build for everyday use (an APFS clone of a checked build, not the folder that gets rebuilt).
     static let defaultFolder = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Developer/BrowsaWebKit/WebKitBuild/Browsa-daily").path
+        .appendingPathComponent("Developer/Browsa/webkit/source/WebKitBuild/Browsa-daily").path
 
     /// Settings › Audio, "Use Browsa's WebKit". On by default; `BROWSA_PATCHED_WEBKIT=0` switches it off for one run.
     static var enabled: Bool {
