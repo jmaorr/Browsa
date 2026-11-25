@@ -1055,6 +1055,12 @@ extension Library: EngineExtensionHost {
         }
     }
 
+    /// 1Password's app refused Browsa or accepted it (OnePasswordCard).
+    func extensionAppAnswered(extensionID: String, app: String, trusted: Bool) {
+        guard extensionID == OnePasswordSetup.catalogID else { return }
+        OnePasswordSetup.shared.heard(trusted: trusted)
+    }
+
     /// chrome.sidePanel.open, or a toolbar click on an extension that asked for its panel instead.
     func showExtensionPanel(extensionID: String, url: URL?) -> Bool {
         let id = "ext:" + extensionID

@@ -1339,6 +1339,7 @@ private struct ExtensionDetail: View {
                     .padding(12)
                     .background(.primary.opacity(0.04), in: .rect(cornerRadius: 12, style: .continuous))
                 }
+                if item.id == OnePasswordSetup.catalogID { OnePasswordTip() }
                 HStack(spacing: 10) {
                     if let options = running?.optionsURL {
                         Button { browser.newTab(url: options) } label: { Label("Settings", systemImage: "gearshape") }

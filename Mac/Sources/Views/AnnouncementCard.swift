@@ -168,7 +168,9 @@ struct AnnouncementCard: View {
 
     var body: some View {
         ZStack {
-            if let a = model.current, !browser.currentSpace.isPrivate {
+            // A 1Password card (OnePasswordCard) takes this place while it shows.
+            if let a = model.current, !browser.currentSpace.isPrivate,
+               OnePasswordSetup.shared.stage(in: browser.library) == nil {
                 card(a)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }

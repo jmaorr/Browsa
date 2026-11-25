@@ -281,6 +281,15 @@ public final class WebKitEngine: BrowserEngine, CallAudioConfigurable, BoostsCon
         if #available(macOS 15.4, *) { webExtensions?.forget(id) }
     }
 
+    public func extensionUsesOldAddress(id: String) -> Bool {
+        if #available(macOS 15.4, *) { return webExtensions?.usesLegacyAddress(id) ?? false }
+        return false
+    }
+
+    public func moveExtensionToNewAddress(id: String) {
+        if #available(macOS 15.4, *) { webExtensions?.moveToChromeAddress(id) }
+    }
+
     public func extensionAllowedInPrivate(id: String) -> Bool { WebKitExtensionsPrivacy.isAllowed(id) }
 
     public func setExtension(id: String, allowedInPrivate: Bool) {
