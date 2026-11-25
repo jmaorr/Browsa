@@ -297,3 +297,35 @@ private struct OnePasswordAnchorView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { let v = NSView(); anchor.view = v; return v }
     func updateNSView(_ view: NSView, context: Context) { anchor.view = view }
 }
+
+/// The one card place above the sidebar's bottom row. A 1Password card comes first, since something
+/// isn't working yet; announcements (What's New and the like) wait until it's done, then follow a
+/// moment later, so the two never swap places in one go.
+struct SidebarCardSlot: View {
+    @Environment(Browser.self) private var browser
+    @State private var showAnnouncements = true
+
+    var body: some View {
+        let onePassword = OnePasswordSetup.shared.stage(in: browser.library) != nil
+        ZStack(alignment: .bottom) {
+            if onePassword {
+                OnePasswordCard()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if showAnnouncements {
+                AnnouncementCard()
+                    .transition(.opacity)
+            }
+        }
+        .animation(Motion.snappy, value: onePassword)
+        .animation(Motion.snappy, value: showAnnouncements)
+        .onAppear { showAnnouncements = !onePassword }
+        .task(id: onePassword) {
+            if onePassword {
+                showAnnouncements = false
+            } else if !showAnnouncements {
+                try? await Task.sleep(for: .seconds(1.5))
+                showAnnouncements = true
+            }
+        }
+    }
+}

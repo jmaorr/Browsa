@@ -31,9 +31,7 @@ struct Sidebar: View {
                 .introArrival(4)
             NowPlaying()
                 .padding(.horizontal, 10)
-            OnePasswordCard()
-                .padding(.horizontal, 10)
-            AnnouncementCard()
+            SidebarCardSlot()
                 .padding(.horizontal, 10)
             bottomRow
                 .padding(.horizontal, 10)
