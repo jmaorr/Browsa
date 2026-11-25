@@ -7,6 +7,10 @@
   </picture>
 </p>
 
+> **Comparing browsers, or checking what Browsa does?** [`docs/features.md`](docs/features.md) lists every feature
+> of the released Mac app with the version it arrived in and the source, tests and clips that show it, and
+> [`docs/drm.md`](docs/drm.md) covers DRM streaming. The Mac app is the one that's released; start there.
+
 A native WebKit browser for iPhone Duo, iPhone and iPad, open source under the [MIT license](LICENSE). Use it as it
 is, or fork it as a starting point for your own browser. See it at [browsa.app](https://browsa.app). It brings Arc's navigation model to iOS:
 
@@ -168,12 +172,15 @@ Good places to start if you'd like to extend it:
 
 - Resizing the sidebar by dragging its edge
 - Drag and drop of links and favourites between the sidebar and other apps
-- CloudKit sync and a separate login profile for each space
+- CloudKit sync (the Mac app already has a profile for each space; the iOS app doesn't yet)
 - Storing history in SQLite with full-text search (GRDB + FTS5) instead of JSON, once history gets big
 
 ## Browsa for Mac
 
-`BrowsaMac` is a second target in the same project: an Arc-style window for macOS 26 or later.
+`BrowsaMac` is a second target in the same project: an Arc-style window for macOS 26 or later. It is the released
+app ([browsa.app](https://browsa.app), currently 1.3). Since 1.3 it has Split View, folders and Live Folders for
+pinned tabs, a profile for each Space, picture in picture, your own Boosts and a Performance Monitor; the full list
+with evidence is [`docs/features.md`](docs/features.md).
 
 ```sh
 xcodegen && open Browsa.xcodeproj   # then pick the BrowsaMac scheme and Run
