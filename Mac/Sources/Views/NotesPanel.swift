@@ -37,6 +37,11 @@ final class NotesUI {
     /// Notes resolved a moment ago, which stay in view with Undo.
     var justResolved: [UUID: Date] = [:]
 
+    /// The comment tool stays on after each note (the switch above the composer).
+    var staysInCommentMode = Preferences.notesStayInCommentMode {
+        didSet { Preferences.notesStayInCommentMode = staysInCommentMode }
+    }
+
     func requestFocus(_ window: UUID) { focusRequests[window, default: 0] += 1 }
 
     /// "Add Note" on a page's right-click menu, for the element or selection under the pointer.
@@ -404,8 +409,7 @@ private struct CommentToolButton: View {
                 .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        .keyboardShortcut("n", modifiers: [.command, .option])
-        .help(on ? "Click something or highlight text on the page. Esc to stop." : "Comment on something on the page (⌥⌘N)")
+        .help(on ? "Click something or highlight text on the page. Esc to stop." : Shortcuts.shared.help("Comment on something on the page", .comment))
     }
 }
 
@@ -469,9 +473,14 @@ private struct NoteComposer: View {
     private var ui: NotesUI { .shared }
     private var draft: NoteDraft? { ui.drafts[browser.id] }
     private var canAdd: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var picking: Bool { ui.picking.contains(browser.id) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if picking || (ui.staysInCommentMode && draft != nil) {
+                CommentModeRow(picking: picking)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
             if let draft, draft.url == browser.currentTab?.url, draft.quote != nil || draft.selector != nil {
                 AnchorChip(draft: draft) { withAnimation(Motion.snappy) { _ = ui.drafts.removeValue(forKey: browser.id) } }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -489,14 +498,17 @@ private struct NoteComposer: View {
                         return .handled
                     }
                     .padding(.vertical, 2)
-                if canAdd {
-                    Button("Add", action: add)
-                        .buttonStyle(.glassProminent)
-                        .buttonBorderShape(.capsule)
-                        .controlSize(.small)
-                        .keyboardShortcut(.return, modifiers: .command)
-                        .transition(.scale(scale: 0.8).combined(with: .opacity))
-                }
+                // Always laid out, shown once there's text: the field keeps one width, so a line that
+                // wrapped before Add appeared isn't cut off by it.
+                Button("Add", action: add)
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.small)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(!canAdd)
+                    .opacity(canAdd ? 1 : 0)
+                    .scaleEffect(canAdd ? 1 : 0.8)
+                    .accessibilityHidden(!canAdd)
             }
             .padding(.horizontal, 10).padding(.vertical, 7)
             .background(.background.opacity(focused ? 1 : 0.6), in: .rect(cornerRadius: 9, style: .continuous))
@@ -509,6 +521,7 @@ private struct NoteComposer: View {
             .animation(Motion.snappy, value: focused)
         }
         .padding(10)
+        .animation(Motion.snappy, value: picking)
         .onChange(of: ui.focusRequests[browser.id]) { focused = true }
     }
 
@@ -516,11 +529,33 @@ private struct NoteComposer: View {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty, let url = browser.currentTab?.url, let tab = browser.currentTab else { return }
         let anchor = draft?.url == url ? draft?.anchor ?? .init() : .init()
+        let commented = draft != nil
         withAnimation(Motion.snappy) {
             browser.library.margin.add(MarginNote(url: url, pageTitle: tab.title, anchor: anchor, body: body))
             ui.drafts.removeValue(forKey: browser.id)
             text = ""
+            // A run of comments: straight back to picking the next thing.
+            if commented, ui.staysInCommentMode { ui.picking.insert(browser.id) }
         }
+    }
+}
+
+/// While the comment tool is on: what to do, and whether it stays on after each note.
+private struct CommentModeRow: View {
+    let picking: Bool
+
+    var body: some View {
+        @Bindable var ui = NotesUI.shared
+        HStack(spacing: 8) {
+            Text(picking ? "Click or highlight something. Esc to stop." : "Return adds it, then pick the next.")
+                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Spacer(minLength: 0)
+            Toggle("Stay", isOn: $ui.staysInCommentMode)
+                .toggleStyle(.switch).controlSize(.mini)
+                .font(.caption).foregroundStyle(.secondary)
+                .help("Stay in comment mode after each note, to comment on one thing after another")
+        }
+        .padding(.horizontal, 4)
     }
 }
 
@@ -836,6 +871,18 @@ func openNoteCount(_ url: URL?, in library: Library) -> Int {
 enum NotePicker {
     // Each evaluate gets fresh globals, so state lives on the page: flags in data attributes on
     // <html>, listeners bound once and gated on them.
+    /// Whether the keyboard is in something you type in on the page: a field, an editor, a terminal
+    /// (they sit on a hidden text area), or a frame, which can't be seen into and gets the benefit of the doubt.
+    static let isTypingScript = #"""
+    let a = document.activeElement;
+    while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+    if (!a || a === document.body || a === document.documentElement) return false;
+    if (['IFRAME', 'FRAME', 'EMBED', 'OBJECT', 'TEXTAREA', 'SELECT'].includes(a.tagName)) return true;
+    if (a.isContentEditable || a.getAttribute('role') === 'textbox') return true;
+    if (a.tagName === 'INPUT') return !['button', 'checkbox', 'radio', 'submit', 'reset', 'file', 'image', 'range', 'color'].includes((a.type || 'text').toLowerCase());
+    return false;
+    """#
+
     static let script = #"""
     const root = document.documentElement;
     const describe = (el) => {
@@ -1081,4 +1128,22 @@ private func newLine(_ press: KeyPress) -> KeyPress.Result {
     guard press.modifiers.contains(.shift) || press.modifiers.contains(.option) else { return .ignored }
     NSApp.sendAction(#selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)), to: nil, from: nil)
     return .handled
+}
+
+extension Browser {
+    /// Notes is in the workbench and there's a web page to comment on.
+    var canComment: Bool {
+        library.workbench.tool("notes") != nil && currentTab?.url?.scheme?.hasPrefix("http") == true
+    }
+
+    /// ⌥C: turns the comment tool on (opening Notes for it) or off.
+    func toggleCommentMode() {
+        guard canComment else { return }
+        let ui = NotesUI.shared
+        withAnimation(Motion.snappy) {
+            if ui.picking.contains(id) { ui.picking.remove(id); return }
+            if panel != "notes" { showPanel("notes") }
+            ui.picking.insert(id)
+        }
+    }
 }

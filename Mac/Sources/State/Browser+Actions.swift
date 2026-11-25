@@ -322,6 +322,7 @@ extension Browser {
         case .sidebar: toggleSidebar()
         case .panel: togglePanel()
         case .notes: showPanel("notes", toggles: true)
+        case .comment: toggleCommentMode()
         case .downloads: showPanel("downloads", toggles: true)
         case .back: goBack()
         case .forward: goForward()

@@ -83,6 +83,9 @@ struct BrowserCommands: Commands {
             Button("Notes") { browser?.showPanel("notes", toggles: true) }
                 .keyboardShortcut(keys.shortcut(.notes))
                 .disabled(browser == nil)
+            // No key here: its key (⌥C) is the key monitor's, which lets it through to whatever you're typing in.
+            Button("Comment on Page") { browser?.toggleCommentMode() }
+                .disabled(browser?.canComment != true)
         }
 
         CommandGroup(before: .toolbar) {
