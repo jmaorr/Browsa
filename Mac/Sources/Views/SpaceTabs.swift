@@ -303,6 +303,17 @@ private struct DraggableFolderRow: View {
                         get: { browser.library.gitHubFilters.contains(filter) },
                         set: { browser.library.setGitHubFilter(filter, on: $0) }))
                 }
+                // Just this space: a work org here, your own repos in another.
+                let owners = browser.library.gitHubOwners[space.id] ?? GitHubOwners()
+                if owners.seen.count > 1 {
+                    Menu("Organisations", systemImage: "building.2") {
+                        ForEach(owners.seen, id: \.self) { owner in
+                            Toggle(owner, isOn: Binding(
+                                get: { !(browser.library.gitHubOwners[space.id]?.hidden.contains(owner) ?? false) },
+                                set: { browser.library.setGitHubOwner(owner, shown: $0, in: space) }))
+                        }
+                    }
+                }
             }
             Divider()
             Button("Mark All as Read", systemImage: "circle.slash") {
