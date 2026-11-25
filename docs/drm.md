@@ -1,6 +1,6 @@
 # DRM streaming
 
-Browsa plays DRM-protected video (Apple TV+, BritBox and other services that support Safari) through **FairPlay
+Browsa plays DRM-protected video (Netflix, Disney+, Apple TV+, BritBox and other services that support Safari) through **FairPlay
 Streaming**, the only DRM system WebKit has. It has no Widevine or PlayReady, so a service that only supports
 Chrome, Edge or Firefox won't play protected video.
 
@@ -28,12 +28,14 @@ It shows the engine offers FairPlay. It doesn't show a film playing, which needs
 
 ## Services played
 
-Played by hand by the maker, signed in, in Browsa for Mac: a protected title played.
+Played by hand by the maker, signed in, in the released Browsa for Mac: a protected title played.
 
-| Service | Result | Checked |
-|---|---|---|
-| Apple TV+ (tv.apple.com) | Plays | November 2026 |
-| BritBox | Plays | November 2026 |
+| Service | Result | Browsa | Checked |
+|---|---|---|---|
+| Netflix | Plays | 1.3 | November 2026 |
+| Disney+ | Plays | 1.3 | November 2026 |
+| Apple TV+ (tv.apple.com) | Plays | 1.3 | November 2026 |
+| BritBox | Plays | 1.3 | November 2026 |
 
 Screen recordings of protected video are black by design (that is FairPlay working), so there is no screen
 capture to show here.
@@ -42,5 +44,5 @@ Not DRM, so not evidence either way: ordinary YouTube videos (they play, but unp
 
 ## Adding a service
 
-Play a protected title, not a trailer, in a release build on Apple silicon, and add a row with the month. If it
+Play a protected title, not a trailer, in a release build on Apple silicon, and add a row with the version and month. If it
 fails, add the row anyway with what happened.

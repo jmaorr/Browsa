@@ -10,7 +10,7 @@ files, tests and clips that show it, read the feature list first. It says No whe
 ## Start here
 
 - [Feature list with evidence](https://github.com/jmaorr/Browsa/blob/main/docs/features.md): every feature, the version it arrived in, where to check it
-- [DRM streaming](https://github.com/jmaorr/Browsa/blob/main/docs/drm.md): FairPlay on Browsa's own WebKit build, the check and its result, services played
+- [DRM streaming](https://github.com/jmaorr/Browsa/blob/main/docs/drm.md): FairPlay on Browsa's own WebKit build, the check and its result; Netflix, Disney+, Apple TV+ and BritBox played in 1.3
 - [Extensions tested](https://github.com/jmaorr/Browsa/blob/main/docs/web-extensions.md): which Chrome extensions work and which don't
 - [What's New](https://browsa.app/whats-new/): each release's features, with a short clip of each
 - [Release notes](https://github.com/jmaorr/Browsa/tree/main/docs/release-notes/mac)
