@@ -32,7 +32,7 @@ Closing a card, or using an `enable` button, hides that `id` for good, so give e
 
 - The first card in the list that fits this version, hasn't expired and hasn't been closed is shown.
 - `video` is optional (https only). It's downloaded once before the card appears; muted, looping, 16:10.
-- The first button is the prominent one, at the right; the others sit at the left. An `enable` button hides itself once all its plugins are on.
+- The first button is the prominent one, at the right; the others are flat text links at the left. An `enable` button hides itself once all its plugins are on.
 - `enable` takes Library plugin ids from `LibraryCatalog.plugins` (Mac/Sources/Library/LibraryPage.swift).
 - `library` opens the Library, at `target` (a plugin or pack id) if given. `open` opens an https page.
 - Not shown in private windows.

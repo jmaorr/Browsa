@@ -202,11 +202,8 @@ struct AnnouncementCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                 let buttons = shownButtons(a)
                 if !buttons.isEmpty {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 6) { buttonViews(buttons, a, stacked: false) }
-                        VStack(alignment: .leading, spacing: 6) { buttonViews(buttons, a, stacked: true) }
-                    }
-                    .padding(.top, 6)
+                    HStack(spacing: 8) { buttonViews(buttons, a) }
+                        .padding(.top, 6)
                 }
             }
             .padding(10)
@@ -236,18 +233,21 @@ struct AnnouncementCard: View {
         }
     }
 
-    /// The first button is the main one, at the trailing edge; the rest start at the leading edge.
+    /// The first button is the main one, a glass capsule at the trailing edge. The rest are flat text links at
+    /// the leading edge, so the row never has to wrap in a narrow sidebar.
     @ViewBuilder
-    private func buttonViews(_ buttons: [Announcement.Action], _ a: Announcement, stacked: Bool) -> some View {
+    private func buttonViews(_ buttons: [Announcement.Action], _ a: Announcement) -> some View {
         let others = Array(buttons.dropFirst())
         ForEach(Array(others.enumerated()), id: \.offset) { _, b in
             Button(b.title) { run(b, a) }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
-                .controlSize(.large)
-                .fixedSize()
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .contentShape(.rect)
+                .onHover { inside in if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
         }
-        if !stacked { Spacer(minLength: 6) }
+        Spacer(minLength: 4)
         if let main = buttons.first {
             Button(main.title) { run(main, a) }
                 .buttonStyle(.glassProminent)
