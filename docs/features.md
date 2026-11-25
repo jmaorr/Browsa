@@ -33,7 +33,7 @@ from the repository root.
 | Rules that send links to a Space (Space Routing) | Yes | 1.1 | `Mac/Sources/State/SpaceRouting.swift`, [`docs/space-routing.md`](space-routing.md) |
 | **Boosts** (a site's font, colour and look; zap parts of a page; your own CSS and scripts) | **Yes** | **1.2.1, make your own 1.3** | `Packages/BrowserKit/Sources/BrowserEngine/Boosts.swift`, `Mac/Sources/State/UserBoosts.swift`, `Mac/Sources/Views/BoostPanel.swift`, [`docs/boosts.md`](boosts.md); `website/whats-new/2026-11-25-your-own-boosts.md` |
 | **Picture in picture when you leave a playing video** | **Yes** | **1.3** | `Mac/Sources/VideoPiP.swift`; `website/whats-new/2026-11-25-picture-in-picture.md`. Calls float in their own window (`Mac/Sources/CallPiP.swift`). |
-| **Controls in the sidebar for media playing in a tab you left** | **Yes** | **1.3** | `NowPlaying` in `Mac/Sources/Views/MediaControls.swift`, shown from `Mac/Sources/Views/Sidebar.swift` |
+| **Controls in the sidebar for media playing in a tab you left** (a mini player) | **Yes** | **1.3** | Part of Picture in Picture, same What's New entry: playing tabs get a play and pause button in the sidebar, and a tab playing out of sight shows as a card there (`NowPlaying` in `Mac/Sources/Views/MediaControls.swift`, placed in `Mac/Sources/Views/Sidebar.swift`) |
 | Swipe back and forward | Yes | 1.0 | `Packages/BrowserKit/Sources/WebKitEngine/WebKitPage.swift` |
 | ⌃Tab in recently used order | Partly | | ⌃Tab steps through the Space's tabs in sidebar order; ⌘T lists recent tabs first |
 | Copy a clean link (⇧⌘C) | Yes | 1.0 | `Packages/BrowserKit/Sources/BrowserCore/LinkCleaner.swift`; tests `LinkCleanerTests.swift` |
