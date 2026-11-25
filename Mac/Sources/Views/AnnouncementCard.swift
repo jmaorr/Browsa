@@ -245,7 +245,7 @@ struct AnnouncementCard: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .contentShape(.rect)
-                .onHover { inside in if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
+                .pointerStyle(.link)
         }
         Spacer(minLength: 4)
         if let main = buttons.first {
