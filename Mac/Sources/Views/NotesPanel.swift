@@ -42,6 +42,10 @@ final class NotesUI {
         didSet { Preferences.notesStayInCommentMode = staysInCommentMode }
     }
 
+    /// Windows whose keyboard is in the Notes composer. There the comment tool's key works the tool
+    /// (picking hands the keyboard to the composer, and the next press is usually for another pick).
+    var composerFocused: Set<UUID> = []
+
     func requestFocus(_ window: UUID) { focusRequests[window, default: 0] += 1 }
 
     /// "Add Note" on a page's right-click menu, for the element or selection under the pointer.
@@ -523,6 +527,10 @@ private struct NoteComposer: View {
         .padding(10)
         .animation(Motion.snappy, value: picking)
         .onChange(of: ui.focusRequests[browser.id]) { focused = true }
+        .onChange(of: focused) { _, on in
+            if on { ui.composerFocused.insert(browser.id) } else { ui.composerFocused.remove(browser.id) }
+        }
+        .onDisappear { ui.composerFocused.remove(browser.id) }
     }
 
     private func add() {

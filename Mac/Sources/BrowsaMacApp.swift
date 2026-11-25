@@ -267,12 +267,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
-    /// The comment tool's key. It's a key that types (⌥C is "ç"), so anywhere you're typing it's left
-    /// alone: a text field of Browsa's, or a field, editor or terminal on the page. The page has to be
+    /// The comment tool's key. It's a key that types (⌥C is "ç"), so anywhere else you're typing it's left
+    /// alone: a text field of Browsa's other than the Notes composer, or a field, editor or terminal on the page. The page has to be
     /// asked, so its key is held for that moment and handed on if it was for the page after all.
     private func comment(_ event: NSEvent, in window: NSWindow, browser: Browser) -> Bool {
         var view = window.firstResponder as? NSView
-        if let text = view as? NSText, text.isEditable { return false }
+        if let text = view as? NSText, text.isEditable {
+            // The Notes composer is the one field where it's the tool's key: that's where the keyboard
+            // lands after a pick, and "ç" there was never what was meant.
+            guard NotesUI.shared.composerFocused.contains(browser.id) else { return false }
+            browser.toggleCommentMode()
+            return true
+        }
         while let v = view, !(v is WKWebView) { view = v.superview }
         guard let web = view as? WKWebView else { browser.toggleCommentMode(); return true }
         // Another web view (an extension's panel, the Library): its key.
