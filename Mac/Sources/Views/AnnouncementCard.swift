@@ -203,8 +203,8 @@ struct AnnouncementCard: View {
                 let buttons = shownButtons(a)
                 if !buttons.isEmpty {
                     ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 6) { buttonViews(buttons, a) }
-                        VStack(alignment: .leading, spacing: 6) { buttonViews(buttons, a) }
+                        HStack(spacing: 6) { buttonViews(buttons, a, stacked: false) }
+                        VStack(alignment: .leading, spacing: 6) { buttonViews(buttons, a, stacked: true) }
                     }
                     .padding(.top, 6)
                 }
@@ -236,22 +236,24 @@ struct AnnouncementCard: View {
         }
     }
 
+    /// The first button is the main one, at the trailing edge; the rest start at the leading edge.
     @ViewBuilder
-    private func buttonViews(_ buttons: [Announcement.Action], _ a: Announcement) -> some View {
-        ForEach(Array(buttons.enumerated()), id: \.offset) { index, b in
-            if index == 0 {
-                Button(b.title) { run(b, a) }
-                    .buttonStyle(.glassProminent)
-                    .buttonBorderShape(.capsule)
-                    .controlSize(.small)
-                    .fixedSize()
-            } else {
-                Button(b.title) { run(b, a) }
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.capsule)
-                    .controlSize(.small)
-                    .fixedSize()
-            }
+    private func buttonViews(_ buttons: [Announcement.Action], _ a: Announcement, stacked: Bool) -> some View {
+        let others = Array(buttons.dropFirst())
+        ForEach(Array(others.enumerated()), id: \.offset) { _, b in
+            Button(b.title) { run(b, a) }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
+                .controlSize(.large)
+                .fixedSize()
+        }
+        if !stacked { Spacer(minLength: 6) }
+        if let main = buttons.first {
+            Button(main.title) { run(main, a) }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.capsule)
+                .controlSize(.large)
+                .fixedSize()
         }
     }
 
