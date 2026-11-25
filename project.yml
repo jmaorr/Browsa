@@ -123,12 +123,12 @@ targets:
             LSItemContentTypes: [public.html, public.xhtml]
     settings:
       base:
-        PRODUCT_NAME: Browsa
+        PRODUCT_NAME: Browsa Bench
         # Only Release builds use it: that's the copy in ~/Applications (tools/install-mac.sh),
         # whose data (~/Library/Application Support/com.orriginal.browsa, ~/Library/WebKit and
         # ~/Library/HTTPStorages under the same ID) holds Josh's sign-ins, tabs and extensions.
-        PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa
-        BROWSA_APP_NAME: Browsa
+        PRODUCT_BUNDLE_IDENTIFIER: com.orriginal.browsa.bench
+        BROWSA_APP_NAME: Browsa Bench
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: Browsa
