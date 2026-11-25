@@ -16,7 +16,10 @@ tree="${tree:A}"
 cocoa="$tree/Source/WebCore/platform/mediastream/cocoa"
 out="$tree/WebKitBuild-release-$major.0"
 
-[[ "$(git -C "$tree" rev-parse HEAD)" == "$(cat "$here/WEBKIT_COMMIT")" ]] || { echo "$tree isn't at WEBKIT_COMMIT" >&2; exit 1; }
+# WEBKIT_COMMIT is Browsa's own commit (upstream WEBKIT_BASE plus fixes/), so a tree made again with
+# prepare-webkit-tree.sh has the same files (WEBKIT_TREE) under another commit hash. Either is right.
+[[ "$(git -C "$tree" rev-parse HEAD)" == "$(cat "$here/WEBKIT_COMMIT")" || "$(git -C "$tree" rev-parse 'HEAD^{tree}')" == "$(cat "$here/WEBKIT_TREE")" ]] \
+  || { echo "$tree isn't at WEBKIT_COMMIT (or its files, WEBKIT_TREE)" >&2; exit 1; }
 for h in BrowsaCallAudioInternalUnit.h BrowsaSideSpeakers.h BrowsaAudioTimeline.h BrowsaCallGuard.h; do
   [[ -f "$cocoa/$h" ]] || { echo "missing $cocoa/$h (apply webkit.patch and copy the headers, README.md)" >&2; exit 1; }
 done
