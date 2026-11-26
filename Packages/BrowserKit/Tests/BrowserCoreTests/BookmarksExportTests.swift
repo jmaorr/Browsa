@@ -35,4 +35,16 @@ import Foundation
         let html = BookmarksExport.html([.link(title: "", url: URL(string: "https://example.com/x")!)])
         #expect(html.contains("<A HREF=\"https://example.com/x\">https://example.com/x</A>"))
     }
+
+    @Test func leavesOutAddressesThatArentWebPages() {
+        let html = BookmarksExport.html([
+            .link(title: "Script", url: URL(string: "javascript:alert(1)")!),
+            .link(title: "Data", url: URL(string: "data:text/html,<script>alert(1)</script>")!),
+            .link(title: "Extension", url: URL(string: "webkit-extension://abc/popup.html")!),
+            .link(title: "Page", url: URL(string: "HTTPS://example.com/")!),
+        ])
+        #expect(!html.contains("javascript:") && !html.contains("data:") && !html.contains("webkit-extension:"))
+        #expect(html.contains(">Page</A>"))
+        #expect(html.components(separatedBy: "<A HREF").count - 1 == 1)
+    }
 }
