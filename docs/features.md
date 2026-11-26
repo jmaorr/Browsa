@@ -5,12 +5,12 @@ feature, the version it arrived in, and where the evidence is: the source, a tes
 has a short clip on [browsa.app/whats-new](https://browsa.app/whats-new/)). The rows that say **No** are as
 deliberate as the ones that say Yes.
 
-Current release: **1.3** (25 November 2026). Release notes: [`docs/release-notes/mac`](release-notes/mac/). Paths are
+Current release: **1.3.1** (26 November 2026). Release notes: [`docs/release-notes/mac`](release-notes/mac/). Paths are
 from the repository root.
 
 ## Organising tabs
 
-| Feature | In 1.3 | Since | Evidence |
+| Feature | In 1.3.1 | Since | Evidence |
 |---|---|---|---|
 | Vertical sidebar, hideable | Yes | 1.0 | `Mac/Sources/Views/Sidebar.swift`, `Mac/Sources/Views/BrowserWindow.swift` |
 | Spaces, each with its own pinned and Today tabs | Yes | 1.0 | `Packages/BrowserKit/Sources/BrowserCore/Models.swift`, `Mac/Sources/Views/SpaceTabs.swift` |
@@ -24,7 +24,7 @@ from the repository root.
 
 ## Browsing
 
-| Feature | In 1.3 | Since | Evidence |
+| Feature | In 1.3.1 | Since | Evidence |
 |---|---|---|---|
 | **Split View** (two or three tabs side by side, one row in the sidebar) | **Yes** | **1.3** | `Mac/Sources/State/SplitView.swift`, `Mac/Sources/Views/SplitPages.swift`; `website/whats-new/2026-11-25-split-view.md` |
 | Link preview (Glance, ⌥-click) | Yes | 1.1 | `Mac/Sources/Views/Glance.swift`, [`docs/glance.md`](glance.md) |
@@ -35,15 +35,16 @@ from the repository root.
 | **Picture in picture when you leave a playing video** | **Yes** | **1.3** | `Mac/Sources/VideoPiP.swift`; `website/whats-new/2026-11-25-picture-in-picture.md`. Calls float in their own window (`Mac/Sources/CallPiP.swift`). |
 | **Controls in the sidebar for media playing in a tab you left** (a mini player) | **Yes** | **1.3** | Part of Picture in Picture, same What's New entry: playing tabs get a play and pause button in the sidebar, and a tab playing out of sight shows as a card there (`NowPlaying` in `Mac/Sources/Views/MediaControls.swift`, placed in `Mac/Sources/Views/Sidebar.swift`) |
 | Swipe back and forward | Yes | 1.0 | `Packages/BrowserKit/Sources/WebKitEngine/WebKitPage.swift` |
-| ⌃Tab in recently used order | Partly | | ⌃Tab steps through the Space's tabs in sidebar order; ⌘T lists recent tabs first |
+| **⌃Tab in recently used order** (hold Control and press Tab again to go further back) | **Yes** | **1.3.1** | `Mac/Sources/State/Browser.swift` (`// MARK: ⌃Tab`, `cycleRecentTab`); on by default, Settings › General turns it back to sidebar order; `website/whats-new/2026-11-26-improvements-1-3-1.md` |
 | Copy a clean link (⇧⌘C) | Yes | 1.0 | `Packages/BrowserKit/Sources/BrowserCore/LinkCleaner.swift`; tests `LinkCleanerTests.swift` |
-| Screenshots of a page or part of it | No | | Only as a tool for connected agents (`Mac/Sources/Agents/BrowserAgentTools.swift`) |
-| Drag a finished download out of the downloads list | No | | |
+| **Screenshot of the page as it's showing** (saved to Downloads and listed there) | **Yes** | **1.3.1** | `Mac/Sources/State/Library+Downloads.swift` (`saveScreenshot`), View › Take Screenshot; `website/whats-new/2026-11-26-screenshots.md` |
+| Screenshot of a chosen area, a chosen element, or the full length of a page | No | | Only the part of the page in view is captured |
+| **Drag a finished download out of the downloads list** (onto a page or into another app) | **Yes** | **1.3.1** | `Mac/Sources/Views/SpaceTabs.swift` (`DownloadsPanel`); Downloads also opens beside the page when a file finishes (`Mac/Sources/State/Library+Downloads.swift`) |
 | Performance Monitor (CPU and memory by tab; unload a stuck one) | Yes | 1.3 | `Mac/Sources/Performance/`; `website/whats-new/2026-11-25-performance.md` |
 
 ## Compatibility and moving in
 
-| Feature | In 1.3 | Since | Evidence |
+| Feature | In 1.3.1 | Since | Evidence |
 |---|---|---|---|
 | Import from Arc (Spaces, pinned and open tabs, favourites) | Yes | 1.0 | `Mac/Sources/Import/BrowserImport.swift` |
 | Chrome Web Store extensions | Yes | 1.0 | `Packages/BrowserKit/Sources/WebKitEngine/WebKitExtensions.swift`, `ExtensionCompat.swift`; tested extensions and results, failures included: [`docs/web-extensions.md`](web-extensions.md). 1Password, Grammarly, uBlock Origin Lite and Dark Reader work; Proton Pass doesn't. |
@@ -51,11 +52,11 @@ from the repository root.
 | Passkeys | Partly | | WebKit's own passkeys need Apple's browser entitlement, which the build doesn't have (`Packages/BrowserKit/Sources/WebKitEngine/WebKitEngine.swift`). Passkeys through 1Password's extension work ([`docs/web-extensions.md`](web-extensions.md)). |
 | Sync between devices | No | | No account, no iCloud ([privacy](https://browsa.app/privacy/)) |
 | iPhone and iPad app | Not released | | In this repository (`App/`), no public build yet |
-| Export Spaces to a file | No | | Boosts and Space Routing rules export; Spaces don't |
+| **Export Spaces to a file** (Favourites and every Space, as a bookmarks file any browser imports) | **Yes** | **1.3.1** | `Packages/BrowserKit/Sources/BrowserCore/BookmarksExport.swift`, `Mac/Sources/State/Library+Export.swift`; tests `BookmarksExportTests.swift`; Settings › Spaces; `website/whats-new/2026-11-26-export-spaces.md`. Private tabs are left out. Boosts and Space Routing rules export too |
 
 ## Extras
 
-| Feature | In 1.3 | Since | Evidence |
+| Feature | In 1.3.1 | Since | Evidence |
 |---|---|---|---|
 | Ad, tracker and cookie-banner blocking built in | Yes | 1.0 | `Packages/BrowserKit/Sources/BrowserCore/ContentBlocker.swift`, `CookieBanners.swift` |
 | Change any keyboard shortcut; Arc, Chrome and Safari presets | Yes | 1.0 | `Mac/Sources/State/Shortcuts.swift` |
@@ -65,7 +66,7 @@ from the repository root.
 
 ## Extension formats
 
-| Format | In 1.3 | Evidence |
+| Format | In 1.3.1 | Evidence |
 |---|---|---|
 | Manifest V3 | Yes | [`docs/web-extensions.md`](web-extensions.md) |
 | Manifest V2 | Not tested | The manifest reader accepts it (`Packages/BrowserKit/Sources/Extensibility/ExtensionManifest.swift`); no MV2 extension has been tried |

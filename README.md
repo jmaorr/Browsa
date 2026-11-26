@@ -178,7 +178,7 @@ Good places to start if you'd like to extend it:
 ## Browsa for Mac
 
 `BrowsaMac` is a second target in the same project: an Arc-style window for macOS 26 or later. It is the released
-app ([browsa.app](https://browsa.app), currently 1.3). Since 1.3 it has Split View, folders and Live Folders for
+app ([browsa.app](https://browsa.app), currently 1.3.1). Since 1.3 it has Split View, folders and Live Folders for
 pinned tabs, a profile for each Space, picture in picture, your own Boosts and a Performance Monitor; the full list
 with evidence is [`docs/features.md`](docs/features.md).
 
