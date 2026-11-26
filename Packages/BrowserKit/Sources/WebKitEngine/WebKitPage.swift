@@ -477,6 +477,13 @@ extension WebKitPage: WKNavigationDelegate {
     public func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
         engine?.downloads.adopt(download, from: self)
     }
+
+    /// Download Image, Download Linked File and Download Video in the page's menu. WebKit starts these
+    /// itself and reports them here, not through `didBecome`; unanswered, the download has nowhere to go.
+    @objc(_webView:contextMenuDidCreateDownload:)
+    public func webView(_ webView: WKWebView, contextMenuDidCreateDownload download: WKDownload) {
+        engine?.downloads.adopt(download, from: self)
+    }
 }
 
 // MARK: - UI
