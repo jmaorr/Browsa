@@ -202,6 +202,10 @@ private struct SpacesSettings: View {
                 .padding(.vertical, 4)
                 .background(Color.primary.opacity(0.04), in: .rect(cornerRadius: 12, style: .continuous))
                 HStack {
+                    Button("Export Spaces…", systemImage: "square.and.arrow.up") { browser.library.exportSpaces() }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
+                        .help("Save your Favourites and every Space as a bookmarks file that any browser can import.")
                     Spacer()
                     Button("Add Space", systemImage: "plus") { browser.addSpace() }
                         .buttonStyle(.glass)
