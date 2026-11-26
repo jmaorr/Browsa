@@ -143,9 +143,10 @@ struct BrowserCommands: Commands {
         }
 
         CommandMenu("Tabs") {
-            Button("Next Tab") { browser?.selectAdjacentTab(1) }
+            // Recently used order, or down the sidebar: Settings › General.
+            Button("Switch Tab") { browser?.controlTab(1) }
                 .keyboardShortcut(.tab, modifiers: .control)
-            Button("Previous Tab") { browser?.selectAdjacentTab(-1) }
+            Button("Switch Tab Backwards") { browser?.controlTab(-1) }
                 .keyboardShortcut(.tab, modifiers: [.control, .shift])
             Button("Next Tab") { browser?.selectAdjacentTab(1) }
                 .keyboardShortcut(keys.shortcut(.nextTab))
