@@ -4,7 +4,8 @@ import BrowserCore
 
 /// Spaces leave Browsa as a bookmarks file, which every browser can import: a folder for
 /// Favourites, then one for each space holding its pinned tabs (folders kept as folders) and a
-/// Today folder for its open tabs. The Private space is never included.
+/// Today folder for its open tabs. The Private space and private tabs are never included, nor is
+/// anything that isn't a web page or a file (see `BookmarksExport.isExportable`).
 extension Library {
     func spacesAsBookmarks() -> [BookmarksExport.Node] {
         var nodes: [BookmarksExport.Node] = []
@@ -17,7 +18,7 @@ extension Library {
                 tree.compactMap { node in
                     switch node {
                     case .tab(let id):
-                        guard let tab = pinned[id], let url = tab.url else { return nil }
+                        guard let tab = pinned[id], !tab.isPrivate, let url = tab.url else { return nil }
                         return .link(title: tab.displayTitle, url: url)
                     case .folder(let folder):
                         return .folder(name: folder.name, children: converted(folder.children))
@@ -25,7 +26,7 @@ extension Library {
                 }
             }
             var children = converted(space.pinnedTree)
-            let today = space.listedToday.compactMap { tab in
+            let today = space.listedToday.filter { !$0.isPrivate }.compactMap { tab in
                 tab.url.map { BookmarksExport.Node.link(title: tab.displayTitle, url: $0) }
             }
             if !today.isEmpty { children.append(.folder(name: "Today", children: today)) }

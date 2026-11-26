@@ -27,12 +27,19 @@ public enum BookmarksExport {
         let indent = String(repeating: "    ", count: depth)
         switch node {
         case .link(let title, let url):
+            guard isExportable(url) else { return }
             out += "\(indent)<DT><A HREF=\"\(escaped(url.absoluteString))\">\(escaped(title.isEmpty ? url.absoluteString : title))</A>\n"
         case .folder(let name, let children):
             out += "\(indent)<DT><H3>\(escaped(name))</H3>\n\(indent)<DL><p>\n"
             for child in children { write(child, depth: depth + 1, into: &out) }
             out += "\(indent)</DL><p>\n"
         }
+    }
+
+    /// Only addresses that are safe as a bookmark in any browser. A `javascript:` bookmark runs in whatever
+    /// page is open when it's clicked, and `data:`, `blob:` and extension pages mean nothing elsewhere.
+    static func isExportable(_ url: URL) -> Bool {
+        ["http", "https", "file"].contains(url.scheme?.lowercased() ?? "")
     }
 
     private static func escaped(_ text: String) -> String {

@@ -69,7 +69,8 @@ extension Library {
             window.showToast("Couldn't save the screenshot")
             return
         }
-        let item = EngineDownload(filename: file.lastPathComponent, sourceURL: tab.url)
+        // A private tab's site isn't named in the list.
+        let item = EngineDownload(filename: file.lastPathComponent, sourceURL: tab.isPrivate ? nil : tab.url)
         item.fileURL = file
         item.progress = 1
         item.status = .finished
