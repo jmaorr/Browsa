@@ -60,6 +60,7 @@ private struct GeneralSettings: View {
     @State private var importing = false
     @AppStorage(BrowsaAppearance.key) private var appearance = ""
     @AppStorage(VideoPiP.autoKey) private var videoPiPOnTabSwitch = true
+    @AppStorage(Browser.recentTabsKey) private var controlTabRecentOrder = true
 
     var body: some View {
         @Bindable var browser = browser
@@ -122,6 +123,15 @@ private struct GeneralSettings: View {
                     VStack(alignment: .leading) {
                         Text("Pop out videos when you switch tabs")
                         Text("A video playing with sound follows you in picture in picture, and goes back when you return to its tab. ⌥⌘P pops out any video.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Section {
+                Toggle(isOn: $controlTabRecentOrder) {
+                    VStack(alignment: .leading) {
+                        Text("⌃Tab switches to recently used tabs")
+                        Text("Press once to go back to the tab you were on last. Keep Control down and press Tab again to go further back. Turn off to move down the sidebar instead.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }

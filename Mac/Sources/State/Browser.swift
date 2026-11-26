@@ -26,6 +26,9 @@ final class Browser {
     @ObservationIgnored private var previousSelection: [UUID: UUID] = [:]
     /// The tab shown before a change to the selection started, while it runs (see `changingShownTab`).
     @ObservationIgnored private var tabBeforeChange: BrowserTab?
+    /// A walk through recently used tabs with ⌃Tab, from the first press until Control is let go.
+    @ObservationIgnored private var recentCycle: RecentCycle?
+    @ObservationIgnored private var controlMonitor: Any?
     @ObservationIgnored private var shownChangeDepth = 0
     /// The AppKit window, for focusing and for matching key events to this browser.
     @ObservationIgnored weak var nsWindow: NSWindow?
@@ -422,6 +425,71 @@ final class Browser {
         guard tabs.count > 1 else { return }
         guard let cur = currentTab, let i = tabs.firstIndex(where: { $0.id == cur.id }) else { select(tabs[0]); return }
         select(tabs[(i + delta + tabs.count) % tabs.count])
+    }
+
+    // MARK: ⌃Tab
+
+    /// Settings › General: ⌃Tab goes to recently used tabs, as in Arc and other browsers. Off: down the sidebar.
+    nonisolated static let recentTabsKey = "controlTabRecentOrder"
+
+    private struct RecentCycle {
+        /// The space's tabs, most recently used first, as they were at the first press. The tab you were on is first.
+        var order: [UUID]
+        var index = 0
+        /// When each was last used, to put back for the tabs only passed through.
+        var stamps: [UUID: Date]
+    }
+
+    /// ⌃Tab and ⌃⇧Tab.
+    func controlTab(_ delta: Int) {
+        if UserDefaults.standard.object(forKey: Self.recentTabsKey) as? Bool ?? true {
+            cycleRecentTab(delta)
+        } else {
+            selectAdjacentTab(delta)
+        }
+    }
+
+    /// One press goes back to the tab you were on last. Holding Control and pressing Tab again walks
+    /// further back; letting go of Control settles on the tab showing. Tabs passed on the way keep
+    /// their place in the order, so the next ⌃Tab still comes back to where you started.
+    private func cycleRecentTab(_ delta: Int) {
+        // Control was let go while Browsa wasn't looking (another app came forward): that walk is over.
+        if recentCycle != nil, !NSEvent.modifierFlags.contains(.control) { endRecentCycle() }
+        if recentCycle == nil {
+            var tabs = orderedTabs.sorted { $0.lastActive > $1.lastActive }
+            guard tabs.count > 1 else { return }
+            if let current = currentTab, let i = tabs.firstIndex(where: { $0.id == current.id }) {
+                tabs.insert(tabs.remove(at: i), at: 0)
+            }
+            recentCycle = RecentCycle(order: tabs.map(\.id),
+                                      stamps: Dictionary(uniqueKeysWithValues: tabs.map { ($0.id, $0.lastActive) }))
+            controlMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+                if !event.modifierFlags.contains(.control) { self?.endRecentCycle() }
+                return event
+            }
+        }
+        guard var cycle = recentCycle else { return }
+        let tabs = orderedTabs
+        // Skip any tab closed since the walk began.
+        for _ in cycle.order.indices {
+            cycle.index = (cycle.index + delta + cycle.order.count) % cycle.order.count
+            if let tab = tabs.first(where: { $0.id == cycle.order[cycle.index] }) {
+                recentCycle = cycle
+                select(tab)
+                return
+            }
+        }
+    }
+
+    private func endRecentCycle() {
+        if let controlMonitor { NSEvent.removeMonitor(controlMonitor) }
+        controlMonitor = nil
+        guard let cycle = recentCycle else { return }
+        recentCycle = nil
+        let landed = currentTab?.id
+        for tab in orderedTabs where tab.id != landed {
+            if let stamp = cycle.stamps[tab.id] { tab.lastActive = stamp }
+        }
     }
 
     func selectAdjacentSpace(_ delta: Int) {
