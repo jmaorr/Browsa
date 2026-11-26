@@ -897,13 +897,18 @@ struct DownloadsPanel: View {
         VStack(spacing: 0) {
             if downloads.isEmpty {
                 PanelEmptyState(title: "No Downloads", symbol: "arrow.down.circle",
-                                message: "Files you download in Browsa appear here, newest first.") {
+                                message: "Files you download and screenshots you take in Browsa appear here, newest first.") {
                     Button("Open Downloads Folder", action: openFolder)
                 }
             } else {
                 List(selection: $selection) {
                     ForEach(downloads.reversed()) { item in
                         DownloadRow(item: item).tag(item.id)
+                            // A finished file drags out as the file itself: onto a page to upload it, or into another app.
+                            .itemProvider {
+                                guard item.status == .finished, let url = item.fileURL else { return nil }
+                                return NSItemProvider(contentsOf: url)
+                            }
                     }
                 }
                 .listStyle(.plain)

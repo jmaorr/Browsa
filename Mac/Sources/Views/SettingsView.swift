@@ -60,6 +60,7 @@ private struct GeneralSettings: View {
     @State private var importing = false
     @AppStorage(BrowsaAppearance.key) private var appearance = ""
     @AppStorage(VideoPiP.autoKey) private var videoPiPOnTabSwitch = true
+    @AppStorage(Library.opensDownloadsKey) private var opensDownloadsWhenFinished = true
 
     var body: some View {
         @Bindable var browser = browser
@@ -122,6 +123,15 @@ private struct GeneralSettings: View {
                     VStack(alignment: .leading) {
                         Text("Pop out videos when you switch tabs")
                         Text("A video playing with sound follows you in picture in picture, and goes back when you return to its tab. ⌥⌘P pops out any video.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Section {
+                Toggle(isOn: $opensDownloadsWhenFinished) {
+                    VStack(alignment: .leading) {
+                        Text("Open Downloads when a download finishes")
+                        Text("The file appears beside the page, ready to open or drag somewhere. If another tool is open there, you get a note instead.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }

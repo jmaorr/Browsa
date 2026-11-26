@@ -97,6 +97,8 @@ struct BrowserCommands: Commands {
             }
             .keyboardShortcut(keys.shortcut(.pictureInPicture))
             .disabled(browser?.pictureInPictureTab == nil)
+            Button("Take Screenshot") { browser?.takeScreenshot() }
+                .disabled(!hasPage)
             Divider()
             Button("Reload Page") { browser?.reload() }
                 .keyboardShortcut(keys.shortcut(.reload))

@@ -133,7 +133,6 @@ final class PopupWindow: NSObject, NSWindowDelegate, EnginePageDelegate {
 
     func page(_ page: any EnginePage, didStartDownload download: EngineDownload) {
         guard let library else { return }
-        library.downloads.insert(download, at: 0)
-        library.activeWindow?.showToast("Downloading \(download.filename)")
+        library.add(download, from: nil)
     }
 }
