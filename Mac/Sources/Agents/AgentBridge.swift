@@ -454,17 +454,38 @@ extension Preferences {
 /// paints and screenshots a page that's in a window; this one is never seen, never takes clicks or
 /// focus, and isn't in the Window menu or Mission Control. A tab moves out of it the moment you
 /// look at it (PageHost adopts its view).
+///
+/// Being off every screen isn't something macOS leaves alone: when the displays change (one wakes, is
+/// plugged in or is rearranged) it moves a window that's on no screen back onto one. This window then
+/// sat over other apps as a white box that took no clicks, until Browsa was quit. So it doesn't count
+/// on where it was put: it goes back whenever it's moved, it's only up while it holds a page, and it
+/// has no background of its own.
 @MainActor
 final class AgentStage {
+    private static let parked = NSPoint(x: -40_000, y: -40_000)
+    private var observers: [NSObjectProtocol] = []
+
     private lazy var window: NSWindow = {
-        let w = NSWindow(contentRect: NSRect(x: -40_000, y: -40_000, width: 1200, height: 820),
+        let w = NSWindow(contentRect: NSRect(origin: Self.parked, size: NSSize(width: 1200, height: 820)),
                          styleMask: [.borderless], backing: .buffered, defer: false)
         w.isReleasedWhenClosed = false
         w.ignoresMouseEvents = true
         w.hasShadow = false
+        w.isOpaque = false
+        w.backgroundColor = .clear
         w.isExcludedFromWindowsMenu = true
         w.collectionBehavior = [.transient, .ignoresCycle, .stationary, .fullScreenNone]
         w.title = "Agent Stage"
+        let content = StageContent(frame: NSRect(origin: .zero, size: w.frame.size))
+        content.onEmpty = { [weak w] in w?.orderOut(nil) }
+        w.contentView = content
+        let center = NotificationCenter.default
+        let park: @Sendable (Notification) -> Void = { [weak self] _ in MainActor.assumeIsolated { self?.park() } }
+        observers = [
+            center.addObserver(forName: NSWindow.didMoveNotification, object: w, queue: .main, using: park),
+            center.addObserver(forName: NSWindow.didChangeScreenNotification, object: w, queue: .main, using: park),
+            center.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main, using: park),
+        ]
         return w
     }()
 
@@ -474,6 +495,29 @@ final class AgentStage {
         view.frame = content.bounds
         view.autoresizingMask = [.width, .height]
         content.addSubview(view)
+        park()
         if !window.isVisible { window.orderFrontRegardless() }
+    }
+
+    /// Puts the window back off every screen. If macOS won't let it go there, it comes down instead:
+    /// a page that stops painting is better than a box over someone's work.
+    private func park() {
+        guard window.frame.origin != Self.parked else { return }
+        window.setFrameOrigin(Self.parked)
+        if window.frame.origin != Self.parked { window.orderOut(nil) }
+    }
+}
+
+/// The stage's content: tells the stage when the last page has left, so the window can come down.
+private final class StageContent: NSView {
+    var onEmpty: (() -> Void)?
+
+    override func willRemoveSubview(_ subview: NSView) {
+        super.willRemoveSubview(subview)
+        // Asked on the next turn: `host` takes the old page out just before it puts the new one in.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.subviews.isEmpty else { return }
+            self.onEmpty?()
+        }
     }
 }
