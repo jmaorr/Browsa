@@ -383,8 +383,7 @@ final class TabController: EnginePageDelegate {
 
     func page(_ page: any EnginePage, didStartDownload download: EngineDownload) {
         guard let library else { return }
-        library.downloads.insert(download, at: 0)
-        (window ?? library.activeWindow)?.showToast("Downloading \(download.filename)")
+        library.add(download, from: window)
     }
 
     func pageDidDeclineCookieBanner(_ page: any EnginePage) {
