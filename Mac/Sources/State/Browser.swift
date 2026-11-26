@@ -26,6 +26,7 @@ final class Browser {
     @ObservationIgnored private var previousSelection: [UUID: UUID] = [:]
     /// The tab shown before a change to the selection started, while it runs (see `changingShownTab`).
     @ObservationIgnored private var tabBeforeChange: BrowserTab?
+    @ObservationIgnored private var spaceBeforeChange: UUID?
     @ObservationIgnored private var shownChangeDepth = 0
     /// The AppKit window, for focusing and for matching key events to this browser.
     @ObservationIgnored weak var nsWindow: NSWindow?
@@ -328,7 +329,7 @@ final class Browser {
     /// Runs a change to what this window shows, then tells picture in picture which tab it left and which it
     /// came to, once, however many steps the change took.
     private func changingShownTab(_ change: () -> Void) {
-        if shownChangeDepth == 0 { tabBeforeChange = currentTab }
+        if shownChangeDepth == 0 { tabBeforeChange = currentTab; spaceBeforeChange = currentSpace.id }
         shownChangeDepth += 1
         change()
         shownChangeDepth -= 1
@@ -336,7 +337,9 @@ final class Browser {
         let before = tabBeforeChange
         tabBeforeChange = nil
         let after = currentTab
-        if before?.id != after?.id { library.videoPiP.shownTabChanged(from: before, to: after) }
+        let changedSpace = spaceBeforeChange != currentSpace.id
+        spaceBeforeChange = nil
+        if before?.id != after?.id { library.videoPiP.shownTabChanged(from: before, to: after, changedSpace: changedSpace) }
     }
 
     private func setSelection(_ tab: BrowserTab?, in space: Space) {

@@ -13,10 +13,12 @@ private let videoPiPLog = Logger(subsystem: "com.orriginal.browsa", category: "v
 /// - The video window's "back to tab" button brings its tab forward.
 ///
 /// Sites that switch picture in picture off for their player get it anyway. Settings › General can turn the
-/// popping out on tab switches off (`videoPiPOnTabSwitch`).
+/// popping out on tab switches off (`videoPiPOnTabSwitch`), or only when the switch is to another space
+/// (`videoPiPOnSpaceSwitch`): the sidebar still shows what's playing there, with its picture in picture button.
 @MainActor
 final class VideoPiP {
     nonisolated static let autoKey = "videoPiPOnTabSwitch"
+    nonisolated static let spaceKey = "videoPiPOnSpaceSwitch"
 
     private unowned let library: Library
     /// Tabs whose video popped out because you left them. Going back puts the video back.
@@ -24,20 +26,22 @@ final class VideoPiP {
 
     init(library: Library) {
         self.library = library
-        UserDefaults.standard.register(defaults: [Self.autoKey: true])
+        UserDefaults.standard.register(defaults: [Self.autoKey: true, Self.spaceKey: true])
     }
 
     private var popsOutOnTabSwitch: Bool { UserDefaults.standard.bool(forKey: Self.autoKey) }
+    private var popsOutOnSpaceSwitch: Bool { UserDefaults.standard.bool(forKey: Self.spaceKey) }
 
     // MARK: Switching tabs
 
     /// A window moved from one tab to another (a click, a shortcut, another space, a tab closing). Called
     /// before the window draws the new tab, so the video starts to pop out while its page is still on screen.
-    func shownTabChanged(from old: BrowserTab?, to new: BrowserTab?) {
+    /// `changedSpace`: the window went to another space, rather than another tab in the same one.
+    func shownTabChanged(from old: BrowserTab?, to new: BrowserTab?, changedSpace: Bool = false) {
         if let new, poppedOut.remove(new.id) != nil, new.media.isPictureInPicture {
             library.existingController(for: new)?.page.media(.exitPictureInPicture)
         }
-        guard popsOutOnTabSwitch, let old, old.id != new?.id,
+        guard popsOutOnTabSwitch, popsOutOnSpaceSwitch || !changedSpace, let old, old.id != new?.id,
               // Closing the tab: the video goes with it.
               old.id != library.closingTabID, library.space(containing: old) != nil,
               // Still on screen in another window, or in a call (that has its own window).
