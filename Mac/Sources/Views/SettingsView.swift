@@ -61,6 +61,7 @@ private struct GeneralSettings: View {
     @AppStorage(BrowsaAppearance.key) private var appearance = ""
     @AppStorage(VideoPiP.autoKey) private var videoPiPOnTabSwitch = true
     @AppStorage(Library.opensDownloadsKey) private var opensDownloadsWhenFinished = true
+    @AppStorage(VideoPiP.spaceKey) private var videoPiPOnSpaceSwitch = true
 
     var body: some View {
         @Bindable var browser = browser
@@ -126,6 +127,14 @@ private struct GeneralSettings: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
+                Toggle(isOn: $videoPiPOnSpaceSwitch) {
+                    VStack(alignment: .leading) {
+                        Text("Also when you switch Space")
+                        Text("Turn off to leave a video in its Space when you go to another. It keeps playing, and the sidebar shows it with a button to pop it out.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(!videoPiPOnTabSwitch)
             }
             Section {
                 Toggle(isOn: $opensDownloadsWhenFinished) {
@@ -212,6 +221,10 @@ private struct SpacesSettings: View {
                 .padding(.vertical, 4)
                 .background(Color.primary.opacity(0.04), in: .rect(cornerRadius: 12, style: .continuous))
                 HStack {
+                    Button("Export Spaces…", systemImage: "square.and.arrow.up") { browser.exportSpaces() }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
+                        .help("Save your Favourites and every Space as a bookmarks file that any browser can import.")
                     Spacer()
                     Button("Add Space", systemImage: "plus") { browser.addSpace() }
                         .buttonStyle(.glass)
@@ -555,7 +568,7 @@ private struct PrivacySettings: View {
                 Toggle(isOn: $browser.settings.allowLocalCertificateErrors) {
                     VStack(alignment: .leading) {
                         Text("Allow local network sites with certificate errors")
-                        Text("For devices like routers and Home Assistant that use their own certificates. Covers addresses like 192.168.x.x and names ending in .local.")
+                        Text("For devices like routers and Home Assistant that use their own certificates. Covers private addresses (10.x.x.x, 172.16.x.x to 172.31.x.x, 192.168.x.x) and names ending in .local.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }

@@ -120,6 +120,8 @@ extension Browser {
             out.append(BrowserCommand(id: "space:" + s.id.uuidString, title: "Switch to \(s.name)", subtitle: "Space", keywords: ["space"]))
         }
         out.append(BrowserCommand(id: "new-space", title: "New Space", keywords: ["space", "profile"]))
+        out.append(BrowserCommand(id: "export-spaces", title: "Export Spaces…", subtitle: "A bookmarks file any browser can import",
+                                  keywords: ["export", "bookmarks", "backup", "save", "leave", "move"]))
         if !downloads.isEmpty {
             out.append(BrowserCommand(id: "downloads", title: "Show Downloads", subtitle: "\(downloads.count) files", keywords: ["files"]))
         }
@@ -166,7 +168,7 @@ extension Browser {
         "new-window": "macwindow", "zoom-in": "plus.magnifyingglass", "zoom-out": "minus.magnifyingglass",
         "zoom-reset": "1.magnifyingglass", "blockers": "shield", "share": "square.and.arrow.up",
         "close-others": "xmark.square", "reopen": "arrow.uturn.backward", "sidebar": "sidebar.left",
-        "panel": "sidebar.right", "private": "eye.slash", "close-private": "eye.slash", "new-space": "plus.rectangle.on.rectangle",
+        "panel": "sidebar.right", "private": "eye.slash", "close-private": "eye.slash", "new-space": "plus.rectangle.on.rectangle", "export-spaces": "square.and.arrow.up",
         "downloads": "arrow.down.circle", "archive": "archivebox", "settings": "gearshape", "library": "square.grid.2x2", "space": "square.stack",
         "move": "arrow.right.square", "restore": "archivebox", "ext": "puzzlepiece.extension",
         "copy-markdown": "link.badge.plus", "split-view": "rectangle.split.2x1", "separate-split": "rectangle", "clear-today": "xmark.circle", "inspector": "hammer",
@@ -219,6 +221,7 @@ extension Browser {
         case "private": newTab(url: nil, isPrivate: true); showCommandBar(.editCurrent)
         case "close-private": closePrivateSpace()
         case "new-space": addSpace()
+        case "export-spaces": library.exportSpaces()
         case "downloads": showPanel("downloads")
         case "archive": isArchivePresented = true
         case "library": openLibrary()

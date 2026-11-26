@@ -195,7 +195,8 @@ public struct BrowserSettings: Codable, Equatable, Sendable {
     /// Certificates the user chose to trust with "Visit Anyway": "host:port" to the SHA-256 of
     /// the certificate. Only that certificate: a different one on the same site asks again.
     public var certificateExceptions: [String: String] = [:]
-    /// Open sites on the local network (192.168.x.x, .local names) even when their certificate
+    /// Open sites on the local network (private addresses such as 10.x.x.x and 192.168.x.x, .local names;
+    /// `LocalNetwork`) even when their certificate
     /// isn't trusted, as routers and Home Assistant often use their own.
     public var allowLocalCertificateErrors = false
     /// Mac: new tabs (⌘T) open just below the current tab instead of at the top of Today.
