@@ -71,6 +71,8 @@ extension Browser {
                 out.append(BrowserCommand(id: "find", title: "Find on Page", keywords: ["search", "text"]))
                 out.append(BrowserCommand(id: "reader", title: isReaderShowing ? "Hide Reader" : "Show Reader",
                                           keywords: ["article", "reading", "clean"]))
+                out.append(BrowserCommand(id: "screenshot", title: "Take Screenshot", subtitle: "Saved to Downloads",
+                                          keywords: ["capture", "picture", "image", "snapshot", "screen shot"]))
                 out.append(BrowserCommand(id: "tab-window", title: "Move Tab to New Window", keywords: ["window", "detach"]))
                 if tab.media.hasVideo || tab.media.isPictureInPicture {
                     out.append(BrowserCommand(id: "picture-in-picture",
@@ -162,7 +164,7 @@ extension Browser {
 
     private static let commandSymbols: [String: String] = [
         "pin": "pin", "favourite": "star", "close": "xmark", "copy-link": "link", "copy-text": "equal.circle", "reload": "arrow.clockwise",
-        "find": "text.magnifyingglass", "reader": "doc.plaintext", "picture-in-picture": "pip.enter", "tab-window": "macwindow.badge.plus",
+        "find": "text.magnifyingglass", "reader": "doc.plaintext", "picture-in-picture": "pip.enter", "screenshot": "camera.viewfinder", "tab-window": "macwindow.badge.plus",
         "new-window": "macwindow", "zoom-in": "plus.magnifyingglass", "zoom-out": "minus.magnifyingglass",
         "zoom-reset": "1.magnifyingglass", "blockers": "shield", "share": "square.and.arrow.up",
         "close-others": "xmark.square", "reopen": "arrow.uturn.backward", "sidebar": "sidebar.left",
@@ -203,6 +205,7 @@ extension Browser {
         case "find": showFind()
         case "reader": toggleReader()
         case "picture-in-picture": togglePictureInPicture()
+        case "screenshot": takeScreenshot()
         case "tab-window": if let t = currentTab { openInNewWindow(t) }
         case "new-window": library.openWindow()
         case "zoom-in": zoom(1)
@@ -351,6 +354,12 @@ extension Browser {
         if let tab = currentTab, tab.media.hasVideo || tab.media.isPictureInPicture { return tab }
         let tabs = library.allTabs
         return tabs.first { $0.media.isPictureInPicture } ?? tabs.first { $0.media.isWatching }
+    }
+
+    /// A picture of the page as it's showing, saved to Downloads and listed there.
+    func takeScreenshot() {
+        guard let tab = currentTab, tab.url != nil else { return }
+        Task { await library.saveScreenshot(of: tab, in: self) }
     }
 
     func togglePictureInPicture() {

@@ -60,6 +60,7 @@ private struct GeneralSettings: View {
     @State private var importing = false
     @AppStorage(BrowsaAppearance.key) private var appearance = ""
     @AppStorage(VideoPiP.autoKey) private var videoPiPOnTabSwitch = true
+    @AppStorage(Library.opensDownloadsKey) private var opensDownloadsWhenFinished = true
     @AppStorage(VideoPiP.spaceKey) private var videoPiPOnSpaceSwitch = true
 
     var body: some View {
@@ -134,6 +135,15 @@ private struct GeneralSettings: View {
                     }
                 }
                 .disabled(!videoPiPOnTabSwitch)
+            }
+            Section {
+                Toggle(isOn: $opensDownloadsWhenFinished) {
+                    VStack(alignment: .leading) {
+                        Text("Open Downloads when a download finishes")
+                        Text("The file appears beside the page, ready to open or drag somewhere. If another tool is open there, you get a note instead.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
             }
             Section {
                 LabeledContent {
